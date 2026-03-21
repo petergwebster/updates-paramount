@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react'
 import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from './supabase'
+import { getFiscalLabel } from './fiscalCalendar'
 import WeeklyLog from './components/WeeklyLog'
 import KPIScorecard from './components/KPIScorecard'
 import Correspondence from './components/Correspondence'
 import HistoryPanel from './components/HistoryPanel'
+import ProductionDashboard from './components/ProductionDashboard'
 import styles from './App.module.css'
 
 const TABS = [
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'log', label: 'Weekly Log' },
   { id: 'kpis', label: 'KPI Scorecard' },
   { id: 'correspondence', label: 'Correspondence' },
@@ -74,6 +77,7 @@ export default function App() {
   }
 
   const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+  const fiscalLabel = getFiscalLabel(currentWeek)
 
   return (
     <div className={styles.app}>
@@ -88,7 +92,10 @@ export default function App() {
           </div>
           <div className={styles.weekNav}>
             <button onClick={() => setCurrentWeek(w => subWeeks(w, 1))} className={styles.weekBtn}>←</button>
-            <span className={styles.weekLabel}>{weekLabel}</span>
+            <div className={styles.weekLabelStack}>
+              <span className={styles.weekLabel}>{weekLabel}</span>
+              {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
+            </div>
             <button onClick={() => setCurrentWeek(w => addWeeks(w, 1))} className={styles.weekBtn}>→</button>
             <button onClick={() => setCurrentWeek(getWeekStart())} className={styles.weekTodayBtn}>This week</button>
           </div>
@@ -96,7 +103,7 @@ export default function App() {
 
         {!dbReady && (
           <div className={styles.setupBanner}>
-            <strong>Setup required:</strong> Connect your Supabase database — see <code>SETUP.md</code> for instructions. The dashboard will be fully functional once connected.
+            <strong>Setup required:</strong> Connect your Supabase database — see <code>SETUP.md</code> for instructions.
           </div>
         )}
 
@@ -122,6 +129,12 @@ export default function App() {
           </div>
         ) : (
           <>
+            {activeTab === 'dashboard' && (
+              <ProductionDashboard
+                weekStart={currentWeek}
+                dbReady={dbReady}
+              />
+            )}
             {activeTab === 'log' && (
               <WeeklyLog
                 weekData={weekData}
@@ -148,7 +161,7 @@ export default function App() {
               <HistoryPanel
                 onSelectWeek={(w) => {
                   setCurrentWeek(new Date(w + 'T12:00:00'))
-                  setActiveTab('log')
+                  setActiveTab('dashboard')
                 }}
               />
             )}

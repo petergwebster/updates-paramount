@@ -1,0 +1,220 @@
+.container { display: flex; flex-direction: column; gap: 24px; }
+
+.topRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sectionTitle { font-size: 26px; margin-bottom: 4px; }
+.sectionSub { font-size: 13px; color: var(--ink-60); }
+.actions { display: flex; align-items: center; gap: 8px; }
+.savedMsg { font-size: 13px; color: var(--green); font-weight: 500; }
+
+.emptyState {
+  text-align: center;
+  padding: 60px 24px;
+  background: white;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--ink-60);
+  font-size: 14px;
+}
+
+/* SUMMARY */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px;
+}
+
+.facilityCard {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.facilityHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.facilityTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.facilityBadge {
+  background: var(--ink);
+  color: var(--cream);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.facilityBadgeBNY { background: var(--accent); }
+
+.pill {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.pill_green { background: var(--green-light); color: var(--green); }
+.pill_amber { background: var(--amber-light); color: var(--amber); }
+.pill_red { background: var(--red-light); color: var(--red); }
+.pill_gray { background: var(--gray-light); color: var(--gray); }
+
+.statsRow {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bigStat {
+  flex: 1;
+  min-width: 100px;
+  background: var(--ink-5);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.bigStatLabel { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-60); margin-bottom: 4px; }
+.bigStatValue { font-family: var(--font-display); font-size: 26px; line-height: 1.1; }
+.bigStatValue_green { color: var(--green); }
+.bigStatValue_amber { color: var(--amber); }
+.bigStatValue_red { color: var(--red); }
+.bigStatValue_gray { color: var(--ink-60); }
+.bigStatUnit { font-size: 13px; font-family: var(--font-body); color: var(--ink-60); margin-left: 3px; }
+.bigStatSub { font-size: 12px; color: var(--ink-60); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+
+.pctBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.pctBadge_green { background: var(--green-light); color: var(--green); }
+.pctBadge_amber { background: var(--amber-light); color: var(--amber); }
+.pctBadge_red { background: var(--red-light); color: var(--red); }
+.pctBadge_gray { background: var(--gray-light); color: var(--gray); }
+
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.categoryCard {
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border-left: 3px solid var(--border);
+}
+.categoryCard_green { background: var(--green-light); border-left-color: var(--green); }
+.categoryCard_amber { background: var(--amber-light); border-left-color: var(--amber); }
+.categoryCard_red { background: var(--red-light); border-left-color: var(--red); }
+.categoryCard_gray { background: var(--gray-light); border-left-color: var(--ink-30); }
+
+.categoryName { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; opacity: 0.7; }
+.categoryYards { font-size: 16px; font-weight: 500; }
+.categoryTarget { font-size: 11px; opacity: 0.65; margin-top: 2px; }
+.categoryWaste { font-size: 11px; margin-top: 2px; opacity: 0.65; }
+
+.splitRow {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.splitItem { flex: 1; }
+.splitLabel { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-60); display: block; margin-bottom: 3px; }
+.splitValue { font-size: 15px; font-weight: 500; color: var(--ink); }
+
+.commentary {
+  font-size: 13px;
+  color: var(--ink-60);
+  line-height: 1.6;
+  background: var(--ink-5);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border-left: 3px solid var(--ink-30);
+}
+
+/* EDIT MODE */
+.editGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.editSection {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+}
+
+.editSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.editSectionHeader h3 { font-size: 16px; }
+
+.editSubHeader {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin-bottom: 10px;
+  margin-top: 4px;
+}
+
+.editRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.editCatBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editCatLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  text-transform: capitalize;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+
+.editThreeCol {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.editFiveCol {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.inputGroup { display: flex; flex-direction: column; gap: 4px; }

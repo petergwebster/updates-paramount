@@ -70,13 +70,25 @@
   color: var(--ink-60);
 }
 
+.weekLabelStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 220px;
+}
+
 .weekLabel {
   font-size: 13px;
   font-weight: 500;
   color: var(--ink);
-  min-width: 180px;
-  text-align: center;
   letter-spacing: 0.01em;
+}
+
+.fiscalLabel {
+  font-size: 11px;
+  color: var(--ink-60);
+  letter-spacing: 0.02em;
+  margin-top: 1px;
 }
 
 .weekTodayBtn {
