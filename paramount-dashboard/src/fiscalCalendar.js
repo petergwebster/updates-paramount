@@ -54,9 +54,25 @@ export const FISCAL_CALENDAR = {
 };
 
 export function getFiscalInfo(weekStartDate) {
-  const d = weekStartDate instanceof Date ? weekStartDate : new Date(weekStartDate + "T12:00:00");
-  const key = d.toISOString().split("T")[0];
-  return FISCAL_CALENDAR[key] || null;
+  try {
+    if (!weekStartDate) return null;
+    let d;
+    if (weekStartDate instanceof Date) {
+      d = weekStartDate;
+    } else {
+      const str = String(weekStartDate);
+      // Already a YYYY-MM-DD key — look up directly
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return FISCAL_CALENDAR[str] || null;
+      }
+      d = new Date(str.includes('T') ? str : str + 'T12:00:00');
+    }
+    if (isNaN(d.getTime())) return null;
+    const key = d.toISOString().split('T')[0];
+    return FISCAL_CALENDAR[key] || null;
+  } catch (e) {
+    return null;
+  }
 }
 
 export function getFiscalLabel(weekStartDate) {
