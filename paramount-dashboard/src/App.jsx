@@ -1,0 +1,165 @@
+import React, { useState, useEffect } from 'react'
+import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
+import { supabase } from './supabase'
+import WeeklyLog from './components/WeeklyLog'
+import KPIScorecard from './components/KPIScorecard'
+import Correspondence from './components/Correspondence'
+import HistoryPanel from './components/HistoryPanel'
+import styles from './App.module.css'
+
+const TABS = [
+  { id: 'log', label: 'Weekly Log' },
+  { id: 'kpis', label: 'KPI Scorecard' },
+  { id: 'correspondence', label: 'Correspondence' },
+  { id: 'history', label: 'History' },
+]
+
+function getWeekStart(date = new Date()) {
+  return startOfWeek(date, { weekStartsOn: 1 })
+}
+
+function weekKey(date) {
+  return format(date, 'yyyy-MM-dd')
+}
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('log')
+  const [currentWeek, setCurrentWeek] = useState(getWeekStart())
+  const [weekData, setWeekData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [dbReady, setDbReady] = useState(true)
+
+  useEffect(() => {
+    loadWeek(currentWeek)
+  }, [currentWeek])
+
+  async function loadWeek(weekDate) {
+    setLoading(true)
+    const key = weekKey(weekDate)
+    try {
+      const { data, error } = await supabase
+        .from('weeks')
+        .select('*')
+        .eq('week_start', key)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Load error:', error)
+        setDbReady(false)
+      } else {
+        setDbReady(true)
+        setWeekData(data || null)
+      }
+    } catch (e) {
+      setDbReady(false)
+    }
+    setLoading(false)
+  }
+
+  async function saveWeekData(updates) {
+    const key = weekKey(currentWeek)
+    const payload = {
+      week_start: key,
+      updated_at: new Date().toISOString(),
+      ...updates,
+    }
+    const { data, error } = await supabase
+      .from('weeks')
+      .upsert(payload, { onConflict: 'week_start' })
+      .select()
+      .single()
+
+    if (!error && data) setWeekData(data)
+    return { data, error }
+  }
+
+  const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+
+  return (
+    <div className={styles.app}>
+      <header className={styles.header}>
+        <div className={styles.headerTop}>
+          <div className={styles.brand}>
+            <span className={styles.brandMark}>PP</span>
+            <div>
+              <h1 className={styles.brandName}>Paramount Prints</h1>
+              <p className={styles.brandSub}>Executive Operations Dashboard</p>
+            </div>
+          </div>
+          <div className={styles.weekNav}>
+            <button onClick={() => setCurrentWeek(w => subWeeks(w, 1))} className={styles.weekBtn}>←</button>
+            <span className={styles.weekLabel}>{weekLabel}</span>
+            <button onClick={() => setCurrentWeek(w => addWeeks(w, 1))} className={styles.weekBtn}>→</button>
+            <button onClick={() => setCurrentWeek(getWeekStart())} className={styles.weekTodayBtn}>This week</button>
+          </div>
+        </div>
+
+        {!dbReady && (
+          <div className={styles.setupBanner}>
+            <strong>Setup required:</strong> Connect your Supabase database — see <code>SETUP.md</code> for instructions. The dashboard will be fully functional once connected.
+          </div>
+        )}
+
+        <nav className={styles.nav}>
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              className={`${styles.navTab} ${activeTab === t.id ? styles.navTabActive : ''}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <main className={styles.main}>
+        {loading ? (
+          <div className={styles.loading}>
+            <div className={styles.loadingDots}>
+              <span /><span /><span />
+            </div>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'log' && (
+              <WeeklyLog
+                weekData={weekData}
+                weekStart={currentWeek}
+                onSave={saveWeekData}
+                dbReady={dbReady}
+              />
+            )}
+            {activeTab === 'kpis' && (
+              <KPIScorecard
+                weekData={weekData}
+                weekStart={currentWeek}
+                onSave={saveWeekData}
+                dbReady={dbReady}
+              />
+            )}
+            {activeTab === 'correspondence' && (
+              <Correspondence
+                weekStart={currentWeek}
+                dbReady={dbReady}
+              />
+            )}
+            {activeTab === 'history' && (
+              <HistoryPanel
+                onSelectWeek={(w) => {
+                  setCurrentWeek(new Date(w + 'T12:00:00'))
+                  setActiveTab('log')
+                }}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      <footer className={styles.footer}>
+        <span>Paramount Prints · F. Schumacher & Co.</span>
+        <span>Peter Webster, President</span>
+      </footer>
+    </div>
+  )
+}
