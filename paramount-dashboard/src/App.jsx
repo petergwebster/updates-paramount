@@ -26,7 +26,7 @@ function weekKey(date) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('log')
+  const [activeTab, setActiveTab] = useState('dashboard')
   const [currentWeek, setCurrentWeek] = useState(getWeekStart())
   const [weekData, setWeekData] = useState(null)
   const [loading, setLoading] = useState(true)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { format, subWeeks, startOfWeek } from 'date-fns'
 import { supabase } from '../supabase'
+import { getFiscalLabel } from '../fiscalCalendar'
 import styles from './ProductionDashboard.module.css'
 
 const NJ_TARGETS = {
@@ -9,15 +10,12 @@ const NJ_TARGETS = {
   paper: { yards: 3830, colorYards: 13405 },
   wasteTarget: 8,
 }
+const NJ_TOTAL_TARGET = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
 
-const BNY_TARGETS = {
-  replen: 7886,
-  mto: 1280,
-  hos: 1532,
-  memo: 211,
-  contract: 1091,
-  total: 12000,
-}
+const BNY_TARGETS = { replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000 }
+
+function weekKey(date) { return format(date, 'yyyy-MM-dd') }
+function getWeekStart(d = new Date()) { return startOfWeek(d, { weekStartsOn: 1 }) }
 
 function emptyNJ() {
   return {
@@ -29,71 +27,72 @@ function emptyNJ() {
     commentary: '',
   }
 }
-
 function emptyBNY() {
-  return {
-    replen: '', mto: '', hos: '', memo: '', contract: '',
-    schWritten: '', schProduced: '', schInvoiced: '',
-    tpWritten: '', tpProduced: '', tpInvoiced: '',
-    commentary: '',
-  }
+  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '' }
 }
 
-function pct(val, target) {
-  const v = parseFloat(val)
-  const t = parseFloat(target)
-  if (!v || !t) return null
-  return Math.round((v / t) * 100)
-}
+function n(v) { return parseFloat(v) || 0 }
+function fmt(v) { return v ? Number(v).toLocaleString() : '—' }
+function pct(val, target) { const v = n(val), t = n(target); return (v && t) ? Math.round((v/t)*100) : null }
 
 function statusColor(val, target, inverse = false) {
   const p = pct(val, target)
   if (p === null) return 'gray'
-  if (inverse) {
-    if (p <= 8) return 'green'
-    if (p <= 12) return 'amber'
-    return 'red'
-  }
-  if (p >= 90) return 'green'
-  if (p >= 70) return 'amber'
-  return 'red'
+  if (inverse) return p <= 8 ? 'green' : p <= 14 ? 'amber' : 'red'
+  return p >= 90 ? 'green' : p >= 70 ? 'amber' : 'red'
 }
 
-function Pill({ status, children }) {
-  return <span className={`${styles.pill} ${styles['pill_' + status]}`}>{children}</span>
+function Dot({ status }) {
+  return <span className={`${styles.dot} ${styles['dot_' + status]}`} />
 }
 
-function BigStat({ label, value, target, unit = 'yds', inverse = false }) {
-  const p = pct(value, target)
-  const status = statusColor(value, target, inverse)
+function BarChart({ data }) {
+  // data: [{label, value, target, color}]
+  const maxVal = Math.max(...data.map(d => Math.max(n(d.value), n(d.target))), 1)
   return (
-    <div className={styles.bigStat}>
-      <div className={styles.bigStatLabel}>{label}</div>
-      <div className={`${styles.bigStatValue} ${styles['bigStatValue_' + status]}`}>
-        {value ? Number(value).toLocaleString() : '—'}
-        <span className={styles.bigStatUnit}>{unit}</span>
-      </div>
-      {target && value && (
-        <div className={styles.bigStatSub}>
-          Target: {Number(target).toLocaleString()} {unit}
-          {p !== null && <span className={`${styles.pctBadge} ${styles['pctBadge_' + status]}`}>{p}%</span>}
-        </div>
-      )}
+    <div className={styles.barChart}>
+      {data.map((d, i) => {
+        const valPct = Math.min((n(d.value) / maxVal) * 100, 100)
+        const tgtPct = Math.min((n(d.target) / maxVal) * 100, 100)
+        const status = statusColor(d.value, d.target)
+        return (
+          <div key={i} className={styles.barGroup}>
+            <div className={styles.barLabel}>{d.label}</div>
+            <div className={styles.barTrack}>
+              <div className={styles.barTarget} style={{ width: tgtPct + '%' }} />
+              <div className={`${styles.barFill} ${styles['barFill_' + status]}`} style={{ width: valPct + '%' }} />
+            </div>
+            <div className={styles.barValue}>{d.value ? Number(d.value).toLocaleString() : '—'}</div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function NumberInput({ label, value, onChange, placeholder }) {
+function Sparkline({ values, target }) {
+  if (!values || values.filter(Boolean).length < 2) return null
+  const max = Math.max(...values.map(n), target * 1.5, 1)
+  const w = 80, h = 28, pts = values.length
+  const points = values.map((v, i) => {
+    const x = (i / (pts - 1)) * w
+    const y = h - (n(v) / max) * h
+    return `${x},${y}`
+  }).join(' ')
+  const tgtY = h - (n(target) / max) * h
+  return (
+    <svg width={w} height={h} className={styles.sparkline}>
+      <line x1="0" y1={tgtY} x2={w} y2={tgtY} stroke="var(--ink-30)" strokeWidth="0.5" strokeDasharray="2,2" />
+      <polyline points={points} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function NumberInput({ label, value, onChange, placeholder, readOnly }) {
   return (
     <div className={styles.inputGroup}>
       <label className="label">{label}</label>
-      <input
-        type="number"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder || '0'}
-        style={{ textAlign: 'right' }}
-      />
+      <input type="number" value={value} onChange={e => onChange?.(e.target.value)} placeholder={placeholder || '0'} style={{ textAlign: 'right' }} readOnly={readOnly} />
     </div>
   )
 }
@@ -103,267 +102,318 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const [bnyData, setBnyData] = useState(emptyBNY())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [mode, setMode] = useState('view') // 'view' | 'edit'
-  const weekKey = format(weekStart, 'yyyy-MM-dd')
+  const [mode, setMode] = useState('view')
+  const [history, setHistory] = useState([]) // last 5 weeks of data
+  const isCurrentWeek = weekKey(weekStart) === weekKey(getWeekStart())
+  const isPast = weekStart < getWeekStart()
 
-  useEffect(() => { loadData() }, [weekStart])
+  useEffect(() => { loadData(); loadHistory() }, [weekStart])
 
   async function loadData() {
-    const { data } = await supabase
-      .from('production')
-      .select('*')
-      .eq('week_start', weekKey)
-      .single()
-    if (data) {
-      setNjData(data.nj_data || emptyNJ())
-      setBnyData(data.bny_data || emptyBNY())
-    } else {
-      setNjData(emptyNJ())
-      setBnyData(emptyBNY())
-    }
+    const { data } = await supabase.from('production').select('*').eq('week_start', weekKey(weekStart)).single()
+    if (data) { setNjData(data.nj_data || emptyNJ()); setBnyData(data.bny_data || emptyBNY()) }
+    else { setNjData(emptyNJ()); setBnyData(emptyBNY()) }
+  }
+
+  async function loadHistory() {
+    // Load last 5 weeks including current
+    const weeks = Array.from({ length: 5 }, (_, i) => weekKey(subWeeks(weekStart, 4 - i)))
+    const { data } = await supabase.from('production').select('*').in('week_start', weeks).order('week_start', { ascending: true })
+    setHistory(data || [])
   }
 
   async function handleSave() {
     setSaving(true)
     await supabase.from('production').upsert({
-      week_start: weekKey,
-      nj_data: njData,
-      bny_data: bnyData,
-      updated_at: new Date().toISOString(),
+      week_start: weekKey(weekStart), nj_data: njData, bny_data: bnyData, updated_at: new Date().toISOString(),
     }, { onConflict: 'week_start' })
-    setSaving(false)
-    setSaved(true)
-    setMode('view')
+    setSaving(false); setSaved(true); setMode('view')
     setTimeout(() => setSaved(false), 2500)
+    loadHistory()
   }
 
   function updateNJ(path, value) {
     const parts = path.split('.')
     setNjData(prev => {
       const next = { ...prev }
-      if (parts.length === 2) {
-        next[parts[0]] = { ...next[parts[0]], [parts[1]]: value }
-      } else {
-        next[parts[0]] = value
-      }
+      if (parts.length === 2) next[parts[0]] = { ...next[parts[0]], [parts[1]]: value }
+      else next[parts[0]] = value
       return next
     })
   }
+  function updateBNY(key, value) { setBnyData(prev => ({ ...prev, [key]: value })) }
 
-  function updateBNY(key, value) {
-    setBnyData(prev => ({ ...prev, [key]: value }))
-  }
-
-  const njTotalYards = ['fabric', 'grass', 'paper'].reduce((s, k) => s + (parseFloat(njData[k]?.yards) || 0), 0)
-  const njTotalColor = ['fabric', 'grass', 'paper'].reduce((s, k) => s + (parseFloat(njData[k]?.colorYards) || 0), 0)
-  const njTotalWaste = ['fabric', 'grass', 'paper'].reduce((s, k) => s + (parseFloat(njData[k]?.waste) || 0), 0)
+  // Computed NJ totals
+  const njTotalYards = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.yards), 0)
+  const njTotalColor = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.colorYards), 0)
+  const njTotalWaste = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.waste), 0)
+  const njNetYards = njTotalYards - njTotalWaste
   const njWastePct = njTotalYards > 0 ? ((njTotalWaste / njTotalYards) * 100).toFixed(1) : null
-  const njTotalTarget = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
+  const njTotalColorTarget = NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards
+  const invoicedGap = n(njData.schProduced) - n(njData.schInvoiced)
 
-  const bnyTotal = ['replen', 'mto', 'hos', 'memo', 'contract'].reduce((s, k) => s + (parseFloat(bnyData[k]) || 0), 0)
+  // Computed BNY totals
+  const bnyTotal = ['replen','mto','hos','memo','contract'].reduce((s,k) => s + n(bnyData[k]), 0)
 
-  const hasNJData = njTotalYards > 0
-  const hasBNYData = bnyTotal > 0
+  const hasData = njTotalYards > 0 || bnyTotal > 0
+
+  // History data for charts/table
+  const historyNJ = history.map(h => ({
+    week: h.week_start,
+    fiscal: getFiscalLabel(h.week_start),
+    total: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.yards), 0),
+    waste: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.waste), 0),
+    fabric: n(h.nj_data?.fabric?.yards), grass: n(h.nj_data?.grass?.yards), paper: n(h.nj_data?.paper?.yards),
+  }))
+  const historyBNY = history.map(h => ({
+    week: h.week_start,
+    total: ['replen','mto','hos','memo','contract'].reduce((s,k) => s + n(h.bny_data?.[k]), 0),
+  }))
+
+  const wasteTrend = historyNJ.map(h => h.total > 0 ? ((h.waste / h.total) * 100).toFixed(1) : null)
 
   return (
     <div className={styles.container}>
       <div className={styles.topRow}>
         <div>
           <h2 className={styles.sectionTitle}>Production Dashboard</h2>
-          <p className={styles.sectionSub}>Weekly capacity & KPI summary — Passaic NJ + Brooklyn</p>
+          <p className={styles.sectionSub}>
+            Weekly capacity & KPI summary — Passaic NJ + Brooklyn
+            {isPast && <span className={styles.historicalBadge}>Historical</span>}
+          </p>
         </div>
         <div className={styles.actions}>
           {saved && <span className={styles.savedMsg}>Saved</span>}
           {mode === 'view' ? (
-            <button onClick={() => setMode('edit')}>Edit Data</button>
+            <button onClick={() => setMode('edit')}>{isPast ? 'Edit Historical Data' : 'Enter This Week\'s Data'}</button>
           ) : (
             <>
               <button onClick={() => { setMode('view'); loadData() }}>Cancel</button>
-              <button className="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : 'Save & View'}
-              </button>
+              <button className="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save & View'}</button>
             </>
           )}
         </div>
       </div>
 
-      {mode === 'view' && (hasNJData || hasBNYData) ? (
+      {/* SUMMARY VIEW */}
+      {mode === 'view' && hasData && (
         <div className={styles.summaryGrid}>
-          {/* NJ SUMMARY */}
-          <div className={styles.facilityCard}>
+          {/* NJ */}
+          <div className={`${styles.facilityCard} ${isPast ? styles.facilityCardHistorical : ''}`}>
             <div className={styles.facilityHeader}>
-              <div className={styles.facilityTitle}>
-                <span className={styles.facilityBadge}>NJ</span>
-                Passaic · Screen Print
+              <div className={styles.facilityTitle}><span className={styles.facilityBadge}>NJ</span>Passaic · Screen Print</div>
+              <div className={styles.headerRight}>
+                <Dot status={statusColor(njTotalYards, NJ_TOTAL_TARGET)} />
+                <span className={styles.pctLabel}>{pct(njTotalYards, NJ_TOTAL_TARGET)}% of target</span>
               </div>
-              <Pill status={statusColor(njTotalYards, njTotalTarget)}>
-                {pct(njTotalYards, njTotalTarget)}% of target
-              </Pill>
             </div>
 
             <div className={styles.statsRow}>
-              <BigStat label="Total yards" value={njTotalYards || ''} target={njTotalTarget} />
-              <BigStat label="Color yards" value={njTotalColor || ''} target={NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards} />
-              <BigStat label="Waste" value={njWastePct} target={NJ_TARGETS.wasteTarget} unit="%" inverse />
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>Produced</div>
+                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalYards, NJ_TOTAL_TARGET)]}`}>{fmt(njTotalYards)}<span className={styles.statUnit}>yds</span></div>
+                <div className={styles.statTarget}>Target: {NJ_TOTAL_TARGET.toLocaleString()}</div>
+              </div>
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>Net Yards</div>
+                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njNetYards, NJ_TOTAL_TARGET * 0.92)]}`}>{fmt(njNetYards)}<span className={styles.statUnit}>yds</span></div>
+                <div className={styles.statTarget}>Produced − Waste</div>
+              </div>
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>Waste %</div>
+                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
+                <div className={styles.statTarget}>Target: &lt;8%</div>
+              </div>
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>Color Yards</div>
+                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalColor, njTotalColorTarget)]}`}>{fmt(njTotalColor)}<span className={styles.statUnit}>yds</span></div>
+                <div className={styles.statTarget}>Target: {njTotalColorTarget.toLocaleString()}</div>
+              </div>
             </div>
 
-            <div className={styles.categoryGrid}>
-              {['fabric', 'grass', 'paper'].map(cat => {
-                const d = njData[cat]
-                const tgt = NJ_TARGETS[cat]
-                const status = statusColor(d.yards, tgt.yards)
-                return (
-                  <div key={cat} className={`${styles.categoryCard} ${styles['categoryCard_' + status]}`}>
-                    <div className={styles.categoryName}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</div>
-                    <div className={styles.categoryYards}>
-                      {d.yards ? Number(d.yards).toLocaleString() : '—'} yds
-                    </div>
-                    <div className={styles.categoryTarget}>Target: {tgt.yards.toLocaleString()}</div>
-                    {d.waste && <div className={styles.categoryWaste}>Waste: {d.waste} yds</div>}
-                  </div>
-                )
-              })}
-            </div>
+            <BarChart data={[
+              { label: 'Fabric', value: njData.fabric.yards, target: NJ_TARGETS.fabric.yards },
+              { label: 'Grass', value: njData.grass.yards, target: NJ_TARGETS.grass.yards },
+              { label: 'Paper', value: njData.paper.yards, target: NJ_TARGETS.paper.yards },
+            ]} />
 
             {(njData.schProduced || njData.tpProduced) && (
               <div className={styles.splitRow}>
-                <div className={styles.splitItem}>
-                  <span className={styles.splitLabel}>Schumacher produced</span>
-                  <span className={styles.splitValue}>{njData.schProduced ? Number(njData.schProduced).toLocaleString() + ' yds' : '—'}</span>
-                </div>
-                <div className={styles.splitItem}>
-                  <span className={styles.splitLabel}>3rd party produced</span>
-                  <span className={styles.splitValue}>{njData.tpProduced ? Number(njData.tpProduced).toLocaleString() + ' yds' : '—'}</span>
-                </div>
+                <div className={styles.splitItem}><span className={styles.splitLabel}>SCH produced</span><span className={styles.splitValue}>{fmt(njData.schProduced)} yds</span></div>
+                <div className={styles.splitItem}><span className={styles.splitLabel}>3P produced</span><span className={styles.splitValue}>{fmt(njData.tpProduced)} yds</span></div>
+                {njData.schInvoiced && <div className={styles.splitItem}>
+                  <span className={styles.splitLabel}>Invoiced gap</span>
+                  <span className={`${styles.splitValue} ${invoicedGap > 0 ? styles.gapPositive : styles.gapNegative}`}>{invoicedGap > 0 ? '+' : ''}{fmt(invoicedGap)} yds</span>
+                </div>}
               </div>
             )}
 
-            {njData.commentary && (
-              <div className={styles.commentary}>{njData.commentary}</div>
-            )}
+            {njData.commentary && <div className={styles.commentary}>{njData.commentary}</div>}
           </div>
 
-          {/* BNY SUMMARY */}
-          <div className={styles.facilityCard}>
+          {/* BNY */}
+          <div className={`${styles.facilityCard} ${isPast ? styles.facilityCardHistorical : ''}`}>
             <div className={styles.facilityHeader}>
-              <div className={styles.facilityTitle}>
-                <span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span>
-                Brooklyn · Digital
+              <div className={styles.facilityTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span>Brooklyn · Digital</div>
+              <div className={styles.headerRight}>
+                <Dot status={statusColor(bnyTotal, BNY_TARGETS.total)} />
+                <span className={styles.pctLabel}>{pct(bnyTotal, BNY_TARGETS.total)}% of target</span>
               </div>
-              <Pill status={statusColor(bnyTotal, BNY_TARGETS.total)}>
-                {pct(bnyTotal, BNY_TARGETS.total)}% of target
-              </Pill>
             </div>
 
             <div className={styles.statsRow}>
-              <BigStat label="Total yards" value={bnyTotal || ''} target={BNY_TARGETS.total} />
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>Total yards</div>
+                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(bnyTotal, BNY_TARGETS.total)]}`}>{fmt(bnyTotal)}<span className={styles.statUnit}>yds</span></div>
+                <div className={styles.statTarget}>Target: {BNY_TARGETS.total.toLocaleString()}</div>
+              </div>
+              <div className={styles.statBlock}>
+                <div className={styles.statLabel}>SCH invoiced</div>
+                <div className={styles.statValue} style={{ color: 'var(--ink)' }}>{fmt(bnyData.schInvoiced)}<span className={styles.statUnit}>yds</span></div>
+              </div>
             </div>
 
-            <div className={styles.categoryGrid}>
-              {['replen', 'mto', 'hos', 'memo', 'contract'].map(cat => {
-                const val = bnyData[cat]
-                const tgt = BNY_TARGETS[cat]
-                const status = statusColor(val, tgt)
-                return (
-                  <div key={cat} className={`${styles.categoryCard} ${styles['categoryCard_' + status]}`}>
-                    <div className={styles.categoryName}>{cat.toUpperCase()}</div>
-                    <div className={styles.categoryYards}>
-                      {val ? Number(val).toLocaleString() : '—'} yds
-                    </div>
-                    <div className={styles.categoryTarget}>Target: {tgt.toLocaleString()}</div>
-                  </div>
-                )
-              })}
-            </div>
+            <BarChart data={[
+              { label: 'Replen', value: bnyData.replen, target: BNY_TARGETS.replen },
+              { label: 'MTO', value: bnyData.mto, target: BNY_TARGETS.mto },
+              { label: 'HOS', value: bnyData.hos, target: BNY_TARGETS.hos },
+              { label: 'Memo', value: bnyData.memo, target: BNY_TARGETS.memo },
+              { label: 'Contract', value: bnyData.contract, target: BNY_TARGETS.contract },
+            ]} />
 
             {(bnyData.schProduced || bnyData.tpProduced) && (
               <div className={styles.splitRow}>
-                <div className={styles.splitItem}>
-                  <span className={styles.splitLabel}>Schumacher produced</span>
-                  <span className={styles.splitValue}>{bnyData.schProduced ? Number(bnyData.schProduced).toLocaleString() + ' yds' : '—'}</span>
-                </div>
-                <div className={styles.splitItem}>
-                  <span className={styles.splitLabel}>3rd party produced</span>
-                  <span className={styles.splitValue}>{bnyData.tpProduced ? Number(bnyData.tpProduced).toLocaleString() + ' yds' : '—'}</span>
-                </div>
+                <div className={styles.splitItem}><span className={styles.splitLabel}>SCH produced</span><span className={styles.splitValue}>{fmt(bnyData.schProduced)} yds</span></div>
+                <div className={styles.splitItem}><span className={styles.splitLabel}>3P produced</span><span className={styles.splitValue}>{fmt(bnyData.tpProduced)} yds</span></div>
               </div>
             )}
 
-            {bnyData.commentary && (
-              <div className={styles.commentary}>{bnyData.commentary}</div>
-            )}
+            {bnyData.commentary && <div className={styles.commentary}>{bnyData.commentary}</div>}
           </div>
         </div>
-      ) : mode === 'view' ? (
+      )}
+
+      {mode === 'view' && !hasData && (
         <div className={styles.emptyState}>
-          <p>No production data entered yet for this week.</p>
-          <button className="primary" style={{ marginTop: 12 }} onClick={() => setMode('edit')}>Enter This Week's Data</button>
+          <p>{isPast ? 'No production data was entered for this week.' : 'No data entered yet for this week.'}</p>
+          <button className="primary" style={{ marginTop: 12 }} onClick={() => setMode('edit')}>
+            {isPast ? 'Add Historical Data' : 'Enter This Week\'s Data'}
+          </button>
         </div>
-      ) : null}
+      )}
+
+      {/* ROLLING HISTORY TABLE */}
+      {history.length > 0 && (
+        <div className={styles.historySection}>
+          <div className={styles.historySectionTitle}>NJ — Rolling 5-Week Capacity</div>
+          <div className={styles.tableWrap}>
+            <table className={styles.histTable}>
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th>Fabric</th>
+                  <th>Grass</th>
+                  <th>Paper</th>
+                  <th>Total</th>
+                  <th>Waste</th>
+                  <th>Net Yds</th>
+                </tr>
+                <tr className={styles.targetRow}>
+                  <td>Target</td>
+                  <td>{NJ_TARGETS.fabric.yards.toLocaleString()}</td>
+                  <td>{NJ_TARGETS.grass.yards.toLocaleString()}</td>
+                  <td>{NJ_TARGETS.paper.yards.toLocaleString()}</td>
+                  <td>{NJ_TOTAL_TARGET.toLocaleString()}</td>
+                  <td>&lt;8%</td>
+                  <td>—</td>
+                </tr>
+              </thead>
+              <tbody>
+                {historyNJ.map((row, i) => {
+                  const isCurrent = row.week === weekKey(weekStart)
+                  const wastePct = row.total > 0 ? ((row.waste / row.total) * 100).toFixed(1) : null
+                  const netYds = row.total - row.waste
+                  const fiscalInfo = getFiscalLabel(row.week + 'T12:00:00')
+                  const shortLabel = fiscalInfo ? fiscalInfo.split('·')[0].trim() : row.week
+                  return (
+                    <tr key={row.week} className={`${styles.dataRow} ${isCurrent ? styles.currentRow : styles.historicalRow}`}>
+                      <td className={styles.weekCell}>
+                        {shortLabel}
+                        {isCurrent && <span className={styles.currBadge}>Current</span>}
+                      </td>
+                      <td><Dot status={statusColor(row.fabric, NJ_TARGETS.fabric.yards)} /> {row.fabric ? row.fabric.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.grass, NJ_TARGETS.grass.yards)} /> {row.grass ? row.grass.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.paper, NJ_TARGETS.paper.yards)} /> {row.paper ? row.paper.toLocaleString() : '—'}</td>
+                      <td className={styles.totalCell}><Dot status={statusColor(row.total, NJ_TOTAL_TARGET)} /> {row.total ? row.total.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(wastePct, NJ_TARGETS.wasteTarget, true)} /> {wastePct ? wastePct + '%' : '—'}</td>
+                      <td className={styles.netCell}>{netYds > 0 ? netYds.toLocaleString() : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {wasteTrend.filter(Boolean).length >= 2 && (
+            <div className={styles.trendRow}>
+              <span className={styles.trendLabel}>Waste % trend</span>
+              <Sparkline values={wasteTrend} target={8} />
+              <span className={styles.trendNote}>{wasteTrend[wasteTrend.length-1]}% this week vs {wasteTrend[0]}% 4 weeks ago</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* EDIT MODE */}
       {mode === 'edit' && (
         <div className={styles.editGrid}>
-          {/* NJ EDIT */}
           <div className={styles.editSection}>
-            <div className={styles.editSectionHeader}>
-              <span className={styles.facilityBadge}>NJ</span>
-              <h3>Passaic — Screen Print</h3>
-            </div>
-
-            <div className={styles.editSubHeader}>Capacity (yards produced)</div>
+            <div className={styles.editSectionHeader}><span className={styles.facilityBadge}>NJ</span><h3>Passaic — Screen Print</h3></div>
+            <div className={styles.editSubHeader}>Yards produced by category</div>
             <div className={styles.editRow}>
-              {['fabric', 'grass', 'paper'].map(cat => (
+              {['fabric','grass','paper'].map(cat => (
                 <div key={cat} className={styles.editCatBlock}>
-                  <div className={styles.editCatLabel}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</div>
-                  <NumberInput label="Yards" value={njData[cat].yards} onChange={v => updateNJ(`${cat}.yards`, v)} placeholder={NJ_TARGETS[cat].yards} />
-                  <NumberInput label="Color yards" value={njData[cat].colorYards} onChange={v => updateNJ(`${cat}.colorYards`, v)} placeholder={NJ_TARGETS[cat].colorYards} />
-                  <NumberInput label="Waste (yds)" value={njData[cat].waste} onChange={v => updateNJ(`${cat}.waste`, v)} />
+                  <div className={styles.editCatLabel}>{cat.charAt(0).toUpperCase()+cat.slice(1)} <span className={styles.editCatTarget}>(tgt: {NJ_TARGETS[cat].yards.toLocaleString()})</span></div>
+                  <NumberInput label="Yards" value={njData[cat].yards} onChange={v => updateNJ(`${cat}.yards`, v)} />
+                  <NumberInput label="Color yds" value={njData[cat].colorYards} onChange={v => updateNJ(`${cat}.colorYards`, v)} />
+                  <NumberInput label="Waste yds" value={njData[cat].waste} onChange={v => updateNJ(`${cat}.waste`, v)} />
+                  <NumberInput label="Net yds" value={n(njData[cat].yards) - n(njData[cat].waste) || ''} readOnly />
                   <NumberInput label="Post-prod waste" value={njData[cat].postWaste} onChange={v => updateNJ(`${cat}.postWaste`, v)} />
                 </div>
               ))}
             </div>
-
             <div className={styles.editSubHeader}>Schumacher vs 3rd Party</div>
             <div className={styles.editThreeCol}>
-              {[['Written', 'Written'], ['Produced', 'Produced'], ['Invoiced', 'Invoiced']].map(([label, key]) => (
+              {[['Written','Written'],['Produced','Produced'],['Invoiced','Invoiced']].map(([label,key]) => (
                 <div key={key}>
                   <NumberInput label={`SCH ${label}`} value={njData[`sch${key}`]} onChange={v => updateNJ(`sch${key}`, v)} />
                   <NumberInput label={`3P ${label}`} value={njData[`tp${key}`]} onChange={v => updateNJ(`tp${key}`, v)} />
                 </div>
               ))}
             </div>
-
             <div style={{ marginTop: 12 }}>
               <label className="label">Commentary</label>
               <textarea value={njData.commentary} onChange={e => updateNJ('commentary', e.target.value)} placeholder="Fabric waiting on approvals, Grass working on Feather Bloom…" rows={3} style={{ marginTop: 6 }} />
             </div>
           </div>
 
-          {/* BNY EDIT */}
           <div className={styles.editSection}>
-            <div className={styles.editSectionHeader}>
-              <span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span>
-              <h3>Brooklyn — Digital</h3>
-            </div>
-
+            <div className={styles.editSectionHeader}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span><h3>Brooklyn — Digital</h3></div>
             <div className={styles.editSubHeader}>Capacity by category</div>
             <div className={styles.editFiveCol}>
-              {['replen', 'mto', 'hos', 'memo', 'contract'].map(cat => (
-                <NumberInput key={cat} label={cat.toUpperCase()} value={bnyData[cat]} onChange={v => updateBNY(cat, v)} placeholder={BNY_TARGETS[cat]} />
+              {['replen','mto','hos','memo','contract'].map(cat => (
+                <NumberInput key={cat} label={`${cat.toUpperCase()} (tgt:${BNY_TARGETS[cat].toLocaleString()})`} value={bnyData[cat]} onChange={v => updateBNY(cat, v)} />
               ))}
             </div>
-
             <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Schumacher vs 3rd Party</div>
             <div className={styles.editThreeCol}>
-              {[['Written', 'Written'], ['Produced', 'Produced'], ['Invoiced', 'Invoiced']].map(([label, key]) => (
+              {[['Written','Written'],['Produced','Produced'],['Invoiced','Invoiced']].map(([label,key]) => (
                 <div key={key}>
                   <NumberInput label={`SCH ${label}`} value={bnyData[`sch${key}`]} onChange={v => updateBNY(`sch${key}`, v)} />
                   <NumberInput label={`3P ${label}`} value={bnyData[`tp${key}`]} onChange={v => updateBNY(`tp${key}`, v)} />
                 </div>
               ))}
             </div>
-
             <div style={{ marginTop: 12 }}>
               <label className="label">Commentary</label>
               <textarea value={bnyData.commentary} onChange={e => updateBNY('commentary', e.target.value)} placeholder="Replen running ahead, MTO on track…" rows={3} style={{ marginTop: 6 }} />
