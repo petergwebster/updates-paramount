@@ -2,7 +2,10 @@
   base = "paramount-dashboard"
   command = "npm run build"
   publish = "dist"
-  functions = "netlify/functions"
+
+[[edge_functions]]
+  path = "/api/claude"
+  function = "claude"
 
 [[redirects]]
   from = "/*"
