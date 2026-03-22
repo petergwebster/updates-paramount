@@ -11,8 +11,8 @@ import styles from './App.module.css'
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'log', label: 'Weekly Log' },
   { id: 'kpis', label: 'KPI Scorecard' },
+  { id: 'log', label: 'Weekly Log' },
   { id: 'correspondence', label: 'Correspondence' },
   { id: 'history', label: 'History' },
 ]

@@ -222,9 +222,9 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                 <div className={styles.statTarget}>Produced − Waste</div>
               </div>
               <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Waste %</div>
+                <div className={styles.statLabel}>Waste</div>
                 <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
-                <div className={styles.statTarget}>Target: &lt;8%</div>
+                <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;8%</div>
               </div>
               <div className={styles.statBlock}>
                 <div className={styles.statLabel}>Color Yards</div>

@@ -40,11 +40,11 @@
 }
 .facilityBadgeBNY { background: var(--accent); }
 
-.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; margin-right: 2px; }
-.dot_green { background: var(--green); }
-.dot_amber { background: var(--amber); }
-.dot_red { background: var(--red); }
-.dot_gray { background: var(--ink-30); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; margin-right: 2px; }
+.dot_green { background: #1a7a3c; }
+.dot_amber { background: #e69500; }
+.dot_red { background: #d92020; }
+.dot_gray { background: #b0aea8; }
 
 .statsRow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 
@@ -65,9 +65,9 @@
 .barTrack { height: 8px; background: var(--ink-10); border-radius: 4px; position: relative; overflow: hidden; }
 .barTarget { position: absolute; top: 0; left: 0; height: 100%; background: var(--ink-30); border-radius: 4px; }
 .barFill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; transition: width 0.4s ease; }
-.barFill_green { background: var(--green); }
-.barFill_amber { background: var(--amber); }
-.barFill_red { background: var(--red); }
+.barFill_green { background: #1a7a3c; }
+.barFill_amber { background: #e69500; }
+.barFill_red { background: #d92020; }
 .barFill_gray { background: var(--ink-30); }
 .barValue { font-size: 12px; color: var(--ink); font-weight: 500; }
 
