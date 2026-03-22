@@ -15,6 +15,16 @@ const NJ_TOTAL_TARGET = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TA
 
 const BNY_TARGETS = { replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000 }
 
+// Weekly revenue and yard targets
+const WEEKLY_TARGETS = {
+  schRevenue: 106645,
+  schYards: 5886,        // produced & invoiced
+  tpRevenue: 31277,
+  tpYards: 2564,         // produced & invoiced
+  totalYards: 8449,
+  totalColorYards: 25347,
+}
+
 // BNY Machine definitions
 const BNY_MACHINES_3600 = [
   { id: 'glow', name: 'Glow', target: 3600 },
@@ -406,7 +416,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
               <table className={styles.wpiTable}>
                 <thead>
-                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Gap</th></tr>
                 </thead>
                 <tbody>
                   <tr>
@@ -414,6 +424,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     <td>{fmt(njData.schWritten)}</td>
                     <td>{fmt(njData.schProduced)}</td>
                     <td>{fmt(njData.schInvoiced)}</td>
+                    <td className={styles.wpiMuted}>{WEEKLY_TARGETS.schYards.toLocaleString()}</td>
                     <td className={invoicedGap >= 0 ? styles.gapPositive : styles.gapNegative}>
                       {(njData.schProduced !== '' || njData.schInvoiced !== '') ? (invoicedGap >= 0 ? '+' : '') + fmt(invoicedGap) : '—'}
                     </td>
@@ -423,6 +434,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     <td>{fmt(njData.tpWritten)}</td>
                     <td>{fmt(njData.tpProduced)}</td>
                     <td>{fmt(njData.tpInvoiced)}</td>
+                    <td className={styles.wpiMuted}>{WEEKLY_TARGETS.tpYards.toLocaleString()}</td>
                     <td className={styles.wpiMuted}>—</td>
                   </tr>
                 </tbody>
@@ -483,7 +495,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
               <table className={styles.wpiTable}>
                 <thead>
-                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Gap</th></tr>
                 </thead>
                 <tbody>
                   <tr>
@@ -491,6 +503,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     <td>{fmt(bnyData.schWritten)}</td>
                     <td>{fmt(bnyData.schProduced)}</td>
                     <td>{fmt(bnyData.schInvoiced)}</td>
+                    <td className={styles.wpiMuted}>{WEEKLY_TARGETS.schYards.toLocaleString()}</td>
                     <td className={n(bnyData.schProduced) - n(bnyData.schInvoiced) >= 0 ? styles.gapPositive : styles.gapNegative}>
                       {(bnyData.schProduced !== '' || bnyData.schInvoiced !== '') ? (n(bnyData.schProduced)-n(bnyData.schInvoiced) >= 0 ? '+' : '') + fmt(n(bnyData.schProduced)-n(bnyData.schInvoiced)) : '—'}
                     </td>
@@ -500,6 +513,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     <td>{fmt(bnyData.tpWritten)}</td>
                     <td>{fmt(bnyData.tpProduced)}</td>
                     <td>{fmt(bnyData.tpInvoiced)}</td>
+                    <td className={styles.wpiMuted}>{WEEKLY_TARGETS.tpYards.toLocaleString()}</td>
                     <td className={styles.wpiMuted}>—</td>
                   </tr>
                 </tbody>
@@ -608,7 +622,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     { label: 'Total Yds', produced: mtdNJ.total, invoiced: null, target: mtdNJTarget.total, bold: true },
                     { label: 'Net Yds', produced: mtdNJNet, invoiced: null, target: null },
                     { label: 'Waste', produced: mtdNJ.waste, invoiced: null, target: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
-                    { label: 'Schumacher', produced: mtdNJ.schProduced, invoiced: mtdNJ.schInvoiced, target: null, bold: true },
+                    { label: 'Schumacher', produced: mtdNJ.schProduced, invoiced: mtdNJ.schInvoiced, target: WEEKLY_TARGETS.schYards * mtdWeeksWithData, bold: true },
                   ].map(row => {
                     const diff = row.target ? row.produced - row.target : null
                     const status = row.target ? statusColor(row.produced, row.target) : 'gray'
@@ -649,7 +663,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     { label: 'Memo', produced: mtdBNY.memo, target: mtdBNYTarget.memo },
                     { label: 'Contract', produced: mtdBNY.contract, target: mtdBNYTarget.contract },
                     { label: 'Total Yds', produced: mtdBNY.total, target: mtdBNYTarget.total, bold: true },
-                    { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invoiced: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), target: null, bold: true },
+                    { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invoiced: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), target: WEEKLY_TARGETS.schYards * mtdWeeksWithData, bold: true },
                   ].map(row => {
                     const diff = row.target ? row.produced - row.target : null
                     const status = row.target ? statusColor(row.produced, row.target) : 'gray'
@@ -692,7 +706,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     { label: 'Total Yds', produced: ytdNJ.total, invoiced: null, target: ytdNJTarget.total, bold: true },
                     { label: 'Net Yds', produced: ytdNJNet, invoiced: null, target: null },
                     { label: 'Waste', produced: ytdNJ.waste, invoiced: null, target: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
-                    { label: 'Schumacher', produced: ytdNJ.schProduced, invoiced: ytdNJ.schInvoiced, target: null, bold: true },
+                    { label: 'Schumacher', produced: ytdNJ.schProduced, invoiced: ytdNJ.schInvoiced, target: WEEKLY_TARGETS.schYards * ytdWeeksWithData, bold: true },
                   ].map(row => {
                     const diff = row.target ? row.produced - row.target : null
                     const status = row.target ? statusColor(row.produced, row.target) : 'gray'
@@ -732,7 +746,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                     { label: 'Memo', produced: ytdBNY.memo, target: ytdBNYTarget.memo },
                     { label: 'Contract', produced: ytdBNY.contract, target: ytdBNYTarget.contract },
                     { label: 'Total Yds', produced: ytdBNY.total, target: ytdBNYTarget.total, bold: true },
-                    { label: 'Schumacher', produced: ytdBNY.schProduced, invoiced: ytdBNY.schInvoiced, target: null, bold: true },
+                    { label: 'Schumacher', produced: ytdBNY.schProduced, invoiced: ytdBNY.schInvoiced, target: WEEKLY_TARGETS.schYards * ytdWeeksWithData, bold: true },
                     { label: 'Procurement $', produced: ytdProcurement, invoiced: null, target: null, isDollar: true },
                   ].map(row => {
                     const diff = row.target ? row.produced - row.target : null
