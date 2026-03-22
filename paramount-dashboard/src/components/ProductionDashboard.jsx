@@ -195,14 +195,13 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
     const { data } = await supabase.from('production').select('*').in('week_start', weeks).order('week_start', { ascending: true })
     setHistory(data || [])
 
-    // Load all weeks in current fiscal month for MTD
-    // Find which fiscal month we're in and get all its week keys
+    // Load all weeks in current fiscal month UP TO AND INCLUDING the viewed week
     const { FISCAL_CALENDAR } = await import('../fiscalCalendar')
     const currentKey = weekKey(weekStart)
     const currentInfo = FISCAL_CALENDAR[currentKey]
     if (currentInfo) {
       const monthWeeks = Object.entries(FISCAL_CALENDAR)
-        .filter(([, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter)
+        .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
         .map(([k]) => k)
         .sort()
       const { data: mtd } = await supabase.from('production').select('*').in('week_start', monthWeeks).order('week_start', { ascending: true })
@@ -560,34 +559,37 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
       {/* MTD SUMMARY */}
       {mtdData.length > 0 && (
         <div className={styles.historySection}>
-          <div className={styles.historySectionTitle}>Month-to-Date Summary — {mtdWeeksWithData} week{mtdWeeksWithData !== 1 ? 's' : ''} in</div>
+          <div className={styles.historySectionTitle}>Month-to-Date Summary — {mtdWeeksWithData} week{mtdWeeksWithData !== 1 ? 's' : ''} in · Produced vs Invoiced vs Target</div>
           <div className={styles.mtdGrid}>
             {/* NJ MTD */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Actual</th><th>Target</th><th>+/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Fabric', actual: mtdNJ.fabric, target: mtdNJTarget.fabric },
-                    { label: 'Grass', actual: mtdNJ.grass, target: mtdNJTarget.grass },
-                    { label: 'Paper', actual: mtdNJ.paper, target: mtdNJTarget.paper },
-                    { label: 'Total Yds', actual: mtdNJ.total, target: mtdNJTarget.total, bold: true },
-                    { label: 'Net Yds', actual: mtdNJNet, target: null },
-                    { label: 'Waste', actual: mtdNJ.waste, target: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
-                    { label: 'SCH Produced', actual: mtdNJ.schProduced, target: null },
-                    { label: 'SCH Invoiced', actual: mtdNJ.schInvoiced, target: null },
+                    { label: 'Fabric', produced: mtdNJ.fabric, invoiced: null, target: mtdNJTarget.fabric },
+                    { label: 'Grass', produced: mtdNJ.grass, invoiced: null, target: mtdNJTarget.grass },
+                    { label: 'Paper', produced: mtdNJ.paper, invoiced: null, target: mtdNJTarget.paper },
+                    { label: 'Total Yds', produced: mtdNJ.total, invoiced: null, target: mtdNJTarget.total, bold: true },
+                    { label: 'Net Yds', produced: mtdNJNet, invoiced: null, target: null },
+                    { label: 'Waste', produced: mtdNJ.waste, invoiced: null, target: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
+                    { label: 'Schumacher', produced: mtdNJ.schProduced, invoiced: mtdNJ.schInvoiced, target: null, bold: true },
                   ].map(row => {
-                    const diff = row.target ? row.actual - row.target : null
-                    const status = row.target ? statusColor(row.actual, row.target) : 'gray'
+                    const diff = row.target ? row.produced - row.target : null
+                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    const invStatus = row.target ? statusColor(row.invoiced, row.target) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
                         <td className={styles.mtdActual}>
                           <Dot status={status} />
-                          {row.actual ? row.actual.toLocaleString() : '—'}{row.suffix || ''}
+                          {row.produced !== null ? row.produced.toLocaleString() : '—'}{row.suffix || ''}
+                        </td>
+                        <td className={styles.mtdActual}>
+                          {row.invoiced !== null ? <><Dot status={invStatus} />{row.invoiced.toLocaleString()}</> : <span style={{color:'var(--ink-30)'}}>—</span>}
                         </td>
                         <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
                         <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
@@ -605,23 +607,25 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn MTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Actual</th><th>Target</th><th>+/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Replen', actual: mtdBNY.replen, target: mtdBNYTarget.replen },
-                    { label: 'MTO', actual: mtdBNY.mto, target: mtdBNYTarget.mto },
-                    { label: 'HOS', actual: mtdBNY.hos, target: mtdBNYTarget.hos },
-                    { label: 'Memo', actual: mtdBNY.memo, target: mtdBNYTarget.memo },
-                    { label: 'Contract', actual: mtdBNY.contract, target: mtdBNYTarget.contract },
-                    { label: 'Total Yds', actual: mtdBNY.total, target: mtdBNYTarget.total, bold: true },
+                    { label: 'Replen', produced: mtdBNY.replen, target: mtdBNYTarget.replen },
+                    { label: 'MTO', produced: mtdBNY.mto, target: mtdBNYTarget.mto },
+                    { label: 'HOS', produced: mtdBNY.hos, target: mtdBNYTarget.hos },
+                    { label: 'Memo', produced: mtdBNY.memo, target: mtdBNYTarget.memo },
+                    { label: 'Contract', produced: mtdBNY.contract, target: mtdBNYTarget.contract },
+                    { label: 'Total Yds', produced: mtdBNY.total, target: mtdBNYTarget.total, bold: true },
+                    { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invoiced: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), target: null, bold: true },
                   ].map(row => {
-                    const diff = row.target ? row.actual - row.target : null
-                    const status = row.target ? statusColor(row.actual, row.target) : 'gray'
+                    const diff = row.target ? row.produced - row.target : null
+                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}><Dot status={status} />{row.actual ? row.actual.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdActual}><Dot status={status} />{row.produced ? row.produced.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdActual}>{row.invoiced !== undefined ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
                         <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
                         <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
                           {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
