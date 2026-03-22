@@ -67,6 +67,7 @@ function getProcurementMonthlyTarget(weeksInMonth) {
 }
 
 function fmtDollar(v) { return v ? '$' + Number(v).toLocaleString() : '—' }
+function n(v) { return parseFloat(v) || 0 }
 function fmt(v) { return v ? Number(v).toLocaleString() : '—' }
 function pct(val, target) { const v = n(val), t = n(target); return (v && t) ? Math.round((v/t)*100) : null }
 
