@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { format, subWeeks, startOfWeek } from 'date-fns'
 import { supabase } from '../supabase'
-import { getFiscalLabel } from '../fiscalCalendar'
+import { getFiscalLabel, getFiscalInfo } from '../fiscalCalendar'
 import CommentButton from './CommentButton'
 import styles from './ProductionDashboard.module.css'
 
@@ -58,10 +58,15 @@ function emptyNJ() {
   }
 }
 function emptyBNY() {
-  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '', machines: emptyMachines() }
+  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '', machines: emptyMachines(), procurement: '' }
 }
 
-function n(v) { return parseFloat(v) || 0 }
+const PROCUREMENT_WEEKLY_TARGET = 12500 // $12,500/week
+function getProcurementMonthlyTarget(weeksInMonth) {
+  return weeksInMonth === 5 ? 62500 : 50000
+}
+
+function fmtDollar(v) { return v ? '$' + Number(v).toLocaleString() : '—' }
 function fmt(v) { return v ? Number(v).toLocaleString() : '—' }
 function pct(val, target) { const v = n(val), t = n(target); return (v && t) ? Math.round((v/t)*100) : null }
 
@@ -153,6 +158,8 @@ function MachineGroup({ title, machines, machineData, groupTarget }) {
     </div>
   )
 }
+
+function NumberInput({ label, value, onChange, placeholder, readOnly }) {
   return (
     <div className={styles.inputGroup}>
       <label className="label">{label}</label>
@@ -276,6 +283,13 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const mtdBNYTarget = { total: BNY_TARGETS.total * mtdWeeksWithData, replen: BNY_TARGETS.replen * mtdWeeksWithData, mto: BNY_TARGETS.mto * mtdWeeksWithData, hos: BNY_TARGETS.hos * mtdWeeksWithData, memo: BNY_TARGETS.memo * mtdWeeksWithData, contract: BNY_TARGETS.contract * mtdWeeksWithData }
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
   const mtdNJWastePct = mtdNJ.total > 0 ? ((mtdNJ.waste / mtdNJ.total) * 100).toFixed(1) : null
+
+  // Procurement MTD
+  const fiscalInfo = getFiscalInfo(weekStart)
+  const weeksInMonth = fiscalInfo?.weeksInMonth || 4
+  const procurementMonthlyTarget = getProcurementMonthlyTarget(weeksInMonth)
+  const mtdProcurement = mtdData.reduce((s, h) => s + n(h.bny_data?.procurement), 0)
+  const procurementMTDTarget = PROCUREMENT_WEEKLY_TARGET * mtdWeeksWithData
 
   return (
     <div className={styles.container}>
@@ -464,6 +478,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                 <div className={styles.commentary}>{bnyData.commentary}</div>
               </div>
             )}
+
           </div>
         </div>
       )}
@@ -685,6 +700,15 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                   <NumberInput label={`3P ${label}`} value={bnyData[`tp${key}`]} onChange={v => updateBNY(`tp${key}`, v)} />
                 </div>
               ))}
+            </div>
+            <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Procurement Revenue (pass-through)</div>
+            <div style={{ maxWidth: 220 }}>
+              <NumberInput
+                label={`This week $ · Monthly target: ${fmtDollar(procurementMonthlyTarget)} (${weeksInMonth}-wk month)`}
+                value={bnyData.procurement}
+                onChange={v => updateBNY('procurement', v)}
+                placeholder="12500"
+              />
             </div>
             <div style={{ marginTop: 12 }}>
               <label className="label">Commentary</label>
