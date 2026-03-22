@@ -132,3 +132,32 @@
 .mtdOver { text-align: right; font-weight: 500; color: #1a7a3c; }
 .mtdUnder { text-align: right; font-weight: 500; color: #d92020; }
 .mtdBoldRow td { font-weight: 600; border-top: 1px solid var(--ink-30); background: white; }
+
+/* Machine drilldown */
+.machineSection { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.machineSectionTitle { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-60); margin-bottom: 4px; }
+
+.machineGroup { background: var(--ink-5); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.machineGroupHeader { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; }
+.machineGroupHeader:hover { background: var(--ink-10); }
+.machineGroupLeft { display: flex; align-items: center; gap: 8px; }
+.machineGroupTitle { font-size: 13px; font-weight: 500; color: var(--ink); }
+.machineGroupTotal { font-size: 13px; color: var(--ink-60); }
+.machineGroupPct { font-size: 11px; padding: 1px 6px; border-radius: 10px; font-weight: 500; }
+.machineGroupPct_green { background: var(--green-light); color: var(--green); }
+.machineGroupPct_amber { background: var(--amber-light); color: var(--amber); }
+.machineGroupPct_red { background: var(--red-light); color: var(--red); }
+.machineGroupPct_gray { background: var(--gray-light); color: var(--gray); }
+.machineGroupToggle { font-size: 11px; color: var(--ink-60); }
+
+.machineList { border-top: 1px solid var(--border); padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+.machineRow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.machineName { flex: 1; color: var(--ink-60); }
+.machineYards { font-weight: 500; color: var(--ink); min-width: 50px; text-align: right; }
+.machineTarget { color: var(--ink-30); font-size: 11px; }
+
+/* Machine edit */
+.machineEditGrid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 4px; }
+.machineEditGroup { display: flex; flex-direction: column; gap: 8px; }
+.machineEditGroupLabel { font-size: 11px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-60); border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 2px; }
+.machineEditCols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

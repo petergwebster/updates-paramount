@@ -15,6 +15,35 @@ const NJ_TOTAL_TARGET = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TA
 
 const BNY_TARGETS = { replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000 }
 
+// BNY Machine definitions
+const BNY_MACHINES_3600 = [
+  { id: 'glow', name: 'Glow', target: 3600 },
+  { id: 'sasha', name: 'Sasha', target: 3600 },
+  { id: 'trish', name: 'Trish', target: 3600 },
+]
+const BNY_MACHINES_570 = [
+  { id: 'bianca', name: 'Bianca', target: 500 },
+  { id: 'lash', name: 'LASH', target: 500 },
+  { id: 'dakota_ka', name: 'Dakota Ka', target: 500 },
+  { id: 'dementia', name: 'Dementia', target: 500 },
+  { id: 'ember', name: 'EMBER', target: 500 },
+  { id: 'ivy_nile', name: 'Ivy Nile', target: 500 },
+  { id: 'jacy_jayne', name: 'Jacy Jayne', target: 500 },
+  { id: 'ruby', name: 'Ruby', target: 500 },
+  { id: 'valhalla', name: 'Valhalla', target: 500 },
+  { id: 'xia', name: 'XIA', target: 500 },
+  { id: 'zoey', name: 'Zoey', target: 500 },
+  { id: 'poseidon', name: 'Poseidon', target: 500 },
+  { id: 'apollo', name: 'Apollo', target: 500 },
+]
+const ALL_BNY_MACHINES = [...BNY_MACHINES_3600, ...BNY_MACHINES_570]
+const BNY_3600_TARGET = BNY_MACHINES_3600.reduce((s, m) => s + m.target, 0) // 10,800
+const BNY_570_TARGET = BNY_MACHINES_570.reduce((s, m) => s + m.target, 0) // 6,500
+
+function emptyMachines() {
+  return Object.fromEntries(ALL_BNY_MACHINES.map(m => [m.id, '']))
+}
+
 function weekKey(date) { return format(date, 'yyyy-MM-dd') }
 function getWeekStart(d = new Date()) { return startOfWeek(d, { weekStartsOn: 1 }) }
 
@@ -29,7 +58,7 @@ function emptyNJ() {
   }
 }
 function emptyBNY() {
-  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '' }
+  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '', machines: emptyMachines() }
 }
 
 function n(v) { return parseFloat(v) || 0 }
@@ -89,7 +118,41 @@ function Sparkline({ values, target }) {
   )
 }
 
-function NumberInput({ label, value, onChange, placeholder, readOnly }) {
+function MachineGroup({ title, machines, machineData, groupTarget }) {
+  const [expanded, setExpanded] = useState(false)
+  const total = machines.reduce((s, m) => s + n(machineData?.[m.id]), 0)
+  const status = statusColor(total, groupTarget)
+  const pctVal = pct(total, groupTarget)
+  return (
+    <div className={styles.machineGroup}>
+      <div className={styles.machineGroupHeader} onClick={() => setExpanded(e => !e)}>
+        <div className={styles.machineGroupLeft}>
+          <Dot status={status} />
+          <span className={styles.machineGroupTitle}>{title}</span>
+          <span className={styles.machineGroupTotal}>{total ? total.toLocaleString() : '—'} yds</span>
+          {pctVal !== null && <span className={`${styles.machineGroupPct} ${styles['machineGroupPct_' + status]}`}>{pctVal}%</span>}
+        </div>
+        <span className={styles.machineGroupToggle}>{expanded ? '▲' : '▼'} {machines.length} machines</span>
+      </div>
+      {expanded && (
+        <div className={styles.machineList}>
+          {machines.map(m => {
+            const val = n(machineData?.[m.id])
+            const ms = statusColor(val, m.target)
+            return (
+              <div key={m.id} className={styles.machineRow}>
+                <Dot status={ms} />
+                <span className={styles.machineName}>{m.name}</span>
+                <span className={styles.machineYards}>{val ? val.toLocaleString() : '—'}</span>
+                <span className={styles.machineTarget}>/ {m.target.toLocaleString()}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
   return (
     <div className={styles.inputGroup}>
       <label className="label">{label}</label>
@@ -325,6 +388,15 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               { label: 'Contract', value: bnyData.contract, target: BNY_TARGETS.contract },
             ]} />
 
+            {/* Machine drilldown */}
+            {ALL_BNY_MACHINES.some(m => bnyData.machines?.[m.id]) && (
+              <div className={styles.machineSection}>
+                <div className={styles.machineSectionTitle}>Output by machine</div>
+                <MachineGroup title="3600 machines" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
+                <MachineGroup title="570 machines" machines={BNY_MACHINES_570} machineData={bnyData.machines} groupTarget={BNY_570_TARGET} />
+              </div>
+            )}
+
             {(bnyData.schProduced || bnyData.tpProduced) && (
               <div className={styles.splitRow}>
                 <div className={styles.splitItem}><span className={styles.splitLabel}>SCH produced</span><span className={styles.splitValue}>{fmt(bnyData.schProduced)} yds</span></div>
@@ -528,6 +600,24 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                 <NumberInput key={cat} label={`${cat.toUpperCase()} (tgt:${BNY_TARGETS[cat].toLocaleString()})`} value={bnyData[cat]} onChange={v => updateBNY(cat, v)} />
               ))}
             </div>
+            <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Output by machine (optional)</div>
+            <div className={styles.machineEditGrid}>
+              <div className={styles.machineEditGroup}>
+                <div className={styles.machineEditGroupLabel}>3600 machines (target: 3,600/wk each)</div>
+                {BNY_MACHINES_3600.map(m => (
+                  <NumberInput key={m.id} label={m.name} value={bnyData.machines?.[m.id] || ''} onChange={v => updateBNY('machines', { ...bnyData.machines, [m.id]: v })} placeholder="3600" />
+                ))}
+              </div>
+              <div className={styles.machineEditGroup}>
+                <div className={styles.machineEditGroupLabel}>570 machines (target: 500/wk each)</div>
+                <div className={styles.machineEditCols}>
+                  {BNY_MACHINES_570.map(m => (
+                    <NumberInput key={m.id} label={m.name} value={bnyData.machines?.[m.id] || ''} onChange={v => updateBNY('machines', { ...bnyData.machines, [m.id]: v })} placeholder="500" />
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Schumacher vs 3rd Party</div>
             <div className={styles.editThreeCol}>
               {[['Written','Written'],['Produced','Produced'],['Invoiced','Invoiced']].map(([label,key]) => (
