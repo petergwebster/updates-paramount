@@ -66,9 +66,9 @@ function getProcurementMonthlyTarget(weeksInMonth) {
   return weeksInMonth === 5 ? 62500 : 50000
 }
 
-function fmtDollar(v) { return v ? '$' + Number(v).toLocaleString() : '—' }
+function fmtDollar(v) { return (v !== '' && v !== null && v !== undefined) ? '$' + Number(v).toLocaleString() : '—' }
 function n(v) { return parseFloat(v) || 0 }
-function fmt(v) { return v ? Number(v).toLocaleString() : '—' }
+function fmt(v) { return (v !== '' && v !== null && v !== undefined) ? Number(v).toLocaleString() : '—' }
 function pct(val, target) { const v = n(val), t = n(target); return (v && t) ? Math.round((v/t)*100) : null }
 
 function statusColor(val, target, inverse = false) {
@@ -98,7 +98,7 @@ function BarChart({ data }) {
               <div className={styles.barTarget} style={{ width: tgtPct + '%' }} />
               <div className={`${styles.barFill} ${styles['barFill_' + status]}`} style={{ width: valPct + '%' }} />
             </div>
-            <div className={styles.barValue}>{d.value ? Number(d.value).toLocaleString() : '—'}</div>
+            <div className={styles.barValue}>{(d.value !== '' && d.value !== null && d.value !== undefined) ? Number(d.value).toLocaleString() : '—'}</div>
           </div>
         )
       })}
@@ -260,8 +260,10 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
 
   const wasteTrend = historyNJ.map(h => h.total > 0 ? ((h.waste / h.total) * 100).toFixed(1) : null)
 
-  // MTD computations
-  const mtdWeeksWithData = mtdData.length
+  // MTD computations — only count weeks that have actual production data entered
+  const mtdWeeksWithData = mtdData.filter(h =>
+    ['fabric','grass','paper'].some(k => n(h.nj_data?.[k]?.yards) > 0)
+  ).length
   const mtdNJ = {
     fabric: mtdData.reduce((s,h) => s + n(h.nj_data?.fabric?.yards), 0),
     grass: mtdData.reduce((s,h) => s + n(h.nj_data?.grass?.yards), 0),
