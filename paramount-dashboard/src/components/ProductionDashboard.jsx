@@ -303,7 +303,8 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
       {/* SUMMARY VIEW */}
       {mode === 'view' && hasData && (
         <div className={styles.summaryGrid}>
-          {/* NJ */}
+
+          {/* NJ CARD */}
           <div className={`${styles.facilityCard} ${isPast ? styles.facilityCardHistorical : ''}`}>
             <div className={styles.facilityHeader}>
               <div className={styles.facilityTitle}><span className={styles.facilityBadge}>NJ</span>Passaic · Screen Print</div>
@@ -314,50 +315,77 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               </div>
             </div>
 
-            <div className={styles.statsRow}>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Produced</div>
-                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalYards, NJ_TOTAL_TARGET)]}`}>{fmt(njTotalYards)}<span className={styles.statUnit}>yds</span></div>
-                <div className={styles.statTarget}>Target: {NJ_TOTAL_TARGET.toLocaleString()}</div>
+            {/* Band 1: Capacity headline numbers */}
+            <div className={styles.band}>
+              <div className={styles.bandTitle}>Capacity</div>
+              <div className={styles.statsRow}>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>Produced</div>
+                  <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalYards, NJ_TOTAL_TARGET)]}`}>{fmt(njTotalYards)}<span className={styles.statUnit}>yds</span></div>
+                  <div className={styles.statTarget}>Target: {NJ_TOTAL_TARGET.toLocaleString()}</div>
+                </div>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>Net Yards</div>
+                  <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njNetYards, NJ_TOTAL_TARGET * 0.92)]}`}>{fmt(njNetYards)}<span className={styles.statUnit}>yds</span></div>
+                  <div className={styles.statTarget}>Produced − Waste</div>
+                </div>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>Waste</div>
+                  <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
+                  <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;8%</div>
+                </div>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>Color Yds</div>
+                  <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalColor, njTotalColorTarget)]}`}>{fmt(njTotalColor)}<span className={styles.statUnit}>yds</span></div>
+                  <div className={styles.statTarget}>Target: {njTotalColorTarget.toLocaleString()}</div>
+                </div>
               </div>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Net Yards</div>
-                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njNetYards, NJ_TOTAL_TARGET * 0.92)]}`}>{fmt(njNetYards)}<span className={styles.statUnit}>yds</span></div>
-                <div className={styles.statTarget}>Produced − Waste</div>
-              </div>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Waste</div>
-                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
-                <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;8%</div>
-              </div>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Color Yards</div>
-                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalColor, njTotalColorTarget)]}`}>{fmt(njTotalColor)}<span className={styles.statUnit}>yds</span></div>
-                <div className={styles.statTarget}>Target: {njTotalColorTarget.toLocaleString()}</div>
-              </div>
+              <BarChart data={[
+                { label: 'Fabric', value: njData.fabric.yards, target: NJ_TARGETS.fabric.yards },
+                { label: 'Grass', value: njData.grass.yards, target: NJ_TARGETS.grass.yards },
+                { label: 'Paper', value: njData.paper.yards, target: NJ_TARGETS.paper.yards },
+              ]} />
             </div>
 
-            <BarChart data={[
-              { label: 'Fabric', value: njData.fabric.yards, target: NJ_TARGETS.fabric.yards },
-              { label: 'Grass', value: njData.grass.yards, target: NJ_TARGETS.grass.yards },
-              { label: 'Paper', value: njData.paper.yards, target: NJ_TARGETS.paper.yards },
-            ]} />
-
-            {(njData.schProduced || njData.tpProduced) && (
-              <div className={styles.splitRow}>
-                <div className={styles.splitItem}><span className={styles.splitLabel}>SCH produced</span><span className={styles.splitValue}>{fmt(njData.schProduced)} yds</span></div>
-                <div className={styles.splitItem}><span className={styles.splitLabel}>3P produced</span><span className={styles.splitValue}>{fmt(njData.tpProduced)} yds</span></div>
-                {njData.schInvoiced && <div className={styles.splitItem}>
-                  <span className={styles.splitLabel}>Invoiced gap</span>
-                  <span className={`${styles.splitValue} ${invoicedGap > 0 ? styles.gapPositive : styles.gapNegative}`}>{invoicedGap > 0 ? '+' : ''}{fmt(invoicedGap)} yds</span>
-                </div>}
+            {/* Band 2: Written / Produced / Invoiced table */}
+            {(njData.schWritten || njData.schProduced || njData.schInvoiced || njData.tpWritten || njData.tpProduced || njData.tpInvoiced) && (
+              <div className={styles.band}>
+                <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
+                <table className={styles.wpiTable}>
+                  <thead>
+                    <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className={styles.wpiRowLabel}>Schumacher</td>
+                      <td>{fmt(njData.schWritten)}</td>
+                      <td>{fmt(njData.schProduced)}</td>
+                      <td>{fmt(njData.schInvoiced)}</td>
+                      <td className={invoicedGap >= 0 ? styles.gapPositive : styles.gapNegative}>
+                        {njData.schProduced && njData.schInvoiced ? (invoicedGap >= 0 ? '+' : '') + fmt(invoicedGap) : '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className={styles.wpiRowLabel}>3rd Party</td>
+                      <td>{fmt(njData.tpWritten)}</td>
+                      <td>{fmt(njData.tpProduced)}</td>
+                      <td>{fmt(njData.tpInvoiced)}</td>
+                      <td className={styles.wpiMuted}>—</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {njData.commentary && <div className={styles.commentary}>{njData.commentary}</div>}
+            {/* Band 3: Commentary */}
+            {njData.commentary && (
+              <div className={styles.band}>
+                <div className={styles.commentary}>{njData.commentary}</div>
+              </div>
+            )}
           </div>
 
-          {/* BNY */}
+          {/* BNY CARD */}
           <div className={`${styles.facilityCard} ${isPast ? styles.facilityCardHistorical : ''}`}>
             <div className={styles.facilityHeader}>
               <div className={styles.facilityTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span>Brooklyn · Digital</div>
@@ -368,43 +396,74 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               </div>
             </div>
 
-            <div className={styles.statsRow}>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>Total yards</div>
-                <div className={`${styles.statValue} ${styles['statValue_' + statusColor(bnyTotal, BNY_TARGETS.total)]}`}>{fmt(bnyTotal)}<span className={styles.statUnit}>yds</span></div>
-                <div className={styles.statTarget}>Target: {BNY_TARGETS.total.toLocaleString()}</div>
+            {/* Band 1: Capacity */}
+            <div className={styles.band}>
+              <div className={styles.bandTitle}>Capacity</div>
+              <div className={styles.statsRow}>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>Total yards</div>
+                  <div className={`${styles.statValue} ${styles['statValue_' + statusColor(bnyTotal, BNY_TARGETS.total)]}`}>{fmt(bnyTotal)}<span className={styles.statUnit}>yds</span></div>
+                  <div className={styles.statTarget}>Target: {BNY_TARGETS.total.toLocaleString()}</div>
+                </div>
+                <div className={styles.statBlock}>
+                  <div className={styles.statLabel}>SCH Invoiced</div>
+                  <div className={styles.statValue} style={{ color: 'var(--ink)' }}>{fmt(bnyData.schInvoiced)}<span className={styles.statUnit}>yds</span></div>
+                </div>
               </div>
-              <div className={styles.statBlock}>
-                <div className={styles.statLabel}>SCH invoiced</div>
-                <div className={styles.statValue} style={{ color: 'var(--ink)' }}>{fmt(bnyData.schInvoiced)}<span className={styles.statUnit}>yds</span></div>
-              </div>
+              <BarChart data={[
+                { label: 'Replen', value: bnyData.replen, target: BNY_TARGETS.replen },
+                { label: 'MTO', value: bnyData.mto, target: BNY_TARGETS.mto },
+                { label: 'HOS', value: bnyData.hos, target: BNY_TARGETS.hos },
+                { label: 'Memo', value: bnyData.memo, target: BNY_TARGETS.memo },
+                { label: 'Contract', value: bnyData.contract, target: BNY_TARGETS.contract },
+              ]} />
             </div>
-
-            <BarChart data={[
-              { label: 'Replen', value: bnyData.replen, target: BNY_TARGETS.replen },
-              { label: 'MTO', value: bnyData.mto, target: BNY_TARGETS.mto },
-              { label: 'HOS', value: bnyData.hos, target: BNY_TARGETS.hos },
-              { label: 'Memo', value: bnyData.memo, target: BNY_TARGETS.memo },
-              { label: 'Contract', value: bnyData.contract, target: BNY_TARGETS.contract },
-            ]} />
 
             {/* Machine drilldown */}
             {ALL_BNY_MACHINES.some(m => bnyData.machines?.[m.id]) && (
-              <div className={styles.machineSection}>
-                <div className={styles.machineSectionTitle}>Output by machine</div>
+              <div className={styles.band}>
+                <div className={styles.bandTitle}>Output by machine</div>
                 <MachineGroup title="3600 machines" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
                 <MachineGroup title="570 machines" machines={BNY_MACHINES_570} machineData={bnyData.machines} groupTarget={BNY_570_TARGET} />
               </div>
             )}
 
-            {(bnyData.schProduced || bnyData.tpProduced) && (
-              <div className={styles.splitRow}>
-                <div className={styles.splitItem}><span className={styles.splitLabel}>SCH produced</span><span className={styles.splitValue}>{fmt(bnyData.schProduced)} yds</span></div>
-                <div className={styles.splitItem}><span className={styles.splitLabel}>3P produced</span><span className={styles.splitValue}>{fmt(bnyData.tpProduced)} yds</span></div>
+            {/* Band 2: Written / Produced / Invoiced */}
+            {(bnyData.schWritten || bnyData.schProduced || bnyData.schInvoiced || bnyData.tpWritten || bnyData.tpProduced || bnyData.tpInvoiced) && (
+              <div className={styles.band}>
+                <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
+                <table className={styles.wpiTable}>
+                  <thead>
+                    <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className={styles.wpiRowLabel}>Schumacher</td>
+                      <td>{fmt(bnyData.schWritten)}</td>
+                      <td>{fmt(bnyData.schProduced)}</td>
+                      <td>{fmt(bnyData.schInvoiced)}</td>
+                      <td className={n(bnyData.schProduced) - n(bnyData.schInvoiced) >= 0 ? styles.gapPositive : styles.gapNegative}>
+                        {bnyData.schProduced && bnyData.schInvoiced ? (n(bnyData.schProduced)-n(bnyData.schInvoiced) >= 0 ? '+' : '') + fmt(n(bnyData.schProduced)-n(bnyData.schInvoiced)) : '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className={styles.wpiRowLabel}>3rd Party</td>
+                      <td>{fmt(bnyData.tpWritten)}</td>
+                      <td>{fmt(bnyData.tpProduced)}</td>
+                      <td>{fmt(bnyData.tpInvoiced)}</td>
+                      <td className={styles.wpiMuted}>—</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
 
-            {bnyData.commentary && <div className={styles.commentary}>{bnyData.commentary}</div>}
+            {/* Band 3: Commentary */}
+            {bnyData.commentary && (
+              <div className={styles.band}>
+                <div className={styles.commentary}>{bnyData.commentary}</div>
+              </div>
+            )}
           </div>
         </div>
       )}
