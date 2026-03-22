@@ -1,3 +1,9 @@
+[build]
+  base = "paramount-dashboard"
+  command = "npm run build"
+  publish = "paramount-dashboard/dist"
+  functions = "paramount-dashboard/netlify/functions"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
