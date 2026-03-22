@@ -179,7 +179,8 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const isCurrentWeek = weekKey(weekStart) === weekKey(getWeekStart())
   const isPast = weekStart < getWeekStart()
 
-  const [mtdData, setMtdData] = useState([]) // all weeks this fiscal month
+  const [mtdData, setMtdData] = useState([])
+  const [ytdData, setYtdData] = useState([])
 
   useEffect(() => { loadData(); loadHistory() }, [weekStart])
 
@@ -206,6 +207,14 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
         .sort()
       const { data: mtd } = await supabase.from('production').select('*').in('week_start', monthWeeks).order('week_start', { ascending: true })
       setMtdData(mtd || [])
+
+      // YTD: all weeks from start of fiscal year up to viewed week
+      const ytdWeeks = Object.entries(FISCAL_CALENDAR)
+        .filter(([k]) => k <= currentKey)
+        .map(([k]) => k)
+        .sort()
+      const { data: ytd } = await supabase.from('production').select('*').in('week_start', ytdWeeks).order('week_start', { ascending: true })
+      setYtdData(ytd || [])
     }
   }
 
@@ -293,6 +302,35 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const mtdProcurement = mtdData.reduce((s, h) => s + n(h.bny_data?.procurement), 0)
   const procurementMTDTarget = PROCUREMENT_WEEKLY_TARGET * mtdWeeksWithData
 
+  // YTD computations
+  const ytdWeeksWithData = ytdData.filter(h =>
+    ['fabric','grass','paper'].some(k => n(h.nj_data?.[k]?.yards) > 0)
+  ).length
+  const ytdNJ = {
+    fabric: ytdData.reduce((s,h) => s + n(h.nj_data?.fabric?.yards), 0),
+    grass: ytdData.reduce((s,h) => s + n(h.nj_data?.grass?.yards), 0),
+    paper: ytdData.reduce((s,h) => s + n(h.nj_data?.paper?.yards), 0),
+    waste: ytdData.reduce((s,h) => s + ['fabric','grass','paper'].reduce((ss,k) => ss + n(h.nj_data?.[k]?.waste), 0), 0),
+    total: ytdData.reduce((s,h) => s + ['fabric','grass','paper'].reduce((ss,k) => ss + n(h.nj_data?.[k]?.yards), 0), 0),
+    schProduced: ytdData.reduce((s,h) => s + n(h.nj_data?.schProduced), 0),
+    schInvoiced: ytdData.reduce((s,h) => s + n(h.nj_data?.schInvoiced), 0),
+  }
+  const ytdBNY = {
+    total: ytdData.reduce((s,h) => s + ['replen','mto','hos','memo','contract'].reduce((ss,k) => ss + n(h.bny_data?.[k]), 0), 0),
+    replen: ytdData.reduce((s,h) => s + n(h.bny_data?.replen), 0),
+    mto: ytdData.reduce((s,h) => s + n(h.bny_data?.mto), 0),
+    hos: ytdData.reduce((s,h) => s + n(h.bny_data?.hos), 0),
+    memo: ytdData.reduce((s,h) => s + n(h.bny_data?.memo), 0),
+    contract: ytdData.reduce((s,h) => s + n(h.bny_data?.contract), 0),
+    schProduced: ytdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0),
+    schInvoiced: ytdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0),
+  }
+  const ytdNJTarget = { fabric: NJ_TARGETS.fabric.yards * ytdWeeksWithData, grass: NJ_TARGETS.grass.yards * ytdWeeksWithData, paper: NJ_TARGETS.paper.yards * ytdWeeksWithData, total: NJ_TOTAL_TARGET * ytdWeeksWithData }
+  const ytdBNYTarget = { total: BNY_TARGETS.total * ytdWeeksWithData, replen: BNY_TARGETS.replen * ytdWeeksWithData, mto: BNY_TARGETS.mto * ytdWeeksWithData, hos: BNY_TARGETS.hos * ytdWeeksWithData, memo: BNY_TARGETS.memo * ytdWeeksWithData, contract: BNY_TARGETS.contract * ytdWeeksWithData }
+  const ytdNJNet = ytdNJ.total - ytdNJ.waste
+  const ytdNJWastePct = ytdNJ.total > 0 ? ((ytdNJ.waste / ytdNJ.total) * 100).toFixed(1) : null
+  const ytdProcurement = ytdData.reduce((s,h) => s + n(h.bny_data?.procurement), 0)
+
   return (
     <div className={styles.container}>
       <div className={styles.topRow}>
@@ -363,35 +401,33 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               ]} />
             </div>
 
-            {/* Band 2: Written / Produced / Invoiced table */}
-            {(njData.schWritten || njData.schProduced || njData.schInvoiced || njData.tpWritten || njData.tpProduced || njData.tpInvoiced) && (
-              <div className={styles.band}>
-                <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
-                <table className={styles.wpiTable}>
-                  <thead>
-                    <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className={styles.wpiRowLabel}>Schumacher</td>
-                      <td>{fmt(njData.schWritten)}</td>
-                      <td>{fmt(njData.schProduced)}</td>
-                      <td>{fmt(njData.schInvoiced)}</td>
-                      <td className={invoicedGap >= 0 ? styles.gapPositive : styles.gapNegative}>
-                        {njData.schProduced && njData.schInvoiced ? (invoicedGap >= 0 ? '+' : '') + fmt(invoicedGap) : '—'}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className={styles.wpiRowLabel}>3rd Party</td>
-                      <td>{fmt(njData.tpWritten)}</td>
-                      <td>{fmt(njData.tpProduced)}</td>
-                      <td>{fmt(njData.tpInvoiced)}</td>
-                      <td className={styles.wpiMuted}>—</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* Band 2: Written / Produced / Invoiced - always show */}
+            <div className={styles.band}>
+              <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
+              <table className={styles.wpiTable}>
+                <thead>
+                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className={styles.wpiRowLabel}>Schumacher</td>
+                    <td>{fmt(njData.schWritten)}</td>
+                    <td>{fmt(njData.schProduced)}</td>
+                    <td>{fmt(njData.schInvoiced)}</td>
+                    <td className={invoicedGap >= 0 ? styles.gapPositive : styles.gapNegative}>
+                      {(njData.schProduced !== '' || njData.schInvoiced !== '') ? (invoicedGap >= 0 ? '+' : '') + fmt(invoicedGap) : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className={styles.wpiRowLabel}>3rd Party</td>
+                    <td>{fmt(njData.tpWritten)}</td>
+                    <td>{fmt(njData.tpProduced)}</td>
+                    <td>{fmt(njData.tpInvoiced)}</td>
+                    <td className={styles.wpiMuted}>—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
             {/* Band 3: Commentary */}
             {njData.commentary && (
@@ -435,44 +471,40 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               ]} />
             </div>
 
-            {/* Machine drilldown */}
-            {ALL_BNY_MACHINES.some(m => bnyData.machines?.[m.id]) && (
-              <div className={styles.band}>
-                <div className={styles.bandTitle}>Output by machine</div>
-                <MachineGroup title="3600 machines" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
-                <MachineGroup title="570 machines" machines={BNY_MACHINES_570} machineData={bnyData.machines} groupTarget={BNY_570_TARGET} />
-              </div>
-            )}
+            {/* Machine drilldown - always show */}
+            <div className={styles.band}>
+              <div className={styles.bandTitle}>Output by machine</div>
+              <MachineGroup title="3600 machines" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
+              <MachineGroup title="570 machines" machines={BNY_MACHINES_570} machineData={bnyData.machines} groupTarget={BNY_570_TARGET} />
+            </div>
 
-            {/* Band 2: Written / Produced / Invoiced */}
-            {(bnyData.schWritten || bnyData.schProduced || bnyData.schInvoiced || bnyData.tpWritten || bnyData.tpProduced || bnyData.tpInvoiced) && (
-              <div className={styles.band}>
-                <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
-                <table className={styles.wpiTable}>
-                  <thead>
-                    <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td className={styles.wpiRowLabel}>Schumacher</td>
-                      <td>{fmt(bnyData.schWritten)}</td>
-                      <td>{fmt(bnyData.schProduced)}</td>
-                      <td>{fmt(bnyData.schInvoiced)}</td>
-                      <td className={n(bnyData.schProduced) - n(bnyData.schInvoiced) >= 0 ? styles.gapPositive : styles.gapNegative}>
-                        {bnyData.schProduced && bnyData.schInvoiced ? (n(bnyData.schProduced)-n(bnyData.schInvoiced) >= 0 ? '+' : '') + fmt(n(bnyData.schProduced)-n(bnyData.schInvoiced)) : '—'}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className={styles.wpiRowLabel}>3rd Party</td>
-                      <td>{fmt(bnyData.tpWritten)}</td>
-                      <td>{fmt(bnyData.tpProduced)}</td>
-                      <td>{fmt(bnyData.tpInvoiced)}</td>
-                      <td className={styles.wpiMuted}>—</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* Band 2: Written / Produced / Invoiced - always show */}
+            <div className={styles.band}>
+              <div className={styles.bandTitle}>Written · Produced · Invoiced</div>
+              <table className={styles.wpiTable}>
+                <thead>
+                  <tr><th></th><th>Written</th><th>Produced</th><th>Invoiced</th><th>Gap</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className={styles.wpiRowLabel}>Schumacher</td>
+                    <td>{fmt(bnyData.schWritten)}</td>
+                    <td>{fmt(bnyData.schProduced)}</td>
+                    <td>{fmt(bnyData.schInvoiced)}</td>
+                    <td className={n(bnyData.schProduced) - n(bnyData.schInvoiced) >= 0 ? styles.gapPositive : styles.gapNegative}>
+                      {(bnyData.schProduced !== '' || bnyData.schInvoiced !== '') ? (n(bnyData.schProduced)-n(bnyData.schInvoiced) >= 0 ? '+' : '') + fmt(n(bnyData.schProduced)-n(bnyData.schInvoiced)) : '—'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className={styles.wpiRowLabel}>3rd Party</td>
+                    <td>{fmt(bnyData.tpWritten)}</td>
+                    <td>{fmt(bnyData.tpProduced)}</td>
+                    <td>{fmt(bnyData.tpInvoiced)}</td>
+                    <td className={styles.wpiMuted}>—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
             {/* Band 3: Commentary */}
             {bnyData.commentary && (
@@ -626,6 +658,95 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
                         <td className={styles.mtdLabel}>{row.label}</td>
                         <td className={styles.mtdActual}><Dot status={status} />{row.produced ? row.produced.toLocaleString() : '—'}</td>
                         <td className={styles.mtdActual}>{row.invoiced !== undefined ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
+                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
+                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YTD SUMMARY */}
+      {ytdWeeksWithData > 0 && (
+        <div className={styles.historySection}>
+          <div className={styles.historySectionTitle}>Year-to-Date Summary — {ytdWeeksWithData} week{ytdWeeksWithData !== 1 ? 's' : ''} · Fiscal 2026 · Produced vs Invoiced vs Target</div>
+          <div className={styles.mtdGrid}>
+            {/* NJ YTD */}
+            <div className={styles.mtdCard}>
+              <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic YTD</div>
+              <table className={styles.mtdTable}>
+                <thead>
+                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: 'Fabric', produced: ytdNJ.fabric, invoiced: null, target: ytdNJTarget.fabric },
+                    { label: 'Grass', produced: ytdNJ.grass, invoiced: null, target: ytdNJTarget.grass },
+                    { label: 'Paper', produced: ytdNJ.paper, invoiced: null, target: ytdNJTarget.paper },
+                    { label: 'Total Yds', produced: ytdNJ.total, invoiced: null, target: ytdNJTarget.total, bold: true },
+                    { label: 'Net Yds', produced: ytdNJNet, invoiced: null, target: null },
+                    { label: 'Waste', produced: ytdNJ.waste, invoiced: null, target: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
+                    { label: 'Schumacher', produced: ytdNJ.schProduced, invoiced: ytdNJ.schInvoiced, target: null, bold: true },
+                  ].map(row => {
+                    const diff = row.target ? row.produced - row.target : null
+                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    return (
+                      <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td className={styles.mtdActual}>
+                          <Dot status={status} />
+                          {row.produced !== null ? row.produced.toLocaleString() : '—'}{row.suffix || ''}
+                        </td>
+                        <td className={styles.mtdActual}>
+                          {row.invoiced !== null ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}
+                        </td>
+                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
+                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
+                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* BNY YTD */}
+            <div className={styles.mtdCard}>
+              <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn YTD</div>
+              <table className={styles.mtdTable}>
+                <thead>
+                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: 'Replen', produced: ytdBNY.replen, target: ytdBNYTarget.replen },
+                    { label: 'MTO', produced: ytdBNY.mto, target: ytdBNYTarget.mto },
+                    { label: 'HOS', produced: ytdBNY.hos, target: ytdBNYTarget.hos },
+                    { label: 'Memo', produced: ytdBNY.memo, target: ytdBNYTarget.memo },
+                    { label: 'Contract', produced: ytdBNY.contract, target: ytdBNYTarget.contract },
+                    { label: 'Total Yds', produced: ytdBNY.total, target: ytdBNYTarget.total, bold: true },
+                    { label: 'Schumacher', produced: ytdBNY.schProduced, invoiced: ytdBNY.schInvoiced, target: null, bold: true },
+                    { label: 'Procurement $', produced: ytdProcurement, invoiced: null, target: null, isDollar: true },
+                  ].map(row => {
+                    const diff = row.target ? row.produced - row.target : null
+                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    return (
+                      <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td className={styles.mtdActual}>
+                          <Dot status={status} />
+                          {row.isDollar ? fmtDollar(row.produced) : row.produced !== undefined ? row.produced.toLocaleString() : '—'}
+                        </td>
+                        <td className={styles.mtdActual}>
+                          {row.invoiced !== undefined && row.invoiced !== null ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}
+                        </td>
                         <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
                         <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
                           {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
