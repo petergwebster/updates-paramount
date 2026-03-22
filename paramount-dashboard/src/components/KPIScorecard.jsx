@@ -90,7 +90,7 @@ Write a 3-4 paragraph executive summary in Peter's voice — direct, factual, an
 Keep it under 200 words. Write in first person as Peter. No bullet points. No headers. Clean paragraphs only.`
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
