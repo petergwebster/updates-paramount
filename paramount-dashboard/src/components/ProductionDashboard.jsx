@@ -31,9 +31,15 @@ const BNY_MACHINES_3600 = [
   { id: 'sasha', name: 'Sasha', target: 3600 },
   { id: 'trish', name: 'Trish', target: 3600 },
 ]
-const BNY_MACHINES_570 = [
+// 570 machines at BNY Brooklyn location
+const BNY_MACHINES_570_BNY = [
   { id: 'bianca', name: 'Bianca', target: 500 },
   { id: 'lash', name: 'LASH', target: 500 },
+  { id: 'chyna', name: 'Chyna', target: 500 },
+  { id: 'rhonda', name: 'Rhonda', target: 500 },
+]
+// 570 machines at Passaic NJ location
+const BNY_MACHINES_570_NJ = [
   { id: 'dakota_ka', name: 'Dakota Ka', target: 500 },
   { id: 'dementia', name: 'Dementia', target: 500 },
   { id: 'ember', name: 'EMBER', target: 500 },
@@ -42,13 +48,17 @@ const BNY_MACHINES_570 = [
   { id: 'ruby', name: 'Ruby', target: 500 },
   { id: 'valhalla', name: 'Valhalla', target: 500 },
   { id: 'xia', name: 'XIA', target: 500 },
-  { id: 'zoey', name: 'Zoey', target: 500 },
-  { id: 'poseidon', name: 'Poseidon', target: 500 },
   { id: 'apollo', name: 'Apollo', target: 500 },
+  { id: 'nemesis', name: 'Nemesis', target: 500 },
+  { id: 'poseidon', name: 'Poseidon', target: 500 },
+  { id: 'zoey', name: 'Zoey', target: 500 },
 ]
+const BNY_MACHINES_570 = [...BNY_MACHINES_570_BNY, ...BNY_MACHINES_570_NJ]
 const ALL_BNY_MACHINES = [...BNY_MACHINES_3600, ...BNY_MACHINES_570]
 const BNY_3600_TARGET = BNY_MACHINES_3600.reduce((s, m) => s + m.target, 0) // 10,800
-const BNY_570_TARGET = BNY_MACHINES_570.reduce((s, m) => s + m.target, 0) // 6,500
+const BNY_570_BNY_TARGET = BNY_MACHINES_570_BNY.reduce((s, m) => s + m.target, 0) // 2,000
+const BNY_570_NJ_TARGET = BNY_MACHINES_570_NJ.reduce((s, m) => s + m.target, 0) // 6,000
+const BNY_570_TARGET = BNY_MACHINES_570.reduce((s, m) => s + m.target, 0) // 8,000
 
 function emptyMachines() {
   return Object.fromEntries(ALL_BNY_MACHINES.map(m => [m.id, '']))
@@ -299,11 +309,22 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
     memo: mtdData.reduce((s,h) => s + n(h.bny_data?.memo), 0),
     contract: mtdData.reduce((s,h) => s + n(h.bny_data?.contract), 0),
   }
-  // Accumulating targets = weeks with data × weekly target
-  const mtdNJTarget = { fabric: NJ_TARGETS.fabric.yards * mtdWeeksWithData, grass: NJ_TARGETS.grass.yards * mtdWeeksWithData, paper: NJ_TARGETS.paper.yards * mtdWeeksWithData, total: NJ_TOTAL_TARGET * mtdWeeksWithData }
-  const mtdBNYTarget = { total: BNY_TARGETS.total * mtdWeeksWithData, replen: BNY_TARGETS.replen * mtdWeeksWithData, mto: BNY_TARGETS.mto * mtdWeeksWithData, hos: BNY_TARGETS.hos * mtdWeeksWithData, memo: BNY_TARGETS.memo * mtdWeeksWithData, contract: BNY_TARGETS.contract * mtdWeeksWithData }
+  // Accumulating targets = fiscal weeks elapsed × weekly target (uses calendar position, not data count)
+  const mtdFiscalWeeks = fiscalInfo?.weekInMonth || mtdWeeksWithData
+  const mtdNJTarget = { fabric: NJ_TARGETS.fabric.yards * mtdFiscalWeeks, grass: NJ_TARGETS.grass.yards * mtdFiscalWeeks, paper: NJ_TARGETS.paper.yards * mtdFiscalWeeks, total: NJ_TOTAL_TARGET * mtdFiscalWeeks }
+  const mtdBNYTarget = { total: BNY_TARGETS.total * mtdFiscalWeeks, replen: BNY_TARGETS.replen * mtdFiscalWeeks, mto: BNY_TARGETS.mto * mtdFiscalWeeks, hos: BNY_TARGETS.hos * mtdFiscalWeeks, memo: BNY_TARGETS.memo * mtdFiscalWeeks, contract: BNY_TARGETS.contract * mtdFiscalWeeks }
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
   const mtdNJWastePct = mtdNJ.total > 0 ? ((mtdNJ.waste / mtdNJ.total) * 100).toFixed(1) : null
+
+  // MTD Revenue
+  const mtdNJSchInvoiced = mtdData.reduce((s,h) => s + n(h.nj_data?.schInvoiced), 0)
+  const mtdNJTpInvoiced = mtdData.reduce((s,h) => s + n(h.nj_data?.tpInvoiced), 0)
+  const mtdBNYSchInvoiced = mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0)
+  const mtdBNYTpInvoiced = mtdData.reduce((s,h) => s + n(h.bny_data?.tpInvoiced), 0)
+  const mtdNJSchRevTarget = WEEKLY_TARGETS.schRevenue * mtdFiscalWeeks
+  const mtdNJTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
+  const mtdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * mtdFiscalWeeks
+  const mtdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
 
   // Procurement MTD
   const fiscalInfo = getFiscalInfo(weekStart)
@@ -340,6 +361,17 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const ytdNJNet = ytdNJ.total - ytdNJ.waste
   const ytdNJWastePct = ytdNJ.total > 0 ? ((ytdNJ.waste / ytdNJ.total) * 100).toFixed(1) : null
   const ytdProcurement = ytdData.reduce((s,h) => s + n(h.bny_data?.procurement), 0)
+
+  // YTD Revenue
+  const ytdNJSchInvoiced = ytdData.reduce((s,h) => s + n(h.nj_data?.schInvoiced), 0)
+  const ytdNJTpInvoiced = ytdData.reduce((s,h) => s + n(h.nj_data?.tpInvoiced), 0)
+  const ytdBNYSchInvoiced = ytdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0)
+  const ytdBNYTpInvoiced = ytdData.reduce((s,h) => s + n(h.bny_data?.tpInvoiced), 0)
+  const ytdNJSchRevTarget = WEEKLY_TARGETS.schRevenue * ytdWeeksWithData
+  const ytdNJTpRevTarget = WEEKLY_TARGETS.tpRevenue * ytdWeeksWithData
+  const ytdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * ytdWeeksWithData
+  const ytdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * ytdWeeksWithData
+  const ytdProcurementTarget = PROCUREMENT_WEEKLY_TARGET * ytdWeeksWithData
 
   return (
     <div className={styles.container}>
@@ -486,8 +518,9 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
             {/* Machine drilldown - always show */}
             <div className={styles.band}>
               <div className={styles.bandTitle}>Output by machine</div>
-              <MachineGroup title="3600 machines" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
-              <MachineGroup title="570 machines" machines={BNY_MACHINES_570} machineData={bnyData.machines} groupTarget={BNY_570_TARGET} />
+              <MachineGroup title="3600 machines (BNY)" machines={BNY_MACHINES_3600} machineData={bnyData.machines} groupTarget={BNY_3600_TARGET} />
+              <MachineGroup title="570 machines — BNY" machines={BNY_MACHINES_570_BNY} machineData={bnyData.machines} groupTarget={BNY_570_BNY_TARGET} />
+              <MachineGroup title="570 machines — Passaic" machines={BNY_MACHINES_570_NJ} machineData={bnyData.machines} groupTarget={BNY_570_NJ_TARGET} />
             </div>
 
             {/* Band 2: Written / Produced / Invoiced - always show */}
@@ -683,6 +716,68 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               </table>
             </div>
           </div>
+
+          {/* MTD Revenue Section */}
+          <div className={styles.mtdRevenueSection}>
+            <div className={styles.mtdRevenueSectionTitle}>Revenue — Invoiced vs Target (yards × rate)</div>
+            <div className={styles.mtdGrid}>
+              <div className={styles.mtdCard}>
+                <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD Revenue</div>
+                <table className={styles.mtdTable}>
+                  <thead>
+                    <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: 'Schumacher', invoiced: mtdNJSchInvoiced, target: mtdNJSchRevTarget },
+                      { label: '3rd Party', invoiced: mtdNJTpInvoiced, target: mtdNJTpRevTarget },
+                    ].map(row => {
+                      const diff = row.invoiced - row.target
+                      const status = statusColor(row.invoiced, row.target)
+                      return (
+                        <tr key={row.label}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                          <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className={styles.mtdCard}>
+                <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn MTD Revenue</div>
+                <table className={styles.mtdTable}>
+                  <thead>
+                    <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: 'Schumacher', invoiced: mtdBNYSchInvoiced, target: mtdBNYSchRevTarget },
+                      { label: '3rd Party', invoiced: mtdBNYTpInvoiced, target: mtdBNYTpRevTarget },
+                    ].map(row => {
+                      const diff = row.invoiced - row.target
+                      const status = statusColor(row.invoiced, row.target)
+                      return (
+                        <tr key={row.label}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                          <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr className={styles.mtdProcurementRow}>
+                      <td className={styles.mtdLabel} colSpan={4}>
+                        Procurement: {fmtDollar(mtdProcurement)} collected · {fmtDollar(procurementMTDTarget)} target
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -772,6 +867,68 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               </table>
             </div>
           </div>
+
+          {/* YTD Revenue Section */}
+          <div className={styles.mtdRevenueSection}>
+            <div className={styles.mtdRevenueSectionTitle}>Revenue — Invoiced vs Target (yards × rate)</div>
+            <div className={styles.mtdGrid}>
+              <div className={styles.mtdCard}>
+                <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic YTD Revenue</div>
+                <table className={styles.mtdTable}>
+                  <thead>
+                    <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: 'Schumacher', invoiced: ytdNJSchInvoiced, target: ytdNJSchRevTarget },
+                      { label: '3rd Party', invoiced: ytdNJTpInvoiced, target: ytdNJTpRevTarget },
+                    ].map(row => {
+                      const diff = row.invoiced - row.target
+                      const status = statusColor(row.invoiced, row.target)
+                      return (
+                        <tr key={row.label}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                          <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className={styles.mtdCard}>
+                <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn YTD Revenue</div>
+                <table className={styles.mtdTable}>
+                  <thead>
+                    <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { label: 'Schumacher', invoiced: ytdBNYSchInvoiced, target: ytdBNYSchRevTarget },
+                      { label: '3rd Party', invoiced: ytdBNYTpInvoiced, target: ytdBNYTpRevTarget },
+                    ].map(row => {
+                      const diff = row.invoiced - row.target
+                      const status = statusColor(row.invoiced, row.target)
+                      return (
+                        <tr key={row.label}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                          <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr className={styles.mtdProcurementRow}>
+                      <td className={styles.mtdLabel} colSpan={4}>
+                        Procurement: {fmtDollar(ytdProcurement)} collected · {fmtDollar(ytdProcurementTarget)} target
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -819,15 +976,23 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
             <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Output by machine (optional)</div>
             <div className={styles.machineEditGrid}>
               <div className={styles.machineEditGroup}>
-                <div className={styles.machineEditGroupLabel}>3600 machines (target: 3,600/wk each)</div>
+                <div className={styles.machineEditGroupLabel}>3600 machines — BNY (target: 3,600/wk each)</div>
                 {BNY_MACHINES_3600.map(m => (
                   <NumberInput key={m.id} label={m.name} value={bnyData.machines?.[m.id] || ''} onChange={v => updateBNY('machines', { ...bnyData.machines, [m.id]: v })} placeholder="3600" />
                 ))}
               </div>
               <div className={styles.machineEditGroup}>
-                <div className={styles.machineEditGroupLabel}>570 machines (target: 500/wk each)</div>
+                <div className={styles.machineEditGroupLabel}>570 machines — BNY (target: 500/wk each)</div>
                 <div className={styles.machineEditCols}>
-                  {BNY_MACHINES_570.map(m => (
+                  {BNY_MACHINES_570_BNY.map(m => (
+                    <NumberInput key={m.id} label={m.name} value={bnyData.machines?.[m.id] || ''} onChange={v => updateBNY('machines', { ...bnyData.machines, [m.id]: v })} placeholder="500" />
+                  ))}
+                </div>
+              </div>
+              <div className={styles.machineEditGroup}>
+                <div className={styles.machineEditGroupLabel}>570 machines — Passaic (target: 500/wk each)</div>
+                <div className={styles.machineEditCols}>
+                  {BNY_MACHINES_570_NJ.map(m => (
                     <NumberInput key={m.id} label={m.name} value={bnyData.machines?.[m.id] || ''} onChange={v => updateBNY('machines', { ...bnyData.machines, [m.id]: v })} placeholder="500" />
                   ))}
                 </div>
