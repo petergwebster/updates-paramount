@@ -309,6 +309,11 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
     memo: mtdData.reduce((s,h) => s + n(h.bny_data?.memo), 0),
     contract: mtdData.reduce((s,h) => s + n(h.bny_data?.contract), 0),
   }
+  // Fiscal info — declared here so it's available for MTD target calculations below
+  const fiscalInfo = getFiscalInfo(weekStart)
+  const weeksInMonth = fiscalInfo?.weeksInMonth || 4
+  const procurementMonthlyTarget = getProcurementMonthlyTarget(weeksInMonth)
+
   // Accumulating targets = fiscal weeks elapsed × weekly target (uses calendar position, not data count)
   const mtdFiscalWeeks = fiscalInfo?.weekInMonth || mtdWeeksWithData
   const mtdNJTarget = { fabric: NJ_TARGETS.fabric.yards * mtdFiscalWeeks, grass: NJ_TARGETS.grass.yards * mtdFiscalWeeks, paper: NJ_TARGETS.paper.yards * mtdFiscalWeeks, total: NJ_TOTAL_TARGET * mtdFiscalWeeks }
@@ -327,9 +332,6 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
   const mtdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
 
   // Procurement MTD
-  const fiscalInfo = getFiscalInfo(weekStart)
-  const weeksInMonth = fiscalInfo?.weeksInMonth || 4
-  const procurementMonthlyTarget = getProcurementMonthlyTarget(weeksInMonth)
   const mtdProcurement = mtdData.reduce((s, h) => s + n(h.bny_data?.procurement), 0)
   const procurementMTDTarget = PROCUREMENT_WEEKLY_TARGET * mtdWeeksWithData
 
