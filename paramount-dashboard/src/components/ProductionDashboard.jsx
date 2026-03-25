@@ -189,7 +189,7 @@ function NumberInput({ label, value, onChange, placeholder, readOnly }) {
   )
 }
 
-export default function ProductionDashboard({ weekStart, dbReady }) {
+export default function ProductionDashboard({ weekStart, dbReady, sendVersion }) {
   const [njData, setNjData] = useState(emptyNJ())
   const [bnyData, setBnyData] = useState(emptyBNY())
   const [saving, setSaving] = useState(false)
@@ -409,7 +409,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               <div className={styles.headerRight}>
                 <Dot status={statusColor(njTotalYards, NJ_TOTAL_TARGET)} />
                 <span className={styles.pctLabel}>{pct(njTotalYards, NJ_TOTAL_TARGET)}% of target</span>
-                <CommentButton weekStart={weekStart} section="nj-summary" label="NJ Passaic Production" />
+                <CommentButton weekStart={weekStart} section="nj-summary" label="NJ Passaic Production" sendVersion={sendVersion} />
               </div>
             </div>
 
@@ -490,7 +490,7 @@ export default function ProductionDashboard({ weekStart, dbReady }) {
               <div className={styles.headerRight}>
                 <Dot status={statusColor(bnyTotal, BNY_TARGETS.total)} />
                 <span className={styles.pctLabel}>{pct(bnyTotal, BNY_TARGETS.total)}% of target</span>
-                <CommentButton weekStart={weekStart} section="bny-summary" label="BNY Brooklyn Production" />
+                <CommentButton weekStart={weekStart} section="bny-summary" label="BNY Brooklyn Production" sendVersion={sendVersion} />
               </div>
             </div>
 

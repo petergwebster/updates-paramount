@@ -47,6 +47,7 @@ export default function App() {
   const [draftCount, setDraftCount] = useState(0)
   const [sending, setSending] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
+  const [sendVersion, setSendVersion] = useState(0)
 
   const justSentRef = React.useRef(false)
 
@@ -171,6 +172,7 @@ export default function App() {
     setDraftCount(0)
     setSending(false)
     setSendSuccess(true)
+    setSendVersion(v => v + 1) // signal CommentButtons to close
     setTimeout(() => setSendSuccess(false), 3000)
   }
 
@@ -241,7 +243,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} />}
+            {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} />}
             {activeTab === 'log' && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} />}
             {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} />}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} />}

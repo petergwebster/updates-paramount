@@ -27,7 +27,7 @@ function SlackIcon({ size = 13 }) {
   )
 }
 
-export default function CommentButton({ weekStart, section, label }) {
+export default function CommentButton({ weekStart, section, label, sendVersion }) {
   const [open, setOpen] = useState(false)
   const [comments, setComments] = useState([])
   const [text, setText] = useState('')
@@ -41,6 +41,8 @@ export default function CommentButton({ weekStart, section, label }) {
   const sessionKey = `pp_session_${weekKey}`
 
   useEffect(() => { loadComments() }, [weekStart, section])
+  // Close panel and reset when a send completes
+  useEffect(() => { if (sendVersion > 0) { setOpen(false); setText(''); setNotify([]) } }, [sendVersion])
 
   useEffect(() => {
     if (!open) return
