@@ -11,7 +11,7 @@ const SLACK_MEMBERS: Record<string, string> = {
   'Estephanie Soto-Martinez': 'U0ACBRTS3E1',
 };
 
-const WEBHOOK_URL = Netlify.env.get('SLACK_WEBHOOK_URL') || '';
+const WEBHOOK_URL = Deno.env.get('SLACK_WEBHOOK_URL') || '';
 
 export default async (request: Request, context: Context) => {
   if (request.method === "OPTIONS") {
