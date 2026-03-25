@@ -130,7 +130,19 @@ export default function App() {
 
     // Mark all drafts as sent
     const ids = drafts.map(d => d.id)
-    await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
+    const { error: updateError } = await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
+    if (updateError) {
+      console.error('Failed to mark drafts as sent:', updateError)
+      setSending(false)
+      alert('Error sending: ' + updateError.message)
+      return
+    }
+    // Verify the update worked
+    const { data: stillDrafts } = await supabase.from('section_comments').select('id').in('id', ids).eq('status', 'draft')
+    if (stillDrafts && stillDrafts.length > 0) {
+      console.error('Update did not stick, retrying...')
+      await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
+    }
 
     // Auto-archive public comments (no notify_names) to Correspondence
     const publicComments = drafts.filter(d => !d.notify_names || d.notify_names.length === 0)
