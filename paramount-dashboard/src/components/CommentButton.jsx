@@ -74,13 +74,30 @@ export default function CommentButton({ weekStart, section, label }) {
     setSending(true)
     localStorage.setItem('pp_commenter', author)
     const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
+    const commentText = text.trim()
+    const notifyNames = [...notify]
+    // Clear form immediately before async operations to prevent double-submit
+    setText('')
+    setNotify([])
+    // Guard: don't insert if identical draft already exists
+    const { data: existing } = await supabase
+      .from('section_comments')
+      .select('id')
+      .eq('week_start', weekKey)
+      .eq('section', section)
+      .eq('author', author)
+      .eq('text', commentText)
+      .eq('status', 'draft')
+      .maybeSingle()
+    if (existing) { loadComments(); return }
+    setSending(true)
     const comment = {
       week_start: weekKey,
       section,
       section_label: label,
       author,
-      text: text.trim(),
-      notify_names: notify,
+      text: commentText,
+      notify_names: notifyNames,
       status: 'draft',
       created_at: new Date().toISOString(),
     }
@@ -89,8 +106,6 @@ export default function CommentButton({ weekStart, section, label }) {
       sessionComments.push(data.id)
       localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
     }
-    setText('')
-    setNotify([])
     setSending(false)
     loadComments()
   }
