@@ -168,15 +168,11 @@ export default function App() {
 
     // Clear session storage for this week
     localStorage.removeItem(`pp_session_${key}`)
-    justSentRef.current = true
     setDraftCount(0)
     setSending(false)
     setSendSuccess(true)
-    setTimeout(() => {
-      justSentRef.current = false
-      setSendSuccess(false)
-      checkDrafts() // re-check once after cooldown
-    }, 10000)
+    // Reload after 2s to reset all component state cleanly
+    setTimeout(() => { window.location.reload() }, 2000)
   }
 
   const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
