@@ -70,9 +70,7 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
     setDraftCount(all.filter(c => c.status === 'draft' && c.author === myName).length)
   }
 
-  async function submit(e) {
-    e.preventDefault()
-    console.log('CommentButton submit called, text:', text, 'author:', author, 'section:', section)
+  async function submit() {
     if (!text.trim() || !author) return
     setSending(true)
     localStorage.setItem('pp_commenter', author)
@@ -152,7 +150,7 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
             ))}
           </div>
 
-          <form onSubmit={submit} className={styles.form}>
+          <div className={styles.form}>
             <select
               value={author}
               onChange={e => { setAuthor(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
@@ -183,10 +181,10 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
                 ))}
               </div>
             </div>
-            <button type="submit" className={`primary ${styles.submitBtn}`} disabled={sending || !text.trim() || !author}>
+            <button type="button" className={`primary ${styles.submitBtn}`} onClick={submit} disabled={sending || !text.trim() || !author}>
               {sending ? 'Saving…' : 'Save Draft'}
             </button>
-          </form>
+          </div>
         </div>
       )}
     </div>
