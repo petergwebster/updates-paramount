@@ -7,6 +7,10 @@
   path = "/api/claude"
   function = "claude"
 
+[[edge_functions]]
+  path = "/api/slack"
+  function = "slack"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

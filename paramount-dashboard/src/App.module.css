@@ -181,3 +181,29 @@
   color: var(--ink-60);
   background: white;
 }
+
+/* Send Update button */
+.sendUpdateArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sendUpdateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--ink-60);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sendUpdateBtn:hover:not(:disabled) { border-color: var(--ink-30); color: var(--ink); }
+.sendUpdateBtn:disabled { opacity: 0.45; cursor: default; }
+.sendUpdateBtnActive { background: #4A154B; border-color: #4A154B; color: white; }
+.sendUpdateBtnActive:hover:not(:disabled) { background: #3d1040; border-color: #3d1040; color: white; }
+.sendSuccessMsg { font-size: 12px; font-weight: 500; color: var(--green); padding: 7px 14px; }

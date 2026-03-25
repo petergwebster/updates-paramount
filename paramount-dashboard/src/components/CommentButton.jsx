@@ -3,11 +3,24 @@ import { format } from 'date-fns'
 import { supabase } from '../supabase'
 import styles from './CommentButton.module.css'
 
-const TEAM = [
-  { name: 'Peter', email: 'peter@consultexllc.com' },
-  { name: 'Timur', email: 'timur@fschumacher.com' },
-  { name: 'Emily', email: 'emily@fschumacher.com' },
+export const TEAM = [
+  { name: 'Peter Webster' },
+  { name: 'Timur Y' },
+  { name: 'Antonella Pilo' },
+  { name: 'Abigail Pratt' },
+  { name: 'Emily Huber' },
+  { name: 'Brynn Lawlor' },
+  { name: 'Wendy Reger-Hare' },
+  { name: 'Estephanie Soto-Martinez' },
 ]
+
+function SlackIcon({ size = 13 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+    </svg>
+  )
+}
 
 export default function CommentButton({ weekStart, section, label }) {
   const [open, setOpen] = useState(false)
@@ -16,13 +29,13 @@ export default function CommentButton({ weekStart, section, label }) {
   const [author, setAuthor] = useState(() => localStorage.getItem('pp_commenter') || '')
   const [notify, setNotify] = useState([])
   const [sending, setSending] = useState(false)
-  const [count, setCount] = useState(0)
+  const [sentCount, setSentCount] = useState(0)
+  const [draftCount, setDraftCount] = useState(0)
   const panelRef = useRef(null)
   const weekKey = format(weekStart, 'yyyy-MM-dd')
+  const sessionKey = `pp_session_${weekKey}`
 
-  useEffect(() => {
-    loadComments()
-  }, [weekStart, section])
+  useEffect(() => { loadComments() }, [weekStart, section])
 
   useEffect(() => {
     if (!open) return
@@ -34,53 +47,43 @@ export default function CommentButton({ weekStart, section, label }) {
   }, [open])
 
   async function loadComments() {
+    const myName = localStorage.getItem('pp_commenter') || ''
     const { data } = await supabase
       .from('section_comments')
       .select('*')
       .eq('week_start', weekKey)
       .eq('section', section)
       .order('created_at', { ascending: true })
-    setComments(data || [])
-    setCount((data || []).length)
+    const all = data || []
+    const visible = all.filter(c =>
+      c.status === 'sent' || (c.status === 'draft' && c.author === myName)
+    )
+    setComments(visible)
+    setSentCount(all.filter(c => c.status === 'sent').length)
+    setDraftCount(all.filter(c => c.status === 'draft' && c.author === myName).length)
   }
 
   async function submit(e) {
     e.preventDefault()
-    if (!text.trim()) return
+    if (!text.trim() || !author) return
     setSending(true)
-    const name = author.trim() || 'Anonymous'
-    localStorage.setItem('pp_commenter', name)
-
+    localStorage.setItem('pp_commenter', author)
+    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
     const comment = {
       week_start: weekKey,
       section,
       section_label: label,
-      author: name,
+      author,
       text: text.trim(),
       notify_names: notify,
+      status: 'draft',
       created_at: new Date().toISOString(),
     }
-
-    await supabase.from('section_comments').insert(comment)
-
-    // Send email notifications
-    if (notify.length > 0) {
-      const recipients = TEAM.filter(t => notify.includes(t.name))
-      try {
-        await fetch('https://twsfmzohaymobqmmeayd.supabase.co/functions/v1/notify-comment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
-          body: JSON.stringify({
-            comment: comment,
-            recipients,
-            dashboardUrl: window.location.href,
-          })
-        })
-      } catch (e) {
-        console.log('Notification send attempted')
-      }
+    const { data } = await supabase.from('section_comments').insert(comment).select().single()
+    if (data) {
+      sessionComments.push(data.id)
+      localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
     }
-
     setText('')
     setNotify([])
     setSending(false)
@@ -94,14 +97,13 @@ export default function CommentButton({ weekStart, section, label }) {
   return (
     <div className={styles.wrapper} ref={panelRef}>
       <button
-        className={`${styles.trigger} ${count > 0 ? styles.triggerActive : ''}`}
+        className={`${styles.trigger} ${sentCount > 0 ? styles.triggerActive : ''} ${draftCount > 0 ? styles.triggerDraft : ''}`}
         onClick={() => setOpen(o => !o)}
-        title={`${count} comment${count !== 1 ? 's' : ''} on ${label}`}
+        title={`${sentCount} comment${sentCount !== 1 ? 's' : ''}${draftCount > 0 ? ` · ${draftCount} draft` : ''} on ${label}`}
       >
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-          <path d="M14 1H2C1.45 1 1 1.45 1 2v9c0 .55.45 1 1 1h2v3l3-3h7c.55 0 1-.45 1-1V2c0-.55-.45-1-1-1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-        </svg>
-        {count > 0 && <span className={styles.badge}>{count}</span>}
+        <SlackIcon size={13} />
+        {sentCount > 0 && <span className={styles.badge}>{sentCount}</span>}
+        {draftCount > 0 && <span className={styles.draftDot} />}
       </button>
 
       {open && (
@@ -115,10 +117,11 @@ export default function CommentButton({ weekStart, section, label }) {
             {comments.length === 0 ? (
               <p className={styles.empty}>No comments yet</p>
             ) : comments.map(c => (
-              <div key={c.id} className={styles.comment}>
+              <div key={c.id} className={`${styles.comment} ${c.status === 'draft' ? styles.commentDraft : ''}`}>
                 <div className={styles.commentMeta}>
                   <strong>{c.author}</strong>
                   <span>{new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  {c.status === 'draft' && <span className={styles.draftBadge}>draft</span>}
                   {c.notify_names?.length > 0 && <span className={styles.notified}>→ {c.notify_names.join(', ')}</span>}
                 </div>
                 <p className={styles.commentText}>{c.text}</p>
@@ -127,13 +130,14 @@ export default function CommentButton({ weekStart, section, label }) {
           </div>
 
           <form onSubmit={submit} className={styles.form}>
-            <input
-              type="text"
-              placeholder="Your name"
+            <select
               value={author}
-              onChange={e => setAuthor(e.target.value)}
+              onChange={e => { setAuthor(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
               className={styles.nameInput}
-            />
+            >
+              <option value="">Select your name…</option>
+              {TEAM.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
             <textarea
               placeholder="Add a comment…"
               value={text}
@@ -142,20 +146,22 @@ export default function CommentButton({ weekStart, section, label }) {
               className={styles.textInput}
             />
             <div className={styles.notifyRow}>
-              <span className={styles.notifyLabel}>Notify:</span>
-              {TEAM.map(t => (
-                <button
-                  key={t.name}
-                  type="button"
-                  className={`${styles.notifyBtn} ${notify.includes(t.name) ? styles.notifyBtnActive : ''}`}
-                  onClick={() => toggleNotify(t.name)}
-                >
-                  {t.name}
-                </button>
-              ))}
+              <span className={styles.notifyLabel}>@mention:</span>
+              <div className={styles.notifyBtns}>
+                {TEAM.map(t => (
+                  <button
+                    key={t.name}
+                    type="button"
+                    className={`${styles.notifyBtn} ${notify.includes(t.name) ? styles.notifyBtnActive : ''}`}
+                    onClick={() => toggleNotify(t.name)}
+                  >
+                    {t.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
-            <button type="submit" className={`primary ${styles.submitBtn}`} disabled={sending || !text.trim()}>
-              {sending ? 'Sending…' : notify.length > 0 ? `Send & Notify ${notify.join(', ')}` : 'Post Comment'}
+            <button type="submit" className={`primary ${styles.submitBtn}`} disabled={sending || !text.trim() || !author}>
+              {sending ? 'Saving…' : 'Save Draft'}
             </button>
           </form>
         </div>
