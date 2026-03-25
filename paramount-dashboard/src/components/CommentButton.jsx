@@ -70,6 +70,7 @@ export default function CommentButton({ weekStart, section, label }) {
 
   async function submit(e) {
     e.preventDefault()
+    console.log('CommentButton submit called, text:', text, 'author:', author, 'section:', section)
     if (!text.trim() || !author) return
     setSending(true)
     localStorage.setItem('pp_commenter', author)

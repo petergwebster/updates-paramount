@@ -171,8 +171,7 @@ export default function App() {
     setDraftCount(0)
     setSending(false)
     setSendSuccess(true)
-    // Reload after 2s to reset all component state cleanly
-    setTimeout(() => { window.location.reload() }, 2000)
+    setTimeout(() => setSendSuccess(false), 3000)
   }
 
   const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
