@@ -11,7 +11,7 @@ const SLACK_MEMBERS: Record<string, string> = {
   'Estephanie Soto-Martinez': 'U0ACBRTS3E1',
 };
 
-const WEBHOOK_URL = 'https://hooks.slack.com/services/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';
+const WEBHOOK_URL = Netlify.env.get('SLACK_WEBHOOK_URL') || '';
 
 export default async (request: Request, context: Context) => {
   if (request.method === "OPTIONS") {
