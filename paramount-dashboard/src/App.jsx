@@ -48,9 +48,16 @@ export default function App() {
   const [sending, setSending] = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
 
+  const justSentRef = React.useRef(false)
+
   useEffect(() => { loadWeek(currentWeek) }, [currentWeek])
   useEffect(() => { checkDrafts() }, [currentWeek])
-  useEffect(() => { const interval = setInterval(checkDrafts, 5000); return () => clearInterval(interval) }, [currentWeek])
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!justSentRef.current) checkDrafts()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [currentWeek])
 
   async function checkDrafts() {
     const key = weekKey(currentWeek)
@@ -161,10 +168,15 @@ export default function App() {
 
     // Clear session storage for this week
     localStorage.removeItem(`pp_session_${key}`)
+    justSentRef.current = true
     setDraftCount(0)
     setSending(false)
     setSendSuccess(true)
-    setTimeout(() => setSendSuccess(false), 3000)
+    setTimeout(() => {
+      justSentRef.current = false
+      setSendSuccess(false)
+      checkDrafts() // re-check once after cooldown
+    }, 10000)
   }
 
   const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
