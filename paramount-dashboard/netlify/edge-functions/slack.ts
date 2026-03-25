@@ -1,6 +1,6 @@
 import type { Context } from "@netlify/edge-functions";
 
-const SLACK_MEMBERS: Record<string, string> = {
+const SLACK_MEMBERS = {
   'Peter Webster': 'U044K8RGAMS',
   'Timur Y': 'U4W6D4CF2',
   'Antonella Pilo': 'U0372S95NSH',
@@ -9,9 +9,7 @@ const SLACK_MEMBERS: Record<string, string> = {
   'Brynn Lawlor': 'U04QFDMLA30',
   'Wendy Reger-Hare': 'U08NYSYR4FJ',
   'Estephanie Soto-Martinez': 'U0ACBRTS3E1',
-};
-
-const WEBHOOK_URL = Deno.env.get('SLACK_WEBHOOK_URL') || '';
+} as Record<string, string>;
 
 export default async (request: Request, context: Context) => {
   if (request.method === "OPTIONS") {
@@ -25,25 +23,29 @@ export default async (request: Request, context: Context) => {
   }
 
   try {
+    const WEBHOOK_URL = Deno.env.get('SLACK_WEBHOOK_URL') || '';
+    if (!WEBHOOK_URL) {
+      return new Response(JSON.stringify({ error: 'SLACK_WEBHOOK_URL not set' }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
     const { author, weekLabel, comments, dashboardUrl } = await request.json();
 
-    // Build the Slack message blocks
-    const blocks: any[] = [
-      {
-        type: "header",
-        text: {
-          type: "plain_text",
-          text: `💬 ${author} reviewed the ${weekLabel} dashboard`,
-          emoji: true,
-        },
-      },
-    ];
+    const blocks = [];
+    const allMentionedIds = new Set();
 
-    // Collect all unique mentioned Slack IDs across all comments
-    const allMentionedIds = new Set<string>();
+    blocks.push({
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `💬 ${author} reviewed the ${weekLabel} dashboard`,
+        emoji: true,
+      },
+    });
 
     for (const comment of comments) {
-      // Build mention text for this comment
       const mentionTags = (comment.notify_names || [])
         .map((name: string) => {
           const id = SLACK_MEMBERS[name];
@@ -65,7 +67,6 @@ export default async (request: Request, context: Context) => {
       blocks.push({ type: "divider" });
     }
 
-    // Footer with dashboard link
     blocks.push({
       type: "section",
       text: {
@@ -74,7 +75,6 @@ export default async (request: Request, context: Context) => {
       },
     });
 
-    // Build the text fallback — mention everyone who was @mentioned
     const mentionSummary = allMentionedIds.size > 0
       ? [...allMentionedIds].map(id => `<@${id}>`).join(' ') + ' — '
       : '';
