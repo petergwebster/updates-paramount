@@ -54,18 +54,19 @@ function SlackIcon({ size = 12 }) {
 }
 
 // ── Reaction row component ────────────────────────────────────────────────────
-function KPIReactions({ weekStart, kpiId, kpiName }) {
+function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
   // counts: { '👍': 3, '👎': 1, '❓': 0 }
   const [counts, setCounts] = useState({})
   // myReactions: which emojis the current user has clicked
   const [myReactions, setMyReactions] = useState({})
   const [commenting, setCommenting] = useState(false)
   const [commentText, setCommentText] = useState('')
-  const [commenter, setCommenter] = useState(() => localStorage.getItem('pp_commenter') || '')
+  const [commenter, setCommenter] = useState(() => currentUser || localStorage.getItem('pp_commenter') || '')
   const [sending, setSending] = useState(false)
   const weekKey = format(weekStart, 'yyyy-MM-dd')
 
   useEffect(() => { loadReactions() }, [kpiId, weekKey])
+  useEffect(() => { if (currentUser) setCommenter(currentUser) }, [currentUser])
 
   async function loadReactions() {
     const { data } = await supabase
@@ -167,16 +168,22 @@ function KPIReactions({ weekStart, kpiId, kpiName }) {
       </button>
       {commenting && (
         <div className={styles.kpiCommentPopup}>
-          <select
-            value={commenter}
-            onChange={e => { setCommenter(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
-            className={styles.kpiCommentName}
-          >
-            <option value="">Your name…</option>
-            {['Peter Webster','Timur Y','Antonella Pilo','Abigail Pratt','Emily Huber','Brynn Lawlor','Wendy Reger-Hare','Estephanie Soto-Martinez'].map(n => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          {currentUser ? (
+            <div style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 2px' }}>
+              Commenting as <strong style={{ color: 'var(--ink)' }}>{currentUser}</strong>
+            </div>
+          ) : (
+            <select
+              value={commenter}
+              onChange={e => { setCommenter(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
+              className={styles.kpiCommentName}
+            >
+              <option value="">Your name…</option>
+              {['Peter Webster','Timur Y','Antonella Pilo','Abigail Pratt','Emily Huber','Brynn Lawlor','Wendy Reger-Hare','Estephanie Soto-Martinez'].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          )}
           <textarea
             className={styles.kpiCommentText}
             value={commentText}
@@ -197,7 +204,7 @@ function KPIReactions({ weekStart, kpiId, kpiName }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false }) {
+export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false, currentUser }) {
   const [kpis, setKpis] = useState({})
   const [narrative, setNarrative] = useState('')
   const [saving, setSaving] = useState(false)
@@ -360,7 +367,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                             </div>
                             <div className={styles.memoKpiRight}>
                               <span className={`badge badge-${data.status}`}>{STATUS_LABELS[data.status]}</span>
-                              <KPIReactions weekStart={weekStart} kpiId={kpi.id} kpiName={kpi.name} />
+                              <KPIReactions weekStart={weekStart} kpiId={kpi.id} kpiName={kpi.name} currentUser={currentUser} />
                             </div>
                           </div>
                           {data.notes && (

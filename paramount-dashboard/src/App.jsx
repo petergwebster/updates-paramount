@@ -292,7 +292,7 @@ export default function App() {
           <>
             {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} readOnly currentUser={userProfile?.full_name} />}
             {activeTab === 'log' && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
-            {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
+            {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly currentUser={userProfile?.full_name} />}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} />}
             {activeTab === 'history' && (
               <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />
