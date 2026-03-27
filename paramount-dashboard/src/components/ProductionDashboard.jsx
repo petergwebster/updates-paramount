@@ -111,12 +111,35 @@ function BarChart({ data }) {
         const valPct = Math.min((n(d.value) / maxVal) * 100, 100)
         const tgtPct = Math.min((n(d.target) / maxVal) * 100, 100)
         const status = statusColor(d.value, d.target)
+        const pctOfTarget = d.target ? Math.round((n(d.value) / n(d.target)) * 100) : null
+        const tooltipText = d.value !== '' && d.value !== null
+          ? `${d.label}: ${Number(d.value).toLocaleString()} yds${d.target ? ` · Target: ${Number(d.target).toLocaleString()} · ${pctOfTarget}% of target` : ''}`
+          : `${d.label}: No data`
         return (
-          <div key={i} className={styles.barGroup}>
+          <div key={i} className={`${styles.barGroup} ${styles.barGroupHoverable}`} title={tooltipText}>
             <div className={styles.barLabel}>{d.label}</div>
             <div className={styles.barTrack}>
               <div className={styles.barTarget} style={{ width: tgtPct + '%' }} />
               <div className={`${styles.barFill} ${styles['barFill_' + status]}`} style={{ width: valPct + '%' }} />
+              <div className={styles.barTooltip}>
+                <div className={styles.barTooltipLabel}>{d.label}</div>
+                <div className={styles.barTooltipRow}>
+                  <span>Actual</span>
+                  <strong>{d.value !== '' && d.value !== null ? Number(d.value).toLocaleString() + ' yds' : '—'}</strong>
+                </div>
+                {d.target && <>
+                  <div className={styles.barTooltipRow}>
+                    <span>Target</span>
+                    <strong>{Number(d.target).toLocaleString()} yds</strong>
+                  </div>
+                  <div className={styles.barTooltipRow}>
+                    <span>vs Target</span>
+                    <strong className={pctOfTarget >= 90 ? styles.tooltipGreen : pctOfTarget >= 70 ? styles.tooltipAmber : styles.tooltipRed}>
+                      {pctOfTarget !== null ? pctOfTarget + '%' : '—'}
+                    </strong>
+                  </div>
+                </>}
+              </div>
             </div>
             <div className={styles.barValue}>{(d.value !== '' && d.value !== null && d.value !== undefined) ? Number(d.value).toLocaleString() : '—'}</div>
           </div>
@@ -417,25 +440,37 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             <div className={styles.band}>
               <div className={styles.bandTitle}>Capacity</div>
               <div className={styles.statsRow}>
-                <div className={styles.statBlock}>
+                <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Produced</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalYards, NJ_TOTAL_TARGET)]}`}>{fmt(njTotalYards)}<span className={styles.statUnit}>yds</span></div>
                   <div className={styles.statTarget}>Target: {NJ_TOTAL_TARGET.toLocaleString()}</div>
+                  <div className={styles.statTooltip}>
+                    {njTotalYards ? `${njTotalYards.toLocaleString()} of ${NJ_TOTAL_TARGET.toLocaleString()} yds · ${Math.round((njTotalYards/NJ_TOTAL_TARGET)*100)}% of target` : 'No data entered'}
+                  </div>
                 </div>
-                <div className={styles.statBlock}>
+                <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Net Yards</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njNetYards, NJ_TOTAL_TARGET * 0.92)]}`}>{fmt(njNetYards)}<span className={styles.statUnit}>yds</span></div>
                   <div className={styles.statTarget}>Produced − Waste</div>
+                  <div className={styles.statTooltip}>
+                    {njTotalYards ? `${njTotalYards.toLocaleString()} produced − ${njTotalWaste.toLocaleString()} waste = ${njNetYards.toLocaleString()} net` : 'No data entered'}
+                  </div>
                 </div>
-                <div className={styles.statBlock}>
+                <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Waste</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
                   <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;8%</div>
+                  <div className={styles.statTooltip}>
+                    {njTotalWaste > 0 ? `${njTotalWaste.toLocaleString()} waste yds · ${njWastePct}% · Target <8%` : 'No waste recorded'}
+                  </div>
                 </div>
-                <div className={styles.statBlock}>
+                <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Color Yds</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njTotalColor, njTotalColorTarget)]}`}>{fmt(njTotalColor)}<span className={styles.statUnit}>yds</span></div>
                   <div className={styles.statTarget}>Target: {njTotalColorTarget.toLocaleString()}</div>
+                  <div className={styles.statTooltip}>
+                    {njTotalColor ? `${njTotalColor.toLocaleString()} of ${njTotalColorTarget.toLocaleString()} color yds · ${Math.round((njTotalColor/njTotalColorTarget)*100)}% of target` : 'No data entered'}
+                  </div>
                 </div>
               </div>
               <BarChart data={[
@@ -498,10 +533,13 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             <div className={styles.band}>
               <div className={styles.bandTitle}>Capacity</div>
               <div className={styles.statsRow}>
-                <div className={styles.statBlock}>
+                <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Total yards</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(bnyTotal, BNY_TARGETS.total)]}`}>{fmt(bnyTotal)}<span className={styles.statUnit}>yds</span></div>
                   <div className={styles.statTarget}>Target: {BNY_TARGETS.total.toLocaleString()}</div>
+                  <div className={styles.statTooltip}>
+                    {bnyTotal ? `${bnyTotal.toLocaleString()} of ${BNY_TARGETS.total.toLocaleString()} yds · ${Math.round((bnyTotal/BNY_TARGETS.total)*100)}% of target` : 'No data entered'}
+                  </div>
                 </div>
                 <div className={styles.statBlock}>
                   <div className={styles.statLabel}>SCH Invoiced</div>
