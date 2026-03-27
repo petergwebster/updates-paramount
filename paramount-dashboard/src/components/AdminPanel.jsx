@@ -113,6 +113,110 @@ function SectionHeader({ title, badge, badgeClass }) {
   )
 }
 
+
+// ── KPI File Attach Component ─────────────────────────────────────────────────
+function KPIFileAttach({ kpiId, kpiName, fileData, onFileData }) {
+  const [dragging, setDragging] = useState(false)
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const fileInputRef = React.useRef(null)
+
+  async function processFile(file) {
+    const name = file.name
+    const ext = name.split('.').pop().toLowerCase()
+    if (ext === 'csv' || ext === 'txt') {
+      const text = await file.text()
+      const lines = text.split('\n').filter(Boolean)
+      const preview = lines.slice(0, 6).join('\n')
+      onFileData(kpiId, { name, preview, text: text.slice(0, 3000) })
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      // Read as text summary — Excel parsing would need SheetJS
+      // For now store filename and note for AI
+      onFileData(kpiId, { name, preview: `Excel file: ${name}\n(data will be referenced by filename in AI prompt)`, text: `[Excel file attached: ${name}]` })
+    } else if (ext === 'pdf') {
+      onFileData(kpiId, { name, preview: `PDF attached: ${name}`, text: `[PDF file attached: ${name}]` })
+    } else {
+      const text = await file.text()
+      const preview = text.slice(0, 300)
+      onFileData(kpiId, { name, preview, text: text.slice(0, 3000) })
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) processFile(file)
+  }
+
+  function handleFileInput(e) {
+    const file = e.target.files[0]
+    if (file) processFile(file)
+  }
+
+  function handlePasteSubmit() {
+    if (!pasteText.trim()) return
+    onFileData(kpiId, { name: 'Pasted text', preview: pasteText.slice(0, 300), text: pasteText.slice(0, 3000) })
+    setPasteText('')
+    setShowPaste(false)
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {fileData ? (
+        <div style={{ background: 'var(--ink-5)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>📎 {fileData.name}</span>
+            <button style={{ fontSize: 11, color: 'var(--red)', border: 'none', background: 'none', cursor: 'pointer' }} onClick={() => onFileData(kpiId, null)}>Remove</button>
+          </div>
+          <pre style={{ fontSize: 11, color: 'var(--ink-60)', margin: 0, whiteSpace: 'pre-wrap', maxHeight: 80, overflow: 'hidden', fontFamily: 'monospace' }}>{fileData.preview}{fileData.text.length > 300 ? '\n…' : ''}</pre>
+          <div style={{ fontSize: 11, color: 'var(--green)', marginTop: 4 }}>✓ Will be included in AI draft for {kpiName}</div>
+        </div>
+      ) : (
+        <div>
+          {showPaste ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder={`Paste data for ${kpiName}…`}
+                rows={4}
+                style={{ width: '100%', fontSize: 12, fontFamily: 'monospace' }}
+              />
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowPaste(false)}>Cancel</button>
+                <button className="primary" onClick={handlePasteSubmit} disabled={!pasteText.trim()}>Attach</button>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                border: `1px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius)',
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                background: dragging ? 'var(--accent-light)' : 'transparent',
+                transition: 'all 0.15s',
+              }}
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+            >
+              <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls,.pdf,.txt" style={{ display: 'none' }} onChange={handleFileInput} />
+              <span style={{ fontSize: 12, color: 'var(--ink-60)' }}>📎 Attach data for AI</span>
+              <button style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => fileInputRef.current?.click()}>Browse</button>
+              <button style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => setShowPaste(true)}>Paste text</button>
+              <span style={{ fontSize: 11, color: 'var(--ink-30)', marginLeft: 'auto' }}>CSV · Excel · PDF · Text</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main AdminPanel component ─────────────────────────────────────────────────
 export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
   const [activeSection, setActiveSection] = useState('production')
@@ -129,6 +233,7 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState(null)
   const [expandedKpi, setExpandedKpi] = useState(null)
+  const [kpiFiles, setKpiFiles] = useState({}) // { kpiId: { name, preview, text } }
 
   // Log state
   const [days, setDays] = useState(getDefaultDays())
@@ -179,6 +284,9 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
   function updateDay(field, value) {
     setDays(prev => ({ ...prev, [activeDay]: { ...prev[activeDay], [field]: value } }))
   }
+  function setKpiFileData(kpiId, data) {
+    setKpiFiles(prev => ({ ...prev, [kpiId]: data }))
+  }
 
   async function saveProduction() {
     setSaving(true)
@@ -211,7 +319,8 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
     const kpiSummary = KPIS.map(k => {
       const d = kpis[k.id]
       if (!d || d.status === 'gray') return null
-      return `${k.name}: ${STATUS_LABELS[d.status]}${d.notes ? ' — ' + d.notes : ''}`
+      const fileInfo = kpiFiles[k.id] ? `\n  [Attached data for ${k.name}]:\n  ${kpiFiles[k.id].text.slice(0, 500)}` : ''
+      return `${k.name}: ${STATUS_LABELS[d.status]}${d.notes ? ' — ' + d.notes : ''}${fileInfo}`
     }).filter(Boolean).join('\n')
     const redItems = KPIS.filter(k => kpis[k.id]?.status === 'red').map(k => k.name)
     const amberItems = KPIS.filter(k => kpis[k.id]?.status === 'amber').map(k => k.name)
@@ -447,6 +556,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                       </div>
                       <label className={styles.inputLabel} style={{ marginTop: 12, display: 'block' }}>Notes for this week</label>
                       <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={3} style={{ marginTop: 6, width: '100%' }} />
+                      <KPIFileAttach kpiId={kpi.id} kpiName={kpi.name} fileData={kpiFiles[kpi.id]} onFileData={setKpiFileData} />
                     </div>
                   )}
                 </div>
