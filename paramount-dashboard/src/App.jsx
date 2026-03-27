@@ -8,6 +8,7 @@ import Correspondence from './components/Correspondence'
 import HistoryPanel from './components/HistoryPanel'
 import ProductionDashboard from './components/ProductionDashboard'
 import AdminPanel from './components/AdminPanel'
+import LoginScreen from './components/LoginScreen'
 import styles from './App.module.css'
 
 const PUBLIC_TABS = [
@@ -48,11 +49,33 @@ export default function App() {
   const [sendVersion, setSendVersion] = useState(0)
   const justSentRef = useRef(false)
 
-  // Admin auth state
-  const [adminAuthenticated, setAdminAuthenticated] = useState(() => sessionStorage.getItem('pp_admin') === 'true')
+  // Supabase auth state
+  const [authUser, setAuthUser] = useState(null)
+  const [userProfile, setUserProfile] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const isAdmin = userProfile?.role === 'admin'
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [passwordInput, setPasswordInput] = useState('')
-  const [passwordError, setPasswordError] = useState('')
+
+  // Initialize auth on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setAuthUser(session.user)
+        supabase.from('profiles').select('full_name, role').eq('id', session.user.id).single()
+          .then(({ data: profile }) => {
+            setUserProfile(profile)
+            if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
+            if (profile?.role === 'admin') setAdminAuthenticated(true)
+          })
+      }
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) { setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false) }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   useEffect(() => { loadWeek(currentWeek) }, [currentWeek])
   useEffect(() => { checkDrafts() }, [currentWeek])
@@ -127,41 +150,44 @@ export default function App() {
   }
 
   function handleGearClick() {
-    if (adminAuthenticated) {
-      setActiveTab('admin')
-    } else {
-      setShowPasswordModal(true)
-      setPasswordInput('')
-      setPasswordError('')
-    }
+    if (isAdmin) setActiveTab('admin')
   }
 
-  function handlePasswordSubmit() {
-    const correct = import.meta.env.VITE_ADMIN_PASSWORD || 'paramount2026'
-    if (passwordInput === correct) {
-      sessionStorage.setItem('pp_admin', 'true')
-      setAdminAuthenticated(true)
-      setShowPasswordModal(false)
-      setActiveTab('admin')
-    } else {
-      setPasswordError('Incorrect password. Try again.')
-      setPasswordInput('')
-    }
-  }
-
-  function handleAdminLogout() {
-    sessionStorage.removeItem('pp_admin')
+  async function handleSignOut() {
+    await supabase.auth.signOut()
+    localStorage.removeItem('pp_commenter')
+    setAuthUser(null)
+    setUserProfile(null)
     setAdminAuthenticated(false)
     setActiveTab('dashboard')
   }
 
+  function handleLogin(user, profile) {
+    setAuthUser(user)
+    setUserProfile(profile)
+    if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
+    if (profile?.role === 'admin') setAdminAuthenticated(true)
+  }
+
   const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
   const fiscalLabel = getFiscalLabel(currentWeek)
-  const allTabs = adminAuthenticated ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
+  const allTabs = isAdmin ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
+
+  // Show login screen if not authenticated
+  if (authLoading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)' }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <span style={{ width: 8, height: 8, background: 'var(--ink-30)', borderRadius: '50%', animation: 'bounce 1.2s ease-in-out infinite' }} />
+        <span style={{ width: 8, height: 8, background: 'var(--ink-30)', borderRadius: '50%', animation: 'bounce 1.2s ease-in-out 0.2s infinite' }} />
+        <span style={{ width: 8, height: 8, background: 'var(--ink-30)', borderRadius: '50%', animation: 'bounce 1.2s ease-in-out 0.4s infinite' }} />
+      </div>
+    </div>
+  )
+
+  if (!authUser) return <LoginScreen onLogin={handleLogin} />
 
   return (
     <div className={styles.app}>
-      {/* Password Modal */}
       {showPasswordModal && (
         <div className={styles.modalOverlay} onClick={() => setShowPasswordModal(false)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
@@ -222,13 +248,15 @@ export default function App() {
                 </button>
               )}
             </div>
-            <button
-              className={`${styles.gearBtn} ${adminAuthenticated ? styles.gearBtnActive : ''}`}
-              onClick={handleGearClick}
-              title={adminAuthenticated ? 'Go to Admin panel' : 'Admin login'}
-            >
-              ⚙
-            </button>
+            {isAdmin && (
+              <button
+                className={`${styles.gearBtn} ${styles.gearBtnActive}`}
+                onClick={handleGearClick}
+                title="Go to Admin panel"
+              >
+                ⚙
+              </button>
+            )}
           </div>
         </div>
 
@@ -248,11 +276,10 @@ export default function App() {
               {t.label}
             </button>
           ))}
-          {adminAuthenticated && (
-            <button className={styles.logoutBtn} onClick={handleAdminLogout} title="Exit admin mode">
-              Exit Admin
-            </button>
-          )}
+          <div className={styles.navUserArea}>
+            <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
+            <button className={styles.signOutBtn} onClick={handleSignOut}>Sign out</button>
+          </div>
         </nav>
       </header>
 

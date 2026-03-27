@@ -257,3 +257,27 @@
 .modalInput:focus { outline: none; border-color: var(--ink-30); }
 .modalError { font-size: 12px; color: var(--red); margin-bottom: 12px; }
 .modalActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* Nav user area */
+.navUserArea {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 4px;
+}
+.navUserName {
+  font-size: 12px;
+  color: var(--ink-60);
+  font-weight: 500;
+}
+.signOutBtn {
+  font-size: 11px;
+  padding: 4px 10px;
+  color: var(--ink-60);
+  border-color: var(--border);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: var(--radius);
+}
+.signOutBtn:hover { color: var(--red); background: var(--red-light); border-color: transparent; }
