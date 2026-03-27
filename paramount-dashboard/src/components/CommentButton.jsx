@@ -27,11 +27,11 @@ function SlackIcon({ size = 13 }) {
   )
 }
 
-export default function CommentButton({ weekStart, section, label, sendVersion }) {
+export default function CommentButton({ weekStart, section, label, sendVersion, currentUser }) {
   const [open, setOpen] = useState(false)
   const [comments, setComments] = useState([])
   const [text, setText] = useState('')
-  const [author, setAuthor] = useState(() => localStorage.getItem('pp_commenter') || '')
+  const [author, setAuthor] = useState(() => currentUser || localStorage.getItem('pp_commenter') || '')
   const [notify, setNotify] = useState([])
   const [sending, setSending] = useState(false)
   const [sentCount, setSentCount] = useState(0)
@@ -41,6 +41,7 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
   const sessionKey = `pp_session_${weekKey}`
 
   useEffect(() => { loadComments() }, [weekStart, section])
+  useEffect(() => { if (currentUser) setAuthor(currentUser) }, [currentUser])
   // Close panel and reset when a send completes
   useEffect(() => { if (sendVersion > 0) { setOpen(false); setText(''); setNotify([]) } }, [sendVersion])
 
@@ -115,6 +116,14 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
     setNotify(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])
   }
 
+  async function deleteDraft(id) {
+    await supabase.from('section_comments').delete().eq('id', id)
+    // Remove from session storage too
+    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
+    localStorage.setItem(sessionKey, JSON.stringify(sessionComments.filter(s => s !== id)))
+    loadComments()
+  }
+
   return (
     <div className={styles.wrapper} ref={panelRef}>
       <button
@@ -144,6 +153,9 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
                   <span>{new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                   {c.status === 'draft' && <span className={styles.draftBadge}>draft</span>}
                   {c.notify_names?.length > 0 && <span className={styles.notified}>→ {c.notify_names.join(', ')}</span>}
+                  {c.status === 'draft' && c.author === author && (
+                    <button className={styles.deleteBtn} onClick={() => deleteDraft(c.id)} title="Delete draft">✕</button>
+                  )}
                 </div>
                 <p className={styles.commentText}>{c.text}</p>
               </div>
@@ -151,14 +163,19 @@ export default function CommentButton({ weekStart, section, label, sendVersion }
           </div>
 
           <div className={styles.form}>
-            <select
-              value={author}
-              onChange={e => { setAuthor(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
-              className={styles.nameInput}
-            >
-              <option value="">Select your name…</option>
-              {TEAM.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
+            {!currentUser && (
+              <select
+                value={author}
+                onChange={e => { setAuthor(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
+                className={styles.nameInput}
+              >
+                <option value="">Select your name…</option>
+                {TEAM.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+              </select>
+            )}
+            {currentUser && (
+              <div className={styles.authorDisplay}>Commenting as <strong>{currentUser}</strong></div>
+            )}
             <textarea
               placeholder="Add a comment…"
               value={text}

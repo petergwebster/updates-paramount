@@ -290,7 +290,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} readOnly />}
+            {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} readOnly currentUser={userProfile?.full_name} />}
             {activeTab === 'log' && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
             {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} />}

@@ -143,3 +143,61 @@
 }
 
 .submitBtn { width: 100%; justify-content: center; font-size: 12px; }
+
+/* Draft state */
+.triggerDraft {
+  color: #4A154B;
+  border-color: #e8d0e8;
+  background: #f7eef7;
+}
+.triggerDraft:hover { background: #eddde8; }
+
+.draftDot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #4A154B;
+  flex-shrink: 0;
+}
+
+.commentDraft {
+  background: #f7eef7;
+  border: 1px dashed #c9a0c9;
+}
+
+.draftBadge {
+  font-size: 10px;
+  font-weight: 500;
+  background: #4A154B;
+  color: white;
+  padding: 1px 6px;
+  border-radius: 8px;
+  letter-spacing: 0.03em;
+}
+
+.notifyBtns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Delete draft button */
+.deleteBtn {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--ink-30);
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.deleteBtn:hover { color: var(--red); background: none; border: none; }
+
+/* Author display when logged in */
+.authorDisplay {
+  font-size: 12px;
+  color: var(--ink-60);
+  padding: 6px 2px;
+}
+.authorDisplay strong { color: var(--ink); }
