@@ -130,9 +130,24 @@ function KPIFileAttach({ kpiId, kpiName, fileData, onFileData }) {
       const preview = lines.slice(0, 6).join('\n')
       onFileData(kpiId, { name, preview, text: text.slice(0, 3000) })
     } else if (ext === 'xlsx' || ext === 'xls') {
-      // Read as text summary — Excel parsing would need SheetJS
-      // For now store filename and note for AI
-      onFileData(kpiId, { name, preview: `Excel file: ${name}\n(data will be referenced by filename in AI prompt)`, text: `[Excel file attached: ${name}]` })
+      try {
+        const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.1/package/xlsx.mjs')
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const sheet = workbook.Sheets[sheetName]
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+        // Build a readable text table from the rows
+        const textRows = rows.slice(0, 50).map(row =>
+          row.map(cell => String(cell ?? '').trim()).join(' | ')
+        ).filter(r => r.replace(/\|/g, '').trim())
+        const preview = textRows.slice(0, 8).join('\n')
+        const text = `[Excel: ${name} — Sheet: ${sheetName}]\n` + textRows.join('\n')
+        onFileData(kpiId, { name, preview, text: text.slice(0, 4000) })
+      } catch (err) {
+        console.error('Excel parse error:', err)
+        onFileData(kpiId, { name, preview: `Excel file: ${name}\n(Could not parse — try saving as CSV)`, text: `[Excel file: ${name}]` })
+      }
     } else if (ext === 'pdf') {
       onFileData(kpiId, { name, preview: `PDF attached: ${name}`, text: `[PDF file attached: ${name}]` })
     } else {
