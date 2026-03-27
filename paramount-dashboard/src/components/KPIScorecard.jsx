@@ -25,7 +25,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray: 'Pending' }
 
-export default function KPIScorecard({ weekData, weekStart, onSave, dbReady }) {
+export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false }) {
   const [kpis, setKpis] = useState({})
   const [narrative, setNarrative] = useState('')
   const [saving, setSaving] = useState(false)
@@ -130,10 +130,8 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
             {statusCounts.amber > 0 && <span className="badge badge-amber">{statusCounts.amber} Watch</span>}
             {statusCounts.red > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
           </div>
-          {saved && <span className={styles.savedMsg}>Saved</span>}
-          <button className="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Scorecard'}
-          </button>
+          {!readOnly && saved && <span className={styles.savedMsg}>Saved</span>}
+          {!readOnly && <button className="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Scorecard'}</button>}
         </div>
       </div>
 
@@ -143,20 +141,14 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
             <div className={styles.narrativeTitle}>Weekly Executive Summary</div>
             <div className={styles.narrativeSub}>AI-drafted from your KPI notes — edit freely before sending</div>
           </div>
-          <button
-            className={`${styles.generateBtn} ${generating ? styles.generateBtnLoading : ''}`}
-            onClick={generateNarrative}
-            disabled={generating || !hasKPIData}
-            title={!hasKPIData ? 'Fill in at least one KPI status below first' : ''}
-          >
-            {generating ? <><span className={styles.spinner} />Drafting…</> : <>✦ Draft with AI</>}
-          </button>
+{!readOnly && <button className={`${styles.generateBtn} ${generating ? styles.generateBtnLoading : ''}`} onClick={generateNarrative} disabled={generating || !hasKPIData} title={!hasKPIData ? 'Fill in at least one KPI status below first' : ''}>{generating ? <><span className={styles.spinner} />Drafting…</> : <>✦ Draft with AI</>}</button>}
         </div>
         {genError && <p className={styles.genError}>{genError}</p>}
         <textarea
           className={styles.narrativeText}
           value={narrative}
-          onChange={e => setNarrative(e.target.value)}
+          onChange={e => !readOnly && setNarrative(e.target.value)}
+          readOnly={readOnly}
           placeholder={hasKPIData
             ? 'Click "Draft with AI" to generate a summary from your KPI notes, or type your own here…'
             : 'Fill in your KPI statuses and notes below, then click "Draft with AI"…'}
@@ -191,15 +183,15 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                 <div className={`${styles.kpiExpanded} fade-in`}>
                   <p className={styles.kpiDesc}>{kpi.desc}</p>
                   <p className={styles.kpiTarget}><strong>2027 Target:</strong> {kpi.target}</p>
-                  <div className={styles.statusPicker}>
+                  {!readOnly && <div className={styles.statusPicker}>
                     {STATUS_OPTIONS.map(s => (
                       <button key={s.value} className={`${styles.statusBtn} ${data.status === s.value ? styles[`statusActive_${s.value}`] : ''}`} onClick={() => updateKPI(kpi.id, 'status', s.value)}>
                         <span className={`dot dot-${s.value}`} />{s.label}
                       </button>
                     ))}
-                  </div>
-                  <label className="label" style={{ marginTop: 12 }}>Notes for this week</label>
-                  <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={4} style={{ marginTop: 6 }} />
+                  </div>}
+                  {!readOnly && <><label className="label" style={{ marginTop: 12 }}>Notes for this week</label>
+                  <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={4} style={{ marginTop: 6 }} /></>}
                 </div>
               )}
             </div>

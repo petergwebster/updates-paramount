@@ -16,7 +16,7 @@ function getDefaultDays() {
   return Object.fromEntries(DAYS.map(d => [d, { text: '', status: 'gray' }]))
 }
 
-export default function WeeklyLog({ weekData, weekStart, onSave, dbReady }) {
+export default function WeeklyLog({ weekData, weekStart, onSave, dbReady, readOnly = false }) {
   const [days, setDays] = useState(getDefaultDays())
   const [concerns, setConcerns] = useState('')
   const [activeDay, setActiveDay] = useState('Monday')
@@ -106,10 +106,8 @@ export default function WeeklyLog({ weekData, weekStart, onSave, dbReady }) {
           <p className={styles.sectionSub}>Daily activity, meetings, decisions & follow-ups</p>
         </div>
         <div className={styles.saveRow}>
-          {saved && <span className={styles.savedMsg}>Saved</span>}
-          <button className="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save Week'}
-          </button>
+          {!readOnly && saved && <span className={styles.savedMsg}>Saved</span>}
+          {!readOnly && <button className="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Week'}</button>}
         </div>
       </div>
 
@@ -145,12 +143,13 @@ export default function WeeklyLog({ weekData, weekStart, onSave, dbReady }) {
                 {s.label}
               </button>
             ))}
-          </div>
+          </div>}
         </div>
         <textarea
           className={styles.dayTextarea}
           value={activeDayData.text}
-          onChange={e => updateDay('text', e.target.value)}
+          onChange={e => !readOnly && updateDay('text', e.target.value)}
+          readOnly={readOnly}
           placeholder={`Log ${activeDay}'s activities, meetings, decisions, and follow-ups…\n\nExample:\n• Town Hall with Wendy, Brynn, Chandler — WIP review, cost focus\n• Hugh from Ulster visited — pricing review upcoming\n• Rotary head repair with Bob from Screentrans`}
           rows={10}
         />
@@ -160,7 +159,8 @@ export default function WeeklyLog({ weekData, weekStart, onSave, dbReady }) {
         <label className="label">Areas of Concern / Flags for Timur & Emily</label>
         <textarea
           value={concerns}
-          onChange={e => setConcerns(e.target.value)}
+          onChange={e => !readOnly && setConcerns(e.target.value)}
+          readOnly={readOnly}
           placeholder="Anything requiring executive attention, decisions, or awareness this week…"
           rows={4}
           style={{ marginTop: 6 }}

@@ -189,7 +189,7 @@ function NumberInput({ label, value, onChange, placeholder, readOnly }) {
   )
 }
 
-export default function ProductionDashboard({ weekStart, dbReady, sendVersion }) {
+export default function ProductionDashboard({ weekStart, dbReady, sendVersion, readOnly = false }) {
   const [njData, setNjData] = useState(emptyNJ())
   const [bnyData, setBnyData] = useState(emptyBNY())
   const [saving, setSaving] = useState(false)
@@ -387,9 +387,9 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion })
         </div>
         <div className={styles.actions}>
           {saved && <span className={styles.savedMsg}>Saved</span>}
-          {mode === 'view' ? (
+          {mode === 'view' && !readOnly ? (
             <button onClick={() => setMode('edit')}>{isPast ? 'Edit Historical Data' : 'Enter This Week\'s Data'}</button>
-          ) : (
+          ) : mode === 'view' && readOnly ? null : (
             <>
               <button onClick={() => { setMode('view'); loadData() }}>Cancel</button>
               <button className="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save & View'}</button>
@@ -934,8 +934,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion })
         </div>
       )}
 
-      {/* EDIT MODE */}
-      {mode === 'edit' && (
+      {/* EDIT MODE — only in admin */}
+      {mode === 'edit' && !readOnly && (
         <div className={styles.editGrid}>
           <div className={styles.editSection}>
             <div className={styles.editSectionHeader}><span className={styles.facilityBadge}>NJ</span><h3>Passaic — Screen Print</h3></div>
