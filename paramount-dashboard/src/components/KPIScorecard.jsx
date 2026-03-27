@@ -55,25 +55,61 @@ function SlackIcon({ size = 12 }) {
 
 // ── Reaction row component ────────────────────────────────────────────────────
 function KPIReactions({ weekStart, kpiId, kpiName }) {
-  const [reactions, setReactions] = useState({})
+  // counts: { '👍': 3, '👎': 1, '❓': 0 }
+  const [counts, setCounts] = useState({})
+  // myReactions: which emojis the current user has clicked
+  const [myReactions, setMyReactions] = useState({})
   const [commenting, setCommenting] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [commenter, setCommenter] = useState(() => localStorage.getItem('pp_commenter') || '')
   const [sending, setSending] = useState(false)
   const weekKey = format(weekStart, 'yyyy-MM-dd')
-  const storageKey = `pp_reactions_${weekKey}_${kpiId}`
 
-  useEffect(() => {
-    const stored = localStorage.getItem(storageKey)
-    if (stored) setReactions(JSON.parse(stored))
-  }, [kpiId, weekKey])
+  useEffect(() => { loadReactions() }, [kpiId, weekKey])
 
-  function toggleReaction(emoji) {
-    setReactions(prev => {
-      const next = { ...prev, [emoji]: !prev[emoji] }
-      localStorage.setItem(storageKey, JSON.stringify(next))
-      return next
-    })
+  async function loadReactions() {
+    const { data } = await supabase
+      .from('kpi_reactions')
+      .select('emoji, author')
+      .eq('week_start', weekKey)
+      .eq('kpi_id', kpiId)
+    if (!data) return
+    const c = {}
+    REACTION_EMOJIS.forEach(e => { c[e] = 0 })
+    data.forEach(r => { c[r.emoji] = (c[r.emoji] || 0) + 1 })
+    setCounts(c)
+    // figure out which ones the current user has reacted with
+    const myName = localStorage.getItem('pp_commenter') || ''
+    if (myName) {
+      const mine = {}
+      data.filter(r => r.author === myName).forEach(r => { mine[r.emoji] = true })
+      setMyReactions(mine)
+    }
+  }
+
+  async function toggleReaction(emoji) {
+    const myName = localStorage.getItem('pp_commenter') || commenter
+    if (!myName) {
+      const name = prompt('Enter your name to react:')
+      if (!name) return
+      localStorage.setItem('pp_commenter', name.trim())
+      setCommenter(name.trim())
+    }
+    const resolvedName = localStorage.getItem('pp_commenter') || commenter
+    if (!resolvedName) return
+    const alreadyReacted = myReactions[emoji]
+    if (alreadyReacted) {
+      // remove reaction
+      await supabase.from('kpi_reactions').delete()
+        .eq('week_start', weekKey).eq('kpi_id', kpiId).eq('author', resolvedName).eq('emoji', emoji)
+      setMyReactions(prev => ({ ...prev, [emoji]: false }))
+      setCounts(prev => ({ ...prev, [emoji]: Math.max(0, (prev[emoji] || 1) - 1) }))
+    } else {
+      // add reaction
+      await supabase.from('kpi_reactions').insert({ week_start: weekKey, kpi_id: kpiId, author: resolvedName, emoji })
+      setMyReactions(prev => ({ ...prev, [emoji]: true }))
+      setCounts(prev => ({ ...prev, [emoji]: (prev[emoji] || 0) + 1 }))
+    }
   }
 
   async function submitComment() {
@@ -105,16 +141,21 @@ function KPIReactions({ weekStart, kpiId, kpiName }) {
   return (
     <div className={styles.reactionRow}>
       <div className={styles.reactionEmojis}>
-        {REACTION_EMOJIS.map(emoji => (
-          <button
-            key={emoji}
-            className={`${styles.reactionBtn} ${reactions[emoji] ? styles.reactionBtnActive : ''}`}
-            onClick={() => toggleReaction(emoji)}
-            title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}
-          >
-            {emoji}
-          </button>
-        ))}
+        {REACTION_EMOJIS.map(emoji => {
+          const count = counts[emoji] || 0
+          const isMine = myReactions[emoji]
+          return (
+            <button
+              key={emoji}
+              className={`${styles.reactionBtn} ${isMine ? styles.reactionBtnActive : ''}`}
+              onClick={() => toggleReaction(emoji)}
+              title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}
+            >
+              <span>{emoji}</span>
+              {count > 0 && <span className={styles.reactionCount}>{count}</span>}
+            </button>
+          )
+        })}
       </div>
       <button
         className={styles.kpiCommentBtn}
@@ -218,7 +259,7 @@ Write a 3-4 paragraph executive summary in Peter's voice — direct, factual, an
 3. Areas of concern or watch items with context
 4. Forward look — what to watch next week
 
-Keep it under 200 words. Write in first person as Peter. No bullet points. No headers. Clean paragraphs only.`
+Keep it under 200 words. Write in first person as Peter. No bullet points. No headers. No title line. Start directly with the first sentence of the summary. Clean prose paragraphs only.`
 
     try {
       const response = await fetch('/api/claude', {
@@ -286,7 +327,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                 <div className={styles.memoDivider} />
                 <div className={styles.memoNarrative}>
                   {narrative.split('\n\n').map((para, i) => (
-                    <p key={i} className={styles.memoParagraph}>{para}</p>
+                    <p key={i} className={styles.memoParagraph}>{para.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').trim()}</p>
                   ))}
                 </div>
               </div>

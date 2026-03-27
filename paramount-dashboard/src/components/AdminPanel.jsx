@@ -235,7 +235,7 @@ Write a 3-4 paragraph executive summary in Peter's voice — direct, factual, an
 3. Areas of concern or watch items with context
 4. Forward look — what to watch next week
 
-Keep it under 200 words. Write in first person as Peter. No bullet points. No headers. Clean paragraphs only.`
+Keep it under 200 words. Write in first person as Peter. No bullet points. No headers. No title line. Start directly with the first sentence. Clean prose paragraphs only.`
 
     try {
       const response = await fetch('/api/claude', {
