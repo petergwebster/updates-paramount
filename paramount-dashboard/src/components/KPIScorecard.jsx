@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '../supabase'
+import { getFiscalLabel } from '../fiscalCalendar'
 import styles from './KPIScorecard.module.css'
 
 const KPIS = [
@@ -25,6 +26,136 @@ const STATUS_OPTIONS = [
 
 const STATUS_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray: 'Pending' }
 
+// Overall score: red if any red, amber if any amber, green if all green/gray
+function calcOverallScore(kpis) {
+  const statuses = Object.values(kpis).map(k => k?.status).filter(Boolean)
+  if (statuses.includes('red')) return 'red'
+  if (statuses.includes('amber')) return 'amber'
+  if (statuses.includes('green')) return 'green'
+  return 'gray'
+}
+
+const OVERALL_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray: 'Pending' }
+
+// Emoji reactions stored in Supabase
+const REACTION_EMOJIS = ['👍', '👎', '❓']
+
+function SlackIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" fillRule="evenodd">
+        <path d="M19.712.133a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386h5.376V5.52A5.381 5.381 0 0 0 19.712.133m0 14.365H5.376A5.381 5.381 0 0 0 0 19.884a5.381 5.381 0 0 0 5.376 5.387h14.336a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386" fill="#36C5F0"/>
+        <path d="M53.76 19.884a5.381 5.381 0 0 0-5.376-5.386 5.381 5.381 0 0 0-5.376 5.386v5.387h5.376a5.381 5.381 0 0 0 5.376-5.387m-14.336 0V5.52A5.381 5.381 0 0 0 34.048.133a5.381 5.381 0 0 0-5.376 5.387v14.364a5.381 5.381 0 0 0 5.376 5.387 5.381 5.381 0 0 0 5.376-5.387" fill="#2EB67D"/>
+        <path d="M34.048 54a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386h-5.376v5.386A5.381 5.381 0 0 0 34.048 54m0-14.365h14.336a5.381 5.381 0 0 0 5.376-5.386 5.381 5.381 0 0 0-5.376-5.387H34.048a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386" fill="#ECB22E"/>
+        <path d="M0 34.249a5.381 5.381 0 0 0 5.376 5.386 5.381 5.381 0 0 0 5.376-5.386v-5.387H5.376A5.381 5.381 0 0 0 0 34.249m14.336 0v14.364A5.381 5.381 0 0 0 19.712 54a5.381 5.381 0 0 0 5.376-5.387V34.249a5.381 5.381 0 0 0-5.376-5.387 5.381 5.381 0 0 0-5.376 5.387" fill="#E01E5A"/>
+      </g>
+    </svg>
+  )
+}
+
+// ── Reaction row component ────────────────────────────────────────────────────
+function KPIReactions({ weekStart, kpiId, kpiName }) {
+  const [reactions, setReactions] = useState({})
+  const [commenting, setCommenting] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [commenter, setCommenter] = useState(() => localStorage.getItem('pp_commenter') || '')
+  const [sending, setSending] = useState(false)
+  const weekKey = format(weekStart, 'yyyy-MM-dd')
+  const storageKey = `pp_reactions_${weekKey}_${kpiId}`
+
+  useEffect(() => {
+    const stored = localStorage.getItem(storageKey)
+    if (stored) setReactions(JSON.parse(stored))
+  }, [kpiId, weekKey])
+
+  function toggleReaction(emoji) {
+    setReactions(prev => {
+      const next = { ...prev, [emoji]: !prev[emoji] }
+      localStorage.setItem(storageKey, JSON.stringify(next))
+      return next
+    })
+  }
+
+  async function submitComment() {
+    if (!commentText.trim()) return
+    setSending(true)
+    const name = commenter.trim() || 'Anonymous'
+    localStorage.setItem('pp_commenter', name)
+    const sessionKey = `pp_session_${weekKey}`
+    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
+    const { data } = await supabase.from('section_comments').insert({
+      week_start: weekKey,
+      section: `kpi-${kpiId}`,
+      section_label: kpiName,
+      author: name,
+      text: commentText.trim(),
+      notify_names: [],
+      status: 'draft',
+      created_at: new Date().toISOString(),
+    }).select().single()
+    if (data) {
+      sessionComments.push(data.id)
+      localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
+    }
+    setCommentText('')
+    setSending(false)
+    setCommenting(false)
+  }
+
+  return (
+    <div className={styles.reactionRow}>
+      <div className={styles.reactionEmojis}>
+        {REACTION_EMOJIS.map(emoji => (
+          <button
+            key={emoji}
+            className={`${styles.reactionBtn} ${reactions[emoji] ? styles.reactionBtnActive : ''}`}
+            onClick={() => toggleReaction(emoji)}
+            title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      <button
+        className={styles.kpiCommentBtn}
+        onClick={() => setCommenting(c => !c)}
+        title="Add a comment"
+      >
+        <SlackIcon size={11} />
+        <span>Comment</span>
+      </button>
+      {commenting && (
+        <div className={styles.kpiCommentPopup}>
+          <select
+            value={commenter}
+            onChange={e => { setCommenter(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
+            className={styles.kpiCommentName}
+          >
+            <option value="">Your name…</option>
+            {['Peter Webster','Timur Y','Antonella Pilo','Abigail Pratt','Emily Huber','Brynn Lawlor','Wendy Reger-Hare','Estephanie Soto-Martinez'].map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <textarea
+            className={styles.kpiCommentText}
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
+            placeholder={`Comment on ${kpiName}…`}
+            rows={2}
+          />
+          <div className={styles.kpiCommentActions}>
+            <button onClick={() => setCommenting(false)}>Cancel</button>
+            <button className="primary" onClick={submitComment} disabled={sending || !commentText.trim() || !commenter}>
+              {sending ? 'Saving…' : 'Save Draft'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false }) {
   const [kpis, setKpis] = useState({})
   const [narrative, setNarrative] = useState('')
@@ -93,11 +224,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
       const response = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }]
-        })
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
       })
       const data = await response.json()
       const text = data.content?.find(c => c.type === 'text')?.text
@@ -116,7 +243,105 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
   }, {})
 
   const hasKPIData = KPIS.some(k => kpis[k.id]?.status && kpis[k.id].status !== 'gray')
+  const overallScore = calcOverallScore(kpis)
+  const fiscalLabel = getFiscalLabel(weekStart)
 
+  // ── READ-ONLY MEMO VIEW ───────────────────────────────────────────────────
+  if (readOnly) {
+    const hasContent = narrative || hasKPIData
+
+    return (
+      <div className={styles.memoContainer}>
+        {/* Memo header */}
+        <div className={styles.memoHeader}>
+          <div className={styles.memoHeaderLeft}>
+            <div className={styles.memoOrg}>PARAMOUNT PRINTS · F. SCHUMACHER & CO.</div>
+            <div className={styles.memoTitle}>Weekly Executive Briefing</div>
+            <div className={styles.memoMeta}>
+              {fiscalLabel || format(weekStart, 'MMMM d, yyyy')}
+            </div>
+          </div>
+          <div className={styles.memoScore}>
+            <div className={`${styles.memoScoreDot} ${styles[`memoScoreDot_${overallScore}`]}`} />
+            <div className={styles.memoScoreLabel}>
+              <span className={styles.memoScoreText}>Overall</span>
+              <span className={`${styles.memoScoreValue} ${styles[`memoScoreValue_${overallScore}`]}`}>
+                {OVERALL_LABELS[overallScore]}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {!hasContent ? (
+          <div className={styles.memoEmpty}>
+            <p>No scorecard data has been entered for this week yet.</p>
+            <p style={{ marginTop: 6, fontSize: 13 }}>Use the Admin panel to enter KPI statuses and generate the executive summary.</p>
+          </div>
+        ) : (
+          <>
+            {/* Executive Summary */}
+            {narrative && (
+              <div className={styles.memoSection}>
+                <div className={styles.memoSectionLabel}>Executive Summary</div>
+                <div className={styles.memoDivider} />
+                <div className={styles.memoNarrative}>
+                  {narrative.split('\n\n').map((para, i) => (
+                    <p key={i} className={styles.memoParagraph}>{para}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Scorecard */}
+            {hasKPIData && (
+              <div className={styles.memoSection}>
+                <div className={styles.memoSectionLabel}>Performance Scorecard</div>
+                <div className={styles.memoDivider} />
+
+                {/* Score summary pills */}
+                <div className={styles.memoScorePills}>
+                  {statusCounts.green > 0 && <span className="badge badge-green">{statusCounts.green} On Track</span>}
+                  {statusCounts.amber > 0 && <span className="badge badge-amber">{statusCounts.amber} Watch</span>}
+                  {statusCounts.red > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
+                  {statusCounts.gray > 0 && <span className="badge badge-gray">{statusCounts.gray} Pending</span>}
+                </div>
+
+                <div className={styles.memoKpiList}>
+                  {KPIS.map((kpi, idx) => {
+                    const data = kpis[kpi.id] || { status: 'gray', notes: '' }
+                    return (
+                      <div key={kpi.id} className={`${styles.memoKpiRow} ${idx < KPIS.length - 1 ? styles.memoKpiRowBorder : ''}`}>
+                        <div className={styles.memoKpiMain}>
+                          <div className={styles.memoKpiHeader}>
+                            <div className={styles.memoKpiLeft}>
+                              <span className={`dot dot-${data.status}`} />
+                              <span className={styles.memoKpiName}>{kpi.name}</span>
+                            </div>
+                            <div className={styles.memoKpiRight}>
+                              <span className={`badge badge-${data.status}`}>{STATUS_LABELS[data.status]}</span>
+                              <KPIReactions weekStart={weekStart} kpiId={kpi.id} kpiName={kpi.name} />
+                            </div>
+                          </div>
+                          {data.notes && (
+                            <p className={styles.memoKpiNotes}>{data.notes}</p>
+                          )}
+                          {!data.notes && data.status !== 'gray' && (
+                            <p className={styles.memoKpiNoNotes}>{kpi.desc}</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // ── EDIT VIEW (used in Admin panel — kept for reference but Admin uses AdminPanel) ──
   return (
     <div className={styles.container}>
       <div className={styles.topRow}>
@@ -130,8 +355,10 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
             {statusCounts.amber > 0 && <span className="badge badge-amber">{statusCounts.amber} Watch</span>}
             {statusCounts.red > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
           </div>
-          {!readOnly && saved && <span className={styles.savedMsg}>Saved</span>}
-          {!readOnly && <button className="primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : 'Save Scorecard'}</button>}
+          {saved && <span className={styles.savedMsg}>Saved</span>}
+          <button className="primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Scorecard'}
+          </button>
         </div>
       </div>
 
@@ -141,17 +368,20 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
             <div className={styles.narrativeTitle}>Weekly Executive Summary</div>
             <div className={styles.narrativeSub}>AI-drafted from your KPI notes — edit freely before sending</div>
           </div>
-{!readOnly && <button className={`${styles.generateBtn} ${generating ? styles.generateBtnLoading : ''}`} onClick={generateNarrative} disabled={generating || !hasKPIData} title={!hasKPIData ? 'Fill in at least one KPI status below first' : ''}>{generating ? <><span className={styles.spinner} />Drafting…</> : <>✦ Draft with AI</>}</button>}
+          <button
+            className={`${styles.generateBtn} ${generating ? styles.generateBtnLoading : ''}`}
+            onClick={generateNarrative}
+            disabled={generating || !hasKPIData}
+          >
+            {generating ? <><span className={styles.spinner} />Drafting…</> : <>✦ Draft with AI</>}
+          </button>
         </div>
         {genError && <p className={styles.genError}>{genError}</p>}
         <textarea
           className={styles.narrativeText}
           value={narrative}
-          onChange={e => !readOnly && setNarrative(e.target.value)}
-          readOnly={readOnly}
-          placeholder={hasKPIData
-            ? 'Click "Draft with AI" to generate a summary from your KPI notes, or type your own here…'
-            : 'Fill in your KPI statuses and notes below, then click "Draft with AI"…'}
+          onChange={e => setNarrative(e.target.value)}
+          placeholder={hasKPIData ? 'Click "Draft with AI" to generate…' : 'Fill in KPI statuses below first…'}
           rows={8}
         />
         {narrative && (
@@ -183,15 +413,15 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                 <div className={`${styles.kpiExpanded} fade-in`}>
                   <p className={styles.kpiDesc}>{kpi.desc}</p>
                   <p className={styles.kpiTarget}><strong>2027 Target:</strong> {kpi.target}</p>
-                  {!readOnly && <div className={styles.statusPicker}>
+                  <div className={styles.statusPicker}>
                     {STATUS_OPTIONS.map(s => (
                       <button key={s.value} className={`${styles.statusBtn} ${data.status === s.value ? styles[`statusActive_${s.value}`] : ''}`} onClick={() => updateKPI(kpi.id, 'status', s.value)}>
                         <span className={`dot dot-${s.value}`} />{s.label}
                       </button>
                     ))}
-                  </div>}
-                  {!readOnly && <><label className="label" style={{ marginTop: 12 }}>Notes for this week</label>
-                  <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={4} style={{ marginTop: 6 }} /></>}
+                  </div>
+                  <label className="label" style={{ marginTop: 12 }}>Notes for this week</label>
+                  <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={4} style={{ marginTop: 6 }} />
                 </div>
               )}
             </div>

@@ -228,3 +228,216 @@
   margin-left: 4px;
   flex-shrink: 0;
 }
+
+/* ── MEMO VIEW ────────────────────────────────────────────────────────────── */
+.memoContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Memo header */
+.memoHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 28px 32px 24px;
+  background: var(--ink);
+  color: var(--cream);
+  gap: 16px;
+}
+.memoHeaderLeft { display: flex; flex-direction: column; gap: 6px; }
+.memoOrg {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+}
+.memoTitle {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: white;
+  line-height: 1.2;
+}
+.memoMeta {
+  font-size: 13px;
+  color: rgba(255,255,255,0.65);
+  margin-top: 2px;
+}
+
+/* Overall score */
+.memoScore {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  flex-shrink: 0;
+}
+.memoScoreDot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.memoScoreDot_green { background: #4ade80; }
+.memoScoreDot_amber { background: #fbbf24; }
+.memoScoreDot_red { background: #f87171; }
+.memoScoreDot_gray { background: rgba(255,255,255,0.3); }
+.memoScoreLabel { display: flex; flex-direction: column; gap: 1px; }
+.memoScoreText { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+.memoScoreValue { font-size: 14px; font-weight: 500; color: white; }
+.memoScoreValue_green { color: #4ade80; }
+.memoScoreValue_amber { color: #fbbf24; }
+.memoScoreValue_red { color: #f87171; }
+.memoScoreValue_gray { color: rgba(255,255,255,0.6); }
+
+/* Empty state */
+.memoEmpty {
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--ink-60);
+  font-size: 14px;
+}
+
+/* Sections */
+.memoSection { padding: 28px 32px; border-top: 1px solid var(--border); }
+.memoSection:first-of-type { border-top: none; }
+.memoSectionLabel {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin-bottom: 10px;
+}
+.memoDivider {
+  height: 1px;
+  background: var(--border);
+  margin-bottom: 20px;
+}
+
+/* Narrative */
+.memoNarrative { display: flex; flex-direction: column; gap: 14px; }
+.memoParagraph {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* Score pills */
+.memoScorePills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }
+
+/* KPI list */
+.memoKpiList { display: flex; flex-direction: column; }
+.memoKpiRow { padding: 14px 0; }
+.memoKpiRowBorder { border-bottom: 1px solid var(--border); }
+.memoKpiMain { display: flex; flex-direction: column; gap: 6px; }
+.memoKpiHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.memoKpiLeft { display: flex; align-items: center; gap: 8px; }
+.memoKpiName { font-size: 14px; font-weight: 500; color: var(--ink); }
+.memoKpiRight { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.memoKpiNotes {
+  font-size: 13px;
+  color: var(--ink-60);
+  line-height: 1.6;
+  margin: 0;
+  padding-left: 18px;
+}
+.memoKpiNoNotes {
+  font-size: 12px;
+  color: var(--ink-30);
+  font-style: italic;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Reactions */
+.reactionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  position: relative;
+}
+.reactionEmojis { display: flex; gap: 3px; }
+.reactionBtn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 0;
+}
+.reactionBtn:hover { background: var(--ink-5); border-color: var(--border); }
+.reactionBtnActive { background: var(--ink-10); border-color: var(--ink-30); }
+
+.kpiCommentBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--ink-60);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.kpiCommentBtn:hover { border-color: var(--ink-30); color: var(--ink); }
+
+.kpiCommentPopup {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(26,24,20,0.12);
+  padding: 12px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kpiCommentName {
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--ink-5);
+}
+.kpiCommentText {
+  width: 100%;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  resize: none;
+  font-family: var(--font-body);
+  line-height: 1.5;
+}
+.kpiCommentActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
