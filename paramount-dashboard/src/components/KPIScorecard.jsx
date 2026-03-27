@@ -55,31 +55,38 @@ function SlackIcon({ size = 12 }) {
 
 // ── Reaction row component ────────────────────────────────────────────────────
 function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
-  // counts: { '👍': 3, '👎': 1, '❓': 0 }
   const [counts, setCounts] = useState({})
-  // myReactions: which emojis the current user has clicked
   const [myReactions, setMyReactions] = useState({})
   const [commenting, setCommenting] = useState(false)
   const [commentText, setCommentText] = useState('')
-  const [commenter, setCommenter] = useState(() => currentUser || localStorage.getItem('pp_commenter') || '')
+  const [replyingTo, setReplyingTo] = useState(null)
+  const [replyText, setReplyText] = useState('')
+  const [comments, setComments] = useState([])
   const [sending, setSending] = useState(false)
+  const popupRef = React.useRef(null)
   const weekKey = format(weekStart, 'yyyy-MM-dd')
+  const sessionKey = `pp_session_${weekKey}`
+  const resolvedAuthor = currentUser || localStorage.getItem('pp_commenter') || ''
+  const section = `kpi-${kpiId}`
 
-  useEffect(() => { loadReactions() }, [kpiId, weekKey])
-  useEffect(() => { if (currentUser) setCommenter(currentUser) }, [currentUser])
+  useEffect(() => { loadReactions(); loadComments() }, [kpiId, weekKey])
+
+  useEffect(() => {
+    if (!commenting) return
+    function handleClick(e) {
+      if (popupRef.current && !popupRef.current.contains(e.target)) setCommenting(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [commenting])
 
   async function loadReactions() {
-    const { data } = await supabase
-      .from('kpi_reactions')
-      .select('emoji, author')
-      .eq('week_start', weekKey)
-      .eq('kpi_id', kpiId)
+    const { data } = await supabase.from('kpi_reactions').select('emoji, author').eq('week_start', weekKey).eq('kpi_id', kpiId)
     if (!data) return
     const c = {}
     REACTION_EMOJIS.forEach(e => { c[e] = 0 })
     data.forEach(r => { c[r.emoji] = (c[r.emoji] || 0) + 1 })
     setCounts(c)
-    // figure out which ones the current user has reacted with
     const myName = localStorage.getItem('pp_commenter') || ''
     if (myName) {
       const mine = {}
@@ -88,70 +95,76 @@ function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
     }
   }
 
+  async function loadComments() {
+    const { data } = await supabase.from('section_comments').select('*').eq('week_start', weekKey).eq('section', section).order('created_at', { ascending: true })
+    const all = data || []
+    setComments(all.filter(c => c.status === 'sent' || (c.status === 'draft' && c.author === resolvedAuthor)))
+  }
+
   async function toggleReaction(emoji) {
-    const myName = localStorage.getItem('pp_commenter') || commenter
-    if (!myName) {
-      const name = prompt('Enter your name to react:')
-      if (!name) return
-      localStorage.setItem('pp_commenter', name.trim())
-      setCommenter(name.trim())
-    }
-    const resolvedName = localStorage.getItem('pp_commenter') || commenter
-    if (!resolvedName) return
+    if (!resolvedAuthor) return
     const alreadyReacted = myReactions[emoji]
     if (alreadyReacted) {
-      // remove reaction
-      await supabase.from('kpi_reactions').delete()
-        .eq('week_start', weekKey).eq('kpi_id', kpiId).eq('author', resolvedName).eq('emoji', emoji)
+      await supabase.from('kpi_reactions').delete().eq('week_start', weekKey).eq('kpi_id', kpiId).eq('author', resolvedAuthor).eq('emoji', emoji)
       setMyReactions(prev => ({ ...prev, [emoji]: false }))
       setCounts(prev => ({ ...prev, [emoji]: Math.max(0, (prev[emoji] || 1) - 1) }))
     } else {
-      // add reaction
-      await supabase.from('kpi_reactions').insert({ week_start: weekKey, kpi_id: kpiId, author: resolvedName, emoji })
+      await supabase.from('kpi_reactions').insert({ week_start: weekKey, kpi_id: kpiId, author: resolvedAuthor, emoji })
       setMyReactions(prev => ({ ...prev, [emoji]: true }))
       setCounts(prev => ({ ...prev, [emoji]: (prev[emoji] || 0) + 1 }))
     }
   }
 
   async function submitComment() {
-    if (!commentText.trim()) return
+    if (!commentText.trim() || !resolvedAuthor) return
     setSending(true)
-    const name = commenter.trim() || 'Anonymous'
-    localStorage.setItem('pp_commenter', name)
-    const sessionKey = `pp_session_${weekKey}`
     const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
     const { data } = await supabase.from('section_comments').insert({
-      week_start: weekKey,
-      section: `kpi-${kpiId}`,
-      section_label: kpiName,
-      author: name,
-      text: commentText.trim(),
-      notify_names: [],
-      status: 'draft',
-      created_at: new Date().toISOString(),
+      week_start: weekKey, section, section_label: kpiName,
+      author: resolvedAuthor, text: commentText.trim(),
+      notify_names: [], status: 'draft', created_at: new Date().toISOString(),
     }).select().single()
-    if (data) {
-      sessionComments.push(data.id)
-      localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
-    }
+    if (data) { sessionComments.push(data.id); localStorage.setItem(sessionKey, JSON.stringify(sessionComments)) }
     setCommentText('')
     setSending(false)
-    setCommenting(false)
+    loadComments()
   }
 
+  async function submitReply(parentId) {
+    if (!replyText.trim() || !resolvedAuthor) return
+    setSending(true)
+    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
+    const { data } = await supabase.from('section_comments').insert({
+      week_start: weekKey, section, section_label: kpiName,
+      author: resolvedAuthor, text: replyText.trim(),
+      notify_names: [], status: 'draft', parent_id: parentId,
+      created_at: new Date().toISOString(),
+    }).select().single()
+    if (data) { sessionComments.push(data.id); localStorage.setItem(sessionKey, JSON.stringify(sessionComments)) }
+    setReplyText(''); setReplyingTo(null); setSending(false)
+    loadComments()
+  }
+
+  async function deleteDraft(id) {
+    await supabase.from('section_comments').delete().eq('id', id)
+    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
+    localStorage.setItem(sessionKey, JSON.stringify(sessionComments.filter(s => s !== id)))
+    loadComments()
+  }
+
+  const topLevel = comments.filter(c => !c.parent_id)
+  const replies = comments.filter(c => c.parent_id)
+  const sentCount = comments.filter(c => c.status === 'sent').length
+  const draftCount = comments.filter(c => c.status === 'draft' && c.author === resolvedAuthor).length
+
   return (
-    <div className={styles.reactionRow}>
+    <div className={styles.reactionRow} ref={popupRef}>
       <div className={styles.reactionEmojis}>
         {REACTION_EMOJIS.map(emoji => {
           const count = counts[emoji] || 0
           const isMine = myReactions[emoji]
           return (
-            <button
-              key={emoji}
-              className={`${styles.reactionBtn} ${isMine ? styles.reactionBtnActive : ''}`}
-              onClick={() => toggleReaction(emoji)}
-              title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}
-            >
+            <button key={emoji} className={`${styles.reactionBtn} ${isMine ? styles.reactionBtnActive : ''}`} onClick={() => toggleReaction(emoji)} title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}>
               <span>{emoji}</span>
               {count > 0 && <span className={styles.reactionCount}>{count}</span>}
             </button>
@@ -159,43 +172,88 @@ function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
         })}
       </div>
       <button
-        className={styles.kpiCommentBtn}
+        className={`${styles.kpiCommentBtn} ${sentCount > 0 ? styles.kpiCommentBtnActive : ''} ${draftCount > 0 ? styles.kpiCommentBtnDraft : ''}`}
         onClick={() => setCommenting(c => !c)}
-        title="Add a comment"
       >
         <SlackIcon size={11} />
-        <span>Comment</span>
+        <span>{sentCount > 0 ? `${sentCount} comment${sentCount !== 1 ? 's' : ''}` : 'Comment'}</span>
+        {draftCount > 0 && <span className={styles.kpiDraftDot} />}
       </button>
+
       {commenting && (
         <div className={styles.kpiCommentPopup}>
-          {currentUser ? (
-            <div style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 2px' }}>
-              Commenting as <strong style={{ color: 'var(--ink)' }}>{currentUser}</strong>
+          <div className={styles.kpiPopupHeader}>
+            <span className={styles.kpiPopupTitle}>{kpiName}</span>
+            <button className={styles.kpiPopupClose} onClick={() => setCommenting(false)}>×</button>
+          </div>
+
+          {/* Comment list */}
+          <div className={styles.kpiCommentList}>
+            {topLevel.length === 0 ? (
+              <p className={styles.kpiCommentEmpty}>No comments yet</p>
+            ) : topLevel.map(c => {
+              const threadReplies = replies.filter(r => r.parent_id === c.id)
+              return (
+                <div key={c.id} className={styles.kpiCommentThread}>
+                  <div className={`${styles.kpiComment} ${c.status === 'draft' ? styles.kpiCommentDraft : ''}`}>
+                    <div className={styles.kpiCommentMeta}>
+                      <span className={styles.kpiCommentAvatar}>{c.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <strong style={{ fontSize: 12 }}>{c.author}</strong>
+                          <span style={{ fontSize: 11, color: 'var(--ink-60)' }}>{new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                          {c.status === 'draft' && <span className={styles.kpiDraftBadge}>draft</span>}
+                          {c.status === 'draft' && c.author === resolvedAuthor && (
+                            <button className={styles.kpiDeleteBtn} onClick={() => deleteDraft(c.id)}>✕</button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <p className={styles.kpiCommentText}>{c.text}</p>
+                    <button className={styles.kpiReplyBtn} onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}>
+                      {replyingTo === c.id ? 'Cancel' : '↩ Reply'}
+                    </button>
+                  </div>
+                  {threadReplies.length > 0 && (
+                    <div className={styles.kpiReplyList}>
+                      {threadReplies.map(r => (
+                        <div key={r.id} className={`${styles.kpiReply} ${r.status === 'draft' ? styles.kpiCommentDraft : ''}`}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                            <span className={`${styles.kpiCommentAvatar} ${styles.kpiCommentAvatarSm}`}>{r.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
+                            <strong style={{ fontSize: 11 }}>{r.author}</strong>
+                            <span style={{ fontSize: 11, color: 'var(--ink-60)' }}>{new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                            {r.status === 'draft' && <span className={styles.kpiDraftBadge}>draft</span>}
+                            {r.status === 'draft' && r.author === resolvedAuthor && (
+                              <button className={styles.kpiDeleteBtn} onClick={() => deleteDraft(r.id)}>✕</button>
+                            )}
+                          </div>
+                          <p className={styles.kpiCommentText}>{r.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {replyingTo === c.id && (
+                    <div className={styles.kpiReplyForm}>
+                      <textarea className={styles.kpiCommentTextarea} value={replyText} onChange={e => setReplyText(e.target.value)} placeholder={`Reply as ${resolvedAuthor}…`} rows={2} autoFocus />
+                      <div className={styles.kpiCommentActions}>
+                        <button onClick={() => { setReplyingTo(null); setReplyText('') }}>Cancel</button>
+                        <button className="primary" onClick={() => submitReply(c.id)} disabled={sending || !replyText.trim()}>{sending ? 'Saving…' : 'Save Reply'}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* New comment form */}
+          <div className={styles.kpiCommentForm}>
+            <div className={styles.kpiCommentingAs}>Commenting as <strong>{resolvedAuthor}</strong></div>
+            <textarea className={styles.kpiCommentTextarea} value={commentText} onChange={e => setCommentText(e.target.value)} placeholder={`Comment on ${kpiName}…`} rows={2} />
+            <div className={styles.kpiCommentActions}>
+              <button onClick={() => setCommenting(false)}>Cancel</button>
+              <button className="primary" onClick={submitComment} disabled={sending || !commentText.trim() || !resolvedAuthor}>{sending ? 'Saving…' : 'Save Draft'}</button>
             </div>
-          ) : (
-            <select
-              value={commenter}
-              onChange={e => { setCommenter(e.target.value); localStorage.setItem('pp_commenter', e.target.value) }}
-              className={styles.kpiCommentName}
-            >
-              <option value="">Your name…</option>
-              {['Peter Webster','Timur Y','Antonella Pilo','Abigail Pratt','Emily Huber','Brynn Lawlor','Wendy Reger-Hare','Estephanie Soto-Martinez'].map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          )}
-          <textarea
-            className={styles.kpiCommentText}
-            value={commentText}
-            onChange={e => setCommentText(e.target.value)}
-            placeholder={`Comment on ${kpiName}…`}
-            rows={2}
-          />
-          <div className={styles.kpiCommentActions}>
-            <button onClick={() => setCommenting(false)}>Cancel</button>
-            <button className="primary" onClick={submitComment} disabled={sending || !commentText.trim() || !commenter}>
-              {sending ? 'Saving…' : 'Save Draft'}
-            </button>
           </div>
         </div>
       )}
