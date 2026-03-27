@@ -48,6 +48,8 @@ export default function App() {
   const [sendSuccess, setSendSuccess] = useState(false)
   const [sendVersion, setSendVersion] = useState(0)
   const justSentRef = useRef(false)
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [pendingDrafts, setPendingDrafts] = useState([])
 
   // Supabase auth state
   const [authUser, setAuthUser] = useState(null)
@@ -122,9 +124,18 @@ export default function App() {
     const myName = localStorage.getItem('pp_commenter') || ''
     if (!myName) { alert('Please open a comment box and select your name first.'); return }
     const key = weekKey(currentWeek)
-    setSending(true)
     const { data: drafts } = await supabase.from('section_comments').select('*').eq('week_start', key).eq('status', 'draft').eq('author', myName).order('created_at', { ascending: true })
-    if (!drafts || drafts.length === 0) { setSending(false); alert('No draft comments to send.'); return }
+    if (!drafts || drafts.length === 0) { alert('No draft comments to send.'); return }
+    setPendingDrafts(drafts)
+    setShowConfirmModal(true)
+  }
+
+  async function confirmSend() {
+    setShowConfirmModal(false)
+    const myName = localStorage.getItem('pp_commenter') || ''
+    const key = weekKey(currentWeek)
+    const drafts = pendingDrafts
+    setSending(true)
     const ids = drafts.map(d => d.id)
     const { error: updateError } = await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
     if (updateError) { setSending(false); alert('Error sending: ' + updateError.message); return }
@@ -209,6 +220,36 @@ export default function App() {
             <div className={styles.modalActions}>
               <button onClick={() => setShowPasswordModal(false)}>Cancel</button>
               <button className="primary" onClick={handlePasswordSubmit}>Enter</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-send confirmation modal */}
+      {showConfirmModal && (
+        <div className={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
+          <div className={styles.modal} onClick={e => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <span className={styles.modalTitle}>Send to Slack</span>
+              <button className={styles.modalClose} onClick={() => setShowConfirmModal(false)}>×</button>
+            </div>
+            <p className={styles.modalSub}>
+              You're about to send <strong>{pendingDrafts.length} comment{pendingDrafts.length !== 1 ? 's' : ''}</strong> to the #pp-leadership-updates channel as <strong>{localStorage.getItem('pp_commenter')}</strong>.
+            </p>
+            <div className={styles.modalDraftList}>
+              {pendingDrafts.map(d => (
+                <div key={d.id} className={styles.modalDraftItem}>
+                  <div className={styles.modalDraftSection}>{d.section_label}</div>
+                  <div className={styles.modalDraftText}>{d.text}</div>
+                  {d.notify_names?.length > 0 && (
+                    <div className={styles.modalDraftNotify}>→ {d.notify_names.join(', ')}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className={styles.modalActions}>
+              <button onClick={() => setShowConfirmModal(false)}>Cancel</button>
+              <button className="primary" onClick={confirmSend}>Send to Slack</button>
             </div>
           </div>
         </div>

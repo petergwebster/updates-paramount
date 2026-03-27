@@ -281,3 +281,29 @@
   border-radius: var(--radius);
 }
 .signOutBtn:hover { color: var(--red); background: var(--red-light); border-color: transparent; }
+
+/* Confirmation modal draft list */
+.modalDraftList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.modalDraftItem {
+  background: var(--ink-5);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border-left: 3px solid var(--border);
+}
+.modalDraftSection {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-60);
+  margin-bottom: 4px;
+}
+.modalDraftText { font-size: 13px; color: var(--ink); line-height: 1.5; }
+.modalDraftNotify { font-size: 11px; color: var(--accent); margin-top: 4px; }
