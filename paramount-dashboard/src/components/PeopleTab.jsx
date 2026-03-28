@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import styles from './PeopleTab.module.css'
 
@@ -39,7 +39,7 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
     )
   }
 
-  const employees = data.employees || []
+  const employees  = data.employees || []
   const bnyEmployees = employees.filter(e => e.location === 'BNY')
   const njEmployees  = employees.filter(e => e.location === 'NJ')
   const leaves       = data.leaves || []
@@ -53,9 +53,9 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
   const totalPay       = (data.bny_total_pay || 0) + (data.nj_total_pay || 0)
   const totalBonus     = (data.bny_bonus_total || 0) + (data.nj_bonus_total || 0)
 
-  const fmt   = n => Number(n || 0).toFixed(1)
-  const fmtN  = n => Math.round(n || 0).toLocaleString()
-  const fmtD  = n => '$' + Math.round(n || 0).toLocaleString()
+  const fmt  = n => Number(n || 0).toFixed(1)
+  const fmtN = n => Math.round(n || 0).toLocaleString()
+  const fmtD = n => '$' + Math.round(n || 0).toLocaleString()
 
   const countFlags = (emps, flag) => emps.filter(e => (e.flags || []).includes(flag)).length
 
@@ -76,13 +76,12 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
   return (
     <div className={styles.wrap}>
 
-      {/* ── Eyebrow ── */}
       <p className={styles.eyebrow}>
         Week of {new Date(weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         &nbsp;·&nbsp; {totalHeadcount} active employees
       </p>
 
-      {/* ── Top metrics ── */}
+      {/* Top metrics */}
       <div className={styles.metricRow}>
         <div className={styles.mc}>
           <p className={styles.mcLabel}>Total headcount</p>
@@ -106,7 +105,7 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         </div>
       </div>
 
-      {/* ── Location cards ── */}
+      {/* Location cards */}
       <div className={styles.twoCol}>
         <div className={styles.card}>
           <div className={styles.cardTitle}>
@@ -122,9 +121,9 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
             <div className={styles.stat}><strong>{fmtD((data.bny_total_pay || 0) / (data.bny_headcount || 1))}</strong>Avg pay / person</div>
           </div>
           <div className={styles.pillRow}>
-            {countFlags(bnyEmployees,'OT') > 0 && <span className={`${styles.pill} ${styles.pillOt}`}>{countFlags(bnyEmployees,'OT')} on OT</span>}
-            {countFlags(bnyEmployees,'PTO') > 0 && <span className={`${styles.pill} ${styles.pillPto}`}>{countFlags(bnyEmployees,'PTO')} on PTO</span>}
-            {countFlags(bnyEmployees,'bonus') > 0 && <span className={`${styles.pill} ${styles.pillBon}`}>{countFlags(bnyEmployees,'bonus')} bonus</span>}
+            {countFlags(bnyEmployees,'OT') > 0      && <span className={`${styles.pill} ${styles.pillOt}`}>{countFlags(bnyEmployees,'OT')} on OT</span>}
+            {countFlags(bnyEmployees,'PTO') > 0     && <span className={`${styles.pill} ${styles.pillPto}`}>{countFlags(bnyEmployees,'PTO')} on PTO</span>}
+            {countFlags(bnyEmployees,'bonus') > 0   && <span className={`${styles.pill} ${styles.pillBon}`}>{countFlags(bnyEmployees,'bonus')} bonus</span>}
             {countFlags(bnyEmployees,'under40') > 0 && <span className={`${styles.pill} ${styles.pillLow}`}>{countFlags(bnyEmployees,'under40')} under 40 hrs</span>}
           </div>
         </div>
@@ -143,15 +142,15 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
             <div className={styles.stat}><strong>{fmtD((data.nj_total_pay || 0) / (data.nj_headcount || 1))}</strong>Avg pay / person</div>
           </div>
           <div className={styles.pillRow}>
-            {countFlags(njEmployees,'OT') > 0 && <span className={`${styles.pill} ${styles.pillOt}`}>{countFlags(njEmployees,'OT')} on OT</span>}
-            {countFlags(njEmployees,'PTO') > 0 && <span className={`${styles.pill} ${styles.pillPto}`}>{countFlags(njEmployees,'PTO')} on PTO</span>}
-            {countFlags(njEmployees,'bonus') > 0 && <span className={`${styles.pill} ${styles.pillBon}`}>{countFlags(njEmployees,'bonus')} prod. bonuses</span>}
+            {countFlags(njEmployees,'OT') > 0      && <span className={`${styles.pill} ${styles.pillOt}`}>{countFlags(njEmployees,'OT')} on OT</span>}
+            {countFlags(njEmployees,'PTO') > 0     && <span className={`${styles.pill} ${styles.pillPto}`}>{countFlags(njEmployees,'PTO')} on PTO</span>}
+            {countFlags(njEmployees,'bonus') > 0   && <span className={`${styles.pill} ${styles.pillBon}`}>{countFlags(njEmployees,'bonus')} prod. bonuses</span>}
             {countFlags(njEmployees,'under40') > 0 && <span className={`${styles.pill} ${styles.pillLow}`}>{countFlags(njEmployees,'under40')} under 40 hrs</span>}
           </div>
         </div>
       </div>
 
-      {/* ── Leaves + Recruitment ── */}
+      {/* Leaves + Recruitment */}
       <div className={styles.twoCol}>
         <div className={styles.card}>
           <div className={styles.cardTitle}>
@@ -197,10 +196,10 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         </div>
       </div>
 
-      {/* ── Trailing charts ── */}
+      {/* Trailing charts — uses window.Chart from CDN */}
       <TrailingCharts weekStart={weekStart} />
 
-      {/* ── Employee detail – collapsible ── */}
+      {/* Employee detail — collapsible */}
       <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>Employee detail</p>
 
       <RosterSection
@@ -238,31 +237,33 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
 
 /* ── Collapsible roster section ── */
 function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmployee, fmt, fmtD }) {
-  const styles_m = require('./PeopleTab.module.css')
   const otCount    = employees.filter(e => (e.flags||[]).includes('OT')).length
   const ptoCount   = employees.filter(e => (e.flags||[]).includes('PTO')).length
   const leaveCount = employees.filter(e => (e.flags||[]).includes('leave')).length
   const lowCount   = employees.filter(e => (e.flags||[]).includes('under40')).length
 
   return (
-    <div className={styles_m.rosterSection}>
-      <button className={`${styles_m.rosterToggle} ${isOpen ? styles_m.rosterToggleOpen : ''}`} onClick={onToggle}>
+    <div className={styles.rosterSection}>
+      <button
+        className={`${styles.rosterToggle} ${isOpen ? styles.rosterToggleOpen : ''}`}
+        onClick={onToggle}
+      >
         <span>
           {title}&nbsp;
-          <span className={styles_m.toggleCount}>{count} employees</span>
+          <span className={styles.toggleCount}>{count} employees</span>
         </span>
-        <span className={styles_m.toggleRight}>
-          {otCount > 0    && <span className={`${styles_m.pill} ${styles_m.pillOt}`}>{otCount} OT</span>}
-          {ptoCount > 0   && <span className={`${styles_m.pill} ${styles_m.pillPto}`}>{ptoCount} PTO</span>}
-          {leaveCount > 0 && <span className={`${styles_m.pill} ${styles_m.pillLv}`}>{leaveCount} on leave</span>}
-          {lowCount > 0   && <span className={`${styles_m.pill} ${styles_m.pillLow}`}>{lowCount} under 40 hrs</span>}
-          <span className={`${styles_m.toggleArrow} ${isOpen ? styles_m.toggleArrowOpen : ''}`}>▾</span>
+        <span className={styles.toggleRight}>
+          {otCount > 0    && <span className={`${styles.pill} ${styles.pillOt}`}>{otCount} OT</span>}
+          {ptoCount > 0   && <span className={`${styles.pill} ${styles.pillPto}`}>{ptoCount} PTO</span>}
+          {leaveCount > 0 && <span className={`${styles.pill} ${styles.pillLv}`}>{leaveCount} on leave</span>}
+          {lowCount > 0   && <span className={`${styles.pill} ${styles.pillLow}`}>{lowCount} under 40 hrs</span>}
+          <span className={`${styles.toggleArrow} ${isOpen ? styles.toggleArrowOpen : ''}`}>▾</span>
         </span>
       </button>
 
       {isOpen && (
-        <div className={styles_m.rosterBody}>
-          <div className={styles_m.rosterHead}>
+        <div className={styles.rosterBody}>
+          <div className={styles.rosterHead}>
             <span>Name</span>
             <span>Title</span>
             <span>Total hrs</span>
@@ -272,9 +273,9 @@ function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmpl
             <span>Flags</span>
           </div>
           {employees.map((emp, i) => (
-            <div key={i} className={styles_m.rosterRow}>
+            <div key={i} className={styles.rosterRow}>
               <span>{emp.name}</span>
-              <span className={styles_m.muted}>{emp.title}</span>
+              <span className={styles.muted}>{emp.title}</span>
               <span>{fmt(emp.total_hrs)}</span>
               <span>{emp.ot_hrs > 0 ? fmt(emp.ot_hrs) : '—'}</span>
               <span>{emp.pto_hrs > 0 ? fmt(emp.pto_hrs) : '—'}</span>
@@ -288,14 +289,10 @@ function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmpl
   )
 }
 
-/* ── Trailing 4-week bar charts ── */
-import { useRef } from 'react'
-import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip } from 'chart.js'
-Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip)
-
+/* ── Trailing 4-week bar charts — uses window.Chart loaded via CDN ── */
 function TrailingCharts({ weekStart }) {
-  const njRef  = useRef(null)
-  const bnyRef = useRef(null)
+  const njRef    = useRef(null)
+  const bnyRef   = useRef(null)
   const njChart  = useRef(null)
   const bnyChart = useRef(null)
   const [history, setHistory] = useState(null)
@@ -319,72 +316,71 @@ function TrailingCharts({ weekStart }) {
 
   useEffect(() => {
     if (!history || !njRef.current || !bnyRef.current) return
+    if (typeof window.Chart === 'undefined') return
 
     const labels = history.map(r =>
       new Date(r.week_start + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     )
 
-    const mkDataset = (data, color, label, stack) => ({
-      label, data, backgroundColor: color, stack
+    const mkDatasets = (regData, otData, ptoData) => ([
+      { label: 'Reg hours', data: regData, backgroundColor: '#378ADD', stack: 'a' },
+      { label: 'PTO',       data: ptoData, backgroundColor: '#EF9F27', stack: 'a' },
+      { label: 'OT',        data: otData,  backgroundColor: '#E24B4A', stack: 'a' },
+    ])
+
+    const chartOpts = {
+      type: 'bar',
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} hrs` } }
+        },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 11 }, color: '#888780' } },
+          y: { stacked: true, ticks: { font: { size: 11 }, color: '#888780', callback: v => v.toLocaleString() }, grid: { color: 'rgba(128,128,128,0.1)' } }
+        }
+      }
+    }
+
+    if (njChart.current) njChart.current.destroy()
+    njChart.current = new window.Chart(njRef.current, {
+      ...chartOpts,
+      data: { labels, datasets: mkDatasets(history.map(r => r.nj_reg_hrs || 0), history.map(r => r.nj_ot_hrs || 0), history.map(r => r.nj_pto_hrs || 0)) }
     })
 
-    const buildChart = (ref, chartRef, regData, otData, ptoData) => {
-      if (chartRef.current) chartRef.current.destroy()
-      chartRef.current = new Chart(ref.current, {
-        type: 'bar',
-        data: {
-          labels,
-          datasets: [
-            mkDataset(regData, '#378ADD', 'Reg hours', 'a'),
-            mkDataset(ptoData, '#EF9F27', 'PTO',       'a'),
-            mkDataset(otData,  '#E24B4A', 'OT',        'a'),
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} hrs` } }
-          },
-          scales: {
-            x: { stacked: true, ticks: { font: { size: 11 }, color: '#888780' } },
-            y: { stacked: true, ticks: { font: { size: 11 }, color: '#888780', callback: v => v.toLocaleString() }, grid: { color: 'rgba(128,128,128,0.1)' } }
-          }
-        }
-      })
-    }
-
-    buildChart(njRef,  njChart,  history.map(r => r.nj_reg_hrs || 0),  history.map(r => r.nj_ot_hrs || 0),  history.map(r => r.nj_pto_hrs || 0))
-    buildChart(bnyRef, bnyChart, history.map(r => r.bny_reg_hrs || 0), history.map(r => r.bny_ot_hrs || 0), history.map(r => r.bny_pto_hrs || 0))
+    if (bnyChart.current) bnyChart.current.destroy()
+    bnyChart.current = new window.Chart(bnyRef.current, {
+      ...chartOpts,
+      data: { labels, datasets: mkDatasets(history.map(r => r.bny_reg_hrs || 0), history.map(r => r.bny_ot_hrs || 0), history.map(r => r.bny_pto_hrs || 0)) }
+    })
 
     return () => {
-      if (njChart.current)  njChart.current.destroy()
-      if (bnyChart.current) bnyChart.current.destroy()
+      if (njChart.current)  { njChart.current.destroy();  njChart.current = null }
+      if (bnyChart.current) { bnyChart.current.destroy(); bnyChart.current = null }
     }
   }, [history])
-
-  const styles_m = require('./PeopleTab.module.css')
 
   if (!history) return null
 
   return (
     <>
-      <p className={`${styles_m.eyebrow} ${styles_m.sectionDivider}`}>4-week trailing hours – Passaic</p>
-      <div className={styles_m.chartLegend}>
-        <span><span className={styles_m.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
-        <span><span className={styles_m.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
-        <span><span className={styles_m.legendDot} style={{ background: '#E24B4A' }} />OT</span>
+      <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>4-week trailing hours – Passaic</p>
+      <div className={styles.chartLegend}>
+        <span><span className={styles.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
+        <span><span className={styles.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
+        <span><span className={styles.legendDot} style={{ background: '#E24B4A' }} />OT</span>
       </div>
-      <div className={styles_m.chartWrap}><canvas ref={njRef} /></div>
+      <div className={styles.chartWrap}><canvas ref={njRef} /></div>
 
-      <p className={`${styles_m.eyebrow} ${styles_m.sectionDivider}`}>4-week trailing hours – BNY</p>
-      <div className={styles_m.chartLegend}>
-        <span><span className={styles_m.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
-        <span><span className={styles_m.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
-        <span><span className={styles_m.legendDot} style={{ background: '#E24B4A' }} />OT</span>
+      <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>4-week trailing hours – BNY</p>
+      <div className={styles.chartLegend}>
+        <span><span className={styles.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
+        <span><span className={styles.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
+        <span><span className={styles.legendDot} style={{ background: '#E24B4A' }} />OT</span>
       </div>
-      <div className={styles_m.chartWrap}><canvas ref={bnyRef} /></div>
+      <div className={styles.chartWrap}><canvas ref={bnyRef} /></div>
     </>
   )
 }
