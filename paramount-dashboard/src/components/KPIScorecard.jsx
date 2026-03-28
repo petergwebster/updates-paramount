@@ -2,42 +2,40 @@ import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalLabel } from '../fiscalCalendar'
+import CommentButton from './CommentButton'
 import styles from './KPIScorecard.module.css'
 
 const KPIS = [
-  { id: 'financial', name: 'Financial Contribution', desc: 'Cash contribution, margin discipline, revenue vs. target', target: 'Topline grow 10% in 2027' },
-  { id: 'cost', name: 'Cost Efficiency', desc: 'Cost per yard, cost per color yard, improvement vs. prior period', target: 'Avg cost/yard reduced ~$1 across categories' },
-  { id: 'inventory', name: 'Inventory Management', desc: 'Availability across grounds, slow-moving stock, obsolete inventory', target: 'Inventory stability across all grounds' },
-  { id: 'quality', name: 'Quality & Waste', desc: 'Production waste %, reprints, write-offs, QA consistency', target: 'Waste <8%, continued QA improvement' },
-  { id: 'delivery', name: 'Delivery Performance', desc: 'End-to-end lead times, WIP reduction, on-time shipment', target: 'WIP time below 10 weeks' },
-  { id: 'collaboration', name: 'Cross-Group Collaboration', desc: 'Schumacher Design Studio, Patterson Flynn, other group brands', target: 'Proactive communication & problem-solving' },
-  { id: 'grounds', name: 'Grounds Management', desc: 'Grounds mix performance, innovation, stewardship decisions', target: 'Strategic decisions on grounds mix & performance' },
-  { id: 'vendors', name: 'Vendor Relationships', desc: 'P+W, Wallquest/Omni (primary) · Rotex, Greenland, Stead (developmental)', target: 'High-trust, high-performance partnerships' },
-  { id: 'growth', name: 'Top-Line Growth', desc: 'Third-party revenue, Tillett custom business expansion', target: '$500k+ 3rd party · $1M+ Tillett custom' },
-  { id: 'passaic', name: 'Passaic Asset Development', desc: 'Building development, construction, regulatory, tenant coordination', target: 'Long-term site planning & value creation' },
+  { id: 'financial',     name: 'Financial Contribution',   desc: 'Cash contribution, margin discipline, revenue vs. target',                          target: 'Topline grow 10% in 2027' },
+  { id: 'cost',          name: 'Cost Efficiency',           desc: 'Cost per yard, cost per color yard, improvement vs. prior period',                   target: 'Avg cost/yard reduced ~$1 across categories' },
+  { id: 'inventory',     name: 'Inventory Management',      desc: 'Availability across grounds, slow-moving stock, obsolete inventory',                 target: 'Inventory stability across all grounds' },
+  { id: 'quality',       name: 'Quality & Waste',           desc: 'Production waste %, reprints, write-offs, QA consistency',                          target: 'Waste <8%, continued QA improvement' },
+  { id: 'delivery',      name: 'Delivery Performance',      desc: 'End-to-end lead times, WIP reduction, on-time shipment',                            target: 'WIP time below 10 weeks' },
+  { id: 'collaboration', name: 'Cross-Group Collaboration', desc: 'Schumacher Design Studio, Patterson Flynn, other group brands',                     target: 'Proactive communication & problem-solving' },
+  { id: 'grounds',       name: 'Grounds Management',        desc: 'Grounds mix performance, innovation, stewardship decisions',                         target: 'Strategic decisions on grounds mix & performance' },
+  { id: 'vendors',       name: 'Vendor Relationships',      desc: 'P+W, Wallquest/Omni (primary) · Rotex, Greenland, Stead (developmental)',           target: 'High-trust, high-performance partnerships' },
+  { id: 'growth',        name: 'Top-Line Growth',           desc: 'Third-party revenue, Tillett custom business expansion',                            target: '$500k+ 3rd party · $1M+ Tillett custom' },
+  { id: 'passaic',       name: 'Passaic Asset Development', desc: 'Building development, construction, regulatory, tenant coordination',                target: 'Long-term site planning & value creation' },
 ]
 
 const STATUS_OPTIONS = [
   { value: 'green', label: 'On Track' },
   { value: 'amber', label: 'Watch' },
-  { value: 'red', label: 'Concern' },
-  { value: 'gray', label: 'Pending' },
+  { value: 'red',   label: 'Concern' },
+  { value: 'gray',  label: 'Pending' },
 ]
 
 const STATUS_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray: 'Pending' }
 
-// Overall score: red if any red, amber if any amber, green if all green/gray
 function calcOverallScore(kpis) {
   const statuses = Object.values(kpis).map(k => k?.status).filter(Boolean)
-  if (statuses.includes('red')) return 'red'
+  if (statuses.includes('red'))   return 'red'
   if (statuses.includes('amber')) return 'amber'
   if (statuses.includes('green')) return 'green'
   return 'gray'
 }
 
 const OVERALL_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray: 'Pending' }
-
-// Emoji reactions stored in Supabase
 const REACTION_EMOJIS = ['👍', '👎', '❓']
 
 function SlackIcon({ size = 12 }) {
@@ -53,59 +51,39 @@ function SlackIcon({ size = 12 }) {
   )
 }
 
-// ── Reaction row component ────────────────────────────────────────────────────
-function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
-  const [counts, setCounts] = useState({})
+// ── Emoji reactions only — comment button replaced by CommentButton ────────────
+function KPIReactions({ weekStart, kpiId, currentUser }) {
+  const [counts, setCounts]         = useState({})
   const [myReactions, setMyReactions] = useState({})
-  const [commenting, setCommenting] = useState(false)
-  const [commentText, setCommentText] = useState('')
-  const [replyingTo, setReplyingTo] = useState(null)
-  const [replyText, setReplyText] = useState('')
-  const [comments, setComments] = useState([])
-  const [sending, setSending] = useState(false)
-  const popupRef = React.useRef(null)
-  const weekKey = format(weekStart, 'yyyy-MM-dd')
-  const sessionKey = `pp_session_${weekKey}`
+  const weekKey        = format(weekStart, 'yyyy-MM-dd')
   const resolvedAuthor = currentUser || localStorage.getItem('pp_commenter') || ''
-  const section = `kpi-${kpiId}`
 
-  useEffect(() => { loadReactions(); loadComments() }, [kpiId, weekKey])
-
-  useEffect(() => {
-    if (!commenting) return
-    function handleClick(e) {
-      if (popupRef.current && !popupRef.current.contains(e.target)) setCommenting(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [commenting])
+  useEffect(() => { loadReactions() }, [kpiId, weekKey])
 
   async function loadReactions() {
-    const { data } = await supabase.from('kpi_reactions').select('emoji, author').eq('week_start', weekKey).eq('kpi_id', kpiId)
+    const { data } = await supabase
+      .from('kpi_reactions')
+      .select('emoji, author')
+      .eq('week_start', weekKey)
+      .eq('kpi_id', kpiId)
     if (!data) return
     const c = {}
     REACTION_EMOJIS.forEach(e => { c[e] = 0 })
     data.forEach(r => { c[r.emoji] = (c[r.emoji] || 0) + 1 })
     setCounts(c)
-    const myName = localStorage.getItem('pp_commenter') || ''
-    if (myName) {
+    if (resolvedAuthor) {
       const mine = {}
-      data.filter(r => r.author === myName).forEach(r => { mine[r.emoji] = true })
+      data.filter(r => r.author === resolvedAuthor).forEach(r => { mine[r.emoji] = true })
       setMyReactions(mine)
     }
   }
 
-  async function loadComments() {
-    const { data } = await supabase.from('section_comments').select('*').eq('week_start', weekKey).eq('section', section).order('created_at', { ascending: true })
-    const all = data || []
-    setComments(all.filter(c => c.status === 'sent' || (c.status === 'draft' && c.author === resolvedAuthor)))
-  }
-
   async function toggleReaction(emoji) {
     if (!resolvedAuthor) return
-    const alreadyReacted = myReactions[emoji]
-    if (alreadyReacted) {
-      await supabase.from('kpi_reactions').delete().eq('week_start', weekKey).eq('kpi_id', kpiId).eq('author', resolvedAuthor).eq('emoji', emoji)
+    if (myReactions[emoji]) {
+      await supabase.from('kpi_reactions').delete()
+        .eq('week_start', weekKey).eq('kpi_id', kpiId)
+        .eq('author', resolvedAuthor).eq('emoji', emoji)
       setMyReactions(prev => ({ ...prev, [emoji]: false }))
       setCounts(prev => ({ ...prev, [emoji]: Math.max(0, (prev[emoji] || 1) - 1) }))
     } else {
@@ -115,161 +93,36 @@ function KPIReactions({ weekStart, kpiId, kpiName, currentUser }) {
     }
   }
 
-  async function submitComment() {
-    if (!commentText.trim() || !resolvedAuthor) return
-    setSending(true)
-    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-    const { data } = await supabase.from('section_comments').insert({
-      week_start: weekKey, section, section_label: kpiName,
-      author: resolvedAuthor, text: commentText.trim(),
-      notify_names: [], status: 'draft', created_at: new Date().toISOString(),
-    }).select().single()
-    if (data) { sessionComments.push(data.id); localStorage.setItem(sessionKey, JSON.stringify(sessionComments)) }
-    setCommentText('')
-    setSending(false)
-    loadComments()
-  }
-
-  async function submitReply(parentId) {
-    if (!replyText.trim() || !resolvedAuthor) return
-    setSending(true)
-    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-    const { data } = await supabase.from('section_comments').insert({
-      week_start: weekKey, section, section_label: kpiName,
-      author: resolvedAuthor, text: replyText.trim(),
-      notify_names: [], status: 'draft', parent_id: parentId,
-      created_at: new Date().toISOString(),
-    }).select().single()
-    if (data) { sessionComments.push(data.id); localStorage.setItem(sessionKey, JSON.stringify(sessionComments)) }
-    setReplyText(''); setReplyingTo(null); setSending(false)
-    loadComments()
-  }
-
-  async function deleteDraft(id) {
-    await supabase.from('section_comments').delete().eq('id', id)
-    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-    localStorage.setItem(sessionKey, JSON.stringify(sessionComments.filter(s => s !== id)))
-    loadComments()
-  }
-
-  const topLevel = comments.filter(c => !c.parent_id)
-  const replies = comments.filter(c => c.parent_id)
-  const sentCount = comments.filter(c => c.status === 'sent').length
-  const draftCount = comments.filter(c => c.status === 'draft' && c.author === resolvedAuthor).length
-
   return (
-    <div className={styles.reactionRow} ref={popupRef}>
-      <div className={styles.reactionEmojis}>
-        {REACTION_EMOJIS.map(emoji => {
-          const count = counts[emoji] || 0
-          const isMine = myReactions[emoji]
-          return (
-            <button key={emoji} className={`${styles.reactionBtn} ${isMine ? styles.reactionBtnActive : ''}`} onClick={() => toggleReaction(emoji)} title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}>
-              <span>{emoji}</span>
-              {count > 0 && <span className={styles.reactionCount}>{count}</span>}
-            </button>
-          )
-        })}
-      </div>
-      <button
-        className={`${styles.kpiCommentBtn} ${sentCount > 0 ? styles.kpiCommentBtnActive : ''} ${draftCount > 0 ? styles.kpiCommentBtnDraft : ''}`}
-        onClick={() => setCommenting(c => !c)}
-      >
-        <SlackIcon size={11} />
-        <span>{sentCount > 0 ? `${sentCount} comment${sentCount !== 1 ? 's' : ''}` : 'Comment'}</span>
-        {draftCount > 0 && <span className={styles.kpiDraftDot} />}
-      </button>
-
-      {commenting && (
-        <div className={styles.kpiCommentPopup}>
-          <div className={styles.kpiPopupHeader}>
-            <span className={styles.kpiPopupTitle}>{kpiName}</span>
-            <button className={styles.kpiPopupClose} onClick={() => setCommenting(false)}>×</button>
-          </div>
-
-          {/* Comment list */}
-          <div className={styles.kpiCommentList}>
-            {topLevel.length === 0 ? (
-              <p className={styles.kpiCommentEmpty}>No comments yet</p>
-            ) : topLevel.map(c => {
-              const threadReplies = replies.filter(r => r.parent_id === c.id)
-              return (
-                <div key={c.id} className={styles.kpiCommentThread}>
-                  <div className={`${styles.kpiComment} ${c.status === 'draft' ? styles.kpiCommentDraft : ''}`}>
-                    <div className={styles.kpiCommentMeta}>
-                      <span className={styles.kpiCommentAvatar}>{c.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <strong style={{ fontSize: 12 }}>{c.author}</strong>
-                          <span style={{ fontSize: 11, color: 'var(--ink-60)' }}>{new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                          {c.status === 'draft' && <span className={styles.kpiDraftBadge}>draft</span>}
-                          {c.status === 'draft' && c.author === resolvedAuthor && (
-                            <button className={styles.kpiDeleteBtn} onClick={() => deleteDraft(c.id)}>✕</button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <p className={styles.kpiCommentText}>{c.text}</p>
-                    <button className={styles.kpiReplyBtn} onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}>
-                      {replyingTo === c.id ? 'Cancel' : '↩ Reply'}
-                    </button>
-                  </div>
-                  {threadReplies.length > 0 && (
-                    <div className={styles.kpiReplyList}>
-                      {threadReplies.map(r => (
-                        <div key={r.id} className={`${styles.kpiReply} ${r.status === 'draft' ? styles.kpiCommentDraft : ''}`}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                            <span className={`${styles.kpiCommentAvatar} ${styles.kpiCommentAvatarSm}`}>{r.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
-                            <strong style={{ fontSize: 11 }}>{r.author}</strong>
-                            <span style={{ fontSize: 11, color: 'var(--ink-60)' }}>{new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                            {r.status === 'draft' && <span className={styles.kpiDraftBadge}>draft</span>}
-                            {r.status === 'draft' && r.author === resolvedAuthor && (
-                              <button className={styles.kpiDeleteBtn} onClick={() => deleteDraft(r.id)}>✕</button>
-                            )}
-                          </div>
-                          <p className={styles.kpiCommentText}>{r.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {replyingTo === c.id && (
-                    <div className={styles.kpiReplyForm}>
-                      <textarea className={styles.kpiCommentTextarea} value={replyText} onChange={e => setReplyText(e.target.value)} placeholder={`Reply as ${resolvedAuthor}…`} rows={2} autoFocus />
-                      <div className={styles.kpiCommentActions}>
-                        <button onClick={() => { setReplyingTo(null); setReplyText('') }}>Cancel</button>
-                        <button className="primary" onClick={() => submitReply(c.id)} disabled={sending || !replyText.trim()}>{sending ? 'Saving…' : 'Save Reply'}</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* New comment form */}
-          <div className={styles.kpiCommentForm}>
-            <div className={styles.kpiCommentingAs}>Commenting as <strong>{resolvedAuthor}</strong></div>
-            <textarea className={styles.kpiCommentTextarea} value={commentText} onChange={e => setCommentText(e.target.value)} placeholder={`Comment on ${kpiName}…`} rows={2} />
-            <div className={styles.kpiCommentActions}>
-              <button onClick={() => setCommenting(false)}>Cancel</button>
-              <button className="primary" onClick={submitComment} disabled={sending || !commentText.trim() || !resolvedAuthor}>{sending ? 'Saving…' : 'Save Draft'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+    <div className={styles.reactionEmojis}>
+      {REACTION_EMOJIS.map(emoji => {
+        const count = counts[emoji] || 0
+        const isMine = myReactions[emoji]
+        return (
+          <button
+            key={emoji}
+            className={`${styles.reactionBtn} ${isMine ? styles.reactionBtnActive : ''}`}
+            onClick={() => toggleReaction(emoji)}
+            title={emoji === '👍' ? 'On track' : emoji === '👎' ? 'Concern' : 'Question'}
+          >
+            <span>{emoji}</span>
+            {count > 0 && <span className={styles.reactionCount}>{count}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false, currentUser }) {
-  const [kpis, setKpis] = useState({})
+export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, readOnly = false, currentUser, onCommentPosted }) {
+  const [kpis, setKpis]           = useState({})
   const [narrative, setNarrative] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [expanded, setExpanded] = useState(null)
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState(false)
+  const [expanded, setExpanded]   = useState(null)
   const [generating, setGenerating] = useState(false)
-  const [genError, setGenError] = useState(null)
+  const [genError, setGenError]   = useState(null)
 
   useEffect(() => {
     if (weekData?.kpis) setKpis(weekData.kpis)
@@ -296,13 +149,13 @@ export default function KPIScorecard({ weekData, weekStart, onSave, dbReady, rea
   async function generateNarrative() {
     setGenerating(true)
     setGenError(null)
-    const weekLabel = format(weekStart, 'MMMM d, yyyy')
+    const weekLabel  = format(weekStart, 'MMMM d, yyyy')
     const kpiSummary = KPIS.map(k => {
       const d = kpis[k.id]
       if (!d || d.status === 'gray') return null
       return `${k.name}: ${STATUS_LABELS[d.status]}${d.notes ? ' — ' + d.notes : ''}`
     }).filter(Boolean).join('\n')
-    const redItems = KPIS.filter(k => kpis[k.id]?.status === 'red').map(k => k.name)
+    const redItems   = KPIS.filter(k => kpis[k.id]?.status === 'red').map(k => k.name)
     const amberItems = KPIS.filter(k => kpis[k.id]?.status === 'amber').map(k => k.name)
     const greenItems = KPIS.filter(k => kpis[k.id]?.status === 'green').map(k => k.name)
     const prompt = `You are helping Peter Webster, President of Paramount Prints (a specialty printing division of F. Schumacher & Co), draft a concise weekly executive summary for his CEO (Timur) and Chief of Staff (Emily).
@@ -348,24 +201,20 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
     return acc
   }, {})
 
-  const hasKPIData = KPIS.some(k => kpis[k.id]?.status && kpis[k.id].status !== 'gray')
+  const hasKPIData   = KPIS.some(k => kpis[k.id]?.status && kpis[k.id].status !== 'gray')
   const overallScore = calcOverallScore(kpis)
-  const fiscalLabel = getFiscalLabel(weekStart)
+  const fiscalLabel  = getFiscalLabel(weekStart)
 
   // ── READ-ONLY MEMO VIEW ───────────────────────────────────────────────────
   if (readOnly) {
     const hasContent = narrative || hasKPIData
-
     return (
       <div className={styles.memoContainer}>
-        {/* Memo header */}
         <div className={styles.memoHeader}>
           <div className={styles.memoHeaderLeft}>
             <div className={styles.memoOrg}>PARAMOUNT PRINTS · F. SCHUMACHER & CO.</div>
             <div className={styles.memoTitle}>Weekly Executive Briefing</div>
-            <div className={styles.memoMeta}>
-              {fiscalLabel || format(weekStart, 'MMMM d, yyyy')}
-            </div>
+            <div className={styles.memoMeta}>{fiscalLabel || format(weekStart, 'MMMM d, yyyy')}</div>
           </div>
           <div className={styles.memoScore}>
             <div className={`${styles.memoScoreDot} ${styles[`memoScoreDot_${overallScore}`]}`} />
@@ -385,33 +234,30 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           </div>
         ) : (
           <>
-            {/* Executive Summary */}
             {narrative && (
               <div className={styles.memoSection}>
                 <div className={styles.memoSectionLabel}>Executive Summary</div>
                 <div className={styles.memoDivider} />
                 <div className={styles.memoNarrative}>
                   {narrative.split('\n\n').map((para, i) => (
-                    <p key={i} className={styles.memoParagraph}>{para.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').trim()}</p>
+                    <p key={i} className={styles.memoParagraph}>
+                      {para.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').trim()}
+                    </p>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Scorecard */}
             {hasKPIData && (
               <div className={styles.memoSection}>
                 <div className={styles.memoSectionLabel}>Performance Scorecard</div>
                 <div className={styles.memoDivider} />
-
-                {/* Score summary pills */}
                 <div className={styles.memoScorePills}>
                   {statusCounts.green > 0 && <span className="badge badge-green">{statusCounts.green} On Track</span>}
                   {statusCounts.amber > 0 && <span className="badge badge-amber">{statusCounts.amber} Watch</span>}
-                  {statusCounts.red > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
-                  {statusCounts.gray > 0 && <span className="badge badge-gray">{statusCounts.gray} Pending</span>}
+                  {statusCounts.red   > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
+                  {statusCounts.gray  > 0 && <span className="badge badge-gray">{statusCounts.gray} Pending</span>}
                 </div>
-
                 <div className={styles.memoKpiList}>
                   {KPIS.map((kpi, idx) => {
                     const data = kpis[kpi.id] || { status: 'gray', notes: '' }
@@ -425,15 +271,22 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                             </div>
                             <div className={styles.memoKpiRight}>
                               <span className={`badge badge-${data.status}`}>{STATUS_LABELS[data.status]}</span>
-                              <KPIReactions weekStart={weekStart} kpiId={kpi.id} kpiName={kpi.name} currentUser={currentUser} />
+                              {/* Emoji reactions */}
+                              <KPIReactions weekStart={weekStart} kpiId={kpi.id} currentUser={currentUser} />
+                              {/* Unified comment button */}
+                              <CommentButton
+                                weekStart={weekStart}
+                                section={`kpi-${kpi.id}`}
+                                label={kpi.name}
+                                currentUser={currentUser}
+                                onCommentPosted={onCommentPosted}
+                              />
                             </div>
                           </div>
-                          {data.notes && (
-                            <p className={styles.memoKpiNotes}>{data.notes}</p>
-                          )}
-                          {!data.notes && data.status !== 'gray' && (
-                            <p className={styles.memoKpiNoNotes}>{kpi.desc}</p>
-                          )}
+                          {data.notes
+                            ? <p className={styles.memoKpiNotes}>{data.notes}</p>
+                            : data.status !== 'gray' && <p className={styles.memoKpiNoNotes}>{kpi.desc}</p>
+                          }
                         </div>
                       </div>
                     )
@@ -447,7 +300,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
     )
   }
 
-  // ── EDIT VIEW (used in Admin panel — kept for reference but Admin uses AdminPanel) ──
+  // ── EDIT VIEW ─────────────────────────────────────────────────────────────
   return (
     <div className={styles.container}>
       <div className={styles.topRow}>
@@ -459,7 +312,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           <div className={styles.scoreSummary}>
             {statusCounts.green > 0 && <span className="badge badge-green">{statusCounts.green} On Track</span>}
             {statusCounts.amber > 0 && <span className="badge badge-amber">{statusCounts.amber} Watch</span>}
-            {statusCounts.red > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
+            {statusCounts.red   > 0 && <span className="badge badge-red">{statusCounts.red} Concern</span>}
           </div>
           {saved && <span className={styles.savedMsg}>Saved</span>}
           <button className="primary" onClick={handleSave} disabled={saving}>
@@ -500,7 +353,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
 
       <div className={styles.kpiGrid}>
         {KPIS.map(kpi => {
-          const data = kpis[kpi.id] || { status: 'gray', notes: '' }
+          const data       = kpis[kpi.id] || { status: 'gray', notes: '' }
           const isExpanded = expanded === kpi.id
           return (
             <div key={kpi.id} className={`${styles.kpiCard} ${styles[`kpiCard_${data.status}`]} ${isExpanded ? styles.kpiCardExpanded : ''}`}>
@@ -521,7 +374,11 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                   <p className={styles.kpiTarget}><strong>2027 Target:</strong> {kpi.target}</p>
                   <div className={styles.statusPicker}>
                     {STATUS_OPTIONS.map(s => (
-                      <button key={s.value} className={`${styles.statusBtn} ${data.status === s.value ? styles[`statusActive_${s.value}`] : ''}`} onClick={() => updateKPI(kpi.id, 'status', s.value)}>
+                      <button
+                        key={s.value}
+                        className={`${styles.statusBtn} ${data.status === s.value ? styles[`statusActive_${s.value}`] : ''}`}
+                        onClick={() => updateKPI(kpi.id, 'status', s.value)}
+                      >
                         <span className={`dot dot-${s.value}`} />{s.label}
                       </button>
                     ))}

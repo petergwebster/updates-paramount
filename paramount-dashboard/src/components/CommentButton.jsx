@@ -254,7 +254,7 @@ export default function CommentButton({ weekStart, section, label, currentUser }
                 >
                   Everyone
                 </button>
-                {TEAM.filter(t => t.name !== resolvedAuthor).map(t => (
+                {TEAM.map(t => (
                   <button
                     key={t.name}
                     type="button"
