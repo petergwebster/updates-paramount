@@ -75,7 +75,8 @@ export default function CommentButton({ weekStart, section, label, currentUser }
     setText('')
     setNotify([])
 
-    const { data: inserted } = await supabase
+    const insertedAt = new Date().toISOString()
+    const { error: insertError } = await supabase
       .from('section_comments')
       .insert({
         week_start:    weekKey,
@@ -85,12 +86,25 @@ export default function CommentButton({ weekStart, section, label, currentUser }
         text:          commentText,
         notify_names:  notifyNames,
         status:        'sent',
-        created_at:    new Date().toISOString(),
+        created_at:    insertedAt,
       })
-      .select()
-      .single()
 
-    if (inserted?.id && onCommentPosted) onCommentPosted(inserted.id)
+    if (!insertError) {
+      // Fetch the comment we just inserted to get its id
+      const { data: fetched } = await supabase
+        .from('section_comments')
+        .select('id')
+        .eq('week_start', weekKey)
+        .eq('section', section)
+        .eq('author', resolvedAuthor)
+        .eq('created_at', insertedAt)
+        .maybeSingle()
+
+      const commentId = fetched?.id || ('local-' + Date.now())
+      if (onCommentPosted) onCommentPosted(commentId)
+    } else {
+      console.error('Comment insert error:', insertError)
+    }
 
     setPosting(false)
     loadComments()
