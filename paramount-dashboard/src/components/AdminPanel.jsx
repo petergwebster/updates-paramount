@@ -29,12 +29,19 @@ const STATUS_LABELS = { green: 'On Track', amber: 'Watch', red: 'Concern', gray:
 
 // ── Production constants ──────────────────────────────────────────────────────
 const NJ_TARGETS = {
-  fabric: { yards: 834, colorYards: 4522 },
-  grass: { yards: 3785, colorYards: 7570 },
-  paper: { yards: 3830, colorYards: 13405 },
-  wasteTarget: 8,
+  fabric: { yards: 810,  colorYards: 4522,  invoiceYds: 772,  invoiceRev: 14112.75 },
+  grass:  { yards: 3615, colorYards: 7570,  invoiceYds: 3538, invoiceRev: 36646 },
+  paper:  { yards: 4185, colorYards: 13405, invoiceYds: 3516, invoiceRev: 26330.25 },
+  wasteTarget: 10,
+  totalYards: 8610,
+  totalInvoiceYds: 7826,
+  weeklyRevenue: 128951.25,
 }
-const BNY_TARGETS = { replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000 }
+const BNY_TARGETS = {
+  replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000,
+  incomeReplen: 90675.83, incomeMto: 14398.5, incomeHos: 10727.25, incomeMemo: 4010.5, incomeContract: 13087.5,
+  totalIncomeInvoiced: 132899.58,
+}
 const WEEKLY_TARGETS = { schRevenue: 106645, schYards: 5886, tpRevenue: 31277, tpYards: 2564 }
 const PROCUREMENT_WEEKLY_TARGET = 12500
 
@@ -80,16 +87,23 @@ function emptyMachines() {
 }
 function emptyNJ() {
   return {
-    fabric: { yards: '', colorYards: '', waste: '', postWaste: '' },
-    grass: { yards: '', colorYards: '', waste: '', postWaste: '' },
-    paper: { yards: '', colorYards: '', waste: '', postWaste: '' },
+    fabric: { yards: '', colorYards: '', waste: '', postWaste: '', invoiceYds: '', invoiceRev: '' },
+    grass:  { yards: '', colorYards: '', waste: '', postWaste: '', invoiceYds: '', invoiceRev: '' },
+    paper:  { yards: '', colorYards: '', waste: '', postWaste: '', invoiceYds: '', invoiceRev: '' },
     schWritten: '', schProduced: '', schInvoiced: '',
     tpWritten: '', tpProduced: '', tpInvoiced: '',
     commentary: '',
   }
 }
 function emptyBNY() {
-  return { replen: '', mto: '', hos: '', memo: '', contract: '', schWritten: '', schProduced: '', schInvoiced: '', tpWritten: '', tpProduced: '', tpInvoiced: '', commentary: '', machines: emptyMachines(), procurement: '' }
+  return {
+    replen: '', mto: '', hos: '', memo: '', contract: '',
+    // Income invoiced $ by category
+    incomeReplen: '', incomeMto: '', incomeHos: '', incomeMemo: '', incomeContract: '',
+    schWritten: '', schProduced: '', schInvoiced: '',
+    tpWritten: '', tpProduced: '', tpInvoiced: '',
+    commentary: '', machines: emptyMachines(), procurement: '',
+  }
 }
 function getDefaultDays() {
   return Object.fromEntries(DAYS.map(d => [d, { text: '', status: 'gray' }]))
@@ -420,12 +434,14 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
               <div className={styles.editRow}>
                 {['fabric', 'grass', 'paper'].map(cat => (
                   <div key={cat} className={styles.editCatBlock}>
-                    <div className={styles.editCatLabel}>{cat.charAt(0).toUpperCase() + cat.slice(1)} <span className={styles.editCatTarget}>(tgt: {NJ_TARGETS[cat].yards.toLocaleString()})</span></div>
-                    <NumberInput label="Yards" value={njData[cat].yards} onChange={v => updateNJ(`${cat}.yards`, v)} />
+                    <div className={styles.editCatLabel}>{cat.charAt(0).toUpperCase() + cat.slice(1)} <span className={styles.editCatTarget}>(prod tgt: {NJ_TARGETS[cat].yards.toLocaleString()} · inv tgt: {NJ_TARGETS[cat].invoiceYds.toLocaleString()})</span></div>
+                    <NumberInput label="Yards produced" value={njData[cat].yards} onChange={v => updateNJ(`${cat}.yards`, v)} />
                     <NumberInput label="Color yds" value={njData[cat].colorYards} onChange={v => updateNJ(`${cat}.colorYards`, v)} />
                     <NumberInput label="Waste yds" value={njData[cat].waste} onChange={v => updateNJ(`${cat}.waste`, v)} />
                     <NumberInput label="Net yds" value={n(njData[cat].yards) - n(njData[cat].waste) || ''} readOnly />
                     <NumberInput label="Post-prod waste" value={njData[cat].postWaste} onChange={v => updateNJ(`${cat}.postWaste`, v)} />
+                    <NumberInput label={`Invoiced yds (tgt: ${NJ_TARGETS[cat].invoiceYds.toLocaleString()})`} value={njData[cat].invoiceYds} onChange={v => updateNJ(`${cat}.invoiceYds`, v)} />
+                    <NumberInput label={`Income invoiced $ (tgt: $${NJ_TARGETS[cat].invoiceRev.toLocaleString()})`} value={njData[cat].invoiceRev} onChange={v => updateNJ(`${cat}.invoiceRev`, v)} />
                   </div>
                 ))}
               </div>
@@ -447,11 +463,19 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
             {/* BNY Section */}
             <div className={styles.editSection}>
               <SectionHeader title="Brooklyn — Digital" badge="BK" badgeClass={styles.facilityBadgeBNY} />
-              <div className={styles.editSubHeader}>Capacity by category</div>
+              <div className={styles.editSubHeader}>Yards produced by category</div>
               <div className={styles.editFiveCol}>
                 {['replen', 'mto', 'hos', 'memo', 'contract'].map(cat => (
                   <NumberInput key={cat} label={`${cat.toUpperCase()} (tgt:${BNY_TARGETS[cat].toLocaleString()})`} value={bnyData[cat]} onChange={v => updateBNY(cat, v)} />
                 ))}
+              </div>
+              <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Income invoiced $ by category</div>
+              <div className={styles.editFiveCol}>
+                <NumberInput label={`Hub/Replen (tgt: $${Math.round(BNY_TARGETS.incomeReplen).toLocaleString()})`} value={bnyData.incomeReplen} onChange={v => updateBNY('incomeReplen', v)} />
+                <NumberInput label={`MTO (tgt: $${Math.round(BNY_TARGETS.incomeMto).toLocaleString()})`} value={bnyData.incomeMto} onChange={v => updateBNY('incomeMto', v)} />
+                <NumberInput label={`HOS (tgt: $${Math.round(BNY_TARGETS.incomeHos).toLocaleString()})`} value={bnyData.incomeHos} onChange={v => updateBNY('incomeHos', v)} />
+                <NumberInput label={`Memos (tgt: $${Math.round(BNY_TARGETS.incomeMemo).toLocaleString()})`} value={bnyData.incomeMemo} onChange={v => updateBNY('incomeMemo', v)} />
+                <NumberInput label={`Contract (tgt: $${Math.round(BNY_TARGETS.incomeContract).toLocaleString()})`} value={bnyData.incomeContract} onChange={v => updateBNY('incomeContract', v)} />
               </div>
 
               <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Output by machine (optional)</div>
