@@ -27,7 +27,7 @@ function SlackIcon({ size = 13 }) {
   )
 }
 
-export default function CommentButton({ weekStart, section, label, currentUser }) {
+export default function CommentButton({ weekStart, section, label, currentUser, onCommentPosted }) {
   const [open, setOpen]           = useState(false)
   const [comments, setComments]   = useState([])
   const [text, setText]           = useState('')
