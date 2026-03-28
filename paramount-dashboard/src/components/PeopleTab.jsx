@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
+import CommentButton from './CommentButton'
 import styles from './PeopleTab.module.css'
 
-export default function PeopleTab({ weekStart, readOnly = true }) {
+export default function PeopleTab({ weekStart, readOnly = true, currentUser, onCommentPosted }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [bnyOpen, setBnyOpen] = useState(false)
@@ -110,7 +111,10 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         <div className={styles.card}>
           <div className={styles.cardTitle}>
             BNY – Brooklyn
-            <span className={styles.badge}>{data.bny_headcount} employees</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CommentButton weekStart={new Date(weekStart + 'T12:00:00')} section="people-bny" label="BNY – Brooklyn" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+              <span className={styles.badge}>{data.bny_headcount} employees</span>
+            </div>
           </div>
           <div className={styles.statGrid}>
             <div className={styles.stat}><strong>{fmt(data.bny_total_hrs)}</strong>Total hours</div>
@@ -131,7 +135,10 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         <div className={styles.card}>
           <div className={styles.cardTitle}>
             Passaic – NJ
-            <span className={styles.badge}>{data.nj_headcount} employees</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CommentButton weekStart={new Date(weekStart + 'T12:00:00')} section="people-nj" label="Passaic – NJ" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+              <span className={styles.badge}>{data.nj_headcount} employees</span>
+            </div>
           </div>
           <div className={styles.statGrid}>
             <div className={styles.stat}><strong>{fmt(data.nj_total_hrs)}</strong>Total hours</div>
@@ -155,7 +162,10 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         <div className={styles.card}>
           <div className={styles.cardTitle}>
             Leaves of absence
-            <span className={styles.badge}>{leaves.length} active</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CommentButton weekStart={new Date(weekStart + 'T12:00:00')} section="people-leaves" label="Leaves of absence" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+              <span className={styles.badge}>{leaves.length} active</span>
+            </div>
           </div>
           {leaves.length === 0
             ? <p className={styles.emptyCard}>No active leaves this week</p>
@@ -171,7 +181,10 @@ export default function PeopleTab({ weekStart, readOnly = true }) {
         <div className={styles.card}>
           <div className={styles.cardTitle}>
             Open recruitment
-            <span className={styles.badge}>{openRoles.length} role{openRoles.length !== 1 ? 's' : ''}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CommentButton weekStart={new Date(weekStart + 'T12:00:00')} section="people-recruitment" label="Open recruitment" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+              <span className={styles.badge}>{openRoles.length} role{openRoles.length !== 1 ? 's' : ''}</span>
+            </div>
           </div>
           {openRoles.length === 0
             ? <p className={styles.emptyCard}>No open roles</p>

@@ -128,7 +128,7 @@ export default function WeeklyLog({ weekData, weekStart, onSave, dbReady, readOn
       {/* Areas of concern */}
       <div className={styles.concernsPanel}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <label className="label" style={{ margin: 0 }}>Areas of Concern / Flags for Timur & Emily</label>
+          <span className="label" style={{ margin: 0, userSelect: 'none' }}>Areas of Concern</span>
           <CommentButton
             weekStart={weekStart}
             section="log-concerns"
