@@ -2,18 +2,19 @@ import { useState, useRef } from 'react'
 import { supabase } from '../supabase'
 import styles from './AdminPeople.module.css'
 
-// SheetJS loaded via CDN in index.html:
+// Requires in index.html:
 // <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+// <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 export default function AdminPeople({ weekStart, currentUser, onSaved }) {
-  const [payrollFile, setPayrollFile] = useState(null)
-  const [hrFile, setHrFile]           = useState(null)
-  const [parsed, setParsed]           = useState(null)   // parsed payroll result
-  const [hrSummary, setHrSummary]     = useState(null)   // AI-parsed HR deck result
-  const [status, setStatus]           = useState('')
-  const [saving, setSaving]           = useState(false)
+  const [payrollFile, setPayrollFile]   = useState(null)
+  const [hrFile, setHrFile]             = useState(null)
+  const [parsed, setParsed]             = useState(null)
+  const [hrSummary, setHrSummary]       = useState(null)
+  const [status, setStatus]             = useState('')
+  const [saving, setSaving]             = useState(false)
   const [parsingPayroll, setParsingPayroll] = useState(false)
-  const [parsingHR, setParsingHR]     = useState(false)
+  const [parsingHR, setParsingHR]       = useState(false)
 
   const payrollRef = useRef(null)
   const hrRef      = useRef(null)
@@ -22,35 +23,44 @@ export default function AdminPeople({ weekStart, currentUser, onSaved }) {
   async function handlePayrollFile(file) {
     if (!file) return
     setPayrollFile(file)
+
+    if (typeof window.XLSX === 'undefined') {
+      setStatus('SheetJS not loaded — make sure the SheetJS script tag is in index.html.')
+      return
+    }
+
     setParsingPayroll(true)
     setStatus('Parsing payroll file…')
-
     try {
       const buf  = await file.arrayBuffer()
       const wb   = window.XLSX.read(buf, { type: 'array' })
       const ws   = wb.Sheets[wb.SheetNames[0]]
       const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
-
       const result = parsePayrollRows(rows)
       setParsed(result)
       setStatus('Payroll parsed successfully.')
     } catch (err) {
       console.error(err)
-      setStatus('Error parsing payroll file. Make sure it matches the expected format.')
+      setStatus('Error parsing payroll file: ' + err.message)
     }
     setParsingPayroll(false)
   }
 
-  /* ── Parse HR pptx via Claude API ── */
+  /* ── Extract text from PPTX using JSZip, then send to Claude ── */
   async function handleHrFile(file) {
     if (!file) return
     setHrFile(file)
     setParsingHR(true)
-    setStatus('Sending HR deck to AI for summary…')
+    setStatus('Reading HR deck…')
 
     try {
-      const base64 = await fileToBase64(file)
+      // Step 1: unzip the PPTX and pull text from each slide XML
+      const pptxText = await extractPptxText(file)
+      if (!pptxText) throw new Error('Could not extract text from PPTX')
 
+      setStatus('Sending to AI for summary…')
+
+      // Step 2: send extracted text to Claude
       const resp = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -59,16 +69,13 @@ export default function AdminPeople({ weekStart, currentUser, onSaved }) {
           max_tokens: 1000,
           messages: [{
             role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: { type: 'base64', media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', data: base64 }
-              },
-              {
-                type: 'text',
-                text: `Extract structured data from this HR PowerPoint and return ONLY valid JSON, no preamble or markdown.
+            content: `You are extracting structured HR data from a PowerPoint slide deck for Paramount Prints.
 
-Return this exact structure:
+Here is the text extracted from the slides:
+
+${pptxText}
+
+Return ONLY valid JSON with no preamble, explanation, or markdown code fences. Use exactly this structure:
 {
   "new_hires_bny": 0,
   "new_hires_nj": 0,
@@ -80,10 +87,8 @@ Return this exact structure:
   "open_roles": [
     { "role": "Role title", "status": "Screening", "notes": "optional notes" }
   ],
-  "hr_notes": "Any other notable updates as a single plain text paragraph. Include events, announcements, etc."
+  "hr_notes": "Any other notable updates as a single plain text paragraph including events or announcements."
 }`
-              }
-            ]
           }]
         })
       })
@@ -96,7 +101,7 @@ Return this exact structure:
       setStatus('HR deck parsed successfully.')
     } catch (err) {
       console.error(err)
-      setStatus('Error parsing HR deck. Please check the file and try again.')
+      setStatus('Error parsing HR deck: ' + err.message)
     }
     setParsingHR(false)
   }
@@ -147,13 +152,15 @@ Return this exact structure:
 
     if (error) {
       console.error(error)
-      setStatus('Error saving. Check console.')
+      setStatus('Error saving: ' + error.message)
     } else {
       setStatus('Saved successfully.')
       onSaved && onSaved()
     }
     setSaving(false)
   }
+
+  const canSave = (parsed || hrSummary) && !saving
 
   return (
     <div className={styles.wrap}>
@@ -217,18 +224,22 @@ Return this exact structure:
             <div className={styles.parsedSummary}>
               <span className={styles.parsedBadge}>{hrSummary.leaves?.length || 0} leaves</span>
               <span className={styles.parsedBadge}>{hrSummary.open_roles?.length || 0} open roles</span>
-              <span className={styles.parsedBadge}>{hrSummary.new_hires_bny + hrSummary.new_hires_nj} new hires</span>
+              <span className={styles.parsedBadge}>{(hrSummary.new_hires_bny || 0) + (hrSummary.new_hires_nj || 0)} new hires</span>
             </div>
           )}
         </div>
       </div>
 
-      {status && <p className={styles.statusText}>{status}</p>}
+      {status && (
+        <p className={`${styles.statusText} ${status.startsWith('Error') ? styles.statusError : ''}`}>
+          {status}
+        </p>
+      )}
 
       <button
         className={styles.saveBtn}
         onClick={handleSave}
-        disabled={saving || (!parsed && !hrSummary)}
+        disabled={!canSave}
       >
         {saving ? 'Saving…' : 'Save to dashboard'}
       </button>
@@ -237,24 +248,62 @@ Return this exact structure:
 }
 
 /* ──────────────────────────────────────────────────────────
-   Payroll parser — works with the Earnings Pay Detail xlsx
-   format from ADP/similar (matches the file you shared)
+   Extract text from PPTX by unzipping and parsing slide XML.
+   PPTX files are zip archives — each slide is an XML file
+   at ppt/slides/slide1.xml, slide2.xml, etc.
+   We use JSZip (loaded via CDN) to unzip in the browser.
+────────────────────────────────────────────────────────── */
+async function extractPptxText(file) {
+  if (typeof window.JSZip === 'undefined') {
+    throw new Error('JSZip not loaded — add the JSZip script tag to index.html')
+  }
+
+  const buf  = await file.arrayBuffer()
+  const zip  = await window.JSZip.loadAsync(buf)
+  const slideFiles = Object.keys(zip.files)
+    .filter(name => name.match(/^ppt\/slides\/slide\d+\.xml$/))
+    .sort((a, b) => {
+      const na = parseInt(a.match(/\d+/)[0])
+      const nb = parseInt(b.match(/\d+/)[0])
+      return na - nb
+    })
+
+  const slideTexts = []
+  for (const name of slideFiles) {
+    const xml  = await zip.files[name].async('string')
+    // Strip XML tags and extract text content
+    const text = xml
+      .replace(/<a:t>/g, ' ')         // mark text node opens
+      .replace(/<\/a:t>/g, '\n')      // newline after each text run
+      .replace(/<[^>]+>/g, '')        // strip all remaining tags
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#xD;/g, '\n')
+      .replace(/[ \t]+/g, ' ')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
+      .join('\n')
+
+    const slideNum = name.match(/\d+/)[0]
+    slideTexts.push(`--- Slide ${slideNum} ---\n${text}`)
+  }
+
+  return slideTexts.join('\n\n')
+}
+
+/* ──────────────────────────────────────────────────────────
+   Payroll parser — Earnings Pay Detail xlsx format
 ────────────────────────────────────────────────────────── */
 function parsePayrollRows(rows) {
-  // Column indices (0-based):
-  // 0=company, 1=location, 2=name, 3=title, 4=empID, 5=salary
-  // 9=BONUS_amt, 10=BONUS_hrs, 11=GTL_amt, 12=GTL_hrs
-  // 13=MEDL_amt, 14=MEDL_hrs, 15=OT_amt, 16=OT_hrs
-  // 17=PTO_amt, 18=PTO_hrs, 19=REG_amt, 20=REG_hrs
-  // 21=Total_amt, 22=Total_hrs
-
   const employees = []
   let currentLocation = null
 
   for (const row of rows) {
     if (!row || row.every(v => v == null)) continue
 
-    // Location header column (col 1)
     if (row[1] && typeof row[1] === 'string' && row[1].trim() && row[2] !== 'Total') {
       currentLocation = row[1].trim()
     }
@@ -264,45 +313,41 @@ function parsePayrollRows(rows) {
 
     const num = v => (v == null || v === '' ? 0 : parseFloat(v) || 0)
 
-    const otHrs   = num(row[16])
-    const ptoHrs  = num(row[18])
+    const otHrs    = num(row[16])
+    const ptoHrs   = num(row[18])
     const bonusAmt = num(row[9])
     const totalHrs = num(row[22])
     const totalPay = num(row[21])
 
-    // Determine flags
     const flags = []
-    if (otHrs > 0)                    flags.push('OT')
-    if (ptoHrs > 0)                   flags.push('PTO')
-    if (bonusAmt > 0)                 flags.push('bonus')
+    if (otHrs > 0)                     flags.push('OT')
+    if (ptoHrs > 0)                    flags.push('PTO')
+    if (bonusAmt > 0)                  flags.push('bonus')
     if (totalHrs < 40 && ptoHrs === 0) flags.push('under40')
 
-    // Detect salaried (80 hrs = bi-weekly, will appear in both BNY and NJ)
-    const isSalaried = totalHrs === 80
+    const isBny = currentLocation && (currentLocation.trim() === 'BNY' || currentLocation.trim() === 'BNY   ')
 
     employees.push({
-      name:      name.trim(),
-      title:     row[3] ? String(row[3]).trim() : '',
-      location:  currentLocation === 'BNY   ' || currentLocation === 'BNY' ? 'BNY' : 'NJ',
-      salary:    num(row[5]),
-      is_salaried: isSalaried,
-      bonus_amt: bonusAmt,
-      ot_amt:    num(row[15]),
-      ot_hrs:    otHrs,
-      pto_amt:   num(row[17]),
-      pto_hrs:   ptoHrs,
-      reg_amt:   num(row[19]),
-      reg_hrs:   num(row[20]),
-      total_amt: totalPay,
-      total_hrs: totalHrs,
-      total_pay: totalPay,
+      name:        name.trim(),
+      title:       row[3] ? String(row[3]).trim() : '',
+      location:    isBny ? 'BNY' : 'NJ',
+      salary:      num(row[5]),
+      is_salaried: totalHrs === 80,
+      bonus_amt:   bonusAmt,
+      ot_amt:      num(row[15]),
+      ot_hrs:      otHrs,
+      pto_amt:     num(row[17]),
+      pto_hrs:     ptoHrs,
+      reg_amt:     num(row[19]),
+      reg_hrs:     num(row[20]),
+      total_hrs:   totalHrs,
+      total_pay:   totalPay,
       flags,
     })
   }
 
   const bnyEmps = employees.filter(e => e.location === 'BNY')
   const njEmps  = employees.filter(e => e.location === 'NJ')
-
   const sum = (arr, key) => arr.reduce((acc, e) => acc + (e[key] || 0), 0)
 
   return {
@@ -326,14 +371,4 @@ function parsePayrollRows(rows) {
       bonus_total: sum(njEmps, 'bonus_amt'),
     }
   }
-}
-
-/* ── Utility ── */
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload  = () => resolve(reader.result.split(',')[1])
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
 }
