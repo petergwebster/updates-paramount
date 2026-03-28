@@ -75,16 +75,22 @@ export default function CommentButton({ weekStart, section, label, currentUser }
     setText('')
     setNotify([])
 
-    await supabase.from('section_comments').insert({
-      week_start:    weekKey,
-      section,
-      section_label: label,
-      author:        resolvedAuthor,
-      text:          commentText,
-      notify_names:  notifyNames,
-      status:        'sent',
-      created_at:    new Date().toISOString(),
-    })
+    const { data: inserted } = await supabase
+      .from('section_comments')
+      .insert({
+        week_start:    weekKey,
+        section,
+        section_label: label,
+        author:        resolvedAuthor,
+        text:          commentText,
+        notify_names:  notifyNames,
+        status:        'sent',
+        created_at:    new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (inserted?.id && onCommentPosted) onCommentPosted(inserted.id)
 
     setPosting(false)
     loadComments()

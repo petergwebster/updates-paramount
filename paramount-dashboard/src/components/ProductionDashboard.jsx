@@ -616,7 +616,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       {/* ROLLING HISTORY TABLE */}
       {history.length > 0 && (
         <div className={styles.historySection}>
-          <div className={styles.historySectionTitle}>NJ — Rolling 5-Week Capacity</div>
+          <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
+            NJ — Rolling 5-Week Capacity
+            <CommentButton weekStart={weekStart} section="dash-rolling-nj" label="NJ Rolling 5-Week" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+          </div>
           <div className={styles.tableWrap}>
             <table className={styles.histTable}>
               <thead>
@@ -678,7 +681,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       {/* MTD SUMMARY */}
       {mtdData.length > 0 && (
         <div className={styles.historySection}>
-          <div className={styles.historySectionTitle}>Month-to-Date Summary — {mtdWeeksWithData} week{mtdWeeksWithData !== 1 ? 's' : ''} in · Produced vs Invoiced vs Target</div>
+          <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
+            Month-to-Date Summary — {mtdWeeksWithData} week{mtdWeeksWithData !== 1 ? 's' : ''} in · Produced vs Invoiced vs Target
+            <CommentButton weekStart={weekStart} section="dash-mtd" label="Month-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+          </div>
           <div className={styles.mtdGrid}>
             {/* NJ MTD */}
             <div className={styles.mtdCard}>
@@ -824,7 +830,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       {/* YTD SUMMARY */}
       {ytdWeeksWithData > 0 && (
         <div className={styles.historySection}>
-          <div className={styles.historySectionTitle}>Year-to-Date Summary — {ytdWeeksWithData} week{ytdWeeksWithData !== 1 ? 's' : ''} · Fiscal 2026 · Produced vs Invoiced vs Target</div>
+          <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
+            Year-to-Date Summary — {ytdWeeksWithData} week{ytdWeeksWithData !== 1 ? 's' : ''} · Fiscal 2026 · Produced vs Invoiced vs Target
+            <CommentButton weekStart={weekStart} section="dash-ytd" label="Year-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+          </div>
           <div className={styles.mtdGrid}>
             {/* NJ YTD */}
             <div className={styles.mtdCard}>
