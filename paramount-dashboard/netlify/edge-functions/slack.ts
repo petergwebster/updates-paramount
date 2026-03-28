@@ -80,6 +80,7 @@ export default async (request: Request, context: Context) => {
     // Post each comment as a SEPARATE message via Bot API so we get the ts back
     // This lets us match Slack replies back to specific dashboard sections
     const postedMessages: Array<{ commentId: string; slackTs: string }> = [];
+    const msgErrors: Array<{ section: string; error: string }> = [];
 
     if (BOT_TOKEN && CHANNEL_ID) {
       for (const comment of comments) {
@@ -117,6 +118,8 @@ export default async (request: Request, context: Context) => {
 
         if (msgData.ok && msgData.ts && comment.id) {
           postedMessages.push({ commentId: comment.id, slackTs: msgData.ts });
+        } else {
+          msgErrors.push({ section: comment.section_label, error: msgData.error || 'unknown' });
         }
       }
 
@@ -128,14 +131,13 @@ export default async (request: Request, context: Context) => {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
             'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
           },
           body: JSON.stringify({ slack_message_ts: slackTs }),
         });
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, posted: postedMessages.length }), {
+    return new Response(JSON.stringify({ ok: true, posted: postedMessages.length, errors: msgErrors }), {
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
