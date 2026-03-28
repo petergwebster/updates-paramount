@@ -52,6 +52,7 @@ export default function App() {
   const [notifySuccess, setNotifySuccess] = useState(false)
   const [sessionCommentCount, setSessionCommentCount] = useState(0)
   const sessionCommentsRef = useRef([])
+  const sessionStartRef    = useRef(null)
 
   const [authUser, setAuthUser]           = useState(null)
   const [userProfile, setUserProfile]     = useState(null)
@@ -82,6 +83,7 @@ export default function App() {
 
   useEffect(() => {
     sessionCommentsRef.current = []
+    sessionStartRef.current = null
     setSessionCommentCount(0)
   }, [currentWeek])
 
@@ -107,19 +109,41 @@ export default function App() {
   function onCommentPosted(commentId) {
     sessionCommentsRef.current = [...sessionCommentsRef.current, commentId]
     setSessionCommentCount(sessionCommentsRef.current.length)
+    // Track session start time on first comment
+    if (!sessionStartRef.current) sessionStartRef.current = new Date(Date.now() - 2000).toISOString()
   }
 
   async function handleNotifySlack() {
     const myName = userProfile?.full_name || localStorage.getItem('pp_commenter') || ''
     if (!myName) return
-    const ids = sessionCommentsRef.current
-    if (ids.length === 0) return
+    if (sessionCommentsRef.current.length === 0) return
     setNotifying(true)
-    const { data: comments } = await supabase
-      .from('section_comments')
-      .select('*')
-      .in('id', ids)
-      .order('created_at', { ascending: true })
+    const key = weekKey(currentWeek)
+    // Fetch by real IDs where possible, fall back to author+week+session window
+    const realIds = sessionCommentsRef.current.filter(id => !String(id).startsWith('local-'))
+    let comments = []
+    if (realIds.length > 0) {
+      const { data } = await supabase
+        .from('section_comments')
+        .select('*')
+        .in('id', realIds)
+        .order('created_at', { ascending: true })
+      comments = data || []
+    }
+    // Also fetch any recent comments by this author this session (catches local- ids)
+    if (comments.length < sessionCommentsRef.current.length && sessionStartRef.current) {
+      const { data: recent } = await supabase
+        .from('section_comments')
+        .select('*')
+        .eq('week_start', key)
+        .eq('author', myName)
+        .gte('created_at', sessionStartRef.current)
+        .order('created_at', { ascending: true })
+      if (recent) {
+        const existingIds = new Set(comments.map(c => c.id))
+        comments = [...comments, ...recent.filter(c => !existingIds.has(c.id))]
+      }
+    }
     if (comments && comments.length > 0) {
       const wkLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
       try {
@@ -131,6 +155,7 @@ export default function App() {
       } catch (e) { console.error('Slack notify failed:', e) }
     }
     sessionCommentsRef.current = []
+    sessionStartRef.current = null
     setSessionCommentCount(0)
     setNotifying(false)
     setNotifySuccess(true)
