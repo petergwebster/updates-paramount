@@ -160,6 +160,26 @@ export default function App() {
     setTimeout(() => setSendSuccess(false), 3000)
   }
 
+  async function handleSlackSync() {
+    const key = weekKey(currentWeek)
+    try {
+      const res = await fetch('/api/slack-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week_start: key })
+      })
+      const data = await res.json()
+      if (data.ok) {
+        alert(`Slack sync complete — ${data.synced} new replies pulled in.`)
+        loadWeek(currentWeek)
+      } else {
+        alert('Sync error: ' + (data.error || 'Unknown error'))
+      }
+    } catch (e) {
+      alert('Sync failed: ' + e.message)
+    }
+  }
+
   function handleGearClick() {
     if (isAdmin) setActiveTab('admin')
   }
@@ -288,6 +308,14 @@ export default function App() {
                   {sending ? 'Sending…' : draftCount > 0 ? `Send Update (${draftCount})` : 'Send Update'}
                 </button>
               )}
+              <button
+                className={styles.slackSyncBtn}
+                onClick={handleSlackSync}
+                title="Pull replies from Slack into dashboard"
+              >
+                <SlackIcon size={12} />
+                Sync
+              </button>
             </div>
             {isAdmin && (
               <button

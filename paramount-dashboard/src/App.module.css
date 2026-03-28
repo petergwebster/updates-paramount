@@ -307,3 +307,19 @@
 }
 .modalDraftText { font-size: 13px; color: var(--ink); line-height: 1.5; }
 .modalDraftNotify { font-size: 11px; color: var(--accent); margin-top: 4px; }
+
+/* Slack sync button */
+.slackSyncBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--ink-60);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.slackSyncBtn:hover { border-color: var(--ink-30); color: var(--ink); }
