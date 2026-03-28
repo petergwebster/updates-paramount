@@ -137,7 +137,17 @@ export default async (request: Request, context: Context) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, posted: postedMessages.length, errors: msgErrors }), {
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      posted: postedMessages.length, 
+      errors: msgErrors,
+      debug: {
+        hasToken: !!BOT_TOKEN,
+        hasChannel: !!CHANNEL_ID,
+        channelId: CHANNEL_ID,
+        commentCount: comments?.length || 0,
+      }
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
