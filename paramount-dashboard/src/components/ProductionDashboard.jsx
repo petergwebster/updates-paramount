@@ -6,23 +6,29 @@ import CommentButton from './CommentButton'
 import styles from './ProductionDashboard.module.css'
 
 const NJ_TARGETS = {
-  fabric: { yards: 834, colorYards: 4522 },
-  grass: { yards: 3785, colorYards: 7570 },
-  paper: { yards: 3830, colorYards: 13405 },
-  wasteTarget: 8,
+  fabric: { yards: 810,  colorYards: 4522,  invoiceYds: 772,  invoiceRev: 14112.75 },
+  grass:  { yards: 3615, colorYards: 7570,  invoiceYds: 3538, invoiceRev: 36646 },
+  paper:  { yards: 4185, colorYards: 13405, invoiceYds: 3516, invoiceRev: 26330.25 },
+  wasteTarget: 10,
+  weeklyInvoiceYds: 7826,
+  weeklyRevenue: 128951.25,
 }
 const NJ_TOTAL_TARGET = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
 
-const BNY_TARGETS = { replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000 }
+const BNY_TARGETS = {
+  replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000,
+  incomeReplen: 90675.83, incomeMto: 14398.5, incomeHos: 10727.25, incomeMemo: 4010.5, incomeContract: 13087.5,
+  totalIncomeInvoiced: 132899.58,
+}
 
 // Weekly revenue and yard targets
 const WEEKLY_TARGETS = {
   schRevenue: 106645,
-  schYards: 5886,        // produced & invoiced
+  schYards: 5886,
   tpRevenue: 31277,
-  tpYards: 2564,         // produced & invoiced
-  totalYards: 8449,
-  totalColorYards: 25347,
+  tpYards: 2564,
+  totalYards: 8610,
+  totalColorYards: 25497,
 }
 
 // BNY Machine definitions
@@ -234,9 +240,21 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   }
 
   async function loadHistory() {
-    // Load last 5 weeks for rolling table
-    const weeks = Array.from({ length: 5 }, (_, i) => weekKey(subWeeks(weekStart, 4 - i)))
-    const { data } = await supabase.from('production').select('*').in('week_start', weeks).order('week_start', { ascending: true })
+    // Load current fiscal month weeks for rolling table (month-only view per Estephanie)
+    const { FISCAL_CALENDAR } = await import('../fiscalCalendar')
+    const currentKey = weekKey(weekStart)
+    const currentInfo = FISCAL_CALENDAR[currentKey]
+    let monthWeeksForRolling = []
+    if (currentInfo) {
+      monthWeeksForRolling = Object.entries(FISCAL_CALENDAR)
+        .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
+        .map(([k]) => k)
+        .sort()
+    } else {
+      // fallback to 5 trailing weeks
+      monthWeeksForRolling = Array.from({ length: 5 }, (_, i) => weekKey(subWeeks(weekStart, 4 - i)))
+    }
+    const { data } = await supabase.from('production').select('*').in('week_start', monthWeeksForRolling).order('week_start', { ascending: true })
     setHistory(data || [])
 
     // Load all weeks in current fiscal month UP TO AND INCLUDING the viewed week
@@ -354,6 +372,47 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const mtdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * mtdFiscalWeeks
   const mtdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
 
+  // MTD — new invoiced yds by category (NJ)
+  const mtdNJInvoiceYds = {
+    fabric: mtdData.reduce((s,h) => s + n(h.nj_data?.fabric?.invoiceYds), 0),
+    grass:  mtdData.reduce((s,h) => s + n(h.nj_data?.grass?.invoiceYds), 0),
+    paper:  mtdData.reduce((s,h) => s + n(h.nj_data?.paper?.invoiceYds), 0),
+  }
+  const mtdNJInvoiceRev = {
+    fabric: mtdData.reduce((s,h) => s + n(h.nj_data?.fabric?.invoiceRev), 0),
+    grass:  mtdData.reduce((s,h) => s + n(h.nj_data?.grass?.invoiceRev), 0),
+    paper:  mtdData.reduce((s,h) => s + n(h.nj_data?.paper?.invoiceRev), 0),
+  }
+  const mtdNJInvYdsTarget = {
+    fabric: NJ_TARGETS.fabric.invoiceYds * mtdFiscalWeeks,
+    grass:  NJ_TARGETS.grass.invoiceYds  * mtdFiscalWeeks,
+    paper:  NJ_TARGETS.paper.invoiceYds  * mtdFiscalWeeks,
+    total:  NJ_TARGETS.weeklyInvoiceYds  * mtdFiscalWeeks,
+  }
+  const mtdNJRevTarget = {
+    fabric: NJ_TARGETS.fabric.invoiceRev * mtdFiscalWeeks,
+    grass:  NJ_TARGETS.grass.invoiceRev  * mtdFiscalWeeks,
+    paper:  NJ_TARGETS.paper.invoiceRev  * mtdFiscalWeeks,
+    total:  NJ_TARGETS.weeklyRevenue     * mtdFiscalWeeks,
+  }
+
+  // MTD — new income invoiced by category (BNY)
+  const mtdBNYIncomeInvoiced = {
+    replen:   mtdData.reduce((s,h) => s + n(h.bny_data?.incomeReplen), 0),
+    mto:      mtdData.reduce((s,h) => s + n(h.bny_data?.incomeMto), 0),
+    hos:      mtdData.reduce((s,h) => s + n(h.bny_data?.incomeHos), 0),
+    memo:     mtdData.reduce((s,h) => s + n(h.bny_data?.incomeMemo), 0),
+    contract: mtdData.reduce((s,h) => s + n(h.bny_data?.incomeContract), 0),
+  }
+  const mtdBNYIncomeTarget = {
+    replen:   BNY_TARGETS.incomeReplen   * mtdFiscalWeeks,
+    mto:      BNY_TARGETS.incomeMto      * mtdFiscalWeeks,
+    hos:      BNY_TARGETS.incomeHos      * mtdFiscalWeeks,
+    memo:     BNY_TARGETS.incomeMemo     * mtdFiscalWeeks,
+    contract: BNY_TARGETS.incomeContract * mtdFiscalWeeks,
+    total:    BNY_TARGETS.totalIncomeInvoiced * mtdFiscalWeeks,
+  }
+
   // Procurement MTD
   const mtdProcurement = mtdData.reduce((s, h) => s + n(h.bny_data?.procurement), 0)
   const procurementMTDTarget = PROCUREMENT_WEEKLY_TARGET * mtdWeeksWithData
@@ -397,6 +456,47 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const ytdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * ytdWeeksWithData
   const ytdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * ytdWeeksWithData
   const ytdProcurementTarget = PROCUREMENT_WEEKLY_TARGET * ytdWeeksWithData
+
+  // YTD — invoiced yds and revenue by category (NJ)
+  const ytdNJInvoiceYds = {
+    fabric: ytdData.reduce((s,h) => s + n(h.nj_data?.fabric?.invoiceYds), 0),
+    grass:  ytdData.reduce((s,h) => s + n(h.nj_data?.grass?.invoiceYds), 0),
+    paper:  ytdData.reduce((s,h) => s + n(h.nj_data?.paper?.invoiceYds), 0),
+  }
+  const ytdNJInvoiceRev = {
+    fabric: ytdData.reduce((s,h) => s + n(h.nj_data?.fabric?.invoiceRev), 0),
+    grass:  ytdData.reduce((s,h) => s + n(h.nj_data?.grass?.invoiceRev), 0),
+    paper:  ytdData.reduce((s,h) => s + n(h.nj_data?.paper?.invoiceRev), 0),
+  }
+  const ytdNJInvYdsTarget = {
+    fabric: NJ_TARGETS.fabric.invoiceYds * ytdWeeksWithData,
+    grass:  NJ_TARGETS.grass.invoiceYds  * ytdWeeksWithData,
+    paper:  NJ_TARGETS.paper.invoiceYds  * ytdWeeksWithData,
+    total:  NJ_TARGETS.weeklyInvoiceYds  * ytdWeeksWithData,
+  }
+  const ytdNJRevTarget = {
+    fabric: NJ_TARGETS.fabric.invoiceRev * ytdWeeksWithData,
+    grass:  NJ_TARGETS.grass.invoiceRev  * ytdWeeksWithData,
+    paper:  NJ_TARGETS.paper.invoiceRev  * ytdWeeksWithData,
+    total:  NJ_TARGETS.weeklyRevenue     * ytdWeeksWithData,
+  }
+
+  // YTD — income invoiced by category (BNY)
+  const ytdBNYIncomeInvoiced = {
+    replen:   ytdData.reduce((s,h) => s + n(h.bny_data?.incomeReplen), 0),
+    mto:      ytdData.reduce((s,h) => s + n(h.bny_data?.incomeMto), 0),
+    hos:      ytdData.reduce((s,h) => s + n(h.bny_data?.incomeHos), 0),
+    memo:     ytdData.reduce((s,h) => s + n(h.bny_data?.incomeMemo), 0),
+    contract: ytdData.reduce((s,h) => s + n(h.bny_data?.incomeContract), 0),
+  }
+  const ytdBNYIncomeTarget = {
+    replen:   BNY_TARGETS.incomeReplen   * ytdWeeksWithData,
+    mto:      BNY_TARGETS.incomeMto      * ytdWeeksWithData,
+    hos:      BNY_TARGETS.incomeHos      * ytdWeeksWithData,
+    memo:     BNY_TARGETS.incomeMemo     * ytdWeeksWithData,
+    contract: BNY_TARGETS.incomeContract * ytdWeeksWithData,
+    total:    BNY_TARGETS.totalIncomeInvoiced * ytdWeeksWithData,
+  }
 
   return (
     <div className={styles.container}>
@@ -459,9 +559,9 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
                   <div className={styles.statLabel}>Waste</div>
                   <div className={`${styles.statValue} ${styles['statValue_' + statusColor(njWastePct, NJ_TARGETS.wasteTarget, true)]}`}>{njWastePct || '—'}<span className={styles.statUnit}>%</span></div>
-                  <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;8%</div>
+                  <div className={styles.statTarget}>{njTotalWaste > 0 ? njTotalWaste.toLocaleString() + ' yds · ' : ''}Target: &lt;10%</div>
                   <div className={styles.statTooltip}>
-                    {njTotalWaste > 0 ? `${njTotalWaste.toLocaleString()} waste yds · ${njWastePct}% · Target <8%` : 'No waste recorded'}
+                    {njTotalWaste > 0 ? `${njTotalWaste.toLocaleString()} waste yds · ${njWastePct}% · Target <10%` : 'No waste recorded'}
                   </div>
                 </div>
                 <div className={`${styles.statBlock} ${styles.statBlockHoverable}`}>
@@ -617,7 +717,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       {history.length > 0 && (
         <div className={styles.historySection}>
           <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
-            NJ — Rolling 5-Week Capacity
+            NJ — Capacity (Current Month)
             <CommentButton weekStart={weekStart} section="dash-rolling-nj" label="NJ Rolling 5-Week" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
           <div className={styles.tableWrap}>
@@ -638,7 +738,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                   <td>{NJ_TARGETS.grass.yards.toLocaleString()}</td>
                   <td>{NJ_TARGETS.paper.yards.toLocaleString()}</td>
                   <td>{NJ_TOTAL_TARGET.toLocaleString()}</td>
-                  <td>&lt;8%</td>
+                  <td>&lt;10%</td>
                   <td>—</td>
                 </tr>
               </thead>
@@ -686,40 +786,40 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             <CommentButton weekStart={weekStart} section="dash-mtd" label="Month-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
           <div className={styles.mtdGrid}>
-            {/* NJ MTD */}
+            {/* NJ MTD — expanded with invoiced yds, revenue, and gap columns */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Revenue $</th><th>Prod Tgt</th><th>Inv Tgt</th><th>Rev Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Fabric', produced: mtdNJ.fabric, invoiced: null, target: mtdNJTarget.fabric },
-                    { label: 'Grass', produced: mtdNJ.grass, invoiced: null, target: mtdNJTarget.grass },
-                    { label: 'Paper', produced: mtdNJ.paper, invoiced: null, target: mtdNJTarget.paper },
-                    { label: 'Total Yds', produced: mtdNJ.total, invoiced: null, target: mtdNJTarget.total, bold: true },
-                    { label: 'Net Yds', produced: mtdNJNet, invoiced: null, target: null },
-                    { label: 'Waste', produced: mtdNJ.waste, invoiced: null, target: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
-                    { label: 'Schumacher', produced: mtdNJ.schProduced, invoiced: mtdNJ.schInvoiced, target: WEEKLY_TARGETS.schYards * mtdWeeksWithData, bold: true },
+                    { label: 'Fabric', produced: mtdNJ.fabric, invYds: mtdNJInvoiceYds.fabric, rev: mtdNJInvoiceRev.fabric, prodTgt: mtdNJTarget.fabric, invTgt: mtdNJInvYdsTarget.fabric, revTgt: mtdNJRevTarget.fabric },
+                    { label: 'Grass',  produced: mtdNJ.grass,  invYds: mtdNJInvoiceYds.grass,  rev: mtdNJInvoiceRev.grass,  prodTgt: mtdNJTarget.grass,  invTgt: mtdNJInvYdsTarget.grass,  revTgt: mtdNJRevTarget.grass },
+                    { label: 'Paper',  produced: mtdNJ.paper,  invYds: mtdNJInvoiceYds.paper,  rev: mtdNJInvoiceRev.paper,  prodTgt: mtdNJTarget.paper,  invTgt: mtdNJInvYdsTarget.paper,  revTgt: mtdNJRevTarget.paper },
+                    { label: 'Total Yds', produced: mtdNJ.total, invYds: Object.values(mtdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: mtdNJTarget.total, invTgt: mtdNJInvYdsTarget.total, revTgt: mtdNJRevTarget.total, bold: true },
+                    { label: 'Net Yds', produced: mtdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
+                    { label: 'Waste', produced: mtdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
+                    { label: 'Schumacher', produced: mtdNJ.schProduced, invYds: mtdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, invTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, revTgt: null, bold: true },
                   ].map(row => {
-                    const diff = row.target ? row.produced - row.target : null
-                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
-                    const invStatus = row.target ? statusColor(row.invoiced, row.target) : 'gray'
+                    const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
+                    const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
+                    const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
+                    const prodSt   = row.prodTgt ? statusColor(row.produced, row.prodTgt) : 'gray'
+                    const invSt    = row.invTgt && row.invYds !== null ? statusColor(row.invYds, row.invTgt) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}>
-                          <Dot status={status} />
-                          {row.produced !== null ? row.produced.toLocaleString() : '—'}{row.suffix || ''}
-                        </td>
-                        <td className={styles.mtdActual}>
-                          {row.invoiced !== null ? <><Dot status={invStatus} />{row.invoiced.toLocaleString()}</> : <span style={{color:'var(--ink-30)'}}>—</span>}
-                        </td>
-                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
-                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
-                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
-                        </td>
+                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.produced !== null && row.produced !== undefined ? row.produced.toLocaleString() : '—'}{row.suffix||''}</td>
+                        <td className={styles.mtdActual}>{row.invYds !== null && row.invYds !== undefined ? <><Dot status={invSt} />{row.invYds.toLocaleString()}</> : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdActual}>{row.rev !== null && row.rev !== undefined && row.rev > 0 ? fmtDollar(Math.round(row.rev)) : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdTarget}>{row.prodTgt ? row.prodTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.invTgt ? row.invTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.revTgt ? fmtDollar(Math.round(row.revTgt)) : '—'}</td>
+                        <td className={prodDiff !== null ? (prodDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{prodDiff !== null ? (prodDiff >= 0 ? '+' : '') + prodDiff.toLocaleString() : '—'}</td>
+                        <td className={invDiff !== null ? (invDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{invDiff !== null ? (invDiff >= 0 ? '+' : '') + invDiff.toLocaleString() : '—'}</td>
+                        <td className={revDiff !== null ? (revDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{revDiff !== null ? (revDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(revDiff))) : '—'}</td>
                       </tr>
                     )
                   })}
@@ -727,34 +827,40 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               </table>
             </div>
 
-            {/* BNY MTD */}
+            {/* BNY MTD — expanded with income invoiced $ by category */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn MTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Income Inv $</th><th>Prod Tgt</th><th>Inv Yds Tgt</th><th>Inc Inv Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Replen', produced: mtdBNY.replen, target: mtdBNYTarget.replen },
-                    { label: 'MTO', produced: mtdBNY.mto, target: mtdBNYTarget.mto },
-                    { label: 'HOS', produced: mtdBNY.hos, target: mtdBNYTarget.hos },
-                    { label: 'Memo', produced: mtdBNY.memo, target: mtdBNYTarget.memo },
-                    { label: 'Contract', produced: mtdBNY.contract, target: mtdBNYTarget.contract },
-                    { label: 'Total Yds', produced: mtdBNY.total, target: mtdBNYTarget.total, bold: true },
-                    { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invoiced: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), target: WEEKLY_TARGETS.schYards * mtdWeeksWithData, bold: true },
+                    { label: 'Replen',   produced: mtdBNY.replen,   income: mtdBNYIncomeInvoiced.replen,   prodTgt: mtdBNYTarget.replen,   incTgt: mtdBNYIncomeTarget.replen },
+                    { label: 'MTO',      produced: mtdBNY.mto,      income: mtdBNYIncomeInvoiced.mto,      prodTgt: mtdBNYTarget.mto,      incTgt: mtdBNYIncomeTarget.mto },
+                    { label: 'HOS',      produced: mtdBNY.hos,      income: mtdBNYIncomeInvoiced.hos,      prodTgt: mtdBNYTarget.hos,      incTgt: mtdBNYIncomeTarget.hos },
+                    { label: 'Memo',     produced: mtdBNY.memo,     income: mtdBNYIncomeInvoiced.memo,     prodTgt: mtdBNYTarget.memo,     incTgt: mtdBNYIncomeTarget.memo },
+                    { label: 'Contract', produced: mtdBNY.contract, income: mtdBNYIncomeInvoiced.contract, prodTgt: mtdBNYTarget.contract, incTgt: mtdBNYIncomeTarget.contract },
+                    { label: 'Total Yds', produced: mtdBNY.total, income: Object.values(mtdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: mtdBNYTarget.total, incTgt: mtdBNYIncomeTarget.total, bold: true },
+                    { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invYds: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), income: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, incTgt: null, bold: true },
                   ].map(row => {
-                    const diff = row.target ? row.produced - row.target : null
-                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    const invYds = row.invYds !== undefined ? row.invYds : null
+                    const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
+                    const invDiff  = invYds !== null && row.prodTgt ? invYds - row.prodTgt : null
+                    const incDiff  = row.incTgt && row.income !== null && row.income !== undefined ? row.income - row.incTgt : null
+                    const prodSt   = row.prodTgt ? statusColor(row.produced, row.prodTgt) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}><Dot status={status} />{row.produced ? row.produced.toLocaleString() : '—'}</td>
-                        <td className={styles.mtdActual}>{row.invoiced !== undefined ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
-                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
-                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
-                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
-                        </td>
+                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.produced ? row.produced.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdActual}>{invYds !== null ? invYds.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdActual}>{row.income !== null && row.income !== undefined && row.income > 0 ? fmtDollar(Math.round(row.income)) : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdTarget}>{row.prodTgt ? row.prodTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.incTgt ? row.prodTgt?.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.incTgt ? fmtDollar(Math.round(row.incTgt)) : '—'}</td>
+                        <td className={prodDiff !== null ? (prodDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{prodDiff !== null ? (prodDiff >= 0 ? '+' : '') + prodDiff.toLocaleString() : '—'}</td>
+                        <td className={invDiff !== null ? (invDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{invDiff !== null ? (invDiff >= 0 ? '+' : '') + invDiff.toLocaleString() : '—'}</td>
+                        <td className={incDiff !== null ? (incDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{incDiff !== null ? (incDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(incDiff))) : '—'}</td>
                       </tr>
                     )
                   })}
@@ -835,39 +941,40 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             <CommentButton weekStart={weekStart} section="dash-ytd" label="Year-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
           <div className={styles.mtdGrid}>
-            {/* NJ YTD */}
+            {/* NJ YTD — expanded */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic YTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Revenue $</th><th>Prod Tgt</th><th>Inv Tgt</th><th>Rev Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Fabric', produced: ytdNJ.fabric, invoiced: null, target: ytdNJTarget.fabric },
-                    { label: 'Grass', produced: ytdNJ.grass, invoiced: null, target: ytdNJTarget.grass },
-                    { label: 'Paper', produced: ytdNJ.paper, invoiced: null, target: ytdNJTarget.paper },
-                    { label: 'Total Yds', produced: ytdNJ.total, invoiced: null, target: ytdNJTarget.total, bold: true },
-                    { label: 'Net Yds', produced: ytdNJNet, invoiced: null, target: null },
-                    { label: 'Waste', produced: ytdNJ.waste, invoiced: null, target: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
-                    { label: 'Schumacher', produced: ytdNJ.schProduced, invoiced: ytdNJ.schInvoiced, target: WEEKLY_TARGETS.schYards * ytdWeeksWithData, bold: true },
+                    { label: 'Fabric', produced: ytdNJ.fabric, invYds: ytdNJInvoiceYds.fabric, rev: ytdNJInvoiceRev.fabric, prodTgt: ytdNJTarget.fabric, invTgt: ytdNJInvYdsTarget.fabric, revTgt: ytdNJRevTarget.fabric },
+                    { label: 'Grass',  produced: ytdNJ.grass,  invYds: ytdNJInvoiceYds.grass,  rev: ytdNJInvoiceRev.grass,  prodTgt: ytdNJTarget.grass,  invTgt: ytdNJInvYdsTarget.grass,  revTgt: ytdNJRevTarget.grass },
+                    { label: 'Paper',  produced: ytdNJ.paper,  invYds: ytdNJInvoiceYds.paper,  rev: ytdNJInvoiceRev.paper,  prodTgt: ytdNJTarget.paper,  invTgt: ytdNJInvYdsTarget.paper,  revTgt: ytdNJRevTarget.paper },
+                    { label: 'Total Yds', produced: ytdNJ.total, invYds: Object.values(ytdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: ytdNJTarget.total, invTgt: ytdNJInvYdsTarget.total, revTgt: ytdNJRevTarget.total, bold: true },
+                    { label: 'Net Yds', produced: ytdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
+                    { label: 'Waste', produced: ytdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
+                    { label: 'Schumacher', produced: ytdNJ.schProduced, invYds: ytdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, invTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, revTgt: null, bold: true },
                   ].map(row => {
-                    const diff = row.target ? row.produced - row.target : null
-                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
+                    const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
+                    const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
+                    const prodSt   = row.prodTgt ? statusColor(row.produced, row.prodTgt) : 'gray'
+                    const invSt    = row.invTgt && row.invYds !== null ? statusColor(row.invYds, row.invTgt) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}>
-                          <Dot status={status} />
-                          {row.produced !== null ? row.produced.toLocaleString() : '—'}{row.suffix || ''}
-                        </td>
-                        <td className={styles.mtdActual}>
-                          {row.invoiced !== null ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}
-                        </td>
-                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
-                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
-                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
-                        </td>
+                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.produced !== null && row.produced !== undefined ? row.produced.toLocaleString() : '—'}{row.suffix||''}</td>
+                        <td className={styles.mtdActual}>{row.invYds !== null && row.invYds !== undefined ? <><Dot status={invSt} />{row.invYds.toLocaleString()}</> : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdActual}>{row.rev !== null && row.rev !== undefined && row.rev > 0 ? fmtDollar(Math.round(row.rev)) : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdTarget}>{row.prodTgt ? row.prodTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.invTgt ? row.invTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.revTgt ? fmtDollar(Math.round(row.revTgt)) : '—'}</td>
+                        <td className={prodDiff !== null ? (prodDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{prodDiff !== null ? (prodDiff >= 0 ? '+' : '') + prodDiff.toLocaleString() : '—'}</td>
+                        <td className={invDiff !== null ? (invDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{invDiff !== null ? (invDiff >= 0 ? '+' : '') + invDiff.toLocaleString() : '—'}</td>
+                        <td className={revDiff !== null ? (revDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{revDiff !== null ? (revDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(revDiff))) : '—'}</td>
                       </tr>
                     )
                   })}
@@ -875,40 +982,40 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               </table>
             </div>
 
-            {/* BNY YTD */}
+            {/* BNY YTD — expanded with income invoiced $ */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn YTD</div>
               <table className={styles.mtdTable}>
                 <thead>
-                  <tr><th></th><th>Produced</th><th>Invoiced</th><th>Target</th><th>Prod +/−</th></tr>
+                  <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Income Inv $</th><th>Prod Tgt</th><th>Inv Yds Tgt</th><th>Inc Inv Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Replen', produced: ytdBNY.replen, target: ytdBNYTarget.replen },
-                    { label: 'MTO', produced: ytdBNY.mto, target: ytdBNYTarget.mto },
-                    { label: 'HOS', produced: ytdBNY.hos, target: ytdBNYTarget.hos },
-                    { label: 'Memo', produced: ytdBNY.memo, target: ytdBNYTarget.memo },
-                    { label: 'Contract', produced: ytdBNY.contract, target: ytdBNYTarget.contract },
-                    { label: 'Total Yds', produced: ytdBNY.total, target: ytdBNYTarget.total, bold: true },
-                    { label: 'Schumacher', produced: ytdBNY.schProduced, invoiced: ytdBNY.schInvoiced, target: WEEKLY_TARGETS.schYards * ytdWeeksWithData, bold: true },
-                    { label: 'Procurement $', produced: ytdProcurement, invoiced: null, target: null, isDollar: true },
+                    { label: 'Replen',   produced: ytdBNY.replen,   income: ytdBNYIncomeInvoiced.replen,   prodTgt: ytdBNYTarget.replen,   incTgt: ytdBNYIncomeTarget.replen },
+                    { label: 'MTO',      produced: ytdBNY.mto,      income: ytdBNYIncomeInvoiced.mto,      prodTgt: ytdBNYTarget.mto,      incTgt: ytdBNYIncomeTarget.mto },
+                    { label: 'HOS',      produced: ytdBNY.hos,      income: ytdBNYIncomeInvoiced.hos,      prodTgt: ytdBNYTarget.hos,      incTgt: ytdBNYIncomeTarget.hos },
+                    { label: 'Memo',     produced: ytdBNY.memo,     income: ytdBNYIncomeInvoiced.memo,     prodTgt: ytdBNYTarget.memo,     incTgt: ytdBNYIncomeTarget.memo },
+                    { label: 'Contract', produced: ytdBNY.contract, income: ytdBNYIncomeInvoiced.contract, prodTgt: ytdBNYTarget.contract, incTgt: ytdBNYIncomeTarget.contract },
+                    { label: 'Total Yds', produced: ytdBNY.total, income: Object.values(ytdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: ytdBNYTarget.total, incTgt: ytdBNYIncomeTarget.total, bold: true },
+                    { label: 'Schumacher', produced: ytdBNY.schProduced, invYds: ytdBNY.schInvoiced, income: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, incTgt: null, bold: true },
+                    { label: 'Procurement $', produced: ytdProcurement, income: null, prodTgt: null, incTgt: null, isDollar: true },
                   ].map(row => {
-                    const diff = row.target ? row.produced - row.target : null
-                    const status = row.target ? statusColor(row.produced, row.target) : 'gray'
+                    const invYds = row.invYds !== undefined ? row.invYds : null
+                    const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
+                    const incDiff  = row.incTgt && row.income !== null && row.income !== undefined ? row.income - row.incTgt : null
+                    const prodSt   = row.prodTgt ? statusColor(row.produced, row.prodTgt) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}>
-                          <Dot status={status} />
-                          {row.isDollar ? fmtDollar(row.produced) : row.produced !== undefined ? row.produced.toLocaleString() : '—'}
-                        </td>
-                        <td className={styles.mtdActual}>
-                          {row.invoiced !== undefined && row.invoiced !== null ? row.invoiced.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}
-                        </td>
-                        <td className={styles.mtdTarget}>{row.target ? row.target.toLocaleString() : '—'}</td>
-                        <td className={diff !== null ? (diff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>
-                          {diff !== null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}
-                        </td>
+                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.isDollar ? fmtDollar(row.produced) : row.produced !== undefined ? row.produced.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdActual}>{invYds !== null ? invYds.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdActual}>{row.income !== null && row.income !== undefined && row.income > 0 ? fmtDollar(Math.round(row.income)) : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
+                        <td className={styles.mtdTarget}>{row.prodTgt ? row.prodTgt.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.incTgt ? row.prodTgt?.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>{row.incTgt ? fmtDollar(Math.round(row.incTgt)) : '—'}</td>
+                        <td className={prodDiff !== null ? (prodDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{prodDiff !== null ? (prodDiff >= 0 ? '+' : '') + prodDiff.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={incDiff !== null ? (incDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{incDiff !== null ? (incDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(incDiff))) : '—'}</td>
                       </tr>
                     )
                   })}
