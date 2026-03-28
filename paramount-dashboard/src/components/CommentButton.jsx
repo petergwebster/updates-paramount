@@ -27,25 +27,22 @@ function SlackIcon({ size = 13 }) {
   )
 }
 
-export default function CommentButton({ weekStart, section, label, sendVersion, currentUser }) {
-  const [open, setOpen] = useState(false)
-  const [comments, setComments] = useState([])
-  const [text, setText] = useState('')
-  const [author] = useState(() => currentUser || localStorage.getItem('pp_commenter') || '')
-  const [notify, setNotify] = useState([])
-  const [sending, setSending] = useState(false)
-  const [sentCount, setSentCount] = useState(0)
-  const [draftCount, setDraftCount] = useState(0)
-  const [replyingTo, setReplyingTo] = useState(null) // comment id being replied to
+export default function CommentButton({ weekStart, section, label, currentUser }) {
+  const [open, setOpen]           = useState(false)
+  const [comments, setComments]   = useState([])
+  const [text, setText]           = useState('')
+  const [notify, setNotify]       = useState([])
+  const [posting, setPosting]     = useState(false)
+  const [replyingTo, setReplyingTo] = useState(null)
   const [replyText, setReplyText] = useState('')
-  const panelRef = useRef(null)
+  const panelRef      = useRef(null)
   const commentsEndRef = useRef(null)
-  const weekKey = format(weekStart, 'yyyy-MM-dd')
-  const sessionKey = `pp_session_${weekKey}`
+
+  const weekKey       = format(weekStart, 'yyyy-MM-dd')
   const resolvedAuthor = currentUser || localStorage.getItem('pp_commenter') || ''
+  const commentCount  = comments.length
 
   useEffect(() => { loadComments() }, [weekStart, section])
-  useEffect(() => { if (sendVersion > 0) { setOpen(false); setText(''); setNotify([]) } }, [sendVersion])
 
   useEffect(() => {
     if (!open) return
@@ -67,70 +64,54 @@ export default function CommentButton({ weekStart, section, label, sendVersion, 
       .eq('week_start', weekKey)
       .eq('section', section)
       .order('created_at', { ascending: true })
-    const all = data || []
-    const visible = all.filter(c =>
-      c.status === 'sent' || (c.status === 'draft' && c.author === resolvedAuthor)
-    )
-    setComments(visible)
-    setSentCount(all.filter(c => c.status === 'sent').length)
-    setDraftCount(all.filter(c => c.status === 'draft' && c.author === resolvedAuthor).length)
+    setComments(data || [])
   }
 
   async function submit() {
     if (!text.trim() || !resolvedAuthor) return
-    setSending(true)
-    const commentText = text.trim()
-    const notifyNames = [...notify]
+    setPosting(true)
+    const commentText  = text.trim()
+    const notifyNames  = [...notify]
     setText('')
     setNotify([])
-    const { data: existing } = await supabase
-      .from('section_comments').select('id')
-      .eq('week_start', weekKey).eq('section', section)
-      .eq('author', resolvedAuthor).eq('text', commentText).eq('status', 'draft')
-      .maybeSingle()
-    if (existing) { loadComments(); setSending(false); return }
-    const comment = {
-      week_start: weekKey, section, section_label: label,
-      author: resolvedAuthor, text: commentText,
-      notify_names: notifyNames, status: 'draft',
-      created_at: new Date().toISOString(),
-    }
-    const { data } = await supabase.from('section_comments').insert(comment).select().single()
-    if (data) {
-      const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-      sessionComments.push(data.id)
-      localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
-    }
-    setSending(false)
+
+    await supabase.from('section_comments').insert({
+      week_start:    weekKey,
+      section,
+      section_label: label,
+      author:        resolvedAuthor,
+      text:          commentText,
+      notify_names:  notifyNames,
+      status:        'sent',
+      created_at:    new Date().toISOString(),
+    })
+
+    setPosting(false)
     loadComments()
   }
 
   async function submitReply(parentId) {
     if (!replyText.trim() || !resolvedAuthor) return
-    setSending(true)
-    const replyComment = {
-      week_start: weekKey, section, section_label: label,
-      author: resolvedAuthor, text: replyText.trim(),
-      notify_names: [], status: 'draft',
-      parent_id: parentId,
-      created_at: new Date().toISOString(),
-    }
-    const { data } = await supabase.from('section_comments').insert(replyComment).select().single()
-    if (data) {
-      const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-      sessionComments.push(data.id)
-      localStorage.setItem(sessionKey, JSON.stringify(sessionComments))
-    }
+    setPosting(true)
+    await supabase.from('section_comments').insert({
+      week_start:    weekKey,
+      section,
+      section_label: label,
+      author:        resolvedAuthor,
+      text:          replyText.trim(),
+      notify_names:  [],
+      status:        'sent',
+      parent_id:     parentId,
+      created_at:    new Date().toISOString(),
+    })
     setReplyText('')
     setReplyingTo(null)
-    setSending(false)
+    setPosting(false)
     loadComments()
   }
 
-  async function deleteDraft(id) {
+  async function deleteComment(id) {
     await supabase.from('section_comments').delete().eq('id', id)
-    const sessionComments = JSON.parse(localStorage.getItem(sessionKey) || '[]')
-    localStorage.setItem(sessionKey, JSON.stringify(sessionComments.filter(s => s !== id)))
     loadComments()
   }
 
@@ -138,54 +119,61 @@ export default function CommentButton({ weekStart, section, label, sendVersion, 
     setNotify(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])
   }
 
-  // Separate top-level comments from replies
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+
+  function initials(name) {
+    return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  }
+
   const topLevel = comments.filter(c => !c.parent_id)
-  const replies = comments.filter(c => c.parent_id)
+  const replies  = comments.filter(c => c.parent_id)
 
   return (
     <div className={styles.wrapper} ref={panelRef}>
       <button
-        className={`${styles.trigger} ${sentCount > 0 ? styles.triggerActive : ''} ${draftCount > 0 ? styles.triggerDraft : ''}`}
+        className={`${styles.trigger} ${commentCount > 0 ? styles.triggerActive : ''}`}
         onClick={() => setOpen(o => !o)}
-        title={`${sentCount} comment${sentCount !== 1 ? 's' : ''}${draftCount > 0 ? ` · ${draftCount} draft` : ''} on ${label}`}
+        title={`${commentCount} comment${commentCount !== 1 ? 's' : ''} on ${label}`}
       >
         <SlackIcon size={13} />
-        {sentCount > 0 && <span className={styles.badge}>{sentCount}</span>}
-        {draftCount > 0 && <span className={styles.draftDot} />}
+        {commentCount > 0 && <span className={styles.badge}>{commentCount}</span>}
       </button>
 
       {open && (
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div className={styles.panelTitleArea}>
-              <SlackIcon size={12} />
               <span className={styles.panelTitle}>{label}</span>
-              {sentCount > 0 && <span className={styles.panelCount}>{sentCount} comment{sentCount !== 1 ? 's' : ''}</span>}
+              {commentCount > 0 && <span className={styles.panelCount}>{commentCount}</span>}
             </div>
             <button className={styles.closeBtn} onClick={() => setOpen(false)}>×</button>
           </div>
 
+          {/* Comment list */}
           <div className={styles.commentList}>
             {topLevel.length === 0 ? (
-              <p className={styles.empty}>No comments yet — be the first</p>
+              <p className={styles.empty}>No comments yet</p>
             ) : topLevel.map(c => {
               const threadReplies = replies.filter(r => r.parent_id === c.id)
+              const isOwn = c.author === resolvedAuthor
               return (
                 <div key={c.id} className={styles.commentThread}>
-                  {/* Main comment */}
-                  <div className={`${styles.comment} ${c.status === 'draft' ? styles.commentDraft : ''}`}>
+                  <div className={styles.comment}>
                     <div className={styles.commentMeta}>
-                      <span className={styles.commentAvatar}>{c.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
-                      <div className={styles.commentMetaRight}>
-                        <div className={styles.commentMetaTop}>
-                          <strong>{c.author}</strong>
-                          <span className={styles.commentTime}>{new Date(c.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                          {c.status === 'draft' && <span className={styles.draftBadge}>draft</span>}
-                          {c.status === 'draft' && c.author === resolvedAuthor && (
-                            <button className={styles.deleteBtn} onClick={() => deleteDraft(c.id)} title="Delete draft">✕</button>
+                      <span className={styles.avatar}>{initials(c.author)}</span>
+                      <div className={styles.metaRight}>
+                        <div className={styles.metaTop}>
+                          <strong className={styles.authorName}>{c.author}</strong>
+                          <span className={styles.commentTime}>{fmtTime(c.created_at)}</span>
+                          {isOwn && (
+                            <button className={styles.deleteBtn} onClick={() => deleteComment(c.id)} title="Delete">✕</button>
                           )}
                         </div>
-                        {c.notify_names?.length > 0 && <span className={styles.notified}>→ {c.notify_names.join(', ')}</span>}
+                        {c.notify_names?.length > 0 && (
+                          <span className={styles.notified}>→ {c.notify_names.join(', ')}</span>
+                        )}
                       </div>
                     </div>
                     <p className={styles.commentText}>{c.text}</p>
@@ -194,20 +182,18 @@ export default function CommentButton({ weekStart, section, label, sendVersion, 
                     </button>
                   </div>
 
-                  {/* Replies */}
                   {threadReplies.length > 0 && (
                     <div className={styles.replyList}>
                       {threadReplies.map(r => (
-                        <div key={r.id} className={`${styles.reply} ${r.status === 'draft' ? styles.commentDraft : ''}`}>
+                        <div key={r.id} className={styles.reply}>
                           <div className={styles.commentMeta}>
-                            <span className={`${styles.commentAvatar} ${styles.commentAvatarSmall}`}>{r.author.split(' ').map(n => n[0]).join('').slice(0,2)}</span>
-                            <div className={styles.commentMetaRight}>
-                              <div className={styles.commentMetaTop}>
-                                <strong>{r.author}</strong>
-                                <span className={styles.commentTime}>{new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
-                                {r.status === 'draft' && <span className={styles.draftBadge}>draft</span>}
-                                {r.status === 'draft' && r.author === resolvedAuthor && (
-                                  <button className={styles.deleteBtn} onClick={() => deleteDraft(r.id)} title="Delete draft">✕</button>
+                            <span className={`${styles.avatar} ${styles.avatarSm}`}>{initials(r.author)}</span>
+                            <div className={styles.metaRight}>
+                              <div className={styles.metaTop}>
+                                <strong className={styles.authorName}>{r.author}</strong>
+                                <span className={styles.commentTime}>{fmtTime(r.created_at)}</span>
+                                {r.author === resolvedAuthor && (
+                                  <button className={styles.deleteBtn} onClick={() => deleteComment(r.id)} title="Delete">✕</button>
                                 )}
                               </div>
                             </div>
@@ -218,21 +204,21 @@ export default function CommentButton({ weekStart, section, label, sendVersion, 
                     </div>
                   )}
 
-                  {/* Reply input */}
                   {replyingTo === c.id && (
                     <div className={styles.replyForm}>
                       <textarea
+                        className={styles.textInput}
                         placeholder={`Reply as ${resolvedAuthor}…`}
                         value={replyText}
                         onChange={e => setReplyText(e.target.value)}
                         rows={2}
-                        className={styles.textInput}
                         autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitReply(c.id) }}
                       />
                       <div className={styles.replyFormActions}>
                         <button onClick={() => { setReplyingTo(null); setReplyText('') }}>Cancel</button>
-                        <button className="primary" onClick={() => submitReply(c.id)} disabled={sending || !replyText.trim()}>
-                          {sending ? 'Saving…' : 'Save Reply'}
+                        <button className={styles.postBtn} onClick={() => submitReply(c.id)} disabled={posting || !replyText.trim()}>
+                          {posting ? '…' : 'Post reply'}
                         </button>
                       </div>
                     </div>
@@ -243,31 +229,51 @@ export default function CommentButton({ weekStart, section, label, sendVersion, 
             <div ref={commentsEndRef} />
           </div>
 
+          {/* New comment form */}
           <div className={styles.form}>
             <div className={styles.authorDisplay}>
               Commenting as <strong>{resolvedAuthor || 'Unknown'}</strong>
             </div>
             <textarea
+              className={styles.textInput}
               placeholder="Add a comment…"
               value={text}
               onChange={e => setText(e.target.value)}
               rows={3}
-              className={styles.textInput}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }}
             />
+
+            {/* Notify pills */}
             <div className={styles.notifyRow}>
-              <span className={styles.notifyLabel}>@mention:</span>
-              <div className={styles.notifyBtns}>
-                {TEAM.map(t => (
-                  <button key={t.name} type="button"
-                    className={`${styles.notifyBtn} ${notify.includes(t.name) ? styles.notifyBtnActive : ''}`}
-                    onClick={() => toggleNotify(t.name)}>
+              <span className={styles.notifyLabel}>Notify:</span>
+              <div className={styles.pills}>
+                <button
+                  type="button"
+                  className={`${styles.pill} ${notify.length === 0 ? styles.pillActive : ''}`}
+                  onClick={() => setNotify([])}
+                >
+                  Everyone
+                </button>
+                {TEAM.filter(t => t.name !== resolvedAuthor).map(t => (
+                  <button
+                    key={t.name}
+                    type="button"
+                    className={`${styles.pill} ${notify.includes(t.name) ? styles.pillActive : ''}`}
+                    onClick={() => toggleNotify(t.name)}
+                  >
                     {t.name.split(' ')[0]}
                   </button>
                 ))}
               </div>
             </div>
-            <button type="button" className={`primary ${styles.submitBtn}`} onClick={submit} disabled={sending || !text.trim() || !resolvedAuthor}>
-              {sending ? 'Saving…' : 'Save Draft'}
+
+            <button
+              type="button"
+              className={styles.postBtn}
+              onClick={submit}
+              disabled={posting || !text.trim() || !resolvedAuthor}
+            >
+              {posting ? 'Posting…' : 'Post comment'}
             </button>
           </div>
         </div>

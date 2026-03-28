@@ -14,12 +14,12 @@ import AdminPeople from './components/AdminPeople'
 import styles from './App.module.css'
 
 const PUBLIC_TABS = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'kpis', label: 'KPI Scorecard' },
-  { id: 'log', label: 'Weekly Log' },
-  { id: 'people', label: 'People' },
+  { id: 'dashboard',      label: 'Dashboard' },
+  { id: 'kpis',           label: 'KPI Scorecard' },
+  { id: 'log',            label: 'Weekly Log' },
+  { id: 'people',         label: 'People' },
   { id: 'correspondence', label: 'Correspondence' },
-  { id: 'history', label: 'History' },
+  { id: 'history',        label: 'History' },
 ]
 
 function SlackIcon({ size = 14 }) {
@@ -41,31 +41,24 @@ function getWeekStart(date = new Date()) {
 function weekKey(date) { return format(date, 'yyyy-MM-dd') }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab]     = useState('dashboard')
   const [currentWeek, setCurrentWeek] = useState(getWeekStart())
-  const [weekData, setWeekData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [dbReady, setDbReady] = useState(true)
-  const [draftCount, setDraftCount] = useState(0)
-  const [sending, setSending] = useState(false)
-  const [sendSuccess, setSendSuccess] = useState(false)
-  const [sendVersion, setSendVersion] = useState(0)
-  const justSentRef = useRef(false)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [pendingDrafts, setPendingDrafts] = useState([])
-
-  // Admin people section toggle
+  const [weekData, setWeekData]       = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [dbReady, setDbReady]         = useState(true)
   const [adminSection, setAdminSection] = useState('main')
 
-  // Supabase auth state
-  const [authUser, setAuthUser] = useState(null)
-  const [userProfile, setUserProfile] = useState(null)
-  const [authLoading, setAuthLoading] = useState(true)
+  const [notifying, setNotifying]         = useState(false)
+  const [notifySuccess, setNotifySuccess] = useState(false)
+  const [sessionCommentCount, setSessionCommentCount] = useState(0)
+  const sessionCommentsRef = useRef([])
+
+  const [authUser, setAuthUser]           = useState(null)
+  const [userProfile, setUserProfile]     = useState(null)
+  const [authLoading, setAuthLoading]     = useState(true)
   const isAdmin = userProfile?.role === 'admin'
   const [adminAuthenticated, setAdminAuthenticated] = useState(false)
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
 
-  // Initialize auth on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -86,26 +79,11 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadWeek(currentWeek) }, [currentWeek])
-  useEffect(() => { checkDrafts() }, [currentWeek])
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!justSentRef.current) checkDrafts()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [currentWeek])
 
-  async function checkDrafts() {
-    const key = weekKey(currentWeek)
-    const myName = localStorage.getItem('pp_commenter') || ''
-    if (!myName) { setDraftCount(0); return }
-    const { data } = await supabase
-      .from('section_comments')
-      .select('id')
-      .eq('week_start', key)
-      .eq('status', 'draft')
-      .eq('author', myName)
-    setDraftCount((data || []).length)
-  }
+  useEffect(() => {
+    sessionCommentsRef.current = []
+    setSessionCommentCount(0)
+  }, [currentWeek])
 
   async function loadWeek(weekDate) {
     setLoading(true)
@@ -126,79 +104,47 @@ export default function App() {
     return { data, error }
   }
 
-  async function handleSendUpdate() {
-    const myName = localStorage.getItem('pp_commenter') || ''
-    if (!myName) { alert('Please open a comment box and select your name first.'); return }
-    const key = weekKey(currentWeek)
-    const { data: drafts } = await supabase.from('section_comments').select('*').eq('week_start', key).eq('status', 'draft').eq('author', myName).order('created_at', { ascending: true })
-    if (!drafts || drafts.length === 0) { alert('No draft comments to send.'); return }
-    setPendingDrafts(drafts)
-    setShowConfirmModal(true)
+  function onCommentPosted(commentId) {
+    sessionCommentsRef.current = [...sessionCommentsRef.current, commentId]
+    setSessionCommentCount(sessionCommentsRef.current.length)
   }
 
-  async function confirmSend() {
-    setShowConfirmModal(false)
-    const myName = localStorage.getItem('pp_commenter') || ''
-    const key = weekKey(currentWeek)
-    const drafts = pendingDrafts
-    setSending(true)
-    const ids = drafts.map(d => d.id)
-    const { error: updateError } = await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
-    if (updateError) { setSending(false); alert('Error sending: ' + updateError.message); return }
-    const { data: stillDrafts } = await supabase.from('section_comments').select('id').in('id', ids).eq('status', 'draft')
-    if (stillDrafts && stillDrafts.length > 0) {
-      await supabase.from('section_comments').update({ status: 'sent' }).in('id', ids)
+  async function handleNotifySlack() {
+    const myName = userProfile?.full_name || localStorage.getItem('pp_commenter') || ''
+    if (!myName) return
+    const ids = sessionCommentsRef.current
+    if (ids.length === 0) return
+    setNotifying(true)
+    const { data: comments } = await supabase
+      .from('section_comments')
+      .select('*')
+      .in('id', ids)
+      .order('created_at', { ascending: true })
+    if (comments && comments.length > 0) {
+      const wkLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+      try {
+        await fetch('/api/slack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ author: myName, weekLabel: wkLabel, comments, dashboardUrl: window.location.origin }),
+        })
+      } catch (e) { console.error('Slack notify failed:', e) }
     }
-    const publicComments = drafts.filter(d => !d.notify_names || d.notify_names.length === 0)
-    if (publicComments.length > 0) {
-      const body = publicComments.map(c => `[${c.section_label}]\n${c.text}`).join('\n\n')
-      await supabase.from('correspondence').insert({ week_start: key, subject: `${myName} — Dashboard Review`, contact: myName, contact_type: 'internal', direction: 'note', kpi_tag: 'General', body, created_at: new Date().toISOString() })
-    }
-    const wkLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
-    try {
-      await fetch('/api/slack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ author: myName, weekLabel: wkLabel, comments: drafts, dashboardUrl: window.location.origin }) })
-    } catch (e) { console.log('Slack notification attempted') }
-    localStorage.removeItem(`pp_session_${key}`)
-    setDraftCount(0)
-    setSending(false)
-    setSendSuccess(true)
-    setSendVersion(v => v + 1)
-    setTimeout(() => setSendSuccess(false), 3000)
-  }
-
-  async function handleSlackSync() {
-    const key = weekKey(currentWeek)
-    try {
-      const res = await fetch('/api/slack-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week_start: key })
-      })
-      const data = await res.json()
-      if (data.ok) {
-        alert(`Slack sync complete — ${data.synced} new ${data.synced === 1 ? 'reply' : 'replies'} pulled in.`)
-        loadWeek(currentWeek)
-      } else {
-        alert('Sync error: ' + (data.error || 'Unknown error'))
-      }
-    } catch (e) {
-      alert('Sync failed: ' + e.message)
-    }
+    sessionCommentsRef.current = []
+    setSessionCommentCount(0)
+    setNotifying(false)
+    setNotifySuccess(true)
+    setTimeout(() => setNotifySuccess(false), 3000)
   }
 
   function handleGearClick() {
-    if (isAdmin) {
-      setAdminSection('main')
-      setActiveTab('admin')
-    }
+    if (isAdmin) { setAdminSection('main'); setActiveTab('admin') }
   }
 
   async function handleSignOut() {
     await supabase.auth.signOut()
     localStorage.removeItem('pp_commenter')
-    setAuthUser(null)
-    setUserProfile(null)
-    setAdminAuthenticated(false)
+    setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false)
     setActiveTab('dashboard')
   }
 
@@ -209,9 +155,9 @@ export default function App() {
     if (profile?.role === 'admin') setAdminAuthenticated(true)
   }
 
-  const weekLabel = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+  const weekLabel   = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
   const fiscalLabel = getFiscalLabel(currentWeek)
-  const allTabs = isAdmin ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
+  const allTabs     = isAdmin ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
 
   if (authLoading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)' }}>
@@ -225,63 +171,10 @@ export default function App() {
 
   if (!authUser) return <LoginScreen onLogin={handleLogin} />
 
+  const commentProps = { currentUser: userProfile?.full_name, onCommentPosted }
+
   return (
     <div className={styles.app}>
-      {showPasswordModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowPasswordModal(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>Admin Access</span>
-              <button className={styles.modalClose} onClick={() => setShowPasswordModal(false)}>×</button>
-            </div>
-            <p className={styles.modalSub}>Enter the admin password to access data entry.</p>
-            <input
-              type="password"
-              className={styles.modalInput}
-              placeholder="Password"
-              value={passwordInput}
-              onChange={e => setPasswordInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handlePasswordSubmit()}
-              autoFocus
-            />
-            {passwordError && <p className={styles.modalError}>{passwordError}</p>}
-            <div className={styles.modalActions}>
-              <button onClick={() => setShowPasswordModal(false)}>Cancel</button>
-              <button className="primary" onClick={handlePasswordSubmit}>Enter</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showConfirmModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
-          <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>Send to Slack</span>
-              <button className={styles.modalClose} onClick={() => setShowConfirmModal(false)}>×</button>
-            </div>
-            <p className={styles.modalSub}>
-              You're about to send <strong>{pendingDrafts.length} comment{pendingDrafts.length !== 1 ? 's' : ''}</strong> to the #pp-leadership-updates channel as <strong>{localStorage.getItem('pp_commenter')}</strong>.
-            </p>
-            <div className={styles.modalDraftList}>
-              {pendingDrafts.map(d => (
-                <div key={d.id} className={styles.modalDraftItem}>
-                  <div className={styles.modalDraftSection}>{d.section_label}</div>
-                  <div className={styles.modalDraftText}>{d.text}</div>
-                  {d.notify_names?.length > 0 && (
-                    <div className={styles.modalDraftNotify}>→ {d.notify_names.join(', ')}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className={styles.modalActions}>
-              <button onClick={() => setShowConfirmModal(false)}>Cancel</button>
-              <button className="primary" onClick={confirmSend}>Send to Slack</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className={styles.header}>
         <div className={styles.headerTop}>
           <div className={styles.brand}>
@@ -302,43 +195,29 @@ export default function App() {
           </div>
           <div className={styles.headerRight}>
             <div className={styles.sendUpdateArea}>
-              {sendSuccess ? (
-                <span className={styles.sendSuccessMsg}>✓ Sent to Slack</span>
+              {notifySuccess ? (
+                <span className={styles.sendSuccessMsg}>✓ Slack notified</span>
               ) : (
                 <button
-                  className={`${styles.sendUpdateBtn} ${draftCount > 0 ? styles.sendUpdateBtnActive : ''}`}
-                  onClick={handleSendUpdate}
-                  disabled={sending || draftCount === 0}
-                  title={draftCount > 0 ? `Send ${draftCount} draft comment${draftCount !== 1 ? 's' : ''} to Slack` : 'No drafts to send'}
+                  className={`${styles.sendUpdateBtn} ${sessionCommentCount > 0 ? styles.sendUpdateBtnActive : ''}`}
+                  onClick={handleNotifySlack}
+                  disabled={notifying || sessionCommentCount === 0}
+                  title={sessionCommentCount > 0 ? `Notify Slack about ${sessionCommentCount} comment${sessionCommentCount !== 1 ? 's' : ''}` : 'Post comments first, then notify Slack'}
                 >
                   <SlackIcon size={14} />
-                  {sending ? 'Sending…' : draftCount > 0 ? `Send Update (${draftCount})` : 'Send Update'}
+                  {notifying ? 'Notifying…' : sessionCommentCount > 0 ? `Notify Slack (${sessionCommentCount})` : 'Notify Slack'}
                 </button>
               )}
-              <button
-                className={styles.slackSyncBtn}
-                onClick={handleSlackSync}
-                title="Pull replies from Slack into dashboard"
-              >
-                <SlackIcon size={12} />
-                Sync
-              </button>
             </div>
             {isAdmin && (
-              <button
-                className={`${styles.gearBtn} ${styles.gearBtnActive}`}
-                onClick={handleGearClick}
-                title="Go to Admin panel"
-              >
-                ⚙
-              </button>
+              <button className={`${styles.gearBtn} ${styles.gearBtnActive}`} onClick={handleGearClick} title="Admin panel">⚙</button>
             )}
           </div>
         </div>
 
         {!dbReady && (
           <div className={styles.setupBanner}>
-            <strong>Setup required:</strong> Connect your Supabase database — see <code>SETUP.md</code> for instructions.
+            <strong>Setup required:</strong> Connect your Supabase database.
           </div>
         )}
 
@@ -361,65 +240,23 @@ export default function App() {
 
       <main className={styles.main}>
         {loading ? (
-          <div className={styles.loading}>
-            <div className={styles.loadingDots}><span /><span /><span /></div>
-          </div>
+          <div className={styles.loading}><div className={styles.loadingDots}><span /><span /><span /></div></div>
         ) : (
           <>
-            {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} readOnly currentUser={userProfile?.full_name} />}
-            {activeTab === 'log' && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
-            {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly currentUser={userProfile?.full_name} />}
-            {activeTab === 'people' && (
-              <PeopleTab
-                weekStart={weekKey(currentWeek)}
-                readOnly={true}
-              />
-            )}
-            {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} />}
-            {activeTab === 'history' && (
-              <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />
-            )}
+            {activeTab === 'dashboard'      && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} readOnly {...commentProps} />}
+            {activeTab === 'log'            && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
+            {activeTab === 'kpis'           && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
+            {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
+            {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} {...commentProps} />}
+            {activeTab === 'history'        && <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />}
             {activeTab === 'admin' && adminAuthenticated && (
               <>
-                {/* People Upload section toggle inside admin */}
                 <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => setAdminSection('main')}
-                    style={{
-                      padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer',
-                      background: adminSection === 'main' ? '#1a1a1a' : 'transparent',
-                      color: adminSection === 'main' ? '#fff' : '#888',
-                      border: '0.5px solid ' + (adminSection === 'main' ? '#1a1a1a' : 'rgba(0,0,0,0.2)'),
-                    }}
-                  >
-                    Production / KPI / Log
-                  </button>
-                  <button
-                    onClick={() => setAdminSection('people')}
-                    style={{
-                      padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer',
-                      background: adminSection === 'people' ? '#1a1a1a' : 'transparent',
-                      color: adminSection === 'people' ? '#fff' : '#888',
-                      border: '0.5px solid ' + (adminSection === 'people' ? '#1a1a1a' : 'rgba(0,0,0,0.2)'),
-                    }}
-                  >
-                    People Upload
-                  </button>
+                  <button onClick={() => setAdminSection('main')} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer', background: adminSection === 'main' ? '#1a1a1a' : 'transparent', color: adminSection === 'main' ? '#fff' : '#888', border: '0.5px solid ' + (adminSection === 'main' ? '#1a1a1a' : 'rgba(0,0,0,0.2)') }}>Production / KPI / Log</button>
+                  <button onClick={() => setAdminSection('people')} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer', background: adminSection === 'people' ? '#1a1a1a' : 'transparent', color: adminSection === 'people' ? '#fff' : '#888', border: '0.5px solid ' + (adminSection === 'people' ? '#1a1a1a' : 'rgba(0,0,0,0.2)') }}>People Upload</button>
                 </div>
-
-                {adminSection === 'main' && (
-                  <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />
-                )}
-                {adminSection === 'people' && (
-                  <AdminPeople
-                    weekStart={weekKey(currentWeek)}
-                    currentUser={userProfile}
-                    onSaved={() => {
-                      setAdminSection('main')
-                      setActiveTab('people')
-                    }}
-                  />
-                )}
+                {adminSection === 'main'   && <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />}
+                {adminSection === 'people' && <AdminPeople weekStart={weekKey(currentWeek)} currentUser={userProfile} onSaved={() => { setAdminSection('main'); setActiveTab('people') }} />}
               </>
             )}
           </>
