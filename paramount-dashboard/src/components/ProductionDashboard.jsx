@@ -781,11 +781,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             Month-to-Date Summary — {mtdWeeksWithData} week{mtdWeeksWithData !== 1 ? 's' : ''} in · Produced vs Invoiced vs Target
             <CommentButton weekStart={weekStart} section="dash-mtd" label="Month-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
-          <div className={styles.mtdGrid}>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
             {/* NJ MTD — expanded with invoiced yds, revenue, and gap columns */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD</div>
-              <table className={styles.mtdTable}>
+              <div style={{overflowX:"auto"}}><table className={styles.mtdTable} style={{minWidth:680,fontSize:11}}>
                 <thead>
                   <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Revenue $</th><th>Prod Tgt</th><th>Inv Tgt</th><th>Rev Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
@@ -820,13 +820,13 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
 
             {/* BNY MTD — expanded with income invoiced $ by category */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn MTD</div>
-              <table className={styles.mtdTable}>
+              <div style={{overflowX:"auto"}}><table className={styles.mtdTable} style={{minWidth:720,fontSize:11}}>
                 <thead>
                   <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Income Inv $</th><th>Prod Tgt</th><th>Inv Yds Tgt</th><th>Inc Inv Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
@@ -861,7 +861,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           </div>
 
@@ -936,11 +936,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             Year-to-Date Summary — {ytdWeeksWithData} week{ytdWeeksWithData !== 1 ? 's' : ''} · Fiscal 2026 · Produced vs Invoiced vs Target
             <CommentButton weekStart={weekStart} section="dash-ytd" label="Year-to-Date Summary" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
-          <div className={styles.mtdGrid}>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
             {/* NJ YTD — expanded */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic YTD</div>
-              <table className={styles.mtdTable}>
+              <div style={{overflowX:"auto"}}><table className={styles.mtdTable} style={{minWidth:680,fontSize:11}}>
                 <thead>
                   <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Revenue $</th><th>Prod Tgt</th><th>Inv Tgt</th><th>Rev Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
@@ -975,13 +975,13 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
 
             {/* BNY YTD — expanded with income invoiced $ */}
             <div className={styles.mtdCard}>
               <div className={styles.mtdCardTitle}><span className={`${styles.facilityBadge} ${styles.facilityBadgeBNY}`}>BK</span> Brooklyn YTD</div>
-              <table className={styles.mtdTable}>
+              <div style={{overflowX:"auto"}}><table className={styles.mtdTable} style={{minWidth:720,fontSize:11}}>
                 <thead>
                   <tr><th></th><th>Produced</th><th>Inv Yds</th><th>Income Inv $</th><th>Prod Tgt</th><th>Inv Yds Tgt</th><th>Inc Inv Tgt</th><th>Prod +/−</th><th>Inv +/−</th><th>$ +/−</th></tr>
                 </thead>
@@ -1016,7 +1016,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           </div>
 
