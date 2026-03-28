@@ -38,7 +38,7 @@ export default function CommentButton({ weekStart, section, label, currentUser }
   const panelRef      = useRef(null)
   const commentsEndRef = useRef(null)
 
-  const weekKey       = format(weekStart, 'yyyy-MM-dd')
+  const weekKey       = typeof weekStart === 'string' ? weekStart.slice(0, 10) : format(weekStart, 'yyyy-MM-dd')
   const resolvedAuthor = currentUser || localStorage.getItem('pp_commenter') || ''
   const commentCount  = comments.length
 
@@ -74,40 +74,42 @@ export default function CommentButton({ weekStart, section, label, currentUser }
     const notifyNames  = [...notify]
     setText('')
     setNotify([])
-
-    const insertedAt = new Date().toISOString()
-    const { error: insertError } = await supabase
-      .from('section_comments')
-      .insert({
-        week_start:    weekKey,
-        section,
-        section_label: label,
-        author:        resolvedAuthor,
-        text:          commentText,
-        notify_names:  notifyNames,
-        status:        'sent',
-        created_at:    insertedAt,
-      })
-
-    if (!insertError) {
-      // Fetch the comment we just inserted to get its id
-      const { data: fetched } = await supabase
+    try {
+      const insertedAt = new Date().toISOString()
+      const { error: insertError } = await supabase
         .from('section_comments')
-        .select('id')
-        .eq('week_start', weekKey)
-        .eq('section', section)
-        .eq('author', resolvedAuthor)
-        .eq('created_at', insertedAt)
-        .maybeSingle()
+        .insert({
+          week_start:    weekKey,
+          section,
+          section_label: label,
+          author:        resolvedAuthor,
+          text:          commentText,
+          notify_names:  notifyNames,
+          status:        'sent',
+          created_at:    insertedAt,
+        })
 
-      const commentId = fetched?.id || ('local-' + Date.now())
-      if (onCommentPosted) onCommentPosted(commentId)
-    } else {
-      console.error('Comment insert error:', insertError)
+      if (!insertError) {
+        const { data: fetched } = await supabase
+          .from('section_comments')
+          .select('id')
+          .eq('week_start', weekKey)
+          .eq('section', section)
+          .eq('author', resolvedAuthor)
+          .eq('created_at', insertedAt)
+          .maybeSingle()
+
+        const commentId = fetched?.id || ('local-' + Date.now())
+        if (onCommentPosted) onCommentPosted(commentId)
+      } else {
+        console.error('Comment insert error:', insertError)
+      }
+    } catch(e) {
+      console.error('Comment submit exception:', e)
+    } finally {
+      setPosting(false)
+      loadComments()
     }
-
-    setPosting(false)
-    loadComments()
   }
 
   async function submitReply(parentId) {
