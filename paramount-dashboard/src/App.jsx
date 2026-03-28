@@ -9,12 +9,15 @@ import HistoryPanel from './components/HistoryPanel'
 import ProductionDashboard from './components/ProductionDashboard'
 import AdminPanel from './components/AdminPanel'
 import LoginScreen from './components/LoginScreen'
+import PeopleTab from './components/PeopleTab'
+import AdminPeople from './components/AdminPeople'
 import styles from './App.module.css'
 
 const PUBLIC_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'kpis', label: 'KPI Scorecard' },
   { id: 'log', label: 'Weekly Log' },
+  { id: 'people', label: 'People' },
   { id: 'correspondence', label: 'Correspondence' },
   { id: 'history', label: 'History' },
 ]
@@ -50,6 +53,9 @@ export default function App() {
   const justSentRef = useRef(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [pendingDrafts, setPendingDrafts] = useState([])
+
+  // Admin people section toggle
+  const [adminSection, setAdminSection] = useState('main')
 
   // Supabase auth state
   const [authUser, setAuthUser] = useState(null)
@@ -181,7 +187,10 @@ export default function App() {
   }
 
   function handleGearClick() {
-    if (isAdmin) setActiveTab('admin')
+    if (isAdmin) {
+      setAdminSection('main')
+      setActiveTab('admin')
+    }
   }
 
   async function handleSignOut() {
@@ -204,7 +213,6 @@ export default function App() {
   const fiscalLabel = getFiscalLabel(currentWeek)
   const allTabs = isAdmin ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
 
-  // Show login screen if not authenticated
   if (authLoading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)' }}>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -245,7 +253,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Pre-send confirmation modal */}
       {showConfirmModal && (
         <div className={styles.modalOverlay} onClick={() => setShowConfirmModal(false)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
@@ -362,12 +369,58 @@ export default function App() {
             {activeTab === 'dashboard' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} sendVersion={sendVersion} readOnly currentUser={userProfile?.full_name} />}
             {activeTab === 'log' && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly />}
             {activeTab === 'kpis' && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly currentUser={userProfile?.full_name} />}
+            {activeTab === 'people' && (
+              <PeopleTab
+                weekStart={weekKey(currentWeek)}
+                readOnly={true}
+              />
+            )}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} />}
             {activeTab === 'history' && (
               <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />
             )}
             {activeTab === 'admin' && adminAuthenticated && (
-              <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />
+              <>
+                {/* People Upload section toggle inside admin */}
+                <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setAdminSection('main')}
+                    style={{
+                      padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer',
+                      background: adminSection === 'main' ? '#1a1a1a' : 'transparent',
+                      color: adminSection === 'main' ? '#fff' : '#888',
+                      border: '0.5px solid ' + (adminSection === 'main' ? '#1a1a1a' : 'rgba(0,0,0,0.2)'),
+                    }}
+                  >
+                    Production / KPI / Log
+                  </button>
+                  <button
+                    onClick={() => setAdminSection('people')}
+                    style={{
+                      padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer',
+                      background: adminSection === 'people' ? '#1a1a1a' : 'transparent',
+                      color: adminSection === 'people' ? '#fff' : '#888',
+                      border: '0.5px solid ' + (adminSection === 'people' ? '#1a1a1a' : 'rgba(0,0,0,0.2)'),
+                    }}
+                  >
+                    People Upload
+                  </button>
+                </div>
+
+                {adminSection === 'main' && (
+                  <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />
+                )}
+                {adminSection === 'people' && (
+                  <AdminPeople
+                    weekStart={weekKey(currentWeek)}
+                    currentUser={userProfile}
+                    onSaved={() => {
+                      setAdminSection('main')
+                      setActiveTab('people')
+                    }}
+                  />
+                )}
+              </>
             )}
           </>
         )}

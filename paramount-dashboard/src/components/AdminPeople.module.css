@@ -1,0 +1,108 @@
+.wrap {
+  padding: 1rem 0;
+}
+
+.heading {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 1.25rem;
+  color: var(--color-text, #1a1a1a);
+}
+
+.uploadRow {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 14px;
+  margin-bottom: 1rem;
+}
+
+.uploadCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.uploadLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+.dropZone {
+  border: 0.5px dashed rgba(0,0,0,0.25);
+  border-radius: 10px;
+  padding: 1.25rem;
+  text-align: center;
+  font-size: 13px;
+  color: #aaa;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropZone:hover {
+  background: #fafaf8;
+  border-color: rgba(0,0,0,0.4);
+}
+
+.fileName {
+  color: #1a1a1a;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.parsedSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.parsedBadge {
+  font-size: 11px;
+  background: #EAF3DE;
+  color: #3B6D11;
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+.statusText {
+  font-size: 13px;
+  color: #888;
+  margin: 4px 0 0;
+}
+
+.saveBtn {
+  margin-top: 0.75rem;
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #1a1a1a;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.saveBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.saveBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+@media (prefers-color-scheme: dark) {
+  .heading   { color: #f0f0f0; }
+  .dropZone  { border-color: rgba(255,255,255,0.2); color: #666; }
+  .dropZone:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.35); }
+  .fileName  { color: #f0f0f0; }
+  .saveBtn   { background: #f0f0f0; color: #1a1a1a; }
+}

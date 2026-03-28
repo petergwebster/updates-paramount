@@ -1,0 +1,347 @@
+.wrap {
+  padding: 1.5rem 0;
+  color: var(--color-text, #1a1a1a);
+}
+
+.empty {
+  padding: 3rem 0;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: #aaa;
+  margin-top: 8px;
+}
+
+.emptyCard {
+  font-size: 13px;
+  color: #aaa;
+  margin: 0;
+  padding: 4px 0;
+}
+
+/* ── Eyebrow label ── */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #888780;
+  margin: 0 0 10px;
+}
+
+.sectionDivider {
+  margin-top: 1.75rem;
+}
+
+/* ── Metric row ── */
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 1.5rem;
+}
+
+.mc {
+  background: #f5f5f3;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.mcLabel {
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 4px;
+}
+
+.mcVal {
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.mcSub {
+  font-size: 11px;
+  color: #aaa;
+  margin: 4px 0 0;
+}
+
+/* ── Two column layout ── */
+.twoCol {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Cards ── */
+.card {
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge {
+  font-size: 11px;
+  background: #f5f5f3;
+  border-radius: 8px;
+  padding: 3px 8px;
+  color: #888;
+  font-weight: 400;
+}
+
+/* ── Stat grid inside location cards ── */
+.statGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stat {
+  font-size: 12px;
+  color: #888;
+}
+
+.stat strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+/* ── Pills ── */
+.pillRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pillGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.pillOt  { background: #FAEEDA; color: #854F0B; }
+.pillPto { background: #E6F1FB; color: #185FA5; }
+.pillBon { background: #EAF3DE; color: #3B6D11; }
+.pillLow { background: #FCEBEB; color: #A32D2D; }
+.pillLv  { background: #EEEDFE; color: #534AB7; }
+.pillOk  { background: #f5f5f3; color: #888; }
+
+/* ── Alert items (leaves, roles) ── */
+.alertItem {
+  font-size: 12px;
+  color: #888;
+  padding: 5px 0;
+  border-bottom: 0.5px solid rgba(0,0,0,0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.alertItem:last-child {
+  border-bottom: none;
+}
+
+/* ── Bonus block inside recruitment card ── */
+.bonusBlock {
+  margin-top: 12px;
+  border-top: 0.5px solid rgba(0,0,0,0.08);
+  padding-top: 10px;
+}
+
+.bonusLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 8px;
+}
+
+/* ── Charts ── */
+.chartLegend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.chartLegend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.chartWrap {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Collapsible roster ── */
+.rosterSection {
+  margin-bottom: 10px;
+}
+
+.rosterToggle {
+  width: 100%;
+  background: #fff;
+  border: 0.5px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  padding: 14px 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.rosterToggle:hover {
+  background: #f9f9f8;
+}
+
+.rosterToggleOpen {
+  border-radius: 12px 12px 0 0;
+  border-bottom-color: transparent;
+}
+
+.toggleCount {
+  font-weight: 400;
+  color: #aaa;
+}
+
+.toggleRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.toggleArrow {
+  font-size: 14px;
+  color: #aaa;
+  transition: transform 0.2s;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.toggleArrowOpen {
+  transform: rotate(180deg);
+}
+
+/* ── Roster body (expanded) ── */
+.rosterBody {
+  background: #fff;
+  border: 0.5px solid rgba(0,0,0,0.12);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 0 1.25rem 1rem;
+}
+
+.rosterHead {
+  display: grid;
+  grid-template-columns: 2fr 2fr 65px 55px 55px 75px 110px;
+  gap: 6px;
+  font-size: 11px;
+  color: #aaa;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 0 6px;
+  border-bottom: 0.5px solid rgba(0,0,0,0.08);
+}
+
+.rosterRow {
+  display: grid;
+  grid-template-columns: 2fr 2fr 65px 55px 55px 75px 110px;
+  gap: 6px;
+  font-size: 12px;
+  padding: 7px 0;
+  border-bottom: 0.5px solid rgba(0,0,0,0.06);
+  align-items: center;
+}
+
+.rosterRow:last-child {
+  border-bottom: none;
+}
+
+.muted {
+  color: #888;
+}
+
+/* ── HR Notes ── */
+.notesCard {
+  margin-top: 1rem;
+}
+
+.hrNotes {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  .mc           { background: rgba(255,255,255,0.06); }
+  .mcLabel      { color: #aaa; }
+  .mcSub        { color: #777; }
+  .card         { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+  .badge        { background: rgba(255,255,255,0.08); color: #aaa; }
+  .stat         { color: #aaa; }
+  .stat strong  { color: #f0f0f0; }
+  .alertItem    { color: #aaa; border-bottom-color: rgba(255,255,255,0.08); }
+  .rosterToggle { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #f0f0f0; }
+  .rosterToggle:hover { background: rgba(255,255,255,0.07); }
+  .rosterToggleOpen   { border-color: rgba(255,255,255,0.1); border-bottom-color: transparent; }
+  .rosterBody   { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+  .rosterHead   { color: #777; border-bottom-color: rgba(255,255,255,0.08); }
+  .rosterRow    { border-bottom-color: rgba(255,255,255,0.05); }
+  .muted        { color: #777; }
+  .chartLegend  { color: #888; }
+  .toggleCount  { color: #666; }
+  .toggleArrow  { color: #666; }
+  .eyebrow      { color: #666; }
+  .bonusLabel   { color: #666; }
+  .emptyCard    { color: #666; }
+  .hrNotes      { color: #aaa; }
+}
