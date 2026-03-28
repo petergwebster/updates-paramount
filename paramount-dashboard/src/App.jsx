@@ -170,7 +170,7 @@ export default function App() {
       })
       const data = await res.json()
       if (data.ok) {
-        alert(`Slack sync complete — ${data.synced} new replies pulled in.`)
+        alert(`Slack sync complete — ${data.synced} new ${data.synced === 1 ? 'reply' : 'replies'} pulled in.`)
         loadWeek(currentWeek)
       } else {
         alert('Sync error: ' + (data.error || 'Unknown error'))

@@ -43,39 +43,42 @@ export default async (request: Request, context: Context) => {
       });
     }
 
-    // Fetch last 100 messages from channel since start of week
-    const oldest = new Date(week_start).getTime() / 1000;
-    const historyRes = await fetch(
-      `https://slack.com/api/conversations.history?channel=${CHANNEL_ID}&oldest=${oldest}&limit=100`,
-      { headers: { 'Authorization': `Bearer ${BOT_TOKEN}` } }
+    // Load all section comments for this week that have a slack_message_ts
+    const commentsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/section_comments?week_start=eq.${week_start}&slack_message_ts=not.is.null&select=id,section,section_label,slack_message_ts`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
     );
-    const historyData = await historyRes.json();
+    const sectionComments = await commentsRes.json();
 
-    if (!historyData.ok) {
-      return new Response(JSON.stringify({ error: historyData.error }), {
-        status: 500,
+    if (!sectionComments?.length) {
+      return new Response(JSON.stringify({ ok: true, synced: 0, note: 'No section comments with Slack message timestamps found for this week' }), {
+        status: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
-    const messages = historyData.messages || [];
+    // Build a map of slack_message_ts -> section comment info
+    const tsToSection: Record<string, { id: string; section: string; section_label: string }> = {};
+    for (const c of sectionComments) {
+      tsToSection[c.slack_message_ts] = { id: c.id, section: c.section, section_label: c.section_label };
+    }
+
     let syncedCount = 0;
 
-    for (const msg of messages) {
-      if (!msg.thread_ts || !msg.reply_count) continue;
-
-      // Fetch thread replies
+    // For each tracked message, fetch its thread replies
+    for (const [slackMsgTs, sectionInfo] of Object.entries(tsToSection)) {
       const threadRes = await fetch(
-        `https://slack.com/api/conversations.replies?channel=${CHANNEL_ID}&ts=${msg.thread_ts}`,
+        `https://slack.com/api/conversations.replies?channel=${CHANNEL_ID}&ts=${slackMsgTs}`,
         { headers: { 'Authorization': `Bearer ${BOT_TOKEN}` } }
       );
       const threadData = await threadRes.json();
       if (!threadData.ok) continue;
 
-      const replies = (threadData.messages || []).slice(1); // skip original message
+      const replies = (threadData.messages || []).slice(1); // skip original
+
       for (const reply of replies) {
-        const authorName = SLACK_MEMBERS_BY_ID[reply.user] || `Slack (${reply.user})`;
         const replyTs = reply.ts;
+        const authorName = SLACK_MEMBERS_BY_ID[reply.user] || `Slack (${reply.user})`;
         const replyText = reply.text || '';
         const replyDate = new Date(parseFloat(replyTs) * 1000).toISOString();
 
@@ -87,7 +90,7 @@ export default async (request: Request, context: Context) => {
         const existing = await checkRes.json();
         if (existing?.length > 0) continue;
 
-        // Insert reply as sent comment
+        // Insert as a reply in the correct section, with parent_id pointing to the original comment
         await fetch(`${SUPABASE_URL}/rest/v1/section_comments`, {
           method: 'POST',
           headers: {
@@ -98,13 +101,14 @@ export default async (request: Request, context: Context) => {
           },
           body: JSON.stringify({
             week_start,
-            section: 'slack-reply',
-            section_label: 'Slack Reply',
+            section: sectionInfo.section,
+            section_label: sectionInfo.section_label,
             author: authorName,
             text: replyText,
             notify_names: [],
             status: 'sent',
             slack_ts: replyTs,
+            parent_id: sectionInfo.id,
             created_at: replyDate,
           }),
         });
