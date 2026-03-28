@@ -240,10 +240,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   }
 
   async function loadHistory() {
-    // Load current fiscal month weeks for rolling table (month-only view per Estephanie)
     const { FISCAL_CALENDAR } = await import('../fiscalCalendar')
     const currentKey = weekKey(weekStart)
     const currentInfo = FISCAL_CALENDAR[currentKey]
+
+    // Rolling table — current month only (per Estephanie)
     let monthWeeksForRolling = []
     if (currentInfo) {
       monthWeeksForRolling = Object.entries(FISCAL_CALENDAR)
@@ -251,16 +252,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
         .map(([k]) => k)
         .sort()
     } else {
-      // fallback to 5 trailing weeks
       monthWeeksForRolling = Array.from({ length: 5 }, (_, i) => weekKey(subWeeks(weekStart, 4 - i)))
     }
     const { data } = await supabase.from('production').select('*').in('week_start', monthWeeksForRolling).order('week_start', { ascending: true })
     setHistory(data || [])
 
-    // Load all weeks in current fiscal month UP TO AND INCLUDING the viewed week
-    const { FISCAL_CALENDAR } = await import('../fiscalCalendar')
-    const currentKey = weekKey(weekStart)
-    const currentInfo = FISCAL_CALENDAR[currentKey]
+    // MTD and YTD
     if (currentInfo) {
       const monthWeeks = Object.entries(FISCAL_CALENDAR)
         .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
@@ -269,7 +266,6 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       const { data: mtd } = await supabase.from('production').select('*').in('week_start', monthWeeks).order('week_start', { ascending: true })
       setMtdData(mtd || [])
 
-      // YTD: all weeks from start of fiscal year up to viewed week
       const ytdWeeks = Object.entries(FISCAL_CALENDAR)
         .filter(([k]) => k <= currentKey)
         .map(([k]) => k)
