@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalInfo } from '../fiscalCalendar'
+import AdminFinancials from './AdminFinancials'
 import styles from './AdminPanel.module.css'
 
 // ── KPI definitions ──────────────────────────────────────────────────────────
@@ -398,6 +399,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
     { id: 'production', label: '📊 Production Data' },
     { id: 'kpis', label: '🎯 KPI Scorecard' },
     { id: 'log', label: '📋 Weekly Log' },
+    { id: 'financials', label: '💰 Financial Data' },
   ]
 
   return (
@@ -602,6 +604,13 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* ── FINANCIAL DATA ── */}
+      {activeSection === 'financials' && (
+        <div className={styles.panel}>
+          <AdminFinancials />
         </div>
       )}
 

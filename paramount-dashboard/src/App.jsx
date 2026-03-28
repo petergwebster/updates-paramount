@@ -10,6 +10,7 @@ import ProductionDashboard from './components/ProductionDashboard'
 import AdminPanel from './components/AdminPanel'
 import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
+import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
 import styles from './App.module.css'
 
@@ -18,6 +19,7 @@ const PUBLIC_TABS = [
   { id: 'kpis',           label: 'KPI Scorecard' },
   { id: 'log',            label: 'Weekly Log' },
   { id: 'people',         label: 'People' },
+  { id: 'financials',     label: 'Financials' },
   { id: 'correspondence', label: 'Correspondence' },
   { id: 'history',        label: 'History' },
 ]
@@ -272,6 +274,7 @@ export default function App() {
             {activeTab === 'log'            && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'kpis'           && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
+            {activeTab === 'financials'     && <FinancialTab />}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} {...commentProps} />}
             {activeTab === 'history'        && <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />}
             {activeTab === 'admin' && adminAuthenticated && (
