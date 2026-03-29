@@ -15,13 +15,11 @@ import AdminPeople from './components/AdminPeople'
 import styles from './App.module.css'
 
 const PUBLIC_TABS = [
-  { id: 'dashboard',      label: 'Dashboard' },
-  { id: 'kpis',           label: 'KPI Scorecard' },
-  { id: 'log',            label: 'Weekly Log' },
-  { id: 'people',         label: 'People' },
-  { id: 'financials',     label: 'Financials' },
-  { id: 'correspondence', label: 'Correspondence' },
-  { id: 'history',        label: 'History' },
+  { id: 'dashboard',  label: 'Dashboard' },
+  { id: 'kpis',       label: 'KPI Scorecard' },
+  { id: 'log',        label: 'Weekly Log' },
+  { id: 'people',     label: 'People' },
+  { id: 'financials', label: 'Financials' },
 ]
 
 function SlackIcon({ size = 14 }) {
@@ -184,7 +182,7 @@ export default function App() {
 
   const weekLabel   = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
   const fiscalLabel = getFiscalLabel(currentWeek)
-  const allTabs     = isAdmin ? [...PUBLIC_TABS, { id: 'admin', label: '⚙ Admin' }] : PUBLIC_TABS
+  const allTabs     = PUBLIC_TABS
 
   if (authLoading) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)' }}>
@@ -275,16 +273,23 @@ export default function App() {
             {activeTab === 'kpis'           && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
             {activeTab === 'financials'     && <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek, 'yyyy-MM-dd').slice(0,7)} />}
-            {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} {...commentProps} />}
-            {activeTab === 'history'        && <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />}
+
             {activeTab === 'admin' && adminAuthenticated && (
               <>
-                <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px' }}>
-                  <button onClick={() => setAdminSection('main')} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer', background: adminSection === 'main' ? '#1a1a1a' : 'transparent', color: adminSection === 'main' ? '#fff' : '#888', border: '0.5px solid ' + (adminSection === 'main' ? '#1a1a1a' : 'rgba(0,0,0,0.2)') }}>Production / KPI / Log</button>
-                  <button onClick={() => setAdminSection('people')} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer', background: adminSection === 'people' ? '#1a1a1a' : 'transparent', color: adminSection === 'people' ? '#fff' : '#888', border: '0.5px solid ' + (adminSection === 'people' ? '#1a1a1a' : 'rgba(0,0,0,0.2)') }}>People Upload</button>
+                <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'main',          label: 'Production / KPI / Log' },
+                    { id: 'people',        label: 'People Upload' },
+                    { id: 'correspondence',label: 'Correspondence' },
+                    { id: 'history',       label: 'History' },
+                  ].map(s => (
+                    <button key={s.id} onClick={() => setAdminSection(s.id)} style={{ padding: '6px 14px', fontSize: 13, borderRadius: 8, cursor: 'pointer', background: adminSection === s.id ? '#1a1a1a' : 'transparent', color: adminSection === s.id ? '#fff' : '#888', border: '0.5px solid ' + (adminSection === s.id ? '#1a1a1a' : 'rgba(0,0,0,0.2)') }}>{s.label}</button>
+                  ))}
                 </div>
-                {adminSection === 'main'   && <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />}
-                {adminSection === 'people' && <AdminPeople weekStart={weekKey(currentWeek)} currentUser={userProfile} onSaved={() => { setAdminSection('main'); setActiveTab('people') }} />}
+                {adminSection === 'main'          && <AdminPanel weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} />}
+                {adminSection === 'people'        && <AdminPeople weekStart={weekKey(currentWeek)} currentUser={userProfile} onSaved={() => { setAdminSection('main'); setActiveTab('people') }} />}
+                {adminSection === 'correspondence'&& <Correspondence weekStart={currentWeek} dbReady={dbReady} {...commentProps} />}
+                {adminSection === 'history'       && <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setAdminSection('main') }} />}
               </>
             )}
           </>
