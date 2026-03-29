@@ -47,9 +47,14 @@ export default function FinancialTab({ weekStart }) {
   const [loading, setLoading]     = useState(false)
 
   // Derive calendar month from weekStart — period is always "YYYY-MM"
-  const currentPeriod = weekStart
-    ? `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`
-    : null
+  const currentPeriod = React.useMemo(() => {
+    if (!weekStart) return null
+    try {
+      const d = weekStart instanceof Date ? weekStart : new Date(weekStart)
+      if (isNaN(d.getTime())) return null
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    } catch(e) { return null }
+  }, [weekStart])
 
   // Single effect: whenever currentPeriod changes, load everything fresh
   useEffect(() => {
