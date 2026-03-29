@@ -274,7 +274,7 @@ export default function App() {
             {activeTab === 'log'            && <WeeklyLog weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'kpis'           && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
-            {activeTab === 'financials'     && <FinancialTab />}
+            {activeTab === 'financials'     && <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek, 'yyyy-MM-dd').slice(0,7)} />}
             {activeTab === 'correspondence' && <Correspondence weekStart={currentWeek} dbReady={dbReady} {...commentProps} />}
             {activeTab === 'history'        && <HistoryPanel onSelectWeek={(w) => { setCurrentWeek(new Date(w + 'T12:00:00')); setActiveTab('dashboard') }} />}
             {activeTab === 'admin' && adminAuthenticated && (
