@@ -11,6 +11,7 @@ import AdminPanel from './components/AdminPanel'
 import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
+import WIPTab from './components/WIPTab'
 import AdminPeople from './components/AdminPeople'
 import styles from './App.module.css'
 
@@ -20,6 +21,7 @@ const PUBLIC_TABS = [
   { id: 'log',        label: 'Weekly Log' },
   { id: 'people',     label: 'People' },
   { id: 'financials', label: 'Financials' },
+  { id: 'wip',        label: 'WIP & Schedule' },
 ]
 
 function SlackIcon({ size = 14 }) {
@@ -270,6 +272,7 @@ export default function App() {
             {activeTab === 'kpis'           && <KPIScorecard weekData={weekData} weekStart={currentWeek} onSave={saveWeekData} dbReady={dbReady} readOnly {...commentProps} />}
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
             {activeTab === 'financials'     && <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek, 'yyyy-MM-dd').slice(0,7)} />}
+            {activeTab === 'wip'            && <WIPTab />}
 
             {activeTab === 'admin' && adminAuthenticated && (
               <>
