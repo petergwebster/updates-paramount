@@ -30,17 +30,17 @@ async function fetchAllItems() {
     : `{ boards(ids:${BOARD_ID}){items_page(limit:500){cursor items{id name group{id title}column_values{id text}}}}}`
   let all=[], d=await call(q(null)), page=d.data?.boards?.[0]?.items_page
   if(!page) throw new Error('Monday API error: '+JSON.stringify(d.errors||d))
-  all=page.items||[]; let cursor=page.cursor, n=0
+  all=(page.items||[]).filter(i=>i&&Array.isArray(i.column_values)); let cursor=page.cursor, n=0
   while(cursor&&n<20){
     d=await call(q(cursor)); page=d.data?.next_items_page
     if(!page?.items?.length) break
-    all=[...all,...page.items]; cursor=page.cursor; n++
+    all=[...all,...(page.items||[]).filter(i=>i&&Array.isArray(i.column_values))]; cursor=page.cursor; n++
   }
   return all
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const col  = (item,id) => item.column_values.find(c=>c.id===id)?.text?.trim()||''
+const col  = (item,id) => item?.column_values?.find(c=>c.id===id)?.text?.trim()||''
 const yds  = item => parseFloat(col(item,'text')?.replace(/,/g,''))||0
 const wipA = item => parseFloat(col(item,'numeric_mm1t59xg')?.replace(/,/g,''))||0
 const ytop = item => parseFloat(col(item,'numeric_mm1p86dj')?.replace(/,/g,''))||0
