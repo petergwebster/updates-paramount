@@ -203,7 +203,7 @@ export default function App() {
       <header className={styles.header}>
         <div className={styles.headerTop}>
           <div className={styles.brand}>
-            <img src="/Paramount_Logo.png" alt="Paramount Prints" style={{ height: 48, width: 'auto', display: 'block' }} />
+            <img src="/ParamountLogo.png" alt="Paramount Prints" style={{ height: 48, width: 'auto', display: 'block' }} />
             <p className={styles.brandSub} style={{ marginTop: 2 }}>Executive Operations Dashboard</p>
           </div>
           <div className={styles.weekNav}>
