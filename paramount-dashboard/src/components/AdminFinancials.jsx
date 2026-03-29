@@ -28,6 +28,27 @@ function parseGL(rows) {
   const vendors = { '609': {}, '610': {}, '612': {} }
   let period = null
 
+  // Detect column positions from header row (file format varies by month)
+  const headers = rows[0] || []
+  const colIdx = {}
+  headers.forEach((h, i) => {
+    if (!h) return
+    const key = String(h).trim().toLowerCase()
+    if (key === 'object')                  colIdx.obj    = i
+    if (key === 'debit amount')            colIdx.debit  = i
+    if (key === 'net')                     colIdx.net    = i
+    if (key === 'businessunit')            colIdx.bu     = i
+    if (key === 'originating master name') colIdx.vendor = i
+    if (key === 'trx date')                colIdx.trx    = i
+  })
+  // Fallback to known positions if headers not found
+  if (colIdx.obj    === undefined) colIdx.obj    = 0
+  if (colIdx.debit  === undefined) colIdx.debit  = 6
+  if (colIdx.net    === undefined) colIdx.net    = 8
+  if (colIdx.bu     === undefined) colIdx.bu     = 23
+  if (colIdx.vendor === undefined) colIdx.vendor = 14
+  if (colIdx.trx    === undefined) colIdx.trx    = 2
+
   // Init all fields
   const initBU = () => ({
     cogs_material: 0, cogs_labor: 0, cogs_wip: 0, cogs_other: 0,
@@ -43,12 +64,12 @@ function parseGL(rows) {
     const row = rows[i]
     if (!row || !row.some(v => v !== null && v !== undefined && v !== '')) continue
 
-    const obj    = String(row[0] || '').trim()
-    const debit  = parseFloat(row[6]) || 0
-    const net    = parseFloat(row[8]) || 0
-    const bu     = String(row[23] || '').trim()
-    const vendor = String(row[14] || '').trim()
-    const trxVal = row[2]  // TRX Date
+    const obj    = String(row[colIdx.obj]    || '').trim()
+    const debit  = parseFloat(row[colIdx.debit])  || 0
+    const net    = parseFloat(row[colIdx.net])     || 0
+    const bu     = String(row[colIdx.bu]     || '').trim()
+    const vendor = String(row[colIdx.vendor] || '').trim()
+    const trxVal = row[colIdx.trx]
 
     // Detect period from transaction date
     if (!period && trxVal) {
