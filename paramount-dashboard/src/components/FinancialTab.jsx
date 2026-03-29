@@ -47,8 +47,9 @@ export default function FinancialTab({ weekStart }) {
   const [data, setData]           = useState(null)
   const [loading, setLoading]     = useState(false)
 
-  // Derive calendar month — use format() from date-fns, same as rest of app
-  const currentPeriod = weekStart ? format(weekStart, 'yyyy-MM') : null
+  // Derive calendar month from weekStart (e.g. "2026-01")
+  // Use format yyyy-MM-dd then slice — same pattern as weekKey() in ProductionDashboard
+  const currentPeriod = weekStart ? format(weekStart, 'yyyy-MM-dd').slice(0, 7) : null
 
   // Load on mount and whenever weekStart changes
   useEffect(() => {
