@@ -62,35 +62,42 @@ export default function FinancialTab({ weekStart }) {
 
   async function loadPeriods(periodToSelect) {
     setLoading(true)
-    const { data } = await supabase
-      .from('financials_monthly')
-      .select('period, uploaded_at, upload_notes')
-      .order('period', { ascending: false })
-    if (!data || data.length === 0) { setPeriods([]); setLoading(false); return }
-    // Dedupe periods
-    const seen = new Set()
-    const unique = data.filter(r => {
-      if (seen.has(r.period)) return false
-      seen.add(r.period)
-      return true
-    })
-    setPeriods(unique)
-    // Select the target period (current month)
-    const target = periodToSelect || currentPeriod
-    setSelected(target || unique[0]?.period)
-    setLoading(false)
+    try {
+      const { data } = await supabase
+        .from('financials_monthly')
+        .select('period, uploaded_at, upload_notes')
+        .order('period', { ascending: false })
+      if (!data || data.length === 0) { setPeriods([]); return }
+      const seen = new Set()
+      const unique = data.filter(r => {
+        if (seen.has(r.period)) return false
+        seen.add(r.period)
+        return true
+      })
+      setPeriods(unique)
+      const target = periodToSelect || currentPeriod
+      setSelected(target || unique[0]?.period)
+    } catch(e) {
+      console.error('loadPeriods error:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function loadData(period) {
-    const { data } = await supabase
-      .from('financials_monthly')
-      .select('*')
-      .eq('period', period)
-    if (!data) return
-    const nj     = data.find(r => r.business_unit === BU_NJ)     || null
-    const bny    = data.find(r => r.business_unit === BU_BNY)    || null
-    const shared = data.find(r => r.business_unit === BU_SHARED) || null
-    setData({ nj, bny, shared })
+    try {
+      const { data } = await supabase
+        .from('financials_monthly')
+        .select('*')
+        .eq('period', period)
+      if (!data) return
+      const nj     = data.find(r => r.business_unit === BU_NJ)     || null
+      const bny    = data.find(r => r.business_unit === BU_BNY)    || null
+      const shared = data.find(r => r.business_unit === BU_SHARED) || null
+      setData({ nj, bny, shared })
+    } catch(e) {
+      console.error('loadData error:', e)
+    }
   }
 
   const get = (bu, field) => {
