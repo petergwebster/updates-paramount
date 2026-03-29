@@ -57,18 +57,17 @@ function getDept(item){
 }
 
 // ─── Date bucketing — fixed: blank ESD = 'No Date' not '90+' ─────────────────
-const DATE_BUCKETS = ['Overdue','0–30 days','31–60 days','61–90 days','90+ days','No Date']
+const DATE_BUCKETS = ['90+ days','61–90 days','31–60 days','0–30 days','No Date']
 const BUCKET_COLORS = {
-  'Overdue':    {bg:C.roseBg,  text:C.rose,  border:'#E8A0A0'},
-  '0–30 days':  {bg:C.amberBg, text:C.amber, border:'#F0C070'},
-  '31–60 days': {bg:C.goldBg,  text:C.gold,  border:'#E0C060'},
-  '61–90 days': {bg:C.navyLight,text:C.navy, border:'#A0B8D0'},
-  '90+ days':   {bg:C.slateBg, text:C.slate, border:'#C0CBD8'},
-  'No Date':    {bg:C.warm,    text:C.inkLight,border:C.border},
+  '90+ days':   {bg:C.roseBg,   text:C.rose,     border:'#E8A0A0'},  // oldest = most urgent
+  '61–90 days': {bg:C.amberBg,  text:C.amber,    border:'#F0C070'},
+  '31–60 days': {bg:C.goldBg,   text:C.gold,     border:'#E0C060'},
+  '0–30 days':  {bg:C.sageBg,   text:C.sage,     border:'#A0C8A0'},  // freshest = green
+  'No Date':    {bg:C.warm,     text:C.inkLight, border:C.border},
 }
 
 function getBucket(item){
-  const esd=col(item,'date')
+  const esd=col(item,'date4')
   if(!esd) return 'No Date'                           // ← fix: blank = own bucket
   const parts=esd.split('-')
   if(parts.length!==3) return 'No Date'
@@ -139,7 +138,7 @@ function BucketChart({ items }) {
   if(!hasData) return null
   return (
     <div style={{background:'#fff',borderRadius:10,border:`1px solid ${C.border}`,padding:'14px 18px',marginBottom:16}}>
-      <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:C.inkLight,marginBottom:12}}>WIP by Expected Ship Date</div>
+      <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:C.inkLight,marginBottom:12}}>WIP Aging by Order Date</div>
       <div style={{display:'flex',gap:8,alignItems:'flex-end',height:80}}>
         {DATE_BUCKETS.filter(b=>byBucket[b].count>0).map(b=>{
           const v=byBucket[b]; const bc=BUCKET_COLORS[b]
@@ -201,7 +200,7 @@ function OrderRow({item}){
           <Detail label="PO #" value={col(item,'text0')}/>
           <Detail label="Customer" value={col(item,'text4')}/>
           <Detail label="ESD" value={col(item,'date')}/>
-          <Detail label="Bucket" value={bucket} color={bc.text}/>
+          <Detail label="Age Bucket" value={bucket} color={bc.text}/>
           {tp>0&&<Detail label="Yards to Print" value={fmt(tp)}/>}
           <Detail label="# Colors" value={col(item,'text6__1')}/>
           <Detail label="Operator" value={col(item,'status_1_mkmee286')}/>
