@@ -13,23 +13,41 @@ function loadSheetJS() {
   });
 }
 
+// ─── Fuzzy column finder ──────────────────────────────────────────────────────
+function findCol(row, ...candidates) {
+  const keys = Object.keys(row);
+  for (const candidate of candidates) {
+    const norm = candidate.toLowerCase().replace(/\s+/g, "");
+    const found = keys.find((k) => k.toLowerCase().replace(/\s+/g, "") === norm);
+    if (found !== undefined) return found;
+  }
+  return null;
+}
+
 // ─── Account-code based GL parser ────────────────────────────────────────────
 function parseGL(rows) {
+  if (!rows.length) return {};
   const UNITS = ["609", "610", "612"];
   const totals = {};
   UNITS.forEach((u) => { totals[u] = { cogs: 0, opex: 0, inv: 0 }; });
 
+  const sample = rows[0];
+  const colBU    = findCol(sample, "BusinessUnit", "Business Unit", "BU");
+  const colAcct  = findCol(sample, "Account Number", "AccountNumber", "Account No");
+  const colDebit = findCol(sample, "Debit Amount", "DebitAmount", "Debit");
+  const colNet   = findCol(sample, "NET", "Net", "Net Amount");
+
   rows.forEach((row) => {
-    const bu = String(row["BusinessUnit"] ?? "").trim();
+    const bu = String(colBU ? row[colBU] : "").trim();
     if (!UNITS.includes(bu)) return;
 
-    const acctNum = String(row["Account Number"] ?? "");
+    const acctNum = String(colAcct ? row[colAcct] : "");
     const objMatch = acctNum.match(/-(\d{4})-/);
     if (!objMatch) return;
     const obj = parseInt(objMatch[1], 10);
 
-    const debit = parseFloat(row["Debit Amount"]) || 0;
-    const net   = parseFloat(row["NET"]) || 0;
+    const debit = parseFloat(colDebit ? row[colDebit] : 0) || 0;
+    const net   = parseFloat(colNet   ? row[colNet]   : 0) || 0;
 
     if (obj >= 4100 && obj <= 4199) {
       totals[bu].cogs += net;
@@ -101,6 +119,7 @@ export default function AdminFinancials({ weekStart }) {
   const [uploads, setUploads]               = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("");
+  const [detectedCols, setDetectedCols]     = useState(null);
   const fileInputRef = useRef(null);
 
   const periodOptions = generatePeriodOptions();
@@ -124,6 +143,7 @@ export default function AdminFinancials({ weekStart }) {
     if (!file) return;
     setMessage(null);
     setPreview(null);
+    setDetectedCols(null);
 
     try {
       const XLSX = await loadSheetJS();
@@ -137,12 +157,27 @@ export default function AdminFinancials({ weekStart }) {
         return;
       }
 
-      const required = ["BusinessUnit", "Account Number", "Debit Amount", "NET"];
-      const missing  = required.filter((c) => !(c in rows[0]));
+      // Detect columns
+      const sample = rows[0];
+      const colBU    = findCol(sample, "BusinessUnit", "Business Unit", "BU");
+      const colAcct  = findCol(sample, "Account Number", "AccountNumber", "Account No");
+      const colDebit = findCol(sample, "Debit Amount", "DebitAmount", "Debit");
+      const colNet   = findCol(sample, "NET", "Net", "Net Amount");
+
+      const missing = [];
+      if (!colBU)    missing.push("BusinessUnit");
+      if (!colAcct)  missing.push("Account Number");
+      if (!colDebit) missing.push("Debit Amount");
+      if (!colNet)   missing.push("NET");
+
       if (missing.length) {
-        setMessage({ type: "error", text: `Missing columns: ${missing.join(", ")}` });
+        // Show the actual column names from the file to help debug
+        const actualCols = Object.keys(sample).slice(0, 12).join(", ");
+        setMessage({ type: "error", text: `Could not find: ${missing.join(", ")}. File columns: ${actualCols}` });
         return;
       }
+
+      setDetectedCols({ colBU, colAcct, colDebit, colNet });
 
       const totals  = parseGL(rows);
       const guessed = guessPeriodFromFile(rows);
@@ -180,6 +215,7 @@ export default function AdminFinancials({ weekStart }) {
     } else {
       setMessage({ type: "success", text: `✓ Saved as ${selectedPeriod}` });
       setPreview(null);
+      setDetectedCols(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadHistory();
     }
@@ -195,23 +231,21 @@ export default function AdminFinancials({ weekStart }) {
   const BU_DISPLAY = { "609": "BNY Brooklyn", "610": "Passaic NJ", "612": "Shared" };
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div>
-        <h2 className="text-xl font-semibold text-gray-900">Financial Data Upload</h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>Financial Data Upload</h2>
+        <p style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
           Upload the weekly GP purchase report. <strong>Select the correct week</strong> before saving.
         </p>
       </div>
 
       {/* Period picker */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
-          Save to period:
-        </label>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>Save to period:</label>
         <select
           value={selectedPeriod}
           onChange={(e) => setSelectedPeriod(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          style={{ border: "1px solid #ccc", borderRadius: 8, padding: "6px 10px", fontSize: 13, background: "#fff", cursor: "pointer" }}
         >
           <option value="">— pick a week —</option>
           {periodOptions.map((o) => (
@@ -219,82 +253,82 @@ export default function AdminFinancials({ weekStart }) {
           ))}
         </select>
         {selectedPeriod && (
-          <span className="font-mono text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded">
+          <span style={{ fontFamily: "monospace", fontSize: 12, background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe", padding: "3px 8px", borderRadius: 6 }}>
             {selectedPeriod}
           </span>
         )}
       </div>
 
       {/* Drop zone */}
-      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
-        <div className="flex flex-col items-center gap-2 text-gray-500">
-          <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+      <label style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: 140, border: "2px dashed #ccc", borderRadius: 12, cursor: "pointer", background: "#fafafa" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: "#888" }}>
+          <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="#aaa" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
           </svg>
-          <span className="text-sm font-medium">Drop GP purchase report here or click to browse</span>
-          <span className="text-xs text-gray-400">.xlsx · .xls · .csv</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>Drop GP purchase report here or click to browse</span>
+          <span style={{ fontSize: 11, color: "#aaa" }}>.xlsx · .xls · .csv</span>
         </div>
-        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={handleFile} />
       </label>
 
       {/* Message */}
       {message && (
-        <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
-          message.type === "error"
-            ? "bg-red-50 text-red-700 border border-red-200"
-            : "bg-green-50 text-green-700 border border-green-200"
-        }`}>
+        <div style={{
+          borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 500,
+          background: message.type === "error" ? "#fef2f2" : "#f0fdf4",
+          color: message.type === "error" ? "#b91c1c" : "#15803d",
+          border: `1px solid ${message.type === "error" ? "#fecaca" : "#bbf7d0"}`
+        }}>
           {message.text}
         </div>
       )}
 
       {/* Preview */}
       {preview && (
-        <div className="border border-gray-200 rounded-xl overflow-hidden">
-          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
-            <div className="text-sm">
-              <span className="font-semibold text-gray-800">Preview — </span>
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ background: "#f9fafb", padding: "10px 16px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 13 }}>
+              <strong>Preview — </strong>
               {selectedPeriod
-                ? <span className="text-indigo-700 font-semibold">{selectedPeriod}</span>
-                : <span className="text-red-500">⚠ select a period above</span>}
+                ? <span style={{ color: "#4338ca", fontWeight: 600 }}>{selectedPeriod}</span>
+                : <span style={{ color: "#dc2626" }}>⚠ select a period above</span>}
               {preview.guessed && preview.guessed !== selectedPeriod && (
-                <span className="ml-2 text-xs text-amber-600">(file suggests {preview.guessed})</span>
+                <span style={{ marginLeft: 8, fontSize: 11, color: "#d97706" }}>(file suggests {preview.guessed})</span>
               )}
-              <span className="ml-3 text-xs text-gray-400">{preview.rowCount.toLocaleString()} rows</span>
+              <span style={{ marginLeft: 12, fontSize: 11, color: "#9ca3af" }}>{preview.rowCount.toLocaleString()} rows</span>
             </div>
             <button
               onClick={handleSave}
               disabled={uploading || !selectedPeriod}
-              className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+              style={{ padding: "6px 16px", background: selectedPeriod ? "#4f46e5" : "#a5b4fc", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: selectedPeriod ? "pointer" : "not-allowed" }}
             >
               {uploading ? "Saving…" : `Save as ${selectedPeriod || "…"}`}
             </button>
           </div>
 
-          <table className="w-full text-sm">
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-2 text-gray-600 font-medium">Business Unit</th>
-                <th className="text-right px-4 py-2 text-gray-600 font-medium">COGS</th>
-                <th className="text-right px-4 py-2 text-gray-600 font-medium">OpEx</th>
-                <th className="text-right px-4 py-2 text-gray-600 font-medium">Inv Purchases</th>
+              <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                <th style={{ textAlign: "left", padding: "8px 16px", color: "#6b7280", fontWeight: 500 }}>Business Unit</th>
+                <th style={{ textAlign: "right", padding: "8px 16px", color: "#6b7280", fontWeight: 500 }}>COGS</th>
+                <th style={{ textAlign: "right", padding: "8px 16px", color: "#6b7280", fontWeight: 500 }}>OpEx</th>
+                <th style={{ textAlign: "right", padding: "8px 16px", color: "#6b7280", fontWeight: 500 }}>Inv Purchases</th>
               </tr>
             </thead>
             <tbody>
               {Object.entries(preview.totals).map(([bu, vals]) => (
-                <tr key={bu} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-gray-800">{BU_DISPLAY[bu]}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.cogs)}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.opex)}</td>
-                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.inv)}</td>
+                <tr key={bu} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "10px 16px", fontWeight: 500 }}>{BU_DISPLAY[bu]}</td>
+                  <td style={{ padding: "10px 16px", textAlign: "right" }}>{fmt(vals.cogs)}</td>
+                  <td style={{ padding: "10px 16px", textAlign: "right" }}>{fmt(vals.opex)}</td>
+                  <td style={{ padding: "10px 16px", textAlign: "right" }}>{fmt(vals.inv)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
           {Object.values(preview.totals).every((v) => v.cogs === 0) && (
-            <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
+            <div style={{ padding: "8px 16px", background: "#fffbeb", borderTop: "1px solid #fde68a", fontSize: 12, color: "#92400e" }}>
               ⚠ COGS = $0 — normal for mid-month files before closing entries are posted.
             </div>
           )}
@@ -303,35 +337,35 @@ export default function AdminFinancials({ weekStart }) {
 
       {/* History */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Previous Uploads</h3>
-          <button onClick={loadHistory} className="text-xs text-indigo-600 hover:underline">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#6b7280", margin: 0 }}>Previous Uploads</h3>
+          <button onClick={loadHistory} style={{ fontSize: 12, color: "#4f46e5", background: "none", border: "none", cursor: "pointer" }}>
             {loadingHistory ? "Loading…" : "Refresh"}
           </button>
         </div>
         {uploads.length === 0 ? (
-          <p className="text-sm text-gray-400">No uploads yet.</p>
+          <p style={{ fontSize: 13, color: "#9ca3af" }}>No uploads yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left pb-2 text-gray-500 font-medium">Period</th>
-                <th className="text-left pb-2 text-gray-500 font-medium">BU</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">COGS</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">OpEx</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">Inv Purchases</th>
-                <th className="text-right pb-2 text-gray-500 font-medium">Uploaded</th>
+              <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                <th style={{ textAlign: "left", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>Period</th>
+                <th style={{ textAlign: "left", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>BU</th>
+                <th style={{ textAlign: "right", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>COGS</th>
+                <th style={{ textAlign: "right", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>OpEx</th>
+                <th style={{ textAlign: "right", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>Inv Purchases</th>
+                <th style={{ textAlign: "right", paddingBottom: 8, color: "#6b7280", fontWeight: 500 }}>Uploaded</th>
               </tr>
             </thead>
             <tbody>
               {uploads.map((u, i) => (
-                <tr key={i} className="border-b border-gray-100 last:border-0">
-                  <td className="py-2 font-mono text-xs text-gray-800">{u.period}</td>
-                  <td className="py-2 text-gray-700">{u.business_unit_label || BU_DISPLAY[u.business_unit] || u.business_unit}</td>
-                  <td className="py-2 text-right text-gray-700">{fmt(u.cogs)}</td>
-                  <td className="py-2 text-right text-gray-700">{fmt(u.opex)}</td>
-                  <td className="py-2 text-right text-gray-700">{fmt(u.inv_purchases)}</td>
-                  <td className="py-2 text-right text-xs text-gray-400">{fmtDate(u.uploaded_at)}</td>
+                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ padding: "7px 0", fontFamily: "monospace", fontSize: 12 }}>{u.period}</td>
+                  <td style={{ padding: "7px 0" }}>{u.business_unit_label || BU_DISPLAY[u.business_unit] || u.business_unit}</td>
+                  <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.cogs)}</td>
+                  <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.opex)}</td>
+                  <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.inv_purchases)}</td>
+                  <td style={{ padding: "7px 0", textAlign: "right", fontSize: 11, color: "#9ca3af" }}>{fmtDate(u.uploaded_at)}</td>
                 </tr>
               ))}
             </tbody>
