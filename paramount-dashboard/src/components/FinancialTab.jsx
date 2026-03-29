@@ -154,12 +154,12 @@ export default function FinancialTab() {
             <div className={styles.card}>
               <div className={styles.cardLabel}>NJ Inventory Purchases</div>
               <div className={styles.cardVal}>{fmtD(get('nj','inv_purchases'))}</div>
-              <div className={styles.cardSplit}>{njVendors.slice(0,1).map(v => v.name.replace(/ - FOR PARAMOUNT/i,'').slice(0,30)).join('')}</div>
+              <div className={styles.cardSplit}>{njVendors.length} vendor{njVendors.length !== 1 ? 's' : ''} · see breakdown below</div>
             </div>
             <div className={styles.card}>
               <div className={styles.cardLabel}>BNY Inventory Purchases</div>
               <div className={styles.cardVal}>{fmtD(get('bny','inv_purchases'))}</div>
-              <div className={styles.cardSplit}>{bnyVendors.slice(0,1).map(v => v.name.replace(/ - FOR BNY/i,'').slice(0,30)).join('')}</div>
+              <div className={styles.cardSplit}>{bnyVendors.length} vendor{bnyVendors.length !== 1 ? 's' : ''} · see breakdown below</div>
             </div>
           </div>
 
