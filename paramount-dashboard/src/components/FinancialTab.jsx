@@ -53,10 +53,11 @@ export default function FinancialTab({ weekStart }) {
 
   useEffect(() => { loadPeriods() }, [])
 
-  // When week changes, auto-select the matching period if it exists
+  // When week changes, select that month's period (may not exist — handled in render)
   useEffect(() => {
     if (!currentPeriod) return
     setSelected(currentPeriod)
+    setData(null) // clear stale data immediately when week changes
   }, [currentPeriod])
 
   useEffect(() => { if (selected) loadData(selected) }, [selected])
@@ -75,8 +76,6 @@ export default function FinancialTab({ weekStart }) {
       return true
     })
     setPeriods(unique)
-    // Only auto-select on initial load if nothing selected yet
-    setSelected(prev => prev || (currentPeriod && unique.find(u => u.period === currentPeriod) ? currentPeriod : unique[0]?.period))
     setLoading(false)
   }
 
@@ -138,22 +137,32 @@ export default function FinancialTab({ weekStart }) {
           <h2 className={styles.title}>Financial Summary</h2>
           <p className={styles.sub}>Month-to-date COGS, operating expenses &amp; inventory purchases</p>
         </div>
-        <div className={styles.periodPicker}>
-          {periods.map(p => (
-            <button
-              key={p.period}
-              className={`${styles.periodBtn} ${selected === p.period ? styles.periodBtnActive : ''}`}
-              onClick={() => setSelected(p.period)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Current month badge */}
+          {currentPeriod && (
+            <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: '#1C1C1E', color: '#fff' }}>
+              {periodLabel(currentPeriod)}
+            </span>
+          )}
+          {/* Browse history dropdown — only if other months exist */}
+          {periods.filter(p => p.period !== currentPeriod).length > 0 && (
+            <select
+              value={selected || ''}
+              onChange={e => setSelected(e.target.value)}
+              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--ink-60)', background: 'transparent', cursor: 'pointer' }}
             >
-              {periodLabel(p.period)}
-            </button>
-          ))}
+              <option value={currentPeriod || ''} disabled>{currentPeriod ? periodLabel(currentPeriod) : 'Current'}</option>
+              {periods.filter(p => p.period !== currentPeriod).map(p => (
+                <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
-      {!currentPeriodHasData && selected && (
+      {!currentPeriodHasData && (
         <div className={styles.emptyMonth}>
-          <p>No financial data uploaded for <strong>{periodLabel(selected)}</strong> yet.</p>
+          <p>No financial data uploaded for <strong>{periodLabel(currentPeriod)}</strong> yet.</p>
           <p>Upload the GP purchase report for this month in Admin → Financial Data.</p>
         </div>
       )}
