@@ -51,23 +51,22 @@ export default function FinancialTab({ weekStart }) {
     ? `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`
     : null
 
-  useEffect(() => { loadPeriods() }, [])
-
-  // When week changes, select that month's period (may not exist — handled in render)
+  // Reload periods and data whenever currentPeriod changes (week navigation)
   useEffect(() => {
     if (!currentPeriod) return
-    setSelected(currentPeriod)
-    setData(null) // clear stale data immediately when week changes
+    setData(null)
+    loadPeriods(currentPeriod)
   }, [currentPeriod])
 
   useEffect(() => { if (selected) loadData(selected) }, [selected])
 
-  async function loadPeriods() {
+  async function loadPeriods(periodToSelect) {
+    setLoading(true)
     const { data } = await supabase
       .from('financials_monthly')
       .select('period, uploaded_at, upload_notes')
       .order('period', { ascending: false })
-    if (!data || data.length === 0) { setLoading(false); return }
+    if (!data || data.length === 0) { setPeriods([]); setLoading(false); return }
     // Dedupe periods
     const seen = new Set()
     const unique = data.filter(r => {
@@ -76,6 +75,9 @@ export default function FinancialTab({ weekStart }) {
       return true
     })
     setPeriods(unique)
+    // Select the target period (current month)
+    const target = periodToSelect || currentPeriod
+    setSelected(target || unique[0]?.period)
     setLoading(false)
   }
 
@@ -104,15 +106,9 @@ export default function FinancialTab({ weekStart }) {
     return `${MONTH_NAMES[mo]} ${yr}`
   }
 
-  if (loading) return <div className={styles.empty}>Loading financial data…</div>
-  if (!periods.length) return (
-    <div className={styles.empty}>
-      <p>No financial data uploaded yet.</p>
-      <p style={{ marginTop: 6, fontSize: 13 }}>Upload the GP purchase report in Admin → Financial Data.</p>
-    </div>
-  )
+  if (loading) return <div className={styles.empty}>Loading…</div>
 
-  // Show message when current month has no data but other months do
+  // Show message when current month has no data
   const currentPeriodHasData = periods.some(p => p.period === selected)
 
   const note = periods.find(p => p.period === selected)?.upload_notes
