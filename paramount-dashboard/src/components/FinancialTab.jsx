@@ -56,9 +56,8 @@ export default function FinancialTab({ weekStart }) {
     } catch(e) { return null }
   }, [weekStart])
 
-  // Single effect: whenever currentPeriod changes, load everything fresh
+  // Load on mount and whenever weekStart changes
   useEffect(() => {
-    if (!currentPeriod) return
     loadAll(currentPeriod)
   }, [currentPeriod])
 
@@ -72,11 +71,12 @@ export default function FinancialTab({ weekStart }) {
     setLoading(true)
     setData(null)
     try {
-      // Load period list and current period's data in parallel
-      const [periodsRes, dataRes] = await Promise.all([
+      // Load period list — and current period's data if we have a period
+      const queries = [
         supabase.from('financials_monthly').select('period, uploaded_at, upload_notes').order('period', { ascending: false }),
-        supabase.from('financials_monthly').select('*').eq('period', period)
-      ])
+      ]
+      if (period) queries.push(supabase.from('financials_monthly').select('*').eq('period', period))
+      const [periodsRes, dataRes] = await Promise.all(queries)
       // Update periods list
       if (periodsRes.data && periodsRes.data.length > 0) {
         const seen = new Set()
@@ -88,9 +88,9 @@ export default function FinancialTab({ weekStart }) {
       } else {
         setPeriods([])
       }
-      setSelected(period)
-      // Update data
-      if (dataRes.data && dataRes.data.length > 0) {
+      setSelected(period || unique[0]?.period)
+      // Update data if we queried for a specific period
+      if (dataRes && dataRes.data && dataRes.data.length > 0) {
         setData({
           nj:     dataRes.data.find(r => r.business_unit === BU_NJ)     || null,
           bny:    dataRes.data.find(r => r.business_unit === BU_BNY)    || null,
