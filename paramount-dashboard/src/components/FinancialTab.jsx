@@ -144,14 +144,14 @@ export default function FinancialTab({ weekStart }) {
               {periodLabel(currentPeriod)}
             </span>
           )}
-          {/* Browse history dropdown — only if other months exist */}
-          {periods.filter(p => p.period !== currentPeriod).length > 0 && (
+          {/* Browse history — only show if there are past months with data */}
+          {periods.length > 0 && (
             <select
               value={selected || ''}
               onChange={e => setSelected(e.target.value)}
               style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--ink-60)', background: 'transparent', cursor: 'pointer' }}
             >
-              <option value={currentPeriod || ''} disabled>{currentPeriod ? periodLabel(currentPeriod) : 'Current'}</option>
+              {currentPeriod && <option value={currentPeriod}>{periodLabel(currentPeriod)}{!currentPeriodHasData ? ' (no data)' : ''}</option>}
               {periods.filter(p => p.period !== currentPeriod).map(p => (
                 <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>
               ))}
