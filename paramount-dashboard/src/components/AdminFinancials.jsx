@@ -1,385 +1,343 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { supabase } from '../supabase'
-import { format } from 'date-fns'
-import { getFiscalInfo } from '../fiscalCalendar'
-import styles from './AdminFinancials.module.css'
+import { useState } from "react";
+import * as XLSX from "xlsx";
+import { supabase } from "../supabaseClient";
 
-// ── GL Account Object → category mapping ─────────────────────────────────────
-const COGS_MATERIAL  = new Set(['4104','4105'])
-const COGS_LABOR     = new Set(['4108','4109'])
-const COGS_WIP       = new Set(['4111','4112'])
-const COGS_OTHER     = new Set(['4113','4114'])
-const SALARY         = new Set(['6115'])
-const SALARY_OT      = new Set(['6120','6125'])
-const CAPITALIZATION = new Set(['6116'])
-const FRINGE         = new Set(['6130','6135','6195'])
-const TE             = new Set(['6205','6220','6221','6255','6260','6270','6271'])
-const PRINTING       = new Set(['6312'])
-const DISTRIBUTION   = new Set(['6405','6410','6415','6430','6435'])
-const OFFICE_EDP     = new Set(['6505','6515','6520','6525','6530','6540','6550','6640'])
-const CONSULTING     = new Set(['6630'])
-const BUILDING       = new Set(['6710'])
-const UTILITIES      = new Set(['6715'])
-const RENT           = new Set(['6740','6745'])
-const INV_PURCHASES  = new Set(['1437'])
+// ─── Account-code based GL parser ───────────────────────────────────────────
+//
+// Account Number format: "BU-OBJECT-0000" e.g. "610-4105-0000"
+//   BU segment:     609 = BNY Brooklyn, 610 = Passaic NJ, 612 = Shared
+//   Object segment: 14xx = Inventory/WIP balance sheet accounts
+//                   41xx = COGS (posted at month-end; absent mid-month → $0)
+//                   43xx, 48xx, 6xxx = Operating Expenses
+//
+// Rules:
+//   COGS          = sum of NET where object is 4100–4199
+//   OpEx          = sum of Debit Amount where object is 6000+ (excl. payroll
+//                   clearing 6116) PLUS 43xx / 48xx debit rows
+//   Inv Purchases = sum of Debit Amount where object is 1437
+//
+// This handles mid-month GL files where 41xx rows simply don't exist yet.
+// ────────────────────────────────────────────────────────────────────────────
 
 function parseGL(rows) {
-  // rows: array of arrays (from SheetJS), first row is headers
-  // Returns { period, byBU: { '609': {...}, '610': {...}, '612': {...} } }
-  const result = { '609': {}, '610': {}, '612': {} }
-  const vendors = { '609': {}, '610': {}, '612': {} }
-  let period = null
+  // rows = array of objects keyed by header name
+  const BU_MAP = { "609": "609", "610": "610", "612": "612" };
+  const UNITS = ["609", "610", "612"];
 
-  // Detect column positions from header row (file format varies by month)
-  const headers = rows[0] || []
-  const colIdx = {}
-  headers.forEach((h, i) => {
-    if (!h) return
-    const key = String(h).trim().toLowerCase()
-    if (key === 'object')                  colIdx.obj    = i
-    if (key === 'debit amount')            colIdx.debit  = i
-    if (key === 'net')                     colIdx.net    = i
-    if (key === 'businessunit')            colIdx.bu     = i
-    if (key === 'originating master name') colIdx.vendor = i
-    if (key === 'trx date')                colIdx.trx    = i
-  })
-  // Fallback to known positions if headers not found
-  if (colIdx.obj    === undefined) colIdx.obj    = 0
-  if (colIdx.debit  === undefined) colIdx.debit  = 6
-  if (colIdx.net    === undefined) colIdx.net    = 8
-  if (colIdx.bu     === undefined) colIdx.bu     = 23
-  if (colIdx.vendor === undefined) colIdx.vendor = 14
-  if (colIdx.trx    === undefined) colIdx.trx    = 2
+  const totals = {};
+  UNITS.forEach((u) => {
+    totals[u] = { cogs: 0, opex: 0, inv: 0 };
+  });
 
-  // Init all fields
-  const initBU = () => ({
-    cogs_material: 0, cogs_labor: 0, cogs_wip: 0, cogs_other: 0,
-    salary: 0, salary_ot: 0, fringe: 0, te: 0, printing: 0,
-    distribution: 0, office_edp: 0, consulting: 0, building: 0,
-    utilities: 0, rent: 0, capitalization: 0, inv_purchases: 0,
-  })
-  result['609'] = initBU()
-  result['610'] = initBU()
-  result['612'] = initBU()
+  rows.forEach((row) => {
+    // BusinessUnit column is numeric in the file; coerce to string
+    const bu = String(row["BusinessUnit"] ?? "").trim();
+    if (!UNITS.includes(bu)) return;
 
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i]
-    if (!row || !row.some(v => v !== null && v !== undefined && v !== '')) continue
+    const acctNum = String(row["Account Number"] ?? "");
+    // Extract the 4-digit object segment: "610-4105-0000" → "4105"
+    const objMatch = acctNum.match(/-(\d{4})-/);
+    if (!objMatch) return;
+    const obj = parseInt(objMatch[1], 10);
 
-    const obj    = String(row[colIdx.obj]    || '').trim()
-    const debit  = parseFloat(row[colIdx.debit])  || 0
-    const net    = parseFloat(row[colIdx.net])     || 0
-    const bu     = String(row[colIdx.bu]     || '').trim()
-    const vendor = String(row[colIdx.vendor] || '').trim()
-    const trxVal = row[colIdx.trx]
+    const debit = parseFloat(row["Debit Amount"]) || 0;
+    const net = parseFloat(row["NET"]) || 0;
 
-    // Detect period from transaction date
-    if (!period && trxVal) {
-      let d = null
-      if (typeof trxVal === 'number') {
-        // Excel serial date
-        const date = new Date(Math.round((trxVal - 25569) * 86400 * 1000))
-        d = date
-      } else if (trxVal instanceof Date) {
-        d = trxVal
-      } else if (typeof trxVal === 'string' && trxVal.includes('DATE')) {
-        // =DATE(2026,2,28) formula — extract year/month
-        const m = trxVal.match(/DATE\((\d+),(\d+)/)
-        if (m) period = `${m[1]}-${String(m[2]).padStart(2,'0')}`
-      }
-      if (d && !period) {
-        period = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    // COGS: object 4100–4199 (absent in mid-month files → stays 0)
+    if (obj >= 4100 && obj <= 4199) {
+      totals[bu].cogs += net;
+    }
+    // Inventory Purchases: object 1437 (use Debit Amount, not NET)
+    else if (obj === 1437) {
+      totals[bu].inv += debit;
+    }
+    // OpEx: 43xx, 48xx, 6000+ (exclude 6116 payroll clearing contra account)
+    else if (
+      (obj >= 4300 && obj <= 4399) ||
+      (obj >= 4800 && obj <= 4899) ||
+      (obj >= 6000 && obj !== 6116)
+    ) {
+      if (debit > 0) {
+        totals[bu].opex += debit;
       }
     }
+  });
 
-    if (!['609','610','612'].includes(bu)) continue
-
-    const r = result[bu]
-    if      (COGS_MATERIAL.has(obj))  r.cogs_material  += net
-    else if (COGS_LABOR.has(obj))     r.cogs_labor     += net
-    else if (COGS_WIP.has(obj))       r.cogs_wip       += net
-    else if (COGS_OTHER.has(obj))     r.cogs_other     += net
-    else if (SALARY.has(obj))         r.salary         += net
-    else if (SALARY_OT.has(obj))      r.salary_ot      += net
-    else if (CAPITALIZATION.has(obj)) r.capitalization += net
-    else if (FRINGE.has(obj))         r.fringe         += net
-    else if (TE.has(obj))             r.te             += net
-    else if (PRINTING.has(obj))       r.printing       += net
-    else if (DISTRIBUTION.has(obj))   r.distribution   += net
-    else if (OFFICE_EDP.has(obj))     r.office_edp     += net
-    else if (CONSULTING.has(obj))     r.consulting     += net
-    else if (BUILDING.has(obj))       r.building       += net
-    else if (UTILITIES.has(obj))      r.utilities      += net
-    else if (RENT.has(obj))           r.rent           += net
-    else if (INV_PURCHASES.has(obj)) {
-      r.inv_purchases += debit
-      if (vendor) vendors[bu][vendor] = (vendors[bu][vendor] || 0) + debit
-    }
-  }
-
-  // Round all values and build vendor arrays
-  const byBU = {}
-  for (const bu of ['609','610','612']) {
-    const r = result[bu]
-    Object.keys(r).forEach(k => { r[k] = Math.round(r[k] * 100) / 100 })
-    byBU[bu] = {
-      ...r,
-      inv_vendors: Object.entries(vendors[bu])
-        .sort((a,b) => b[1]-a[1])
-        .slice(0, 10)
-        .map(([name, amount]) => ({ name, amount: Math.round(amount) }))
-    }
-  }
-
-  return { period, byBU }
+  return totals;
 }
 
-function fmtD(v) {
-  if (!v && v !== 0) return '—'
-  const abs = Math.abs(Math.round(v))
-  return (v < 0 ? '-$' : '$') + abs.toLocaleString()
+// ─── Fiscal week helper ──────────────────────────────────────────────────────
+function getFiscalWeek(date) {
+  // Week 1 = days 1–7 of the month, Week 2 = 8–14, etc.
+  const d = new Date(date);
+  const day = d.getDate();
+  return Math.ceil(day / 7);
 }
 
+function getPeriodKey(year, month, weekNum) {
+  // Format: "2026-03-W1"
+  const mm = String(month).padStart(2, "0");
+  return `${year}-${mm}-W${weekNum}`;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export default function AdminFinancials({ weekStart }) {
-  const [status, setStatus]           = useState(null) // 'parsing' | 'preview' | 'saving' | 'saved' | 'error'
-  const [parseResult, setParseResult] = useState(null) // { period, byBU }
-  const [existing, setExisting]       = useState(null) // prior DB rows for this period
-  const [notes, setNotes]             = useState('')
-  const [dragging, setDragging]       = useState(false)
-  const [history, setHistory]         = useState([])
-  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [uploads, setUploads] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  useEffect(() => { loadHistory() }, [])
+  // Derive period key from weekStart prop (ISO date string "YYYY-MM-DD")
+  function derivePeriod(ws) {
+    if (!ws) return null;
+    const d = new Date(ws + "T00:00:00");
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const weekNum = getFiscalWeek(d);
+    return getPeriodKey(year, month, weekNum);
+  }
+
+  const currentPeriod = derivePeriod(weekStart);
 
   async function loadHistory() {
-    const { data } = await supabase
-      .from('financials_monthly')
-      .select('period, business_unit, uploaded_at, cogs_total, opex_total, inv_purchases')
-      .order('period', { ascending: false })
-      .order('business_unit')
-      .limit(30)
-    setHistory(data || [])
+    setLoadingHistory(true);
+    const { data, error } = await supabase
+      .from("financials_monthly")
+      .select("period, business_unit, cogs, opex, inv_purchases, uploaded_at")
+      .order("period", { ascending: false })
+      .order("business_unit", { ascending: true })
+      .limit(30);
+    if (!error) setUploads(data || []);
+    setLoadingHistory(false);
   }
 
-  async function processFile(file) {
-    setStatus('parsing')
-    setParseResult(null)
-    setExisting(null)
-    try {
-      const XLSX = window.XLSX
-      if (!XLSX) throw new Error('SheetJS not loaded — check index.html CDN script')
-      const ab = await file.arrayBuffer()
-      const wb = XLSX.read(ab, { type: 'array' })
-      const sheetName = wb.SheetNames[0]
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null })
-      const parsed = parseGL(rows)
-      if (!parsed.period) throw new Error('Could not detect period from file dates')
-      setParseResult(parsed)
+  // Run loadHistory on first render
+  useState(() => {
+    loadHistory();
+  });
 
-      // Check if we already have data for this month
-      const fiscalInfo2 = weekStart ? getFiscalInfo(weekStart) : null
-      const weekNum2 = fiscalInfo2?.weekInMonth || 1
-      const weekKey2 = `${parsed.period}-W${weekNum2}`
-      const { data: prior } = await supabase
-        .from('financials_monthly')
-        .select('*')
-        .eq('period', weekKey2)
-      setExisting(prior || [])
-      setStatus('preview')
-    } catch (e) {
-      console.error(e)
-      setStatus('error')
+  async function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setMessage(null);
+    setPreview(null);
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { raw: true });
+
+      if (!rows.length) {
+        setMessage({ type: "error", text: "File appears empty." });
+        return;
+      }
+
+      // Validate required columns
+      const required = ["BusinessUnit", "Account Number", "Debit Amount", "NET"];
+      const missing = required.filter((c) => !(c in rows[0]));
+      if (missing.length) {
+        setMessage({
+          type: "error",
+          text: `Missing columns: ${missing.join(", ")}. Is this the GP purchase report?`,
+        });
+        return;
+      }
+
+      const totals = parseGL(rows);
+
+      // Detect month/year from the file data (Period ID column: 2=Feb, 3=Mar…)
+      const periodId = rows[0]["Period ID"];
+      const openYear = rows[0]["Open Year"];
+      const fileMonth = typeof periodId === "number" ? periodId : null;
+      const fileYear = typeof openYear === "string" ? parseInt(openYear) : null;
+
+      // Determine period key: prefer prop-derived, fall back to file-derived
+      let period = currentPeriod;
+      if (!period && fileMonth && fileYear) {
+        const weekNum = getFiscalWeek(new Date(fileYear, fileMonth - 1, 1));
+        period = getPeriodKey(fileYear, fileMonth, weekNum);
+      }
+      if (!period) {
+        setMessage({ type: "error", text: "Could not determine period. Make sure a week is selected." });
+        return;
+      }
+
+      setPreview({ totals, period, rowCount: rows.length });
+    } catch (err) {
+      setMessage({ type: "error", text: `Parse error: ${err.message}` });
     }
   }
 
   async function handleSave() {
-    if (!parseResult) return
-    setStatus('saving')
-    const { period: calMonth, byBU } = parseResult
-    // Build week-specific key: "2026-01-W2" using the current fiscal week
-    const fiscalInfo = weekStart ? getFiscalInfo(weekStart) : null
-    const weekNum = fiscalInfo?.weekInMonth || 1
-    const period = `${calMonth}-W${weekNum}`
-    const now = new Date().toISOString()
-    const upserts = ['609','610','612'].map(bu => ({
+    if (!preview) return;
+    setUploading(true);
+    setMessage(null);
+
+    const { totals, period } = preview;
+    const BU_LABELS = { "609": "BNY Brooklyn", "610": "Passaic NJ", "612": "Shared" };
+
+    const rows = Object.entries(totals).map(([bu, vals]) => ({
       period,
       business_unit: bu,
-      ...byBU[bu],
-      upload_notes: notes || null,
-      uploaded_at: now,
-    }))
+      business_unit_label: BU_LABELS[bu],
+      cogs: Math.round(vals.cogs * 100) / 100,
+      opex: Math.round(vals.opex * 100) / 100,
+      inv_purchases: Math.round(vals.inv * 100) / 100,
+      uploaded_at: new Date().toISOString(),
+    }));
+
     const { error } = await supabase
-      .from('financials_monthly')
-      .upsert(upserts, { onConflict: 'period,business_unit' })
-    if (error) { console.error(error); setStatus('error'); return }
-    setStatus('saved')
-    setParseResult(null)
-    setNotes('')
-    loadHistory()
-    setTimeout(() => setStatus(null), 3000)
+      .from("financials_monthly")
+      .upsert(rows, { onConflict: "period,business_unit" });
+
+    if (error) {
+      setMessage({ type: "error", text: `Save failed: ${error.message}` });
+    } else {
+      setMessage({ type: "success", text: `Saved ${period} successfully.` });
+      setPreview(null);
+      loadHistory();
+    }
+    setUploading(false);
   }
 
-  function handleDrop(e) {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) processFile(file)
+  function fmt(n) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(n ?? 0);
   }
 
-  const priorByBU = bu => existing?.find(r => r.business_unit === bu)
+  function fmtDate(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
 
-  const BU_LABELS = { '609': 'BNY Brooklyn', '610': 'Passaic NJ', '612': 'Shared' }
+  const BU_DISPLAY = { "609": "BNY Brooklyn", "610": "Passaic NJ", "612": "Shared" };
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.header}>
-        <div>
-          <h3 className={styles.title}>Financial Data Upload</h3>
-          <p className={styles.sub}>Upload the weekly GP purchase report — cumulative MTD. Each upload replaces the current month's data.</p>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900">Financial Data Upload</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload the weekly GP purchase report — cumulative MTD. Each upload
+          replaces the current week's data.
+          {currentPeriod && (
+            <span className="ml-2 font-medium text-indigo-600">
+              Current period: {currentPeriod}
+            </span>
+          )}
+        </p>
       </div>
 
       {/* Drop zone */}
-      {!parseResult && status !== 'saved' && (
-        <div
-          className={`${styles.dropZone} ${dragging ? styles.dropZoneDragging : ''}`}
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileRef.current?.click()}
-        >
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
-            onChange={e => e.target.files[0] && processFile(e.target.files[0])} />
-          {status === 'parsing'
-            ? <span className={styles.dropMsg}>Parsing GL file…</span>
-            : status === 'error'
-            ? <span className={styles.dropMsgError}>Parse failed — check file format. Click to retry.</span>
-            : <><span className={styles.dropIcon}>📊</span><span className={styles.dropMsg}>Drop GP purchase report here or click to browse</span><span className={styles.dropHint}>.xlsx · .xls · .csv</span></>
-          }
+      <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+        <div className="flex flex-col items-center gap-2 text-gray-500">
+          <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+          </svg>
+          <span className="text-sm font-medium">Drop GP purchase report here or click to browse</span>
+          <span className="text-xs text-gray-400">.xlsx · .xls · .csv</span>
+        </div>
+        <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+      </label>
+
+      {/* Message */}
+      {message && (
+        <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
+          message.type === "error"
+            ? "bg-red-50 text-red-700 border border-red-200"
+            : "bg-green-50 text-green-700 border border-green-200"
+        }`}>
+          {message.text}
         </div>
       )}
 
       {/* Preview */}
-      {status === 'preview' && parseResult && (
-        <div className={styles.preview}>
-          <div className={styles.previewHeader}>
+      {preview && (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <span className={styles.periodBadge}>
-                {parseResult.period} · Week {weekStart ? (getFiscalInfo(weekStart)?.weekInMonth || '?') : '?'}
-              </span>
-              {existing && existing.length > 0 && (
-                <span className={styles.replaceBadge}>Replaces existing upload — will show delta vs prior</span>
-              )}
+              <span className="font-semibold text-gray-800">Preview — {preview.period}</span>
+              <span className="ml-3 text-xs text-gray-500">{preview.rowCount.toLocaleString()} GL rows parsed</span>
             </div>
-            <div className={styles.previewActions}>
-              <button onClick={() => { setParseResult(null); setStatus(null) }}>Cancel</button>
-              <button className="primary" onClick={handleSave} disabled={status === 'saving'}>
-                {status === 'saving' ? 'Saving…' : 'Save to Dashboard'}
-              </button>
-            </div>
+            <button
+              onClick={handleSave}
+              disabled={uploading}
+              className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {uploading ? "Saving…" : "Save to Supabase"}
+            </button>
           </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label className={styles.notesLabel}>Upload notes (optional)</label>
-            <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
-              placeholder="e.g. Week 3 of 4 — through 3/22" className={styles.notesInput} />
-          </div>
-
-          <div className={styles.previewGrid}>
-            {['609','610','612'].map(bu => {
-              const d = parseResult.byBU[bu]
-              const prior = priorByBU(bu)
-              const cogsTotal = d.cogs_material + d.cogs_labor + d.cogs_wip + d.cogs_other
-              const opexTotal = d.salary + d.salary_ot + d.fringe + d.te + d.printing +
-                d.distribution + d.office_edp + d.consulting + d.building + d.utilities + d.rent
-              const priorCogs  = prior ? parseFloat(prior.cogs_total || 0) : null
-              const priorOpex  = prior ? parseFloat(prior.opex_total || 0) : null
-              const cogsWkDelta = priorCogs !== null ? cogsTotal - priorCogs : null
-              const opexWkDelta = priorOpex !== null ? opexTotal - priorOpex : null
-
-              return (
-                <div key={bu} className={styles.previewCard}>
-                  <div className={styles.previewCardTitle}>{BU_LABELS[bu]}</div>
-
-                  <div className={styles.previewSection}>COGS</div>
-                  <div className={styles.previewRow}><span>Material</span><strong>{fmtD(d.cogs_material)}</strong></div>
-                  <div className={styles.previewRow}><span>Labor</span><strong>{fmtD(d.cogs_labor)}</strong></div>
-                  <div className={styles.previewRow}><span>WIP</span><strong>{fmtD(d.cogs_wip)}</strong></div>
-                  <div className={styles.previewRow}><span>Other</span><strong>{fmtD(d.cogs_other)}</strong></div>
-                  <div className={`${styles.previewRow} ${styles.previewTotal}`}>
-                    <span>COGS Total</span>
-                    <strong>{fmtD(cogsTotal)}</strong>
-                    {cogsWkDelta !== null && <span className={styles.delta}>+{fmtD(cogsWkDelta)} this wk</span>}
-                  </div>
-
-                  <div className={styles.previewSection} style={{ marginTop: 8 }}>Operating Expenses</div>
-                  <div className={styles.previewRow}><span>Salaries</span><strong>{fmtD(d.salary)}</strong></div>
-                  <div className={styles.previewRow}><span>OT / Temp</span><strong>{fmtD(d.salary_ot)}</strong></div>
-                  <div className={styles.previewRow}><span>Fringe / Benefits</span><strong>{fmtD(d.fringe)}</strong></div>
-                  <div className={styles.previewRow}><span>T&amp;E</span><strong>{fmtD(d.te)}</strong></div>
-                  {d.printing > 0 && <div className={styles.previewRow}><span>Printing / Consumables</span><strong>{fmtD(d.printing)}</strong></div>}
-                  <div className={styles.previewRow}><span>Distribution</span><strong>{fmtD(d.distribution)}</strong></div>
-                  <div className={styles.previewRow}><span>Office / EDP</span><strong>{fmtD(d.office_edp)}</strong></div>
-                  {d.consulting > 0 && <div className={styles.previewRow}><span>Consulting</span><strong>{fmtD(d.consulting)}</strong></div>}
-                  <div className={styles.previewRow}><span>Utilities</span><strong>{fmtD(d.utilities)}</strong></div>
-                  <div className={styles.previewRow}><span>Rent</span><strong>{fmtD(d.rent)}</strong></div>
-                  <div className={`${styles.previewRow} ${styles.previewTotal}`}>
-                    <span>OpEx Total</span>
-                    <strong>{fmtD(opexTotal)}</strong>
-                    {opexWkDelta !== null && <span className={styles.delta}>+{fmtD(opexWkDelta)} this wk</span>}
-                  </div>
-                  <div className={styles.previewRow} style={{ color: 'var(--ink-60)', fontSize: 11 }}>
-                    <span>Capitalization (contra)</span><strong>{fmtD(d.capitalization)}</strong>
-                  </div>
-
-                  {d.inv_purchases > 0 && (<>
-                    <div className={styles.previewSection} style={{ marginTop: 8 }}>Inventory Purchases</div>
-                    <div className={`${styles.previewRow} ${styles.previewTotal}`}>
-                      <span>Total</span><strong>{fmtD(d.inv_purchases)}</strong>
-                    </div>
-                    {d.inv_vendors.slice(0,4).map((v,i) => (
-                      <div key={i} className={styles.previewRow} style={{ fontSize: 11 }}>
-                        <span className={styles.vendorName}>{v.name.replace(/ - FOR (PARAMOUNT|BNY)/i,'')}</span>
-                        <strong>{fmtD(v.amount)}</strong>
-                      </div>
-                    ))}
-                  </>)}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {status === 'saved' && (
-        <div className={styles.savedMsg}>✓ Financial data saved to dashboard</div>
-      )}
-
-      {/* Upload history */}
-      {history.length > 0 && (
-        <div className={styles.history}>
-          <div className={styles.historyTitle}>Previous uploads</div>
-          <table className={styles.histTable}>
+          <table className="w-full text-sm">
             <thead>
-              <tr><th>Period</th><th>BU</th><th>COGS</th><th>OpEx</th><th>Inv Purchases</th><th>Uploaded</th></tr>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-2 text-gray-600 font-medium">Business Unit</th>
+                <th className="text-right px-4 py-2 text-gray-600 font-medium">COGS</th>
+                <th className="text-right px-4 py-2 text-gray-600 font-medium">OpEx</th>
+                <th className="text-right px-4 py-2 text-gray-600 font-medium">Inv Purchases</th>
+              </tr>
             </thead>
             <tbody>
-              {history.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.period}</td>
-                  <td>{BU_LABELS[r.business_unit] || r.business_unit}</td>
-                  <td>{fmtD(r.cogs_total)}</td>
-                  <td>{fmtD(r.opex_total)}</td>
-                  <td>{fmtD(r.inv_purchases)}</td>
-                  <td style={{ fontSize: 11, color: 'var(--ink-60)' }}>
-                    {new Date(r.uploaded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </td>
+              {Object.entries(preview.totals).map(([bu, vals]) => (
+                <tr key={bu} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-3 font-medium text-gray-800">{BU_DISPLAY[bu]}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.cogs)}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.opex)}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{fmt(vals.inv)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {Object.values(preview.totals).every((v) => v.cogs === 0) && (
+            <div className="px-4 py-2 bg-amber-50 border-t border-amber-200 text-xs text-amber-700">
+              ⚠ COGS shows $0 — this is expected for mid-month files before the closing journal entries are posted.
+            </div>
+          )}
         </div>
       )}
+
+      {/* History */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Previous Uploads</h3>
+          <button onClick={loadHistory} className="text-xs text-indigo-600 hover:underline">
+            {loadingHistory ? "Loading…" : "Refresh"}
+          </button>
+        </div>
+        {uploads.length === 0 ? (
+          <p className="text-sm text-gray-400">No uploads yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left pb-2 text-gray-500 font-medium">Period</th>
+                <th className="text-left pb-2 text-gray-500 font-medium">BU</th>
+                <th className="text-right pb-2 text-gray-500 font-medium">COGS</th>
+                <th className="text-right pb-2 text-gray-500 font-medium">OpEx</th>
+                <th className="text-right pb-2 text-gray-500 font-medium">Inv Purchases</th>
+                <th className="text-right pb-2 text-gray-500 font-medium">Uploaded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {uploads.map((u, i) => (
+                <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <td className="py-2 text-gray-800 font-mono text-xs">{u.period}</td>
+                  <td className="py-2 text-gray-700">{u.business_unit_label || BU_DISPLAY[u.business_unit] || u.business_unit}</td>
+                  <td className="py-2 text-right text-gray-700">{fmt(u.cogs)}</td>
+                  <td className="py-2 text-right text-gray-700">{fmt(u.opex)}</td>
+                  <td className="py-2 text-right text-gray-700">{fmt(u.inv_purchases)}</td>
+                  <td className="py-2 text-right text-gray-400 text-xs">{fmtDate(u.uploaded_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
-  )
+  );
 }
