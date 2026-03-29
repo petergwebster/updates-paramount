@@ -1,8 +1,19 @@
-import { useState, useEffect } from "react";
-import * as XLSX from "xlsx";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
-// ─── Account-code based GL parser ───────────────────────────────────────────
+// ─── Load SheetJS from CDN (no npm install needed) ───────────────────────────
+function loadSheetJS() {
+  return new Promise((resolve, reject) => {
+    if (window.XLSX) { resolve(window.XLSX); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = () => reject(new Error("Failed to load SheetJS"));
+    document.head.appendChild(script);
+  });
+}
+
+// ─── Account-code based GL parser ────────────────────────────────────────────
 function parseGL(rows) {
   const UNITS = ["609", "610", "612"];
   const totals = {};
@@ -36,7 +47,7 @@ function parseGL(rows) {
   return totals;
 }
 
-// ─── Period options: past 3 months + next month, W1–W5 ──────────────────────
+// ─── Period options: past 3 months + next month, W1–W5 ───────────────────────
 function generatePeriodOptions() {
   const options = [];
   const now = new Date();
@@ -56,7 +67,6 @@ function generatePeriodOptions() {
   return options;
 }
 
-// Try to guess the period from the file's own data
 function guessPeriodFromFile(rows) {
   if (!rows.length) return null;
   const periodId = rows[0]["Period ID"];
@@ -67,7 +77,6 @@ function guessPeriodFromFile(rows) {
   const month = periodId;
   const mm    = String(month).padStart(2, "0");
 
-  // Find the latest day in TRX Date to determine which week
   let maxDay = 1;
   rows.forEach((row) => {
     const raw = row["TRX Date"];
@@ -84,14 +93,15 @@ function guessPeriodFromFile(rows) {
   return `${year}-${mm}-W${weekNum}`;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function AdminFinancials({ weekStart }) {
-  const [uploading, setUploading]         = useState(false);
-  const [message, setMessage]             = useState(null);
-  const [preview, setPreview]             = useState(null);
-  const [uploads, setUploads]             = useState([]);
+  const [uploading, setUploading]           = useState(false);
+  const [message, setMessage]               = useState(null);
+  const [preview, setPreview]               = useState(null);
+  const [uploads, setUploads]               = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("");
+  const fileInputRef = useRef(null);
 
   const periodOptions = generatePeriodOptions();
 
@@ -116,12 +126,16 @@ export default function AdminFinancials({ weekStart }) {
     setPreview(null);
 
     try {
+      const XLSX = await loadSheetJS();
       const buf  = await file.arrayBuffer();
       const wb   = XLSX.read(buf, { type: "array" });
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { raw: true });
 
-      if (!rows.length) { setMessage({ type: "error", text: "File appears empty." }); return; }
+      if (!rows.length) {
+        setMessage({ type: "error", text: "File appears empty." });
+        return;
+      }
 
       const required = ["BusinessUnit", "Account Number", "Debit Amount", "NET"];
       const missing  = required.filter((c) => !(c in rows[0]));
@@ -132,8 +146,6 @@ export default function AdminFinancials({ weekStart }) {
 
       const totals  = parseGL(rows);
       const guessed = guessPeriodFromFile(rows);
-
-      // Pre-select the guessed period only if user hasn't already picked one
       if (guessed && !selectedPeriod) setSelectedPeriod(guessed);
 
       setPreview({ totals, rowCount: rows.length, guessed });
@@ -168,6 +180,7 @@ export default function AdminFinancials({ weekStart }) {
     } else {
       setMessage({ type: "success", text: `✓ Saved as ${selectedPeriod}` });
       setPreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       loadHistory();
     }
     setUploading(false);
@@ -186,12 +199,11 @@ export default function AdminFinancials({ weekStart }) {
       <div>
         <h2 className="text-xl font-semibold text-gray-900">Financial Data Upload</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Upload the weekly GP purchase report. <strong>Select the correct week</strong> before saving —
-          the file will be saved to whatever period you choose.
+          Upload the weekly GP purchase report. <strong>Select the correct week</strong> before saving.
         </p>
       </div>
 
-      {/* ── Period picker ────────────────────────────────────────── */}
+      {/* Period picker */}
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-sm font-semibold text-gray-700 whitespace-nowrap">
           Save to period:
@@ -213,7 +225,7 @@ export default function AdminFinancials({ weekStart }) {
         )}
       </div>
 
-      {/* ── Drop zone ────────────────────────────────────────────── */}
+      {/* Drop zone */}
       <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
         <div className="flex flex-col items-center gap-2 text-gray-500">
           <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -223,10 +235,10 @@ export default function AdminFinancials({ weekStart }) {
           <span className="text-sm font-medium">Drop GP purchase report here or click to browse</span>
           <span className="text-xs text-gray-400">.xlsx · .xls · .csv</span>
         </div>
-        <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
       </label>
 
-      {/* ── Message ──────────────────────────────────────────────── */}
+      {/* Message */}
       {message && (
         <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
           message.type === "error"
@@ -237,21 +249,19 @@ export default function AdminFinancials({ weekStart }) {
         </div>
       )}
 
-      {/* ── Preview ──────────────────────────────────────────────── */}
+      {/* Preview */}
       {preview && (
         <div className="border border-gray-200 rounded-xl overflow-hidden">
           <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm">
               <span className="font-semibold text-gray-800">Preview — </span>
-              {selectedPeriod ? (
-                <span className="text-indigo-700 font-semibold">{selectedPeriod}</span>
-              ) : (
-                <span className="text-red-500">⚠ select a period above</span>
-              )}
+              {selectedPeriod
+                ? <span className="text-indigo-700 font-semibold">{selectedPeriod}</span>
+                : <span className="text-red-500">⚠ select a period above</span>}
               {preview.guessed && preview.guessed !== selectedPeriod && (
                 <span className="ml-2 text-xs text-amber-600">(file suggests {preview.guessed})</span>
               )}
-              <span className="ml-3 text-xs text-gray-400">{preview.rowCount.toLocaleString()} rows parsed</span>
+              <span className="ml-3 text-xs text-gray-400">{preview.rowCount.toLocaleString()} rows</span>
             </div>
             <button
               onClick={handleSave}
@@ -291,7 +301,7 @@ export default function AdminFinancials({ weekStart }) {
         </div>
       )}
 
-      {/* ── Upload history ────────────────────────────────────────── */}
+      {/* History */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Previous Uploads</h3>
