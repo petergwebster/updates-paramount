@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
+import { supabase } from '../supabase'
 
 const TOKEN = import.meta.env.VITE_MONDAY_TOKEN || ''
 const BOARD_ID = '6053588909'
-import { supabase } from '../supabase'
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -563,8 +563,6 @@ function SummaryCard({id,label,items,sub,active,onClick}){
 // ─── Week-over-week comparison banner ─────────────────────────────────────────
 function WoWBanner({snapshots, liveWip, liveYards, liveHti, liveNewGoods, onLock, locking, lockMsg}){
   const last = snapshots?.[0]
-  if(!last && !lockMsg) return null
-
   const orderDiff = last ? liveWip - last.wip_orders : null
   const yardDiff  = last ? liveYards - last.wip_yards : null
   const lockedDate = last ? new Date(last.locked_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : null
