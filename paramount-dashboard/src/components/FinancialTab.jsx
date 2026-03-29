@@ -43,60 +43,78 @@ function SectionRow({ label, nj, bny, shared, bold, indent, isTotal }) {
 export default function FinancialTab({ weekStart }) {
   const [periods, setPeriods]     = useState([])
   const [selected, setSelected]   = useState(null)
-  const [data, setData]           = useState(null)    // { nj, bny, shared }
-  const [loading, setLoading]     = useState(true)
+  const [data, setData]           = useState(null)
+  const [loading, setLoading]     = useState(false)
 
   // Derive calendar month from weekStart — period is always "YYYY-MM"
   const currentPeriod = weekStart
     ? `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`
     : null
 
-  // Reload periods and data whenever currentPeriod changes (week navigation)
+  // Single effect: whenever currentPeriod changes, load everything fresh
   useEffect(() => {
     if (!currentPeriod) return
-    setData(null)
-    loadPeriods(currentPeriod)
+    loadAll(currentPeriod)
   }, [currentPeriod])
 
-  useEffect(() => { if (selected) loadData(selected) }, [selected])
+  // When user picks a different month from history dropdown
+  useEffect(() => {
+    if (!selected || selected === currentPeriod) return
+    loadForPeriod(selected)
+  }, [selected])
 
-  async function loadPeriods(periodToSelect) {
+  async function loadAll(period) {
     setLoading(true)
+    setData(null)
     try {
-      const { data } = await supabase
-        .from('financials_monthly')
-        .select('period, uploaded_at, upload_notes')
-        .order('period', { ascending: false })
-      if (!data || data.length === 0) { setPeriods([]); return }
-      const seen = new Set()
-      const unique = data.filter(r => {
-        if (seen.has(r.period)) return false
-        seen.add(r.period)
-        return true
-      })
-      setPeriods(unique)
-      const target = periodToSelect || currentPeriod
-      setSelected(target || unique[0]?.period)
+      // Load period list and current period's data in parallel
+      const [periodsRes, dataRes] = await Promise.all([
+        supabase.from('financials_monthly').select('period, uploaded_at, upload_notes').order('period', { ascending: false }),
+        supabase.from('financials_monthly').select('*').eq('period', period)
+      ])
+      // Update periods list
+      if (periodsRes.data && periodsRes.data.length > 0) {
+        const seen = new Set()
+        const unique = periodsRes.data.filter(r => {
+          if (seen.has(r.period)) return false
+          seen.add(r.period); return true
+        })
+        setPeriods(unique)
+      } else {
+        setPeriods([])
+      }
+      setSelected(period)
+      // Update data
+      if (dataRes.data && dataRes.data.length > 0) {
+        setData({
+          nj:     dataRes.data.find(r => r.business_unit === BU_NJ)     || null,
+          bny:    dataRes.data.find(r => r.business_unit === BU_BNY)    || null,
+          shared: dataRes.data.find(r => r.business_unit === BU_SHARED) || null,
+        })
+      }
     } catch(e) {
-      console.error('loadPeriods error:', e)
+      console.error('Financial load error:', e)
     } finally {
       setLoading(false)
     }
   }
 
-  async function loadData(period) {
+  async function loadForPeriod(period) {
+    setLoading(true)
+    setData(null)
     try {
-      const { data } = await supabase
-        .from('financials_monthly')
-        .select('*')
-        .eq('period', period)
-      if (!data) return
-      const nj     = data.find(r => r.business_unit === BU_NJ)     || null
-      const bny    = data.find(r => r.business_unit === BU_BNY)    || null
-      const shared = data.find(r => r.business_unit === BU_SHARED) || null
-      setData({ nj, bny, shared })
+      const { data: rows } = await supabase.from('financials_monthly').select('*').eq('period', period)
+      if (rows && rows.length > 0) {
+        setData({
+          nj:     rows.find(r => r.business_unit === BU_NJ)     || null,
+          bny:    rows.find(r => r.business_unit === BU_BNY)    || null,
+          shared: rows.find(r => r.business_unit === BU_SHARED) || null,
+        })
+      }
     } catch(e) {
-      console.error('loadData error:', e)
+      console.error('loadForPeriod error:', e)
+    } finally {
+      setLoading(false)
     }
   }
 
