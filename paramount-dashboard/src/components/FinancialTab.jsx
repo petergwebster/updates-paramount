@@ -40,13 +40,25 @@ function SectionRow({ label, nj, bny, shared, bold, indent, isTotal }) {
   )
 }
 
-export default function FinancialTab() {
+export default function FinancialTab({ weekStart }) {
   const [periods, setPeriods]     = useState([])
   const [selected, setSelected]   = useState(null)
   const [data, setData]           = useState(null)    // { nj, bny, shared }
   const [loading, setLoading]     = useState(true)
 
+  // Derive calendar month from weekStart — period is always "YYYY-MM"
+  const currentPeriod = weekStart
+    ? `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}`
+    : null
+
   useEffect(() => { loadPeriods() }, [])
+
+  // When week changes, auto-select the matching period if it exists
+  useEffect(() => {
+    if (!currentPeriod) return
+    setSelected(currentPeriod)
+  }, [currentPeriod])
+
   useEffect(() => { if (selected) loadData(selected) }, [selected])
 
   async function loadPeriods() {
@@ -63,7 +75,8 @@ export default function FinancialTab() {
       return true
     })
     setPeriods(unique)
-    setSelected(unique[0].period)
+    // Only auto-select on initial load if nothing selected yet
+    setSelected(prev => prev || (currentPeriod && unique.find(u => u.period === currentPeriod) ? currentPeriod : unique[0]?.period))
     setLoading(false)
   }
 
@@ -100,6 +113,9 @@ export default function FinancialTab() {
     </div>
   )
 
+  // Show message when current month has no data but other months do
+  const currentPeriodHasData = periods.some(p => p.period === selected)
+
   const note = periods.find(p => p.period === selected)?.upload_notes
 
   // Computed totals
@@ -135,9 +151,15 @@ export default function FinancialTab() {
         </div>
       </div>
 
-      {note && <div className={styles.noteBanner}>📌 {note}</div>}
+      {!currentPeriodHasData && selected && (
+        <div className={styles.emptyMonth}>
+          <p>No financial data uploaded for <strong>{periodLabel(selected)}</strong> yet.</p>
+          <p>Upload the GP purchase report for this month in Admin → Financial Data.</p>
+        </div>
+      )}
+      {currentPeriodHasData && note && <div className={styles.noteBanner}>📌 {note}</div>}
 
-      {data && (
+      {data && currentPeriodHasData && (
         <>
           {/* Top summary cards */}
           <div className={styles.summaryCards}>

@@ -153,7 +153,7 @@ export default function AdminFinancials() {
       if (!parsed.period) throw new Error('Could not detect period from file dates')
       setParseResult(parsed)
 
-      // Check if we already have data for this period
+      // Check if we already have data for this month
       const { data: prior } = await supabase
         .from('financials_monthly')
         .select('*')
@@ -236,7 +236,7 @@ export default function AdminFinancials() {
             <div>
               <span className={styles.periodBadge}>{parseResult.period}</span>
               {existing && existing.length > 0 && (
-                <span className={styles.replaceBadge}>Replaces existing upload</span>
+                <span className={styles.replaceBadge}>Replaces existing upload — will show delta vs prior</span>
               )}
             </div>
             <div className={styles.previewActions}>
