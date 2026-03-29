@@ -867,8 +867,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
 
           {/* MTD Revenue Section */}
           <div className={styles.mtdRevenueSection}>
-            <div className={styles.mtdRevenueSectionTitle}>Revenue — Invoiced vs Target (yards × rate)</div>
             <div className={styles.mtdGrid}>
+              <div style={{gridColumn:'1/-1',fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--ink-40)',paddingBottom:4,borderBottom:'1px solid var(--border)',marginBottom:4}}>
+                Revenue — Invoiced vs Target (yards × rate)
+              </div>
               <div className={styles.mtdCard}>
                 <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD Revenue</div>
                 <table className={styles.mtdTable}>
