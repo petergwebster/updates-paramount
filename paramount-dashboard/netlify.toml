@@ -1,17 +1,12 @@
 [build]
-  base = "paramount-dashboard"
   command = "npm run build"
   publish = "dist"
 
 [[edge_functions]]
-  path = "/api/claude"
-  function = "claude"
+  path = "/api/*"
+  function = "edge"
 
-[[edge_functions]]
-  path = "/api/slack"
-  function = "slack"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Scheduled WIP lockdown — every Saturday at midnight ET (05:00 UTC)
+[[scheduled_functions]]
+  function = "lock-wip"
+  cron = "0 5 * * 6"

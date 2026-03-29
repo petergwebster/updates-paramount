@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 
 const TOKEN = import.meta.env.VITE_MONDAY_TOKEN || ''
 const BOARD_ID = '6053588909'
+import { supabase } from '../supabase'
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const C = {
@@ -37,6 +38,25 @@ async function fetchAllItems() {
     all=[...all,...(page.items||[]).filter(i=>i&&Array.isArray(i.column_values))]; cursor=page.cursor; n++
   }
   return all
+}
+
+// ─── Snapshot fetch ───────────────────────────────────────────────────────────
+async function fetchLastSnapshot() {
+  const { data } = await supabase
+    .from('wip_snapshots')
+    .select('week_start,week_label,locked_at,wip_orders,wip_yards,hti_orders,hti_yards,new_goods_orders,new_goods_yards,wallpaper_orders,wallpaper_yards,grasscloth_orders,grasscloth_yards,fabric_orders,fabric_yards,age_0_30_orders,age_31_60_orders,age_61_90_orders,age_90plus_orders,age_no_date_orders')
+    .order('week_start', { ascending: false })
+    .limit(2)
+  return data || []
+}
+
+async function lockWIP(weekStart, weekLabel, lockedBy) {
+  const res = await fetch('/api/lock-wip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weekStart, weekLabel, lockedBy })
+  })
+  return res.json()
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -539,6 +559,96 @@ function SummaryCard({id,label,items,sub,active,onClick}){
   )
 }
 
+
+// ─── Week-over-week comparison banner ─────────────────────────────────────────
+function WoWBanner({snapshots, liveWip, liveYards, liveHti, liveNewGoods, onLock, locking, lockMsg}){
+  const last = snapshots?.[0]
+  if(!last && !lockMsg) return null
+
+  const orderDiff = last ? liveWip - last.wip_orders : null
+  const yardDiff  = last ? liveYards - last.wip_yards : null
+  const lockedDate = last ? new Date(last.locked_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : null
+
+  return (
+    <div style={{background:C.goldBg,border:`1px solid ${C.gold}40`,borderRadius:10,padding:'14px 20px',marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'flex-start',gap:20,flexWrap:'wrap'}}>
+        {last ? (
+          <>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:C.gold,marginBottom:6}}>
+                Last locked: {last.week_label} · {lockedDate}
+              </div>
+              <div style={{display:'flex',gap:20,flexWrap:'wrap',alignItems:'flex-end'}}>
+                <div>
+                  <span style={{fontSize:22,fontWeight:700,color:C.ink,fontFamily:'Georgia,serif'}}>{fmt(last.wip_orders)}</span>
+                  <span style={{fontSize:11,color:C.inkLight,marginLeft:4}}>orders locked</span>
+                </div>
+                <div>
+                  <span style={{fontSize:22,fontWeight:700,color:C.inkMid,fontFamily:'Georgia,serif'}}>{fmt(Math.round(last.wip_yards))}</span>
+                  <span style={{fontSize:11,color:C.inkLight,marginLeft:4}}>yds locked</span>
+                </div>
+                {orderDiff !== null && (
+                  <div style={{display:'flex',gap:12}}>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:16,fontWeight:700,color:orderDiff<=0?C.sage:C.rose,fontFamily:'Georgia,serif'}}>
+                        {orderDiff>0?'+':''}{orderDiff}
+                      </div>
+                      <div style={{fontSize:10,color:C.inkLight}}>orders vs locked</div>
+                    </div>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:16,fontWeight:700,color:yardDiff<=0?C.sage:C.rose,fontFamily:'Georgia,serif'}}>
+                        {yardDiff>0?'+':''}{fmt(Math.round(yardDiff))}
+                      </div>
+                      <div style={{fontSize:10,color:C.inkLight}}>yds vs locked</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Dept comparison */}
+            <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+              {[
+                {label:'Wallpaper',locked:last.wallpaper_orders,lockedY:last.wallpaper_yards},
+                {label:'Grasscloth',locked:last.grasscloth_orders,lockedY:last.grasscloth_yards},
+                {label:'Fabric',locked:last.fabric_orders,lockedY:last.fabric_yards},
+              ].map(({label,locked,lockedY})=>{
+                const dcc=dc(label)
+                return (
+                  <div key={label} style={{background:'#fff',borderRadius:7,padding:'8px 12px',border:`1px solid ${C.border}`,minWidth:110}}>
+                    <div style={{fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.06em',color:dcc.text,marginBottom:4}}>{label}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:C.ink}}>{locked} <span style={{fontSize:10,color:C.inkLight}}>orders</span></div>
+                    <div style={{fontSize:11,color:C.inkLight}}>{fmt(Math.round(lockedY))} yds</div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div style={{color:C.inkMid,fontSize:13}}>No locked snapshots yet — lock this week's WIP to start tracking progress.</div>
+        )}
+
+        {/* Lock button */}
+        <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end',marginLeft:'auto'}}>
+          <button onClick={onLock} disabled={locking}
+            style={{padding:'8px 16px',background:locking?C.warm:C.ink,color:locking?C.inkLight:'#fff',border:'none',borderRadius:7,fontSize:12,fontWeight:600,cursor:locking?'not-allowed':'pointer',whiteSpace:'nowrap'}}>
+            {locking?'Locking…':'🔒 Lock This Week'}
+          </button>
+          <div style={{fontSize:10,color:C.inkLight,textAlign:'right'}}>Auto-locks every Saturday midnight</div>
+        </div>
+      </div>
+
+      {lockMsg && (
+        <div style={{marginTop:10,padding:'6px 12px',borderRadius:6,fontSize:12,fontWeight:500,
+          background:lockMsg.type==='success'?C.sageBg:C.roseBg,
+          color:lockMsg.type==='success'?C.sage:C.rose,
+          border:`1px solid ${lockMsg.type==='success'?'#A0C8A0':'#E8A0A0'}`}}>
+          {lockMsg.text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function WIPTab(){
   const [data,setData]=useState(null)
@@ -547,11 +657,15 @@ export default function WIPTab(){
   const [lastFetched,setLastFetched]=useState(null)
   const [activeCard,setActiveCard]=useState('WIP')
   const [view,setView]=useState('wip')
+  const [snapshots,setSnapshots]=useState([])
+  const [locking,setLocking]=useState(false)
+  const [lockMsg,setLockMsg]=useState(null)
 
   async function load(){
     setLoading(true);setError(null)
     try{
-      const items=await fetchAllItems()
+      const [items, snaps] = await Promise.all([fetchAllItems(), fetchLastSnapshot()])
+      setSnapshots(snaps)
       const buckets={SCHEDULE:[],HTI:[],POST:[],HOLD:[],NEW_GOODS:[],WIP:[]}
       items.forEach(i=>buckets[classify(i)].push(i))
       const groups={}
@@ -572,6 +686,29 @@ export default function WIPTab(){
       setLastFetched(new Date())
     }catch(e){setError(e.message)}
     setLoading(false)
+  }
+
+  async function handleLock(){
+    setLocking(true); setLockMsg(null)
+    try{
+      // Get current week info
+      const now=new Date()
+      const day=now.getDay()
+      const diff=now.getDate()-day+(day===0?-6:1)
+      const monday=new Date(now); monday.setDate(diff); monday.setHours(0,0,0,0)
+      const weekStart=monday.toISOString().split('T')[0]
+      const month=monday.toLocaleString('en-US',{month:'short'})
+      const weekOfMonth=Math.ceil(monday.getDate()/7)
+      const weekLabel=`${month} Week ${weekOfMonth} ${monday.getFullYear()}`
+      const result=await lockWIP(weekStart, weekLabel, 'manual')
+      if(result.success){
+        setLockMsg({type:'success',text:`✓ Locked ${result.weekLabel} — ${result.wip} WIP orders · ${fmt(result.yards)} yds`})
+        const snaps=await fetchLastSnapshot(); setSnapshots(snaps)
+      } else {
+        setLockMsg({type:'error',text:`Lock failed: ${result.error}`})
+      }
+    }catch(e){setLockMsg({type:'error',text:e.message})}
+    setLocking(false)
   }
 
   const CARDS=[
@@ -631,6 +768,16 @@ export default function WIPTab(){
           {/* WIP VIEW */}
           {view==='wip'&&(
             <>
+              <WoWBanner
+                snapshots={snapshots}
+                liveWip={getBucket_items('WIP').length}
+                liveYards={getBucket_items('WIP').reduce((s,i)=>s+yds(i),0)}
+                liveHti={getBucket_items('HTI').length}
+                liveNewGoods={getBucket_items('NEW_GOODS').length}
+                onLock={handleLock}
+                locking={locking}
+                lockMsg={lockMsg}
+              />
               <div style={{display:'flex',gap:10,marginBottom:20,flexWrap:'wrap'}}>
                 {CARDS.map(c=>(
                   <SummaryCard key={c.id} id={c.id} label={c.label} items={getBucket_items(c.id)} sub={c.sub} active={activeCard} onClick={setActiveCard}/>
