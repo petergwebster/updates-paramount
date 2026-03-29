@@ -31,7 +31,7 @@ function parseGL(rows) {
   const totals = {};
   UNITS.forEach((u) => { totals[u] = { cogs: 0, opex: 0, inv: 0 }; });
 
-  const sample = rows[0];
+  const sample   = rows[0];
   const colBU    = findCol(sample, "BusinessUnit", "Business Unit", "BU");
   const colAcct  = findCol(sample, "Account Number", "AccountNumber", "Account No");
   const colDebit = findCol(sample, "Debit Amount", "DebitAmount", "Debit");
@@ -41,7 +41,7 @@ function parseGL(rows) {
     const bu = String(colBU ? row[colBU] : "").trim();
     if (!UNITS.includes(bu)) return;
 
-    const acctNum = String(colAcct ? row[colAcct] : "");
+    const acctNum  = String(colAcct ? row[colAcct] : "");
     const objMatch = acctNum.match(/-(\d{4})-/);
     if (!objMatch) return;
     const obj = parseInt(objMatch[1], 10);
@@ -65,15 +65,50 @@ function parseGL(rows) {
   return totals;
 }
 
+// ─── Build a full row with every known column, zeroing unused ones ────────────
+function buildRow(period, bu, vals) {
+  const r = (n) => Math.round((n || 0) * 100) / 100;
+  return {
+    period,
+    business_unit: bu,
+    // Top-level totals (what this parser actually computes)
+    cogs:          r(vals.cogs),
+    opex:          r(vals.opex),
+    inv_purchases: r(vals.inv),
+    // COGS sub-fields — zeroed until a more detailed parser is built
+    cogs_material: 0,
+    cogs_labor:    0,
+    cogs_wip:      0,
+    cogs_other:    0,
+    // OpEx sub-fields — zeroed until a more detailed parser is built
+    salary:        0,
+    salary_ot:     0,
+    fringe:        0,
+    te:            0,
+    printing:      0,
+    distribution:  0,
+    office_edp:    0,
+    consulting:    0,
+    building:      0,
+    utilities:     0,
+    rent:          0,
+    capitalization:0,
+    // Vendor list — empty until detailed parser
+    inv_vendors:   [],
+    // Meta
+    uploaded_at:   new Date().toISOString(),
+  };
+}
+
 // ─── Period options: past 3 months + next month, W1–W5 ───────────────────────
 function generatePeriodOptions() {
   const options = [];
   const now = new Date();
   for (let m = -2; m <= 1; m++) {
     const d = new Date(now.getFullYear(), now.getMonth() + m, 1);
-    const year = d.getFullYear();
+    const year  = d.getFullYear();
     const month = d.getMonth() + 1;
-    const mm = String(month).padStart(2, "0");
+    const mm    = String(month).padStart(2, "0");
     const monthLabel = d.toLocaleString("en-US", { month: "long" });
     for (let w = 1; w <= 5; w++) {
       options.push({
@@ -107,8 +142,7 @@ function guessPeriodFromFile(rows) {
     }
   });
 
-  const weekNum = Math.min(Math.ceil(maxDay / 7), 5);
-  return `${year}-${mm}-W${weekNum}`;
+  return `${year}-${mm}-W${Math.min(Math.ceil(maxDay / 7), 5)}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -119,7 +153,6 @@ export default function AdminFinancials({ weekStart }) {
   const [uploads, setUploads]               = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("");
-  const [detectedCols, setDetectedCols]     = useState(null);
   const fileInputRef = useRef(null);
 
   const periodOptions = generatePeriodOptions();
@@ -143,7 +176,6 @@ export default function AdminFinancials({ weekStart }) {
     if (!file) return;
     setMessage(null);
     setPreview(null);
-    setDetectedCols(null);
 
     try {
       const XLSX = await loadSheetJS();
@@ -152,13 +184,9 @@ export default function AdminFinancials({ weekStart }) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { raw: true });
 
-      if (!rows.length) {
-        setMessage({ type: "error", text: "File appears empty." });
-        return;
-      }
+      if (!rows.length) { setMessage({ type: "error", text: "File appears empty." }); return; }
 
-      // Detect columns
-      const sample = rows[0];
+      const sample   = rows[0];
       const colBU    = findCol(sample, "BusinessUnit", "Business Unit", "BU");
       const colAcct  = findCol(sample, "Account Number", "AccountNumber", "Account No");
       const colDebit = findCol(sample, "Debit Amount", "DebitAmount", "Debit");
@@ -171,18 +199,14 @@ export default function AdminFinancials({ weekStart }) {
       if (!colNet)   missing.push("NET");
 
       if (missing.length) {
-        // Show the actual column names from the file to help debug
-        const actualCols = Object.keys(sample).slice(0, 12).join(", ");
-        setMessage({ type: "error", text: `Could not find: ${missing.join(", ")}. File columns: ${actualCols}` });
+        const actualCols = Object.keys(sample).slice(0, 10).join(", ");
+        setMessage({ type: "error", text: `Could not find: ${missing.join(", ")}. File has: ${actualCols}` });
         return;
       }
-
-      setDetectedCols({ colBU, colAcct, colDebit, colNet });
 
       const totals  = parseGL(rows);
       const guessed = guessPeriodFromFile(rows);
       if (guessed && !selectedPeriod) setSelectedPeriod(guessed);
-
       setPreview({ totals, rowCount: rows.length, guessed });
     } catch (err) {
       setMessage({ type: "error", text: `Parse error: ${err.message}` });
@@ -194,17 +218,9 @@ export default function AdminFinancials({ weekStart }) {
     setUploading(true);
     setMessage(null);
 
-    const BU_LABELS = { "609": "BNY Brooklyn", "610": "Passaic NJ", "612": "Shared" };
-
-    const rows = Object.entries(preview.totals).map(([bu, vals]) => ({
-      period:              selectedPeriod,
-      business_unit:       bu,
-      
-      cogs:          Math.round(vals.cogs * 100) / 100,
-      opex:          Math.round(vals.opex * 100) / 100,
-      inv_purchases: Math.round(vals.inv  * 100) / 100,
-      uploaded_at:   new Date().toISOString(),
-    }));
+    const rows = Object.entries(preview.totals).map(([bu, vals]) =>
+      buildRow(selectedPeriod, bu, vals)
+    );
 
     const { error } = await supabase
       .from("financials_monthly")
@@ -215,7 +231,6 @@ export default function AdminFinancials({ weekStart }) {
     } else {
       setMessage({ type: "success", text: `✓ Saved as ${selectedPeriod}` });
       setPreview(null);
-      setDetectedCols(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       loadHistory();
     }
