@@ -134,7 +134,7 @@ export default function FinancialTab({ weekStart }) {
   if (loading) return <div className={styles.empty}>Loading…</div>
 
   // Show message when current month has no data
-  const currentPeriodHasData = periods.some(p => p.period === selected)
+  const currentPeriodHasData = periods.some(p => p.period === selected) || data !== null
 
   const note = periods.find(p => p.period === selected)?.upload_notes
 
@@ -183,7 +183,7 @@ export default function FinancialTab({ weekStart }) {
 
       {!currentPeriodHasData && (
         <div className={styles.emptyMonth}>
-          <p>No financial data uploaded for <strong>{periodLabel(currentPeriod)}</strong> yet.</p>
+          <p>No financial data uploaded for <strong>{currentPeriod ? periodLabel(currentPeriod) : 'this month'}</strong> yet.</p>
           <p>Upload the GP purchase report for this month in Admin → Financial Data.</p>
         </div>
       )}
