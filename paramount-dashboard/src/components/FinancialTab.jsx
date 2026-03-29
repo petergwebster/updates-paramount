@@ -72,16 +72,12 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
       if (period) queries.push(supabase.from('financials_monthly').select('*').eq('period', period))
       const [periodsRes, dataRes] = await Promise.all(queries)
       // Update periods list
-      if (periodsRes.data && periodsRes.data.length > 0) {
-        const seen = new Set()
-        const unique = periodsRes.data.filter(r => {
-          if (seen.has(r.period)) return false
-          seen.add(r.period); return true
-        })
-        setPeriods(unique)
-      } else {
-        setPeriods([])
-      }
+      const seen = new Set()
+      const unique = (periodsRes.data || []).filter(r => {
+        if (seen.has(r.period)) return false
+        seen.add(r.period); return true
+      })
+      setPeriods(unique)
       setSelected(period || unique[0]?.period)
       // Update data if we queried for a specific period
       if (dataRes && dataRes.data && dataRes.data.length > 0) {
