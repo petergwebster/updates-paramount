@@ -120,7 +120,8 @@ export default function FinancialTab({ weekStart }) {
 
   const get = (bu, field) => {
     const row = bu === 'nj' ? data?.nj : bu === 'bny' ? data?.bny : data?.shared
-    return row ? parseFloat(row[field]) || 0 : 0
+    if (!row) return 0
+    return parseFloat(row[field]) || 0
   }
 
   const sum3 = (field) => get('nj', field) + get('bny', field) + get('shared', field)
@@ -133,8 +134,8 @@ export default function FinancialTab({ weekStart }) {
 
   if (loading) return <div className={styles.empty}>Loading…</div>
 
-  // Show message when current month has no data
-  const currentPeriodHasData = periods.some(p => p.period === selected) || data !== null
+  // Show tables if data loaded OR period exists in DB (may be all zeros)
+  const currentPeriodHasData = data !== null || periods.some(p => p.period === currentPeriod)
 
   const note = periods.find(p => p.period === selected)?.upload_notes
 
