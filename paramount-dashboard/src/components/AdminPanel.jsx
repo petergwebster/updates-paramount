@@ -610,7 +610,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
       {/* ── FINANCIAL DATA ── */}
       {activeSection === 'financials' && (
         <div className={styles.panel}>
-          <AdminFinancials />
+          <AdminFinancials weekStart={weekStart} />
         </div>
       )}
 

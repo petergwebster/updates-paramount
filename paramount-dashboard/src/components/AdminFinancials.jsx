@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
+import { format } from 'date-fns'
+import { getFiscalInfo } from '../fiscalCalendar'
 import styles from './AdminFinancials.module.css'
 
 // ── GL Account Object → category mapping ─────────────────────────────────────
@@ -138,7 +140,7 @@ function fmtD(v) {
   return (v < 0 ? '-$' : '$') + abs.toLocaleString()
 }
 
-export default function AdminFinancials() {
+export default function AdminFinancials({ weekStart }) {
   const [status, setStatus]           = useState(null) // 'parsing' | 'preview' | 'saving' | 'saved' | 'error'
   const [parseResult, setParseResult] = useState(null) // { period, byBU }
   const [existing, setExisting]       = useState(null) // prior DB rows for this period
@@ -175,10 +177,13 @@ export default function AdminFinancials() {
       setParseResult(parsed)
 
       // Check if we already have data for this month
+      const fiscalInfo2 = weekStart ? getFiscalInfo(weekStart) : null
+      const weekNum2 = fiscalInfo2?.weekInMonth || 1
+      const weekKey2 = `${parsed.period}-W${weekNum2}`
       const { data: prior } = await supabase
         .from('financials_monthly')
         .select('*')
-        .eq('period', parsed.period)
+        .eq('period', weekKey2)
       setExisting(prior || [])
       setStatus('preview')
     } catch (e) {
@@ -190,7 +195,11 @@ export default function AdminFinancials() {
   async function handleSave() {
     if (!parseResult) return
     setStatus('saving')
-    const { period, byBU } = parseResult
+    const { period: calMonth, byBU } = parseResult
+    // Build week-specific key: "2026-01-W2" using the current fiscal week
+    const fiscalInfo = weekStart ? getFiscalInfo(weekStart) : null
+    const weekNum = fiscalInfo?.weekInMonth || 1
+    const period = `${calMonth}-W${weekNum}`
     const now = new Date().toISOString()
     const upserts = ['609','610','612'].map(bu => ({
       period,
@@ -255,7 +264,9 @@ export default function AdminFinancials() {
         <div className={styles.preview}>
           <div className={styles.previewHeader}>
             <div>
-              <span className={styles.periodBadge}>{parseResult.period}</span>
+              <span className={styles.periodBadge}>
+                {parseResult.period} · Week {weekStart ? (getFiscalInfo(weekStart)?.weekInMonth || '?') : '?'}
+              </span>
               {existing && existing.length > 0 && (
                 <span className={styles.replaceBadge}>Replaces existing upload — will show delta vs prior</span>
               )}

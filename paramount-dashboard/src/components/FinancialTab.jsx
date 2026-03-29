@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
+import { getFiscalInfo } from '../fiscalCalendar'
 import { supabase } from '../supabase'
 import styles from './FinancialTab.module.css'
 
@@ -47,8 +48,14 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
   const [data, setData]           = useState(null)
   const [loading, setLoading]     = useState(false)
 
-  // Use pre-computed period from App.jsx, fallback to deriving from weekStart
-  const currentPeriod = currentPeriodProp || (weekStart ? format(weekStart, 'yyyy-MM-dd').slice(0, 7) : null)
+  // Period key includes fiscal week: "2026-01-W2"
+  const currentPeriod = React.useMemo(() => {
+    if (currentPeriodProp && weekStart) {
+      const fi = getFiscalInfo(weekStart)
+      return fi ? `${currentPeriodProp}-W${fi.weekInMonth}` : currentPeriodProp
+    }
+    return currentPeriodProp || null
+  }, [currentPeriodProp, weekStart])
 
   // Load on mount and whenever weekStart changes
   useEffect(() => {
@@ -123,8 +130,10 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
 
   const periodLabel = p => {
     if (!p) return ''
-    const [yr, mo] = p.split('-')
-    return `${MONTH_NAMES[mo]} ${yr}`
+    const parts = p.split('-')
+    const yr = parts[0], mo = parts[1], wk = parts[2]
+    const month = MONTH_NAMES[mo] || mo
+    return wk ? `${month} ${wk.replace('W', 'Week ')} ${yr}` : `${month} ${yr}`
   }
 
   if (loading) return <div className={styles.empty}>Loading…</div>
