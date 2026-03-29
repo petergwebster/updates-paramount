@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { supabase } from '../supabase'
 import styles from './FinancialTab.module.css'
 
@@ -46,15 +47,8 @@ export default function FinancialTab({ weekStart }) {
   const [data, setData]           = useState(null)
   const [loading, setLoading]     = useState(false)
 
-  // Derive calendar month from weekStart — period is always "YYYY-MM"
-  const currentPeriod = React.useMemo(() => {
-    if (!weekStart) return null
-    try {
-      const d = weekStart instanceof Date ? weekStart : new Date(weekStart)
-      if (isNaN(d.getTime())) return null
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    } catch(e) { return null }
-  }, [weekStart])
+  // Derive calendar month — use format() from date-fns, same as rest of app
+  const currentPeriod = weekStart ? format(weekStart, 'yyyy-MM') : null
 
   // Load on mount and whenever weekStart changes
   useEffect(() => {
