@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "./supabaseClient";
 
 // ─── Load SheetJS from CDN (no npm install needed) ───────────────────────────
 function loadSheetJS() {
