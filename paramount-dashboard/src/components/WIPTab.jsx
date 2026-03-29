@@ -42,7 +42,12 @@ async function fetchAllItems() {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const col  = (item,id) => item?.column_values?.find(c=>c.id===id)?.text?.trim()||''
 const yds  = item => parseFloat(col(item,'text')?.replace(/,/g,''))||0
-const wipA = item => parseFloat(col(item,'numeric_mm1t59xg')?.replace(/,/g,''))||0
+const wipA = item => {
+  const n=parseFloat(col(item,'numeric_mm1t59xg')?.replace(/[$,]/g,''))||0
+  if(n>0) return n
+  const t=col(item,'text6')?.replace(/[$,]/g,'')||''
+  return parseFloat(t)||0
+}
 const ytop = item => parseFloat(col(item,'numeric_mm1p86dj')?.replace(/,/g,''))||0
 const fmt  = n => n.toLocaleString(undefined,{maximumFractionDigits:0})
 const fmtD = n => '$'+n.toLocaleString(undefined,{maximumFractionDigits:0})
@@ -67,17 +72,19 @@ const BUCKET_COLORS = {
 }
 
 function getBucket(item){
-  const esd=col(item,'date4')
-  if(!esd) return 'No Date'                           // ← fix: blank = own bucket
-  const parts=esd.split('-')
+  const orderDate=col(item,'date4')            // Order Date column
+  if(!orderDate||!orderDate.trim()) return 'No Date'
+  const parts=orderDate.trim().split('-')
   if(parts.length!==3) return 'No Date'
-  const d=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])) // local parse
+  const y=parseInt(parts[0]),m=parseInt(parts[1])-1,day=parseInt(parts[2])
+  if(isNaN(y)||isNaN(m)||isNaN(day)) return 'No Date'
+  const d=new Date(y,m,day)
   const today=new Date(); today.setHours(0,0,0,0)
-  const diff=Math.floor((d-today)/(1000*60*60*24))
-  if(diff<0)   return 'No Date'
-  if(diff<=30) return '0–30 days'
-  if(diff<=60) return '31–60 days'
-  if(diff<=90) return '61–90 days'
+  const age=Math.floor((today-d)/(1000*60*60*24)) // days SINCE order placed
+  if(isNaN(age)||age<0) return 'No Date'       // future or bad date
+  if(age<=30)  return '0–30 days'
+  if(age<=60)  return '31–60 days'
+  if(age<=90)  return '61–90 days'
   return '90+ days'
 }
 
