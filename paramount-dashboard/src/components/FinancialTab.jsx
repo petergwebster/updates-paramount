@@ -34,6 +34,7 @@ function SectionRow({ label, nj, bny, shared, bold, indent, isTotal }) {
       <td className={`${styles.rowLabel} ${indent ? styles.indent : ''}`}>{label}</td>
       <td className={styles.val}>{fmtD(nj)}</td>
       <td className={styles.val}>{fmtD(bny)}</td>
+      <td className={styles.val}>{fmtD(shared)}</td>
       <td className={`${styles.val} ${styles.combined}`}>{fmtD(combined)}</td>
     </tr>
   )
@@ -143,12 +144,12 @@ export default function FinancialTab() {
             <div className={styles.card}>
               <div className={styles.cardLabel}>Total COGS MTD</div>
               <div className={styles.cardVal}>{fmtD(njCogsTotal + bnyCogsTotal + shCogsTotal)}</div>
-              <div className={styles.cardSplit}>NJ {fmtD(njCogsTotal)} · BNY {fmtD(bnyCogsTotal)}</div>
+              <div className={styles.cardSplit}>NJ {fmtD(njCogsTotal)} · BNY {fmtD(bnyCogsTotal)} · Shared {fmtD(shCogsTotal)}</div>
             </div>
             <div className={styles.card}>
               <div className={styles.cardLabel}>Total OpEx MTD</div>
               <div className={styles.cardVal}>{fmtD(njOpexTotal + bnyOpexTotal + shOpexTotal)}</div>
-              <div className={styles.cardSplit}>NJ {fmtD(njOpexTotal)} · BNY {fmtD(bnyOpexTotal)}</div>
+              <div className={styles.cardSplit}>NJ {fmtD(njOpexTotal)} · BNY {fmtD(bnyOpexTotal)} · Shared {fmtD(shOpexTotal)}</div>
             </div>
             <div className={styles.card}>
               <div className={styles.cardLabel}>NJ Inventory Purchases</div>
@@ -172,6 +173,7 @@ export default function FinancialTab() {
                     <th className={styles.labelCol}></th>
                     <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
                     <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
+                    <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
                     <th className={styles.combined}>Combined</th>
                   </tr>
                 </thead>
@@ -196,6 +198,7 @@ export default function FinancialTab() {
                     <th className={styles.labelCol}></th>
                     <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
                     <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
+                    <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
                     <th className={styles.combined}>Combined</th>
                   </tr>
                 </thead>
@@ -216,6 +219,7 @@ export default function FinancialTab() {
                     <td className={`${styles.rowLabel} ${styles.indent}`}>Capitalization (contra)</td>
                     <td className={styles.val}>{fmtD(get('nj','capitalization'))}</td>
                     <td className={styles.val}>{fmtD(get('bny','capitalization'))}</td>
+                    <td className={styles.val}>{fmtD(get('shared','capitalization'))}</td>
                     <td className={`${styles.val} ${styles.combined}`}>{fmtD(get('nj','capitalization') + get('bny','capitalization') + get('shared','capitalization'))}</td>
                   </tr>
                 </tbody>
