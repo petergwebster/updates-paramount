@@ -62,6 +62,7 @@ function parseGL(rows) {
     distribution:0, office_edp:0, consulting:0,
     building:0, utilities:0, rent:0, capitalization:0,
     inv_purchases:0,
+    _vendors:{},
   });
   const totals = {};
   UNITS.forEach((u) => { totals[u] = zero(); });
@@ -90,7 +91,12 @@ function parseGL(rows) {
     else if ([4111,4112].includes(obj)) t.cogs_wip      += net;
     else if ([4113,4114].includes(obj)) t.cogs_other    += net;
     // Inventory purchases — use Debit Amount
-    else if (obj === 1437)              t.inv_purchases  += deb;
+    else if (obj === 1437 && deb > 0) {
+      t.inv_purchases += deb;
+      const rawName = row[findCol(row,"Originating Master Name","OriginatingMasterName","Master Name")||""] || "";
+      const name = String(rawName).replace(/\s*-\s*FOR\s+(PARAMOUNT|BNY)[\w\s]*$/i,"").replace(/\s+/g," ").trim() || "Unknown";
+      t._vendors[name] = (t._vendors[name] || 0) + deb;
+    }
     // Capitalization contra — use NET (typically negative)
     else if (obj === 6116)              t.capitalization += net;
     // OpEx — use positive NET
@@ -131,7 +137,9 @@ function buildRow(period, bu, t) {
     rent:           r(t.rent),
     capitalization: r(t.capitalization),
     inv_purchases:  r(t.inv_purchases),
-    inv_vendors:    [],
+    inv_vendors:    Object.entries(t._vendors||{})
+      .map(([name,amount])=>({name,amount:Math.round(amount*100)/100}))
+      .sort((a,b)=>b.amount-a.amount),
     uploaded_at:    new Date().toISOString(),
   };
 }
