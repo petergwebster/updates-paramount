@@ -130,7 +130,7 @@ export default function AdminFinancials({ weekStart }) {
     setLoadingHistory(true);
     const { data, error } = await supabase
       .from("financials_monthly")
-      .select("period, business_unit, business_unit_label, cogs, opex, inv_purchases, uploaded_at")
+      .select("period, business_unit, cogs, opex, inv_purchases, uploaded_at")
       .order("period", { ascending: false })
       .order("business_unit", { ascending: true })
       .limit(30);
@@ -199,7 +199,7 @@ export default function AdminFinancials({ weekStart }) {
     const rows = Object.entries(preview.totals).map(([bu, vals]) => ({
       period:              selectedPeriod,
       business_unit:       bu,
-      business_unit_label: BU_LABELS[bu],
+      
       cogs:          Math.round(vals.cogs * 100) / 100,
       opex:          Math.round(vals.opex * 100) / 100,
       inv_purchases: Math.round(vals.inv  * 100) / 100,
@@ -361,7 +361,7 @@ export default function AdminFinancials({ weekStart }) {
               {uploads.map((u, i) => (
                 <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "7px 0", fontFamily: "monospace", fontSize: 12 }}>{u.period}</td>
-                  <td style={{ padding: "7px 0" }}>{u.business_unit_label || BU_DISPLAY[u.business_unit] || u.business_unit}</td>
+                  <td style={{ padding: "7px 0" }}>{BU_DISPLAY[u.business_unit] || u.business_unit}</td>
                   <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.cogs)}</td>
                   <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.opex)}</td>
                   <td style={{ padding: "7px 0", textAlign: "right" }}>{fmt(u.inv_purchases)}</td>
