@@ -74,7 +74,7 @@ function getBucket(item){
   const d=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])) // local parse
   const today=new Date(); today.setHours(0,0,0,0)
   const diff=Math.floor((d-today)/(1000*60*60*24))
-  if(diff<0)   return 'Overdue'
+  if(diff<0)   return 'No Date'
   if(diff<=30) return '0–30 days'
   if(diff<=60) return '31–60 days'
   if(diff<=90) return '61–90 days'
@@ -131,7 +131,7 @@ function parseGrpDate(t){
 function BucketChart({ items }) {
   const byBucket = {}
   DATE_BUCKETS.forEach(b => { byBucket[b]={count:0,yards:0} })
-  items.forEach(i => { const b=getBucket(i); byBucket[b].count++; byBucket[b].yards+=yds(i) })
+  items.forEach(i => { const b=getBucket(i); if(byBucket[b]) { byBucket[b].count++; byBucket[b].yards+=yds(i) } })
   const maxYds = Math.max(...Object.values(byBucket).map(v=>v.yards),1)
   const hasData = items.length > 0
 
@@ -237,7 +237,7 @@ function WIPDetailPanel({items}){
 
   const byBucket=useMemo(()=>{
     const g={}; DATE_BUCKETS.forEach(b=>{g[b]=[]})
-    filtered.forEach(i=>{const b=getBucket(i);if(g[b])g[b].push(i)})
+    filtered.forEach(i=>{const b=getBucket(i);if(g[b]!==undefined)g[b].push(i);else{if(!g['No Date'])g['No Date']=[];g['No Date'].push(i)}})
     return g
   },[filtered])
 
