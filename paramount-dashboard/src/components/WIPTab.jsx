@@ -50,13 +50,64 @@ async function fetchLastSnapshot() {
   return data || []
 }
 
-async function lockWIP(weekStart, weekLabel, lockedBy) {
-  const res = await fetch('/api/lock-wip', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ weekStart, weekLabel, lockedBy })
+async function lockWIP(weekStart, weekLabel, lockedBy, items) {
+  // Classify and compute snapshot directly in browser
+  const buckets = { SCHEDULE:[], HTI:[], POST:[], HOLD:[], NEW_GOODS:[], WIP:[] }
+  items.forEach(i => { const c = classify(i); if(buckets[c]) buckets[c].push(i) })
+
+  const wip = buckets.WIP, hti = buckets.HTI, ng = buckets.NEW_GOODS, post = buckets.POST
+
+  const depts = { Wallpaper:{orders:0,yards:0}, Grasscloth:{orders:0,yards:0}, Fabric:{orders:0,yards:0} }
+  wip.forEach(i => { const d=getDept(i); if(depts[d]){depts[d].orders++;depts[d].yards+=yds(i)} })
+
+  const ages = { '0-30':{orders:0,yards:0}, '31-60':{orders:0,yards:0}, '61-90':{orders:0,yards:0}, '90+':{orders:0,yards:0}, 'No Date':{orders:0,yards:0} }
+  wip.forEach(i => { const b=getBucket(i).replace('–','-').replace(' days',''); const k=b==='No Date'?'No Date':b; if(ages[k]){ages[k].orders++;ages[k].yards+=yds(i)} })
+
+  const serializeOrder = (item, bucket) => ({
+    id: item.id, name: item.name, group: item.group?.title||'',
+    bucket, order_num: col(item,'text8'), po_num: col(item,'text0'),
+    customer: col(item,'text4'), dept: getDept(item),
+    yards: yds(item), status: col(item,'status5'),
+    goods_type: col(item,'status_1__1'), order_date: col(item,'date4'),
+    esd: col(item,'date'), colors: col(item,'text6__1'),
+    wip_amt: parseFloat(col(item,'numeric_mm1t59xg'))||0,
   })
-  return res.json()
+
+  const allOrders = [
+    ...buckets.WIP.map(i=>serializeOrder(i,'WIP')),
+    ...buckets.HTI.map(i=>serializeOrder(i,'HTI')),
+    ...buckets.NEW_GOODS.map(i=>serializeOrder(i,'NEW_GOODS')),
+    ...buckets.POST.map(i=>serializeOrder(i,'POST')),
+    ...buckets.SCHEDULE.map(i=>serializeOrder(i,'SCHEDULE')),
+    ...buckets.HOLD.map(i=>serializeOrder(i,'HOLD')),
+  ]
+
+  const snapshot = {
+    week_start: weekStart, week_label: weekLabel,
+    locked_at: new Date().toISOString(), locked_by: lockedBy,
+    total_orders: items.length,
+    total_yards: items.reduce((s,i)=>s+yds(i),0),
+    wip_orders: wip.length, wip_yards: wip.reduce((s,i)=>s+yds(i),0),
+    hti_orders: hti.length, hti_yards: hti.reduce((s,i)=>s+yds(i),0),
+    new_goods_orders: ng.length, new_goods_yards: ng.reduce((s,i)=>s+yds(i),0),
+    post_orders: post.length, post_yards: post.reduce((s,i)=>s+yds(i),0),
+    wallpaper_orders: depts.Wallpaper.orders, wallpaper_yards: depts.Wallpaper.yards,
+    grasscloth_orders: depts.Grasscloth.orders, grasscloth_yards: depts.Grasscloth.yards,
+    fabric_orders: depts.Fabric.orders, fabric_yards: depts.Fabric.yards,
+    age_0_30_orders: ages['0-30'].orders, age_0_30_yards: ages['0-30'].yards,
+    age_31_60_orders: ages['31-60'].orders, age_31_60_yards: ages['31-60'].yards,
+    age_61_90_orders: ages['61-90'].orders, age_61_90_yards: ages['61-90'].yards,
+    age_90plus_orders: ages['90+'].orders, age_90plus_yards: ages['90+'].yards,
+    age_no_date_orders: ages['No Date'].orders, age_no_date_yards: ages['No Date'].yards,
+    orders: allOrders,
+  }
+
+  const { error } = await supabase
+    .from('wip_snapshots')
+    .upsert(snapshot, { onConflict: 'week_start' })
+
+  if (error) throw new Error(error.message)
+  return { success: true, weekLabel, wip: wip.length, yards: wip.reduce((s,i)=>s+yds(i),0), orders: allOrders.length }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -680,7 +731,7 @@ export default function WIPTab(){
         .sort((a,b)=>a.date-b.date)
       const schedDays={}
       upcoming.forEach(g=>{if(!schedDays[g.day])schedDays[g.day]=g})
-      setData({buckets,schedDays,total:items.length})
+      setData({buckets,schedDays,total:items.length,rawItems:items})
       setLastFetched(new Date())
     }catch(e){setError(e.message)}
     setLoading(false)
@@ -698,7 +749,7 @@ export default function WIPTab(){
       const month=monday.toLocaleString('en-US',{month:'short'})
       const weekOfMonth=Math.ceil(monday.getDate()/7)
       const weekLabel=`${month} Week ${weekOfMonth} ${monday.getFullYear()}`
-      const result=await lockWIP(weekStart, weekLabel, 'manual')
+      const result=await lockWIP(weekStart, weekLabel, 'manual', data?.rawItems || [])
       if(result.success){
         setLockMsg({type:'success',text:`✓ Locked ${result.weekLabel} — ${result.wip} WIP orders · ${fmt(result.yards)} yds`})
         const snaps=await fetchLastSnapshot(); setSnapshots(snaps)
