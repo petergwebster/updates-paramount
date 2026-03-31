@@ -99,6 +99,8 @@ function emptyNJ() {
 function emptyBNY() {
   return {
     replen: '', mto: '', hos: '', memo: '', contract: '',
+    // Invoiced yards by category
+    invYdsReplen: '', invYdsMto: '', invYdsHos: '', invYdsMemo: '', invYdsContract: '',
     // Income invoiced $ by category
     incomeReplen: '', incomeMto: '', incomeHos: '', incomeMemo: '', incomeContract: '',
     schWritten: '', schProduced: '', schInvoiced: '',
@@ -470,6 +472,14 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                 {['replen', 'mto', 'hos', 'memo', 'contract'].map(cat => (
                   <NumberInput key={cat} label={`${cat.toUpperCase()} (tgt:${BNY_TARGETS[cat].toLocaleString()})`} value={bnyData[cat]} onChange={v => updateBNY(cat, v)} />
                 ))}
+              </div>
+              <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Invoiced yards by category</div>
+              <div className={styles.editFiveCol}>
+                <NumberInput label={`Replen inv yds (tgt: ${BNY_TARGETS.replen.toLocaleString()})`} value={bnyData.invYdsReplen} onChange={v => updateBNY('invYdsReplen', v)} />
+                <NumberInput label={`MTO inv yds (tgt: ${BNY_TARGETS.mto.toLocaleString()})`} value={bnyData.invYdsMto} onChange={v => updateBNY('invYdsMto', v)} />
+                <NumberInput label={`HOS inv yds (tgt: ${BNY_TARGETS.hos.toLocaleString()})`} value={bnyData.invYdsHos} onChange={v => updateBNY('invYdsHos', v)} />
+                <NumberInput label={`Memo inv yds (tgt: ${BNY_TARGETS.memo.toLocaleString()})`} value={bnyData.invYdsMemo} onChange={v => updateBNY('invYdsMemo', v)} />
+                <NumberInput label={`Contract inv yds (tgt: ${BNY_TARGETS.contract.toLocaleString()})`} value={bnyData.invYdsContract} onChange={v => updateBNY('invYdsContract', v)} />
               </div>
               <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Income invoiced $ by category</div>
               <div className={styles.editFiveCol}>
