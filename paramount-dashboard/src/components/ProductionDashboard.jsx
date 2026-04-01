@@ -478,6 +478,13 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   }
 
   // YTD — income invoiced by category (BNY)
+  const ytdBNYInvYds = {
+    replen:   ytdData.reduce((s,h) => s + n(h.bny_data?.invYdsReplen), 0),
+    mto:      ytdData.reduce((s,h) => s + n(h.bny_data?.invYdsMto), 0),
+    hos:      ytdData.reduce((s,h) => s + n(h.bny_data?.invYdsHos), 0),
+    memo:     ytdData.reduce((s,h) => s + n(h.bny_data?.invYdsMemo), 0),
+    contract: ytdData.reduce((s,h) => s + n(h.bny_data?.invYdsContract), 0),
+  }
   const ytdBNYIncomeInvoiced = {
     replen:   ytdData.reduce((s,h) => s + n(h.bny_data?.incomeReplen), 0),
     mto:      ytdData.reduce((s,h) => s + n(h.bny_data?.incomeMto), 0),
@@ -832,12 +839,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Replen',   produced: mtdBNY.replen,   income: mtdBNYIncomeInvoiced.replen,   prodTgt: mtdBNYTarget.replen,   incTgt: mtdBNYIncomeTarget.replen },
-                    { label: 'MTO',      produced: mtdBNY.mto,      income: mtdBNYIncomeInvoiced.mto,      prodTgt: mtdBNYTarget.mto,      incTgt: mtdBNYIncomeTarget.mto },
-                    { label: 'HOS',      produced: mtdBNY.hos,      income: mtdBNYIncomeInvoiced.hos,      prodTgt: mtdBNYTarget.hos,      incTgt: mtdBNYIncomeTarget.hos },
-                    { label: 'Memo',     produced: mtdBNY.memo,     income: mtdBNYIncomeInvoiced.memo,     prodTgt: mtdBNYTarget.memo,     incTgt: mtdBNYIncomeTarget.memo },
-                    { label: 'Contract', produced: mtdBNY.contract, income: mtdBNYIncomeInvoiced.contract, prodTgt: mtdBNYTarget.contract, incTgt: mtdBNYIncomeTarget.contract },
-                    { label: 'Total Yds', produced: mtdBNY.total, income: Object.values(mtdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: mtdBNYTarget.total, incTgt: mtdBNYIncomeTarget.total, bold: true },
+                    { label: 'Replen',   produced: mtdBNY.replen,   invYds: mtdBNYInvYds.replen,   income: mtdBNYIncomeInvoiced.replen,   prodTgt: mtdBNYTarget.replen,   incTgt: mtdBNYIncomeTarget.replen },
+                    { label: 'MTO',      produced: mtdBNY.mto,      invYds: mtdBNYInvYds.mto,      income: mtdBNYIncomeInvoiced.mto,      prodTgt: mtdBNYTarget.mto,      incTgt: mtdBNYIncomeTarget.mto },
+                    { label: 'HOS',      produced: mtdBNY.hos,      invYds: mtdBNYInvYds.hos,      income: mtdBNYIncomeInvoiced.hos,      prodTgt: mtdBNYTarget.hos,      incTgt: mtdBNYIncomeTarget.hos },
+                    { label: 'Memo',     produced: mtdBNY.memo,     invYds: mtdBNYInvYds.memo,     income: mtdBNYIncomeInvoiced.memo,     prodTgt: mtdBNYTarget.memo,     incTgt: mtdBNYIncomeTarget.memo },
+                    { label: 'Contract', produced: mtdBNY.contract, invYds: mtdBNYInvYds.contract, income: mtdBNYIncomeInvoiced.contract, prodTgt: mtdBNYTarget.contract, incTgt: mtdBNYIncomeTarget.contract },
+                    { label: 'Total Yds', produced: mtdBNY.total, invYds: Object.values(mtdBNYInvYds).reduce((a,b)=>a+b,0), income: Object.values(mtdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: mtdBNYTarget.total, incTgt: mtdBNYIncomeTarget.total, bold: true },
                     { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invYds: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), income: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, incTgt: null, bold: true },
                   ].map(row => {
                     const invYds = row.invYds !== undefined ? row.invYds : null
@@ -987,12 +994,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 </thead>
                 <tbody>
                   {[
-                    { label: 'Replen',   produced: ytdBNY.replen,   income: ytdBNYIncomeInvoiced.replen,   prodTgt: ytdBNYTarget.replen,   incTgt: ytdBNYIncomeTarget.replen },
-                    { label: 'MTO',      produced: ytdBNY.mto,      income: ytdBNYIncomeInvoiced.mto,      prodTgt: ytdBNYTarget.mto,      incTgt: ytdBNYIncomeTarget.mto },
-                    { label: 'HOS',      produced: ytdBNY.hos,      income: ytdBNYIncomeInvoiced.hos,      prodTgt: ytdBNYTarget.hos,      incTgt: ytdBNYIncomeTarget.hos },
-                    { label: 'Memo',     produced: ytdBNY.memo,     income: ytdBNYIncomeInvoiced.memo,     prodTgt: ytdBNYTarget.memo,     incTgt: ytdBNYIncomeTarget.memo },
-                    { label: 'Contract', produced: ytdBNY.contract, income: ytdBNYIncomeInvoiced.contract, prodTgt: ytdBNYTarget.contract, incTgt: ytdBNYIncomeTarget.contract },
-                    { label: 'Total Yds', produced: ytdBNY.total, income: Object.values(ytdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: ytdBNYTarget.total, incTgt: ytdBNYIncomeTarget.total, bold: true },
+                    { label: 'Replen',   produced: ytdBNY.replen,   invYds: ytdBNYInvYds.replen,   income: ytdBNYIncomeInvoiced.replen,   prodTgt: ytdBNYTarget.replen,   incTgt: ytdBNYIncomeTarget.replen },
+                    { label: 'MTO',      produced: ytdBNY.mto,      invYds: ytdBNYInvYds.mto,      income: ytdBNYIncomeInvoiced.mto,      prodTgt: ytdBNYTarget.mto,      incTgt: ytdBNYIncomeTarget.mto },
+                    { label: 'HOS',      produced: ytdBNY.hos,      invYds: ytdBNYInvYds.hos,      income: ytdBNYIncomeInvoiced.hos,      prodTgt: ytdBNYTarget.hos,      incTgt: ytdBNYIncomeTarget.hos },
+                    { label: 'Memo',     produced: ytdBNY.memo,     invYds: ytdBNYInvYds.memo,     income: ytdBNYIncomeInvoiced.memo,     prodTgt: ytdBNYTarget.memo,     incTgt: ytdBNYIncomeTarget.memo },
+                    { label: 'Contract', produced: ytdBNY.contract, invYds: ytdBNYInvYds.contract, income: ytdBNYIncomeInvoiced.contract, prodTgt: ytdBNYTarget.contract, incTgt: ytdBNYIncomeTarget.contract },
+                    { label: 'Total Yds', produced: ytdBNY.total, invYds: Object.values(ytdBNYInvYds).reduce((a,b)=>a+b,0), income: Object.values(ytdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: ytdBNYTarget.total, incTgt: ytdBNYIncomeTarget.total, bold: true },
                     { label: 'Schumacher', produced: ytdBNY.schProduced, invYds: ytdBNY.schInvoiced, income: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, incTgt: null, bold: true },
                     { label: 'Procurement $', produced: ytdProcurement, income: null, prodTgt: null, incTgt: null, isDollar: true },
                   ].map(row => {
