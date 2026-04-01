@@ -392,6 +392,14 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     total:  NJ_TARGETS.weeklyRevenue     * mtdFiscalWeeks,
   }
 
+  // MTD — invoiced yards by category (BNY)
+  const mtdBNYInvYds = {
+    replen:   mtdData.reduce((s,h) => s + n(h.bny_data?.invYdsReplen), 0),
+    mto:      mtdData.reduce((s,h) => s + n(h.bny_data?.invYdsMto), 0),
+    hos:      mtdData.reduce((s,h) => s + n(h.bny_data?.invYdsHos), 0),
+    memo:     mtdData.reduce((s,h) => s + n(h.bny_data?.invYdsMemo), 0),
+    contract: mtdData.reduce((s,h) => s + n(h.bny_data?.invYdsContract), 0),
+  }
   // MTD — new income invoiced by category (BNY)
   const mtdBNYIncomeInvoiced = {
     replen:   mtdData.reduce((s,h) => s + n(h.bny_data?.incomeReplen), 0),
