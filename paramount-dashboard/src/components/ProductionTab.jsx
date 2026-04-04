@@ -1,43 +1,28 @@
 import { useState, useEffect } from 'react'
+import { format } from 'date-fns'
 import { getFiscalInfo } from '../fiscalCalendar'
 
 const BNY_SHEET_ID = '1nVuGPNIxRCEHOLSr6v5OrwFZO7sWOZT2zeeB7CkX_Ys'
 const NJ_SHEET_ID  = '1dT6mc8kKzcUJsUjHsFZdANMF_UpJ9LhEd0xQUj00I6k'
 const API_KEY      = import.meta.env.VITE_GOOGLE_SHEETS_API_KEY
 
-const STYLES = {
-  container: { padding: '24px', fontFamily: 'Georgia, serif', background: '#FAF7F2', minHeight: '100vh' },
-  header: { color: '#2C2420', fontSize: '22px', fontWeight: 'bold', marginBottom: '4px' },
-  subheader: { color: '#9C8F87', fontSize: '13px', marginBottom: '24px' },
-  summaryGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '28px' },
-  summaryCard: { background: '#fff', border: '1px solid #E8DDD0', borderRadius: '8px', padding: '20px' },
-  cardTitle: { fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.08em', color: '#9C8F87', textTransform: 'uppercase', marginBottom: '12px' },
-  bigNum: { fontSize: '32px', fontWeight: 'bold', color: '#2C2420' },
-  bigLabel: { fontSize: '12px', color: '#9C8F87', marginTop: '2px' },
-  progressBar: { height: '6px', background: '#F2EDE4', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' },
-  progressFill: (pct, color) => ({ height: '100%', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: '3px', transition: 'width 0.4s ease' }),
-  sectionTitle: { fontSize: '13px', fontWeight: 'bold', color: '#2C2420', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '10px', marginTop: '24px', borderBottom: '1px solid #E8DDD0', paddingBottom: '6px' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px', background: '#fff', border: '1px solid #E8DDD0', borderRadius: '8px', overflow: 'hidden' },
-  th: { background: '#2C2420', color: '#D4A843', padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.06em' },
-  thRight: { background: '#2C2420', color: '#D4A843', padding: '8px 12px', textAlign: 'right', fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.06em' },
-  td: { padding: '7px 12px', borderBottom: '1px solid #F2EDE4', color: '#2C2420' },
-  tdRight: { padding: '7px 12px', borderBottom: '1px solid #F2EDE4', color: '#2C2420', textAlign: 'right' },
-  tdMuted: { padding: '7px 12px', borderBottom: '1px solid #F2EDE4', color: '#9C8F87', textAlign: 'right' },
-  sectionRow: { background: '#E8DDD0', fontWeight: 'bold', color: '#5C4F47' },
-  subtotalRow: { background: '#F2EDE4', fontStyle: 'italic', color: '#5C4F47' },
-  totalRow: { background: '#DDD4C8', fontWeight: 'bold', color: '#2C2420' },
-  pctGood: { color: '#2E7D32', fontWeight: 'bold' },
-  pctWarn: { color: '#E65100', fontWeight: 'bold' },
-  pctNone: { color: '#9C8F87' },
-  error: { background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: '8px', padding: '16px', color: '#E65100', marginBottom: '16px' },
-  info: { background: '#F2EDE4', border: '1px solid #E8DDD0', borderRadius: '8px', padding: '16px', color: '#9C8F87', marginBottom: '16px', fontSize: '13px' },
-  loading: { color: '#9C8F87', padding: '40px', textAlign: 'center', fontSize: '14px' },
-  weekBadge: { display: 'inline-block', background: '#2C2420', color: '#D4A843', borderRadius: '4px', padding: '2px 10px', fontSize: '12px', fontWeight: 'bold', marginLeft: '10px', verticalAlign: 'middle' },
-  refreshBtn: { float: 'right', background: 'none', border: '1px solid #E8DDD0', borderRadius: '4px', padding: '4px 12px', fontSize: '12px', color: '#9C8F87', cursor: 'pointer' },
-}
+// Column mapping (0-indexed):
+// A=0 name, B=1 budget/day
+// C=2 SchedMon, D=3 ActMon, E=4 SchedTue, F=5 ActTue
+// G=6 SchedWed, H=7 ActWed, I=8 SchedThu, J=9 ActThu
+// K=10 SchedFri, L=11 ActFri
+// M=12 WkSched, N=13 WkActual, O=14 %Done
 
-async function fetchSheetData(sheetId, range) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`
+const DAY_COLS = [
+  { label: 'Mon', sched: 2,  actual: 3  },
+  { label: 'Tue', sched: 4,  actual: 5  },
+  { label: 'Wed', sched: 6,  actual: 7  },
+  { label: 'Thu', sched: 8,  actual: 9  },
+  { label: 'Fri', sched: 10, actual: 11 },
+]
+
+async function fetchSheetData(sheetId) {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent('Schedule!A:O')}?key=${API_KEY}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Sheets API error: ${res.status}`)
   const data = await res.json()
@@ -47,262 +32,310 @@ async function fetchSheetData(sheetId, range) {
 function parseWeekData(rows, weekNum) {
   const prefix = `WK${weekNum}`
   const headerIdx = rows.findIndex(r => r[0] && String(r[0]).trim().startsWith(prefix))
-  if (headerIdx === -1) return null
+  if (headerIdx === -1) return { dayHeaders: [], sections: [] }
 
-  const machines = []
-  let i = headerIdx + 1
+  // Extract day date labels from header row
+  const hdr = rows[headerIdx]
+  // hdr[2] = "S:04/06", hdr[3] = "A:04/06" etc
+  const dayHeaders = DAY_COLS.map(d => {
+    const raw = String(hdr[d.sched] || '')
+    return raw.replace(/^[SA]:/, '')
+  })
+
+  const sections = []
   let currentSection = null
+  let i = headerIdx + 1
 
   while (i < rows.length) {
     const row = rows[i]
     const col0 = String(row[0] || '').trim()
 
-    // Stop at next week header
     if (col0.startsWith('WK') && !col0.startsWith(prefix)) break
 
     if (col0.startsWith('>> ')) {
-      const sectionLabel = col0.replace('>> ', '').replace(/\s*[—\-–].*$/, '').trim()
-      // Skip weekend section headers
-      if (sectionLabel.toUpperCase().includes('SATURDAY') || sectionLabel.toUpperCase().includes('SUNDAY')) {
-        i++
-        continue
+      const label = col0.replace('>> ', '').replace(/\s*[—\-–].*$/, '').trim()
+      if (label.toUpperCase().includes('SATURDAY') || label.toUpperCase().includes('SUNDAY')) {
+        i++; continue
       }
-      currentSection = sectionLabel
-      i++
-      continue
+      if (currentSection) sections.push(currentSection)
+      currentSection = { label, machines: [] }
+      i++; continue
     }
 
     if (col0.includes('TOTAL') || col0.startsWith('──') || col0 === '' ||
-        col0 === 'Budget/Day' || col0 === 'Bgt/Day' || col0.startsWith('WK')) {
-      i++
-      continue
+        col0 === 'Budget/Day' || col0 === 'Bgt/Day') {
+      i++; continue
     }
 
     const budget = parseFloat(row[1]) || 0
     if (budget > 0 && currentSection) {
-      const sched  = parseFloat(row[12]) || 0
-      const actual = parseFloat(row[13]) || 0
-      // Detect weekend machine rows: col E (index 4) empty = weekend row
+      // Skip weekend rows (col E empty = weekend)
       const isWeekend = !row[4] || row[4] === ''
-      const wkndSched  = isWeekend ? (parseFloat(row[2]) || 0) : 0
-      const wkndActual = isWeekend ? (parseFloat(row[3]) || 0) : 0
-
-      machines.push({
-        name: col0,
-        section: currentSection,
-        budget,
-        sched:  sched  + wkndSched,
-        actual: actual + wkndActual,
-      })
+      if (!isWeekend) {
+        const days = DAY_COLS.map(d => ({
+          sched:  parseFloat(row[d.sched])  || 0,
+          actual: row[d.actual] !== '' && row[d.actual] !== undefined ? parseFloat(row[d.actual]) : null,
+        }))
+        const wkSched  = parseFloat(row[12]) || 0
+        const wkActual = row[13] !== '' && row[13] !== undefined && row[13] !== null ? parseFloat(row[13]) : null
+        currentSection.machines.push({ name: col0, budget, days, wkSched, wkActual })
+      }
     }
     i++
   }
-
-  return machines.length > 0 ? machines : null
+  if (currentSection) sections.push(currentSection)
+  return { dayHeaders, sections }
 }
 
-function pctColor(pct) {
-  if (pct === null || isNaN(pct)) return STYLES.pctNone
-  if (pct >= 0.95) return STYLES.pctGood
-  return STYLES.pctWarn
-}
-
-function fmtPct(actual, sched) {
-  if (!sched || sched === 0) return '—'
-  return `${Math.round((actual / sched) * 100)}%`
+function pct(actual, sched) {
+  if (actual === null || !sched) return null
+  return Math.round((actual / sched) * 100)
 }
 
 function fmtNum(n) {
-  return n ? n.toLocaleString() : '—'
+  if (n === null || n === undefined || n === '') return null
+  return Number(n).toLocaleString()
 }
 
-function SummaryCard({ title, sched, actual, budget, color }) {
-  const pct = sched > 0 ? actual / sched : 0
-  const vsBudget = budget > 0 ? actual / budget : 0
+function PctBadge({ actual, sched }) {
+  const p = pct(actual, sched)
+  if (p === null) return <span style={{ color: '#C8BDB8', fontSize: 11 }}>—</span>
+  const color = p >= 95 ? '#2E7D32' : p >= 70 ? '#E65100' : '#C62828'
+  return <span style={{ color, fontWeight: 'bold', fontSize: 11 }}>{p}%</span>
+}
+
+function DayCell({ sched, actual, isToday }) {
+  const p = pct(actual, sched)
+  const hasActual = actual !== null && actual !== undefined
+  const cellBg = isToday ? 'rgba(212,168,67,0.08)' : 'transparent'
+  const borderLeft = isToday ? '2px solid #D4A843' : '1px solid #F2EDE4'
   return (
-    <div style={STYLES.summaryCard}>
-      <div style={STYLES.cardTitle}>{title}</div>
-      <div style={STYLES.bigNum}>{fmtNum(actual)} <span style={{ fontSize: '14px', color: '#9C8F87', fontFamily: 'sans-serif' }}>yds</span></div>
-      <div style={STYLES.bigLabel}>of {fmtNum(sched)} scheduled</div>
-      <div style={STYLES.progressBar}>
-        <div style={STYLES.progressFill(pct * 100, color)} />
+    <td style={{ padding: '6px 8px', borderBottom: '1px solid #F2EDE4', borderLeft, background: cellBg, textAlign: 'center', minWidth: 90 }}>
+      <div style={{ fontSize: 12, color: '#9C8F87' }}>{fmtNum(sched) || '—'}</div>
+      <div style={{ fontSize: 13, fontWeight: hasActual ? 'bold' : 'normal', color: hasActual ? '#2C2420' : '#C8BDB8' }}>
+        {hasActual ? fmtNum(actual) : '·'}
       </div>
-      <div style={{ marginTop: '8px', fontSize: '12px', color: '#9C8F87', fontFamily: 'sans-serif' }}>
-        <span style={pctColor(pct)}>{fmtPct(actual, sched)}</span> of schedule
-        {budget > 0 && <span style={{ marginLeft: '12px' }}><span style={pctColor(vsBudget)}>{fmtPct(actual, budget)}</span> of budget</span>}
+      {hasActual && sched > 0 && (
+        <div style={{ fontSize: 10, color: p >= 95 ? '#2E7D32' : '#E65100' }}>{p}%</div>
+      )}
+    </td>
+  )
+}
+
+function SectionTable({ section, dayHeaders, todayIdx }) {
+  // Compute section day totals
+  const dayTotals = DAY_COLS.map((_, di) => ({
+    sched:  section.machines.reduce((s, m) => s + (m.days[di]?.sched || 0), 0),
+    actual: section.machines.every(m => m.days[di]?.actual === null)
+      ? null
+      : section.machines.reduce((s, m) => s + (m.days[di]?.actual || 0), 0),
+  }))
+  const wkSchedTotal  = section.machines.reduce((s, m) => s + m.wkSched, 0)
+  const wkActualTotal = section.machines.every(m => m.wkActual === null)
+    ? null
+    : section.machines.reduce((s, m) => s + (m.wkActual || 0), 0)
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ background: '#E8DDD0', padding: '6px 12px', fontWeight: 'bold', fontSize: 12, color: '#5C4F47', letterSpacing: '0.05em', textTransform: 'uppercase', borderRadius: '4px 4px 0 0' }}>
+        ▸ {section.label}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, background: '#fff', border: '1px solid #E8DDD0' }}>
+          <thead>
+            <tr style={{ background: '#2C2420' }}>
+              <th style={{ padding: '8px 12px', textAlign: 'left', color: '#D4A843', fontSize: 11, fontWeight: 'bold', minWidth: 130, position: 'sticky', left: 0, background: '#2C2420' }}>Machine</th>
+              <th style={{ padding: '8px 8px', textAlign: 'center', color: '#D4A843', fontSize: 11, fontWeight: 'bold', minWidth: 60 }}>Bgt/Day</th>
+              {dayHeaders.map((d, i) => (
+                <th key={i} style={{ padding: '8px 8px', textAlign: 'center', color: i === todayIdx ? '#FAD47C' : '#D4A843', fontSize: 11, fontWeight: 'bold', minWidth: 90, borderLeft: i === todayIdx ? '2px solid #D4A843' : '1px solid #3C3028', background: i === todayIdx ? '#3A2E1A' : '#2C2420' }}>
+                  {DAY_COLS[i].label}<br/>
+                  <span style={{ fontWeight: 'normal', fontSize: 10, color: '#9C8F87' }}>{d}</span><br/>
+                  <span style={{ fontWeight: 'normal', fontSize: 9, color: '#6C6058' }}>Sched / Actual</span>
+                </th>
+              ))}
+              <th style={{ padding: '8px 8px', textAlign: 'center', color: '#D4A843', fontSize: 11, fontWeight: 'bold', minWidth: 90, borderLeft: '2px solid #5C4F47' }}>Wk Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {section.machines.map((m, mi) => (
+              <tr key={mi} style={{ background: mi % 2 === 0 ? '#fff' : '#FAF7F2' }}>
+                <td style={{ padding: '7px 12px', borderBottom: '1px solid #F2EDE4', color: '#2C2420', fontWeight: 500, position: 'sticky', left: 0, background: mi % 2 === 0 ? '#fff' : '#FAF7F2' }}>{m.name}</td>
+                <td style={{ padding: '7px 8px', borderBottom: '1px solid #F2EDE4', color: '#9C8F87', textAlign: 'center' }}>{m.budget}</td>
+                {m.days.map((day, di) => (
+                  <DayCell key={di} sched={day.sched} actual={day.actual} isToday={di === todayIdx} />
+                ))}
+                <td style={{ padding: '7px 8px', borderBottom: '1px solid #F2EDE4', textAlign: 'center', borderLeft: '2px solid #E8DDD0' }}>
+                  <div style={{ fontSize: 12, color: '#9C8F87' }}>{fmtNum(m.wkSched)}</div>
+                  <div style={{ fontSize: 13, fontWeight: m.wkActual !== null ? 'bold' : 'normal', color: m.wkActual !== null ? '#2C2420' : '#C8BDB8' }}>
+                    {m.wkActual !== null ? fmtNum(m.wkActual) : '·'}
+                  </div>
+                  <PctBadge actual={m.wkActual} sched={m.wkSched} />
+                </td>
+              </tr>
+            ))}
+            {/* Section totals row */}
+            <tr style={{ background: '#EDE5DC', fontWeight: 'bold' }}>
+              <td style={{ padding: '7px 12px', color: '#5C4F47', fontStyle: 'italic', position: 'sticky', left: 0, background: '#EDE5DC' }}>{section.label} TOTAL</td>
+              <td style={{ padding: '7px 8px', textAlign: 'center', color: '#9C8F87' }}>—</td>
+              {dayTotals.map((dt, di) => (
+                <td key={di} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: di === todayIdx ? '2px solid #D4A843' : '1px solid #E8DDD0', background: di === todayIdx ? 'rgba(212,168,67,0.1)' : '#EDE5DC' }}>
+                  <div style={{ fontSize: 12, color: '#9C8F87' }}>{fmtNum(dt.sched)}</div>
+                  <div style={{ fontSize: 13, color: '#5C4F47' }}>{dt.actual !== null ? fmtNum(dt.actual) : '·'}</div>
+                </td>
+              ))}
+              <td style={{ padding: '6px 8px', textAlign: 'center', borderLeft: '2px solid #C8BDB4' }}>
+                <div style={{ fontSize: 12, color: '#9C8F87' }}>{fmtNum(wkSchedTotal)}</div>
+                <div style={{ fontSize: 13, color: '#5C4F47' }}>{wkActualTotal !== null ? fmtNum(wkActualTotal) : '·'}</div>
+                <PctBadge actual={wkActualTotal} sched={wkSchedTotal} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
 
-function MachineTable({ title, machines }) {
-  if (!machines || machines.length === 0) return null
+function FacilityBlock({ title, dayHeaders, sections, todayIdx, budget }) {
+  if (!sections || sections.length === 0) return null
 
-  const sections = {}
-  machines.forEach(m => {
-    if (!sections[m.section]) sections[m.section] = []
-    sections[m.section].push(m)
-  })
-
-  const rows = []
-  let grandSched = 0, grandActual = 0
-
-  Object.entries(sections).forEach(([section, ms]) => {
-    rows.push({ type: 'section', label: section })
-    let secSched = 0, secActual = 0
-    ms.forEach(m => {
-      rows.push({ type: 'machine', ...m })
-      secSched += m.sched
-      secActual += m.actual
-    })
-    rows.push({ type: 'subtotal', label: `${section} TOTAL`, sched: secSched, actual: secActual })
-    grandSched += secSched
-    grandActual += secActual
-  })
-
-  rows.push({ type: 'total', label: 'WEEK TOTAL', sched: grandSched, actual: grandActual })
+  const grandWkSched  = sections.reduce((s, sec) => s + sec.machines.reduce((ss, m) => ss + m.wkSched, 0), 0)
+  const allNull = sections.every(sec => sec.machines.every(m => m.wkActual === null))
+  const grandWkActual = allNull ? null : sections.reduce((s, sec) => s + sec.machines.reduce((ss, m) => ss + (m.wkActual || 0), 0), 0)
+  const p = pct(grandWkActual, grandWkSched)
+  const vsBudget = grandWkActual !== null && budget ? pct(grandWkActual, budget) : null
 
   return (
-    <div>
-      <div style={STYLES.sectionTitle}>{title}</div>
-      <table style={STYLES.table}>
-        <thead>
-          <tr>
-            <th style={STYLES.th}>Machine / Table</th>
-            <th style={STYLES.thRight}>Bgt/Day</th>
-            <th style={STYLES.thRight}>Wk Sched</th>
-            <th style={STYLES.thRight}>Wk Actual</th>
-            <th style={STYLES.thRight}>% Done</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => {
-            if (row.type === 'section') return (
-              <tr key={i} style={STYLES.sectionRow}>
-                <td colSpan={5} style={{ ...STYLES.td, ...STYLES.sectionRow }}>▸ {row.label}</td>
-              </tr>
-            )
-            if (row.type === 'subtotal') return (
-              <tr key={i} style={STYLES.subtotalRow}>
-                <td style={{ ...STYLES.td, ...STYLES.subtotalRow }}>{row.label}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.subtotalRow }}>—</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.subtotalRow }}>{fmtNum(row.sched)}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.subtotalRow }}>{fmtNum(row.actual)}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.subtotalRow, ...pctColor(row.sched > 0 ? row.actual / row.sched : null) }}>{fmtPct(row.actual, row.sched)}</td>
-              </tr>
-            )
-            if (row.type === 'total') return (
-              <tr key={i} style={STYLES.totalRow}>
-                <td style={{ ...STYLES.td, ...STYLES.totalRow }}>{row.label}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.totalRow }}>—</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.totalRow }}>{fmtNum(row.sched)}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.totalRow }}>{fmtNum(row.actual)}</td>
-                <td style={{ ...STYLES.tdRight, ...STYLES.totalRow, ...pctColor(row.sched > 0 ? row.actual / row.sched : null) }}>{fmtPct(row.actual, row.sched)}</td>
-              </tr>
-            )
-            const pct = row.sched > 0 ? row.actual / row.sched : null
-            const rowBg = i % 2 === 0 ? '#fff' : '#FAF7F2'
-            return (
-              <tr key={i} style={{ background: rowBg }}>
-                <td style={{ ...STYLES.td, background: rowBg }}>{row.name}</td>
-                <td style={{ ...STYLES.tdMuted, background: rowBg }}>{row.budget}</td>
-                <td style={{ ...STYLES.tdRight, background: rowBg }}>{fmtNum(row.sched)}</td>
-                <td style={{ ...STYLES.tdRight, background: rowBg }}>{fmtNum(row.actual)}</td>
-                <td style={{ ...STYLES.tdRight, background: rowBg, ...pctColor(pct) }}>{fmtPct(row.actual, row.sched)}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+    <div style={{ marginBottom: 40 }}>
+      {/* Facility header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 'bold', color: '#2C2420', fontFamily: 'Georgia, serif' }}>{title}</div>
+        <div style={{ fontSize: 13, color: '#9C8F87' }}>
+          {fmtNum(grandWkActual) || '0'} / {fmtNum(grandWkSched)} yds
+          {p !== null && <span style={{ marginLeft: 8, color: p >= 95 ? '#2E7D32' : '#E65100', fontWeight: 'bold' }}>{p}%</span>}
+          {vsBudget !== null && <span style={{ marginLeft: 8, color: '#9C8F87' }}>· {vsBudget}% of budget</span>}
+        </div>
+      </div>
+      {sections.map((sec, i) => (
+        <SectionTable key={i} section={sec} dayHeaders={dayHeaders} todayIdx={todayIdx} />
+      ))}
     </div>
   )
 }
 
-// weekStart is a Date object passed from App.jsx
 export default function ProductionTab({ weekStart }) {
-  const [bnyMachines, setBnyMachines] = useState(null)
-  const [njMachines, setNjMachines]   = useState(null)
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState(null)
+  const [bnyData, setBnyData] = useState(null)
+  const [njData,  setNjData]  = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [weekNum, setWeekNum] = useState(null)
+  const [weekInfo, setWeekInfo] = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
-  const [weekNum, setWeekNum]         = useState(null)
+
+  // Figure out which column is "today" (0=Mon ... 4=Fri, -1=weekend)
+  const todayIdx = (() => {
+    const d = new Date().getDay() // 0=Sun,1=Mon...5=Fri,6=Sat
+    if (d >= 1 && d <= 5) return d - 1
+    return -1
+  })()
 
   async function loadData(ws) {
     setLoading(true)
     setError(null)
-    setBnyMachines(null)
-    setNjMachines(null)
     try {
-      // Get fiscal week from the passed weekStart date
-      const fiscalInfo = getFiscalInfo(ws)
-      const fw = fiscalInfo ? fiscalInfo.fiscalWeek : null
-      setWeekNum(fw)
-
-      if (!fw) {
-        setError(`No fiscal week found for this date. Sheets cover Weeks 14–28 (Apr 6 – Jul 18).`)
+      const key = format(ws, 'yyyy-MM-dd')
+      const info = getFiscalInfo(key)
+      if (!info) {
+        setError('No fiscal week found for this date. Sheets cover Weeks 14–28 (Apr 6 – Jul 18).')
+        setLoading(false)
         return
       }
+      setWeekNum(info.fiscalWeek)
+      setWeekInfo(info)
 
       const [bnyRows, njRows] = await Promise.all([
-        fetchSheetData(BNY_SHEET_ID, 'Schedule!A:O'),
-        fetchSheetData(NJ_SHEET_ID,  'Schedule!A:O'),
+        fetchSheetData(BNY_SHEET_ID),
+        fetchSheetData(NJ_SHEET_ID),
       ])
 
-      setBnyMachines(parseWeekData(bnyRows, fw))
-      setNjMachines(parseWeekData(njRows,  fw))
+      setBnyData(parseWeekData(bnyRows, info.fiscalWeek))
+      setNjData(parseWeekData(njRows,   info.fiscalWeek))
       setLastRefresh(new Date())
-    } catch (e) {
+    } catch(e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    if (weekStart) loadData(weekStart)
-  }, [weekStart])
+  useEffect(() => { if (weekStart) loadData(weekStart) }, [weekStart])
 
-  const bnyTotals = bnyMachines ? {
-    sched:  bnyMachines.reduce((s, m) => s + m.sched, 0),
-    actual: bnyMachines.reduce((s, m) => s + m.actual, 0),
-    budget: 12000,
-  } : null
-
-  const njTotals = njMachines ? {
-    sched:  njMachines.reduce((s, m) => s + m.sched, 0),
-    actual: njMachines.reduce((s, m) => s + m.actual, 0),
-    budget: 8610,
-  } : null
+  const todayLabel = todayIdx >= 0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
 
   return (
-    <div style={STYLES.container}>
-      <div style={STYLES.header}>
-        Live Production
-        {weekNum && <span style={STYLES.weekBadge}>FY WK {weekNum}</span>}
-        <button style={STYLES.refreshBtn} onClick={() => loadData(weekStart)}>↻ Refresh</button>
+    <div style={{ padding: '24px', fontFamily: 'Georgia, serif', background: '#FAF7F2', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+          <div style={{ fontSize: 22, fontWeight: 'bold', color: '#2C2420' }}>Live Production</div>
+          {weekNum && (
+            <span style={{ display: 'inline-block', background: '#2C2420', color: '#D4A843', borderRadius: 4, padding: '2px 10px', fontSize: 12, fontWeight: 'bold' }}>
+              FY WK {weekNum}
+            </span>
+          )}
+          {weekInfo && (
+            <span style={{ fontSize: 13, color: '#9C8F87' }}>{weekInfo.month} · {weekInfo.quarter}</span>
+          )}
+          {todayLabel && (
+            <span style={{ fontSize: 12, background: 'rgba(212,168,67,0.15)', color: '#B8860B', borderRadius: 4, padding: '2px 8px', border: '1px solid rgba(212,168,67,0.3)' }}>
+              Today: {todayLabel}
+            </span>
+          )}
+        </div>
+        <button onClick={() => loadData(weekStart)} style={{ background: 'none', border: '1px solid #E8DDD0', borderRadius: 4, padding: '4px 12px', fontSize: 12, color: '#9C8F87', cursor: 'pointer' }}>
+          ↻ Refresh
+        </button>
       </div>
-      <div style={STYLES.subheader}>
-        Source: Google Sheets (live) {lastRefresh && `· Last loaded ${lastRefresh.toLocaleTimeString()}`}
+      <div style={{ fontSize: 13, color: '#9C8F87', marginBottom: 24 }}>
+        Source: Google Sheets (live){lastRefresh && ` · Last loaded ${lastRefresh.toLocaleTimeString()}`}
+        <span style={{ marginLeft: 16, fontSize: 11, color: '#C8BDB8' }}>Each day cell: Sched (top) / Actual (bottom)</span>
       </div>
 
-      {error && <div style={STYLES.error}>⚠ {error}</div>}
-      {loading && <div style={STYLES.loading}>Loading production data from Google Sheets...</div>}
-
-      {!loading && !error && !bnyMachines && !njMachines && (
-        <div style={STYLES.info}>
-          No production data found for FY Week {weekNum}. The sheets cover Weeks 14–28 (Apr 6 – Jul 18).
+      {error && (
+        <div style={{ background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: 8, padding: 16, color: '#E65100', marginBottom: 16 }}>
+          ⚠ {error}
         </div>
       )}
 
-      {!loading && !error && (bnyMachines || njMachines) && (
+      {loading && (
+        <div style={{ color: '#9C8F87', padding: 40, textAlign: 'center', fontSize: 14 }}>
+          Loading production data from Google Sheets...
+        </div>
+      )}
+
+      {!loading && !error && bnyData && njData && (
         <>
-          <div style={STYLES.summaryGrid}>
-            {bnyTotals && <SummaryCard title="BNY Digital" {...bnyTotals} color="#D4A843" />}
-            {njTotals  && <SummaryCard title="NJ Screen Print" {...njTotals} color="#5C8A6E" />}
-          </div>
-          <MachineTable title="BNY — Digital Production" machines={bnyMachines} />
-          <MachineTable title="NJ — Screen Print Production" machines={njMachines} />
+          <FacilityBlock
+            title="BNY — Digital Production"
+            dayHeaders={bnyData.dayHeaders}
+            sections={bnyData.sections}
+            todayIdx={todayIdx}
+            budget={12000}
+          />
+          <FacilityBlock
+            title="NJ — Screen Print Production"
+            dayHeaders={njData.dayHeaders}
+            sections={njData.sections}
+            todayIdx={todayIdx}
+            budget={8610}
+          />
         </>
+      )}
+
+      {!loading && !error && (!bnyData || bnyData.sections.length === 0) && (
+        <div style={{ background: '#F2EDE4', border: '1px solid #E8DDD0', borderRadius: 8, padding: 16, color: '#9C8F87', fontSize: 13 }}>
+          No production data found for FY Week {weekNum}. The sheets cover Weeks 14–28 (Apr 6 – Jul 18).
+        </div>
       )}
     </div>
   )
