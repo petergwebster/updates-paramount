@@ -98,6 +98,7 @@ function calcFacilityTotals(data, budget, daysIn) {
 
 // ── Sticky KPI Bar ────────────────────────────────────────────────────────────
 function KPIBar({ bnyTotals, njTotals, weekNum, weekInfo, todayLabel, onRefresh, loading, lastRefresh }) {
+  if (!bnyTotals && !njTotals) return null
   const combined = {
     sched:  (bnyTotals?.wkSched||0)  + (njTotals?.wkSched||0),
     actual: bnyTotals?.wkActual!==null||njTotals?.wkActual!==null
