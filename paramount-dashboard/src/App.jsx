@@ -13,6 +13,7 @@ import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import WIPTab from './components/WIPTab'
 import AdminPeople from './components/AdminPeople'
+import ProductionTab from './components/ProductionTab'
 import styles from './App.module.css'
 
 const PUBLIC_TABS = [
@@ -22,6 +23,7 @@ const PUBLIC_TABS = [
   { id: 'people',     label: 'People' },
   { id: 'financials', label: 'Financials' },
   { id: 'wip',        label: 'WIP & Schedule' },
+  { id: 'production', label: 'Production' },
 ]
 
 function SlackIcon({ size = 14 }) {
@@ -111,7 +113,6 @@ export default function App() {
   function onCommentPosted(commentId) {
     sessionCommentsRef.current = [...sessionCommentsRef.current, commentId]
     setSessionCommentCount(sessionCommentsRef.current.length)
-    // Track session start time on first comment
     if (!sessionStartRef.current) sessionStartRef.current = new Date(Date.now() - 2000).toISOString()
   }
 
@@ -121,7 +122,6 @@ export default function App() {
     if (sessionCommentsRef.current.length === 0) return
     setNotifying(true)
     const key = weekKey(currentWeek)
-    // Fetch by real IDs where possible, fall back to author+week+session window
     const realIds = sessionCommentsRef.current.filter(id => !String(id).startsWith('local-'))
     let comments = []
     if (realIds.length > 0) {
@@ -132,7 +132,6 @@ export default function App() {
         .order('created_at', { ascending: true })
       comments = data || []
     }
-    // Also fetch any recent comments by this author this session (catches local- ids)
     if (comments.length < sessionCommentsRef.current.length && sessionStartRef.current) {
       const { data: recent } = await supabase
         .from('section_comments')
@@ -273,6 +272,7 @@ export default function App() {
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
             {activeTab === 'financials'     && <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek, 'yyyy-MM-dd').slice(0,7)} />}
             {activeTab === 'wip'            && <WIPTab />}
+            {activeTab === 'production'     && <ProductionTab />}
 
             {activeTab === 'admin' && adminAuthenticated && (
               <>
