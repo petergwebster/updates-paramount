@@ -12,7 +12,6 @@ function getCurrentFiscalWeek() {
   const key = format(monday, 'yyyy-MM-dd')
   const info = getFiscalInfo(key)
   if (info) return { week: info.fiscalWeek, month: info.month, qtr: info.quarter, key }
-  // Fallback: find closest week in calendar
   const keys = Object.keys(FISCAL_CALENDAR).sort()
   const todayStr = format(today, 'yyyy-MM-dd')
   let best = keys[0]
@@ -46,22 +45,26 @@ const STYLES = {
   pctWarn: { color: '#E65100', fontWeight: 'bold' },
   pctNone: { color: '#9C8F87' },
   error: { background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: '8px', padding: '16px', color: '#E65100', marginBottom: '16px' },
+  info: { background: '#F2EDE4', border: '1px solid #E8DDD0', borderRadius: '8px', padding: '16px', color: '#9C8F87', marginBottom: '16px', fontSize: '13px' },
   loading: { color: '#9C8F87', padding: '40px', textAlign: 'center', fontSize: '14px' },
   weekBadge: { display: 'inline-block', background: '#2C2420', color: '#D4A843', borderRadius: '4px', padding: '2px 10px', fontSize: '12px', fontWeight: 'bold', marginLeft: '10px', verticalAlign: 'middle' },
   refreshBtn: { float: 'right', background: 'none', border: '1px solid #E8DDD0', borderRadius: '4px', padding: '4px 12px', fontSize: '12px', color: '#9C8F87', cursor: 'pointer' },
+  debug: { background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', padding: '12px', fontSize: '11px', fontFamily: 'monospace', color: '#555', marginBottom: '16px', whiteSpace: 'pre-wrap', wordBreak: 'break-all' },
 }
 
 async function fetchSheetData(sheetId, range) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`Sheets API error: ${res.status}`)
+  if (!res.ok) throw new Error(`Sheets API error: ${res.status} — ${await res.text()}`)
   const data = await res.json()
   return data.values || []
 }
 
 function parseWeekData(rows, weekNum) {
-  const headerIdx = rows.findIndex(r => r[0] && r[0].startsWith(`WK${weekNum} `))
-  if (headerIdx === -1) return null
+  // Find the week header row — matches WK14, WK14 |, etc.
+  const prefix = `WK${weekNum}`
+  const headerIdx = rows.findIndex(r => r[0] && String(r[0]).trim().startsWith(prefix))
+  if (headerIdx === -1) return { machines: null, debugInfo: `Header not found for WK${weekNum}. First 5 row[0] values: ${rows.slice(0,5).map(r=>JSON.stringify(r[0])).join(', ')}` }
 
   const machines = []
   let i = headerIdx + 1
@@ -69,27 +72,39 @@ function parseWeekData(rows, weekNum) {
 
   while (i < rows.length) {
     const row = rows[i]
-    const col0 = (row[0] || '').trim()
+    const col0 = String(row[0] || '').trim()
 
-    if (col0.startsWith('WK') && col0 !== rows[headerIdx][0]) break
+    // Stop at next week header
+    if (col0.startsWith('WK') && !col0.startsWith(prefix)) break
 
     if (col0.startsWith('>> ')) {
-      currentSection = col0.replace('>> ', '').replace(/\s*—.*$/, '').trim()
+      currentSection = col0.replace('>> ', '').replace(/\s*[—\-].*$/, '').trim()
+      // Strip Saturday/Sunday section labels
+      if (col0.toUpperCase().includes('SATURDAY') || col0.toUpperCase().includes('SUNDAY')) {
+        i++
+        continue
+      }
       i++
       continue
     }
 
-    if (col0.includes('TOTAL') || col0.startsWith('──') || col0 === '') {
+    if (col0.includes('TOTAL') || col0.startsWith('──') || col0 === '' || col0 === 'Budget/Day' || col0 === 'Bgt/Day') {
       i++
       continue
     }
 
     const budget = parseFloat(row[1]) || 0
     if (budget > 0 && currentSection) {
-      const sched     = parseFloat(row[12]) || 0
-      const actual    = parseFloat(row[13]) || 0
-      const satSched  = parseFloat(row[2])  || 0
-      const satActual = parseFloat(row[3])  || 0
+      // Col M (index 12) = Wk Sched, Col N (index 13) = Wk Actual
+      const sched  = parseFloat(row[12]) || 0
+      const actual = parseFloat(row[13]) || 0
+      // Col C (index 2) = Sat/Sun Sched, Col D (index 3) = Sat/Sun Actual
+      // Only add weekend if this row is a weekend machine row (col C = 0 as default)
+      // We distinguish weekday vs weekend by checking if col E (index 4) has a value
+      // Weekend rows only have cols C and D populated
+      const isWeekendRow = (row[4] === '' || row[4] === undefined) && String(row[2]) === '0'
+      const satSched  = isWeekendRow ? (parseFloat(row[2]) || 0) : 0
+      const satActual = isWeekendRow ? (parseFloat(row[3]) || 0) : 0
 
       machines.push({
         name: col0,
@@ -102,7 +117,7 @@ function parseWeekData(rows, weekNum) {
     i++
   }
 
-  return machines
+  return { machines: machines.length > 0 ? machines : null, debugInfo: `Found header at row ${headerIdx + 1}. Parsed ${machines.length} machines.` }
 }
 
 function pctColor(pct) {
@@ -229,10 +244,12 @@ export default function ProductionTab() {
   const [error, setError]             = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
   const [weekNum, setWeekNum]         = useState(null)
+  const [debugInfo, setDebugInfo]     = useState(null)
 
   async function loadData() {
     setLoading(true)
     setError(null)
+    setDebugInfo(null)
     try {
       const fw = getCurrentFiscalWeek()
       setWeekNum(fw.week)
@@ -242,11 +259,12 @@ export default function ProductionTab() {
         fetchSheetData(NJ_SHEET_ID,  'Schedule!A:O'),
       ])
 
-      const bny = parseWeekData(bnyRows, fw.week)
-      const nj  = parseWeekData(njRows,  fw.week)
+      const bnyResult = parseWeekData(bnyRows, fw.week)
+      const njResult  = parseWeekData(njRows,  fw.week)
 
-      setBnyMachines(bny)
-      setNjMachines(nj)
+      setBnyMachines(bnyResult.machines)
+      setNjMachines(njResult.machines)
+      setDebugInfo(`BNY: ${bnyResult.debugInfo}\nNJ: ${njResult.debugInfo}`)
       setLastRefresh(new Date())
     } catch (e) {
       setError(e.message)
@@ -283,7 +301,17 @@ export default function ProductionTab() {
       {error && <div style={STYLES.error}>⚠ Could not load sheet data: {error}</div>}
       {loading && <div style={STYLES.loading}>Loading production data from Google Sheets...</div>}
 
-      {!loading && !error && (
+      {!loading && debugInfo && (
+        <div style={STYLES.debug}>{debugInfo}</div>
+      )}
+
+      {!loading && !error && !bnyMachines && !njMachines && (
+        <div style={STYLES.info}>
+          No production data found for FY Week {weekNum}. The sheets cover Weeks 14–28 (Apr 6 – Jul 18). Check the debug info above.
+        </div>
+      )}
+
+      {!loading && !error && (bnyMachines || njMachines) && (
         <>
           <div style={STYLES.summaryGrid}>
             {bnyTotals && <SummaryCard title="BNY Digital" {...bnyTotals} color="#D4A843" />}
