@@ -272,7 +272,7 @@ export default function App() {
             {activeTab === 'people'         && <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps} />}
             {activeTab === 'financials'     && <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek, 'yyyy-MM-dd').slice(0,7)} />}
             {activeTab === 'wip'            && <WIPTab />}
-            {activeTab === 'production'     && <ProductionTab />}
+            {activeTab === 'production'     && <ProductionTab weekStart={currentWeek} />}
 
             {activeTab === 'admin' && adminAuthenticated && (
               <>
