@@ -1,9 +1,25 @@
 import { useState, useEffect } from 'react'
-import { getCurrentFiscalWeek } from '../fiscalCalendar'
+import { format, startOfWeek } from 'date-fns'
+import { FISCAL_CALENDAR, getFiscalInfo } from '../fiscalCalendar'
 
 const BNY_SHEET_ID = '1nVuGPNIxRCEHOLSr6v5OrwFZO7sWOZT2zeeB7CkX_Ys'
 const NJ_SHEET_ID  = '1dT6mc8kKzcUJsUjHsFZdANMF_UpJ9LhEd0xQUj00I6k'
 const API_KEY      = import.meta.env.VITE_GOOGLE_SHEETS_API_KEY
+
+function getCurrentFiscalWeek() {
+  const today = new Date()
+  const monday = startOfWeek(today, { weekStartsOn: 1 })
+  const key = format(monday, 'yyyy-MM-dd')
+  const info = getFiscalInfo(key)
+  if (info) return { week: info.fiscalWeek, month: info.month, qtr: info.quarter, key }
+  // Fallback: find closest week in calendar
+  const keys = Object.keys(FISCAL_CALENDAR).sort()
+  const todayStr = format(today, 'yyyy-MM-dd')
+  let best = keys[0]
+  for (const k of keys) { if (k <= todayStr) best = k; else break }
+  const bestInfo = FISCAL_CALENDAR[best]
+  return { week: bestInfo.fiscalWeek, month: bestInfo.month, qtr: bestInfo.quarter, key: best }
+}
 
 const STYLES = {
   container: { padding: '24px', fontFamily: 'Georgia, serif', background: '#FAF7F2', minHeight: '100vh' },
@@ -70,10 +86,10 @@ function parseWeekData(rows, weekNum) {
 
     const budget = parseFloat(row[1]) || 0
     if (budget > 0 && currentSection) {
-      const sched      = parseFloat(row[12]) || 0
-      const actual     = parseFloat(row[13]) || 0
-      const satSched   = parseFloat(row[2])  || 0
-      const satActual  = parseFloat(row[3])  || 0
+      const sched     = parseFloat(row[12]) || 0
+      const actual    = parseFloat(row[13]) || 0
+      const satSched  = parseFloat(row[2])  || 0
+      const satActual = parseFloat(row[3])  || 0
 
       machines.push({
         name: col0,
@@ -265,7 +281,6 @@ export default function ProductionTab() {
       </div>
 
       {error && <div style={STYLES.error}>⚠ Could not load sheet data: {error}</div>}
-
       {loading && <div style={STYLES.loading}>Loading production data from Google Sheets...</div>}
 
       {!loading && !error && (
@@ -274,7 +289,6 @@ export default function ProductionTab() {
             {bnyTotals && <SummaryCard title="BNY Digital" {...bnyTotals} color="#D4A843" />}
             {njTotals  && <SummaryCard title="NJ Screen Print" {...njTotals} color="#5C8A6E" />}
           </div>
-
           <MachineTable title="BNY — Digital Production" machines={bnyMachines} />
           <MachineTable title="NJ — Screen Print Production" machines={njMachines} />
         </>
