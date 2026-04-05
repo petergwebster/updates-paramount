@@ -177,38 +177,154 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
 
 // ── Admin page ────────────────────────────────────────────────────────────────
 function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentProps }) {
-  const [section, setSection] = useState('data')
+  const [section, setSection] = useState('production')
+  const [generating, setGenerating] = useState(false)
+  const [genError,   setGenError]   = useState(null)
+  const [genSuccess, setGenSuccess] = useState(false)
+
   const tabs = [
-    { id:'data',   label:'📊 Weekly Data' },
-    { id:'log',    label:'📝 Weekly Log'  },
-    { id:'people', label:'👥 People'      },
-    { id:'files',  label:'📁 Files'       },
-    { id:'history',label:'🕘 History'     },
+    { id:'production', label:'🏭 Production'   },
+    { id:'kpis',       label:'🎯 KPI Scorecard' },
+    { id:'log',        label:'📝 Daily Log'     },
+    { id:'financials', label:'💰 Financials'    },
+    { id:'people',     label:'👥 People'        },
+    { id:'files',      label:'📁 Files'         },
+    { id:'history',    label:'🕘 History'       },
   ]
+
+  // Status chip logic
+  const kpis      = weekData?.kpis || {}
+  const days      = weekData?.days || {}
+  const narrative = weekData?.executive_narrative || weekData?.narrative || ''
+  const hasKPIs   = Object.values(kpis).some(k => k?.status && k.status !== 'gray')
+  const hasLog    = Object.values(days).some(d => d?.text?.trim())
+  const hasProd   = !!weekData?.production_saved
+  const hasFinance= !!weekData?.financials_saved
+  const hasPeople = !!weekData?.people_saved
+
+  const chips = [
+    { label:'Production', done: hasProd    },
+    { label:'KPIs',       done: hasKPIs    },
+    { label:'Daily Log',  done: hasLog     },
+    { label:'Financials', done: hasFinance },
+    { label:'People',     done: hasPeople  },
+  ]
+  const allDone = chips.every(c => c.done)
+
+  async function handleGenerateSummary() {
+    setGenerating(true); setGenError(null); setGenSuccess(false)
+    try {
+      const wk = format(weekStart, 'yyyy-MM-dd')
+      const [{ data: allWeeks }, { data: prodHistory }, { data: finHistory }] = await Promise.all([
+        supabase.from('weeks').select('week_start,kpis,days,concerns').order('week_start',{ascending:false}).limit(13),
+        supabase.from('production').select('week_start,nj_data,bny_data').order('week_start',{ascending:false}).limit(13),
+        supabase.from('financial_uploads').select('period,bu,cogs,opex,inv_purchases').order('period',{ascending:false}).limit(8),
+      ])
+      const thisProd = prodHistory?.find(p => p.week_start === wk)
+      const njD = thisProd?.nj_data || {}, bnyD = thisProd?.bny_data || {}
+      const njYds  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.yards)||0),0)
+      const bnyYds = ['replen','mto','hos','memo','contract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
+      const totalYds = njYds + bnyYds
+      const njPct  = Math.round(njYds/8610*100), bnyPct = Math.round(bnyYds/12000*100)
+      const totalPct = Math.round(totalYds/20610*100)
+      const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
+      const monthKey = wk.slice(0,7)
+      const mtdWeeks = prodHistory?.filter(p=>p.week_start?.startsWith(monthKey))||[]
+      const mtdTotal = mtdWeeks.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+(parseFloat(p.nj_data?.[c]?.yards)||0),0)+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+(parseFloat(p.bny_data?.[c])||0),0),0)
+      const mtdPct = Math.round(mtdTotal/(20610*mtdWeeks.length)*100)
+      const kpiLines = Object.entries(kpis).filter(([,v])=>v?.status&&v.status!=='gray').map(([id,v])=>`  ${id}: ${SL[v.status]}${v.notes?' — '+v.notes:''}`).join('\n')
+      const logLines = Object.entries(days).filter(([,v])=>v?.text?.trim()).map(([day,v])=>`  ${day}: ${v.text.slice(0,200)}`).join('\n')
+      const finLines = finHistory?.slice(0,4).map(f=>`  ${f.period} ${f.bu}: COGS $${(f.cogs||0).toLocaleString()} · OpEx $${(f.opex||0).toLocaleString()} · Inv $${(f.inv_purchases||0).toLocaleString()}`).join('\n')||'  No financial data'
+
+      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing, F. Schumacher & Co), write a weekly executive summary for CEO Timur and Chief of Staff Emily.
+
+Two facilities: Passaic NJ (screen print) and Brooklyn BNY (digital). ~$10M/year revenue.
+
+WEEK OF: ${format(weekStart,'MMMM d, yyyy')}
+
+PRODUCTION THIS WEEK:
+  NJ Passaic: ${njYds.toLocaleString()} yds of 8,610 target (${njPct}%)
+  BNY Brooklyn: ${bnyYds.toLocaleString()} yds of 12,000 target (${bnyPct}%)
+  Combined: ${totalYds.toLocaleString()} yds of 20,610 target (${totalPct}%)
+
+MTD PRODUCTION (${mtdWeeks.length} weeks): ${mtdTotal.toLocaleString()} yds · ${mtdPct}% of budget
+
+KPI SCORECARD:
+${kpiLines||'  No KPI data entered'}
+
+DAILY LOG:
+${logLines||'  No log entries'}
+
+RECENT FINANCIALS:
+${finLines}
+
+${weekData?.concerns?'AREAS OF CONCERN:\n  '+weekData.concerns:''}
+
+Write 3–4 paragraphs in Peter's voice — direct, factual, candid:
+1. Overall week vs target
+2. Key highlights and what's working
+3. Concerns/watch items with context
+4. Forward look for next week
+
+Under 220 words. First person. No bullets. No headers. No title. Start directly.`
+
+      const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})})
+      const data = await resp.json()
+      const text = data.content?.find(c=>c.type==='text')?.text
+      if (text) { await onSave({executive_narrative:text.trim()}); setGenSuccess(true); setTimeout(()=>setGenSuccess(false),5000) }
+      else setGenError('Could not generate — try again.')
+    } catch(e) { setGenError('Generation failed. Check connection.') }
+    setGenerating(false)
+  }
+
   return (
     <div style={{ maxWidth:980, margin:'0 auto', padding:'28px 24px 64px' }}>
+
+      {/* Header */}
       <div style={{ marginBottom:24 }}>
-        <h2 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:22, color:'var(--ink)', fontWeight:700 }}>Admin Panel</h2>
-        <p style={{ margin:'4px 0 0', fontSize:13, color:'var(--ink-40)' }}>
-          Week of {format(weekStart,'MMMM d, yyyy')} · Data entry &amp; management
-        </p>
+        <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:6 }}>Admin · Data Entry</div>
+        <h2 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:24, color:'var(--ink)', fontWeight:700 }}>Week of {format(weekStart,'MMMM d, yyyy')}</h2>
       </div>
-      <div style={{ display:'flex', gap:0, marginBottom:32, borderBottom:'1px solid var(--ink-10)' }}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setSection(t.id)} style={{
-            padding:'9px 18px', fontSize:13, fontWeight:section===t.id?600:400,
-            background:'none', border:'none',
-            borderBottom:section===t.id?'2px solid var(--ink)':'2px solid transparent',
-            color:section===t.id?'var(--ink)':'var(--ink-40)', cursor:'pointer',
-            marginBottom:-1, whiteSpace:'nowrap', fontFamily:'inherit',
-          }}>{t.label}</button>
+
+      {/* Generate Summary card */}
+      <div style={{ background: allDone?'var(--ink)':'#FAFAF8', border:`2px solid ${allDone?'var(--ink)':'var(--ink-10)'}`, borderRadius:12, padding:'20px 24px', marginBottom:24, display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, flexWrap:'wrap', transition:'all 0.2s' }}>
+        <div>
+          <div style={{ fontSize:15, fontWeight:700, color:allDone?'#fff':'var(--ink)', marginBottom:4, fontFamily:'Georgia, serif' }}>✦ Generate Executive Summary</div>
+          <div style={{ fontSize:12, color:allDone?'rgba(255,255,255,0.65)':'var(--ink-40)' }}>
+            {allDone ? 'All data entered — AI will look at WTD, MTD and financials.' : 'Fill in the sections below, then generate the summary for Timur & Emily.'}
+          </div>
+          {genError   && <div style={{ fontSize:12, color:'#E65100', marginTop:6 }}>⚠ {genError}</div>}
+          {genSuccess  && <div style={{ fontSize:12, color:'#2E7D32', marginTop:6 }}>✓ Summary generated and saved to Consolidated</div>}
+        </div>
+        <button onClick={handleGenerateSummary} disabled={generating} style={{ background:generating?'rgba(255,255,255,0.15)':allDone?'#D4A843':'var(--ink)', color:allDone&&!generating?'#2C2420':'#fff', border:'none', borderRadius:8, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:generating?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif', flexShrink:0 }}>
+          {generating ? '⏳ Generating…' : '✦ Generate Summary'}
+        </button>
+      </div>
+
+      {/* Status chips */}
+      <div style={{ display:'flex', gap:8, marginBottom:28, flexWrap:'wrap' }}>
+        {chips.map(c=>(
+          <div key={c.label} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px', borderRadius:20, background:c.done?'#F0FAF4':'#F5F5F5', border:`1px solid ${c.done?'#BBE0C8':'#E0E0E0'}`, fontSize:12, fontWeight:500, color:c.done?'#2E7D32':'var(--ink-40)' }}>
+            <span style={{ fontSize:11 }}>{c.done?'✓':'○'}</span>{c.label}
+          </div>
         ))}
       </div>
-      {section==='data'    && <AdminPanel weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady}/>}
-      {section==='log'     && <WeeklyLog  weekData={weekData} weekStart={weekStart} onSave={onSave} dbReady={dbReady}/>}
-      {section==='people'  && <AdminPeople weekStart={weekKey(weekStart)} currentUser={userProfile} onSaved={()=>setSection('data')}/>}
-      {section==='files'   && <Correspondence weekStart={weekStart} dbReady={dbReady} {...commentProps}/>}
-      {section==='history' && <HistoryPanel onSelectWeek={(w)=>{ /* week change handled in App */ }}/>}
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:0, marginBottom:32, borderBottom:'1px solid var(--ink-10)', overflowX:'auto' }}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setSection(t.id)} style={{ padding:'9px 16px', fontSize:13, fontWeight:section===t.id?600:400, background:'none', border:'none', borderBottom:section===t.id?'2px solid var(--ink)':'2px solid transparent', color:section===t.id?'var(--ink)':'var(--ink-40)', cursor:'pointer', marginBottom:-1, whiteSpace:'nowrap', fontFamily:'inherit' }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {section==='production' && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="production"/>}
+      {section==='kpis'       && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="kpis"/>}
+      {section==='log'        && <WeeklyLog     weekData={weekData} weekStart={weekStart} onSave={onSave} dbReady={dbReady}/>}
+      {section==='financials' && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="financials"/>}
+      {section==='people'     && <AdminPeople   weekStart={weekKey(weekStart)} currentUser={userProfile} onSaved={()=>setSection('production')}/>}
+      {section==='files'      && <Correspondence weekStart={weekStart} dbReady={dbReady} {...commentProps}/>}
+      {section==='history'    && <HistoryPanel  onSelectWeek={()=>{}}/>}
     </div>
   )
 }
