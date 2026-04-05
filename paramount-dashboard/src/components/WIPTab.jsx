@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../supabase'
 
 const TOKEN = import.meta.env.VITE_MONDAY_TOKEN || ''
@@ -709,6 +709,19 @@ export default function WIPTab(){
   const [snapshots,setSnapshots]=useState([])
   const [locking,setLocking]=useState(false)
   const [lockMsg,setLockMsg]=useState(null)
+
+  // On mount — load snapshots from Supabase so locked data shows immediately
+  useEffect(() => {
+    async function loadSnapshots() {
+      try {
+        const snaps = await fetchLastSnapshot()
+        setSnapshots(snaps)
+      } catch(e) {
+        console.error('WIP snapshot load error:', e)
+      }
+    }
+    loadSnapshots()
+  }, [])
 
   async function load(){
     setLoading(true);setError(null)
