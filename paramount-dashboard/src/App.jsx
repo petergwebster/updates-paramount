@@ -15,11 +15,11 @@ import AdminPeople from './components/AdminPeople'
 import { BNYTab, PassaicTab } from './components/ProductionTab'
 import styles from './App.module.css'
 
-// ── Nav: Consolidated | BNY | Passaic | (Live Ops — admin only) | ⚙ ──────────
+// ── Nav: Consolidated | Financials | People | (Live Ops — admin only) | ⚙ ────
 const PUBLIC_TABS = [
   { id: 'consolidated', label: 'Consolidated' },
-  { id: 'bny',          label: 'BNY' },
-  { id: 'passaic',      label: 'Passaic' },
+  { id: 'financials',   label: 'Financials'   },
+  { id: 'people',       label: 'People'        },
 ]
 const ADMIN_TABS = [
   { id: 'liveops', label: '📊 Live Ops' },
@@ -133,25 +133,28 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
         <ProductionDashboard weekStart={weekStart} dbReady={dbReady} readOnly {...commentProps} />
       </div>
 
-      {/* 4. Financials */}
-      <div style={{ marginBottom:48 }}>
-        <SectionLabel>Financials</SectionLabel>
-        <FinancialTab weekStart={weekStart} currentPeriod={format(weekStart,'yyyy-MM-dd').slice(0,7)}/>
-      </div>
-
-      {/* 5. People */}
-      <div style={{ marginBottom:48 }}>
-        <SectionLabel>People</SectionLabel>
-        <PeopleTab weekStart={weekKey(weekStart)} readOnly={true} {...commentProps}/>
-      </div>
-
-      {/* 6. KPI Scorecard detail */}
+      {/* 4. KPI Scorecard detail */}
       {hasKPIs && (
         <div style={{ marginBottom:48 }}>
           <SectionLabel>KPI Scorecard Detail</SectionLabel>
           <KPIScorecard weekData={weekData} weekStart={weekStart} onSave={null} dbReady={dbReady} readOnly {...commentProps}/>
         </div>
       )}
+
+      {/* Nav hints for C-suite */}
+      <div style={{ borderTop:'1px solid var(--ink-10)', paddingTop:24, display:'flex', gap:16, flexWrap:'wrap' }}>
+        <div style={{ fontSize:12, color:'var(--ink-30)' }}>
+          See also:
+        </div>
+        {[
+          { label:'Financials →', hint:'OpEx, COGS, inventory purchases' },
+          { label:'People →',     hint:'Headcount, payroll summary'       },
+        ].map(({label, hint}) => (
+          <div key={label} style={{ fontSize:12, color:'var(--ink-40)' }}>
+            <span style={{ fontWeight:600, color:'var(--ink-30)' }}>{label}</span> {hint}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -406,8 +409,12 @@ export default function App() {
             {activeTab==='consolidated' && (
               <ConsolidatedPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
             )}
-            {activeTab==='bny' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} readOnly {...commentProps}/>}
-            {activeTab==='passaic' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} readOnly {...commentProps}/>}
+            {activeTab==='financials' && (
+              <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+            )}
+            {activeTab==='people' && (
+              <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
+            )}
             {activeTab==='liveops' && adminAuthenticated && (
               <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
                 <div style={{background:'#2C2420', padding:'10px 20px', display:'flex', alignItems:'center', gap:12}}>
