@@ -12,24 +12,16 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
-import ProductionTab from './components/ProductionTab'
+import { BNYTab, PassaicTab, ConsolidatedProductionSummary, useProductionData } from './components/ProductionTab'
 import styles from './App.module.css'
 
-// ── 3 public tabs — Admin is gear-icon only ───────────────────────────────────
+// ── Nav: Consolidated | BNY | Passaic | ⚙ ────────────────────────────────────
 const PUBLIC_TABS = [
-  { id: 'brief',      label: 'Weekly Brief' },
-  { id: 'production', label: 'Live Production' },
-  { id: 'history',    label: 'History' },
+  { id: 'consolidated', label: 'Consolidated' },
+  { id: 'bny',          label: 'BNY' },
+  { id: 'passaic',      label: 'Passaic' },
 ]
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-// Default to PREVIOUS completed week — C-suite reviews last week on Monday
-function getDefaultWeek() {
-  return startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 })
-}
-function weekKey(date) { return format(date, 'yyyy-MM-dd') }
-
-// ── Slack icon ────────────────────────────────────────────────────────────────
 function SlackIcon({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">
@@ -43,248 +35,172 @@ function SlackIcon({ size = 14 }) {
   )
 }
 
-// ── Section header used inside Weekly Brief ───────────────────────────────────
+function getDefaultWeek() {
+  return startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 })
+}
+function weekKey(date) { return format(date, 'yyyy-MM-dd') }
+
 function SectionLabel({ children }) {
   return (
-    <div style={{
-      fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-      textTransform: 'uppercase', color: 'var(--ink-40)',
-      marginBottom: 16, paddingBottom: 8,
-      borderBottom: '1px solid var(--ink-10)',
-    }}>
+    <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase',
+      color:'var(--ink-40)', marginBottom:16, paddingBottom:8, borderBottom:'1px solid var(--ink-10)' }}>
       {children}
     </div>
   )
 }
 
-// ── Weekly Brief — scrolling C-suite report ───────────────────────────────────
-function WeeklyBriefPage({ weekStart, weekData, dbReady, commentProps }) {
+// ── Consolidated tab ──────────────────────────────────────────────────────────
+function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
   const fiscalLabel = getFiscalLabel(weekStart)
   const narrative   = weekData?.executive_narrative || null
   const kpis        = weekData?.kpi_scores || {}
   const flags       = weekData?.flags || null
+  const kpiList     = Object.values(kpis)
+  const onTrack     = kpiList.filter(k=>k?.status==='green').length
+  const watch       = kpiList.filter(k=>k?.status==='amber').length
+  const concern     = kpiList.filter(k=>k?.status==='red').length
+  const hasKPIs     = kpiList.length > 0
+  const weekEnd     = addDays(weekStart, 4)
+  const dateRange   = `${format(weekStart,'MMM d')}–${format(weekEnd,'d, yyyy')}`
 
-  // KPI status strip
-  const kpiList  = Object.values(kpis)
-  const onTrack  = kpiList.filter(k => k?.status === 'green').length
-  const watch    = kpiList.filter(k => k?.status === 'amber').length
-  const concern  = kpiList.filter(k => k?.status === 'red').length
-  const hasKPIs  = kpiList.length > 0
-
-  // Week date range: Mon – Fri
-  const weekEnd = addDays(weekStart, 4)
-  const dateRange = `${format(weekStart, 'MMM d')}–${format(weekEnd, 'd, yyyy')}`
+  // Load production data for combined summary
+  const { bnyT, njT, loading: prodLoading } = useProductionData(weekStart)
 
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: '36px 24px 80px', fontFamily: 'Georgia, serif' }}>
+    <div style={{ maxWidth:980, margin:'0 auto', padding:'36px 24px 80px', fontFamily:'Georgia, serif' }}>
 
-      {/* ── Report header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+      {/* Report header */}
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-40)', marginBottom: 8 }}>
+          <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:8 }}>
             Weekly Operations Report · Results
           </div>
-          <h1 style={{ margin: 0, fontSize: 30, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.15 }}>
-            {dateRange}
-          </h1>
-          {fiscalLabel && (
-            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--ink-40)' }}>{fiscalLabel}</div>
-          )}
+          <h1 style={{ margin:0, fontSize:30, fontWeight:700, color:'var(--ink)', lineHeight:1.15 }}>{dateRange}</h1>
+          {fiscalLabel && <div style={{ marginTop:6, fontSize:13, color:'var(--ink-40)' }}>{fiscalLabel}</div>}
         </div>
-        <div style={{ textAlign: 'right', paddingTop: 4 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-40)', marginBottom: 3 }}>Prepared by</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Peter Webster</div>
-          <div style={{ fontSize: 12, color: 'var(--ink-40)' }}>President, Paramount Prints</div>
+        <div style={{ textAlign:'right', paddingTop:4 }}>
+          <div style={{ fontSize:11, color:'var(--ink-40)', marginBottom:3 }}>Prepared by</div>
+          <div style={{ fontSize:14, fontWeight:600, color:'var(--ink)' }}>Peter Webster</div>
+          <div style={{ fontSize:12, color:'var(--ink-40)' }}>President, Paramount Prints</div>
         </div>
       </div>
 
-      {/* ── KPI status strip ── */}
+      {/* KPI status strip */}
       {hasKPIs && (
-        <div style={{ display: 'flex', gap: 20, margin: '20px 0 32px', padding: '12px 16px', background: 'var(--cream-dark, #F5F0EA)', borderRadius: 8 }}>
-          {[
-            { color: '#22c55e', count: onTrack,  label: 'On Track' },
-            { color: '#f59e0b', count: watch,    label: 'Watch' },
-            { color: '#ef4444', count: concern,  label: 'Concern' },
-          ].map(({ color, count, label }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }}/>
-              <span style={{ color: 'var(--ink)' }}><strong>{count}</strong> {label}</span>
+        <div style={{ display:'flex', gap:20, margin:'20px 0 32px', padding:'12px 16px', background:'var(--cream-dark,#F5F0EA)', borderRadius:8, flexWrap:'wrap' }}>
+          {[{color:'#22c55e',count:onTrack,label:'On Track'},{color:'#f59e0b',count:watch,label:'Watch'},{color:'#ef4444',count:concern,label:'Concern'}].map(({color,count,label})=>(
+            <div key={label} style={{ display:'flex', alignItems:'center', gap:7, fontSize:13 }}>
+              <span style={{ width:9, height:9, borderRadius:'50%', background:color, display:'inline-block', flexShrink:0 }}/>
+              <span style={{ color:'var(--ink)' }}><strong>{count}</strong> {label}</span>
             </div>
           ))}
-          <div style={{ flex: 1 }}/>
-          <div style={{ fontSize: 11, color: 'var(--ink-40)', alignSelf: 'center' }}>KPI Scorecard · {kpiList.length} metrics</div>
+          <div style={{ flex:1 }}/>
+          <div style={{ fontSize:11, color:'var(--ink-40)', alignSelf:'center' }}>KPI Scorecard · {kpiList.length} metrics</div>
         </div>
       )}
 
-      {!hasKPIs && (
-        <div style={{ height: 32 }}/>
-      )}
+      {!hasKPIs && <div style={{ height:32 }}/>}
 
-      {/* ── 1. Executive Summary ── */}
-      <div style={{ marginBottom: 48 }}>
+      {/* 1. Executive Summary */}
+      <div style={{ marginBottom:48 }}>
         <SectionLabel>Executive Summary</SectionLabel>
         {narrative ? (
-          <div style={{
-            fontSize: 15, lineHeight: 1.85, color: 'var(--ink)',
-            whiteSpace: 'pre-wrap',
-            background: 'var(--cream-dark, #F5F0EA)',
-            borderRadius: 8, padding: '20px 24px',
-            borderLeft: '3px solid var(--ink-20)',
-          }}>
+          <div style={{ fontSize:15, lineHeight:1.85, color:'var(--ink)', whiteSpace:'pre-wrap',
+            background:'var(--cream-dark,#F5F0EA)', borderRadius:8, padding:'20px 24px', borderLeft:'3px solid var(--ink-20)' }}>
             {narrative}
           </div>
         ) : (
-          <div style={{
-            background: '#FAFAF8', border: '1px dashed var(--ink-20)',
-            borderRadius: 8, padding: '28px 24px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 14, color: 'var(--ink-40)', marginBottom: 6 }}>No executive summary drafted yet.</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-30)' }}>Go to ⚙ Admin → Weekly Data → fill in KPIs & notes → Draft with AI</div>
+          <div style={{ background:'#FAFAF8', border:'1px dashed var(--ink-20)', borderRadius:8, padding:'28px 24px', textAlign:'center' }}>
+            <div style={{ fontSize:14, color:'var(--ink-40)', marginBottom:6 }}>No executive summary drafted yet.</div>
+            <div style={{ fontSize:12, color:'var(--ink-30)' }}>Go to ⚙ Admin → Weekly Data → fill in KPIs &amp; notes → Draft with AI</div>
           </div>
         )}
       </div>
 
-      {/* ── 2. Areas of Concern ── */}
+      {/* 2. Areas of Concern */}
       {flags && (
-        <div style={{ marginBottom: 48 }}>
+        <div style={{ marginBottom:48 }}>
           <SectionLabel>Areas of Concern</SectionLabel>
-          <div style={{
-            background: '#FFF8F0', border: '1px solid #FFE4C0',
-            borderRadius: 8, padding: '16px 20px',
-            fontSize: 14, lineHeight: 1.7, color: 'var(--ink)',
-          }}>
+          <div style={{ background:'#FFF8F0', border:'1px solid #FFE4C0', borderRadius:8, padding:'16px 20px', fontSize:14, lineHeight:1.7, color:'var(--ink)' }}>
             {flags}
           </div>
         </div>
       )}
 
-      {/* ── 3. Production ── */}
-      <div style={{ marginBottom: 48 }}>
-        <SectionLabel>Production — NJ &amp; Brooklyn</SectionLabel>
-        <ProductionDashboard weekStart={weekStart} dbReady={dbReady} readOnly {...commentProps} />
+      {/* 3. Production — combined summary cards */}
+      <div style={{ marginBottom:48 }}>
+        <SectionLabel>Production — Combined</SectionLabel>
+        {prodLoading ? (
+          <div style={{ color:'var(--ink-40)', fontSize:13, padding:'16px 0' }}>Loading production data...</div>
+        ) : (
+          <ConsolidatedProductionSummary bnyT={bnyT} njT={njT} />
+        )}
       </div>
 
-      {/* ── 4. Financials ── */}
-      <div style={{ marginBottom: 48 }}>
+      {/* 4. Financials */}
+      <div style={{ marginBottom:48 }}>
         <SectionLabel>Financials</SectionLabel>
-        <FinancialTab
-          weekStart={weekStart}
-          currentPeriod={format(weekStart, 'yyyy-MM-dd').slice(0, 7)}
-        />
+        <FinancialTab weekStart={weekStart} currentPeriod={format(weekStart,'yyyy-MM-dd').slice(0,7)}/>
       </div>
 
-      {/* ── 5. People ── */}
-      <div style={{ marginBottom: 48 }}>
+      {/* 5. People */}
+      <div style={{ marginBottom:48 }}>
         <SectionLabel>People</SectionLabel>
-        <PeopleTab weekStart={weekKey(weekStart)} readOnly={true} {...commentProps} />
+        <PeopleTab weekStart={weekKey(weekStart)} readOnly={true} {...commentProps}/>
       </div>
 
-      {/* ── 6. KPI Scorecard (read-only, full detail) ── */}
+      {/* 6. KPI Scorecard detail */}
       {hasKPIs && (
-        <div style={{ marginBottom: 48 }}>
+        <div style={{ marginBottom:48 }}>
           <SectionLabel>KPI Scorecard Detail</SectionLabel>
-          <KPIScorecard
-            weekData={weekData}
-            weekStart={weekStart}
-            onSave={null}
-            dbReady={dbReady}
-            readOnly
-            {...commentProps}
-          />
+          <KPIScorecard weekData={weekData} weekStart={weekStart} onSave={null} dbReady={dbReady} readOnly {...commentProps}/>
         </div>
       )}
-
     </div>
   )
 }
 
-// ── Admin page — Peter only ───────────────────────────────────────────────────
+// ── Admin page ────────────────────────────────────────────────────────────────
 function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentProps }) {
   const [section, setSection] = useState('data')
-
   const tabs = [
-    { id: 'data',  label: '📊 Weekly Data' },
-    { id: 'log',   label: '📝 Weekly Log' },
-    { id: 'people',label: '👥 People' },
-    { id: 'files', label: '📁 Files' },
+    { id:'data',   label:'📊 Weekly Data' },
+    { id:'log',    label:'📝 Weekly Log'  },
+    { id:'people', label:'👥 People'      },
+    { id:'files',  label:'📁 Files'       },
+    { id:'history',label:'🕘 History'     },
   ]
-
   return (
-    <div style={{ maxWidth: 980, margin: '0 auto', padding: '28px 24px 64px' }}>
-
-      {/* Admin header */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0, fontFamily: 'Georgia, serif', fontSize: 22, color: 'var(--ink)', fontWeight: 700 }}>
-          Admin Panel
-        </h2>
-        <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--ink-40)' }}>
-          Week of {format(weekStart, 'MMMM d, yyyy')} · Data entry &amp; management
+    <div style={{ maxWidth:980, margin:'0 auto', padding:'28px 24px 64px' }}>
+      <div style={{ marginBottom:24 }}>
+        <h2 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:22, color:'var(--ink)', fontWeight:700 }}>Admin Panel</h2>
+        <p style={{ margin:'4px 0 0', fontSize:13, color:'var(--ink-40)' }}>
+          Week of {format(weekStart,'MMMM d, yyyy')} · Data entry &amp; management
         </p>
       </div>
-
-      {/* Section tabs */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 32, borderBottom: '1px solid var(--ink-10)' }}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setSection(t.id)}
-            style={{
-              padding: '9px 18px',
-              fontSize: 13,
-              fontWeight: section === t.id ? 600 : 400,
-              background: 'none',
-              border: 'none',
-              borderBottom: section === t.id ? '2px solid var(--ink)' : '2px solid transparent',
-              color: section === t.id ? 'var(--ink)' : 'var(--ink-40)',
-              cursor: 'pointer',
-              marginBottom: -1,
-              whiteSpace: 'nowrap',
-              fontFamily: 'inherit',
-            }}
-          >
-            {t.label}
-          </button>
+      <div style={{ display:'flex', gap:0, marginBottom:32, borderBottom:'1px solid var(--ink-10)' }}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setSection(t.id)} style={{
+            padding:'9px 18px', fontSize:13, fontWeight:section===t.id?600:400,
+            background:'none', border:'none',
+            borderBottom:section===t.id?'2px solid var(--ink)':'2px solid transparent',
+            color:section===t.id?'var(--ink)':'var(--ink-40)', cursor:'pointer',
+            marginBottom:-1, whiteSpace:'nowrap', fontFamily:'inherit',
+          }}>{t.label}</button>
         ))}
       </div>
-
-      {/* Section content — all existing components, just reorganized */}
-      {section === 'data' && (
-        <AdminPanel
-          weekStart={weekStart}
-          weekData={weekData}
-          onSave={onSave}
-          dbReady={dbReady}
-        />
-      )}
-      {section === 'log' && (
-        <WeeklyLog
-          weekData={weekData}
-          weekStart={weekStart}
-          onSave={onSave}
-          dbReady={dbReady}
-        />
-      )}
-      {section === 'people' && (
-        <AdminPeople
-          weekStart={weekKey(weekStart)}
-          currentUser={userProfile}
-          onSaved={() => setSection('data')}
-        />
-      )}
-      {section === 'files' && (
-        <Correspondence
-          weekStart={weekStart}
-          dbReady={dbReady}
-          {...commentProps}
-        />
-      )}
+      {section==='data'    && <AdminPanel weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady}/>}
+      {section==='log'     && <WeeklyLog  weekData={weekData} weekStart={weekStart} onSave={onSave} dbReady={dbReady}/>}
+      {section==='people'  && <AdminPeople weekStart={weekKey(weekStart)} currentUser={userProfile} onSaved={()=>setSection('data')}/>}
+      {section==='files'   && <Correspondence weekStart={weekStart} dbReady={dbReady} {...commentProps}/>}
+      {section==='history' && <HistoryPanel onSelectWeek={(w)=>{ /* week change handled in App */ }}/>}
     </div>
   )
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeTab,   setActiveTab]   = useState('brief')
+  const [activeTab,   setActiveTab]   = useState('consolidated')
   const [currentWeek, setCurrentWeek] = useState(getDefaultWeek())
   const [weekData,    setWeekData]    = useState(null)
   const [loading,     setLoading]     = useState(true)
@@ -358,7 +274,7 @@ export default function App() {
     const myName = userProfile?.full_name || localStorage.getItem('pp_commenter') || ''
     if (!myName || sessionCommentsRef.current.length === 0) return
     setNotifying(true)
-    const key    = weekKey(currentWeek)
+    const key     = weekKey(currentWeek)
     const realIds = sessionCommentsRef.current.filter(id => !String(id).startsWith('local-'))
     let comments  = []
     if (realIds.length > 0) {
@@ -374,18 +290,11 @@ export default function App() {
     }
     if (comments?.length > 0) {
       try {
-        await fetch('/api/slack', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ author: myName, weekLabel: `Week of ${format(currentWeek, 'MMMM d, yyyy')}`, comments, dashboardUrl: window.location.origin }),
-        })
+        await fetch('/api/slack', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ author: myName, weekLabel: `Week of ${format(currentWeek,'MMMM d, yyyy')}`, comments, dashboardUrl: window.location.origin }) })
       } catch (e) { console.error('Slack notify failed:', e) }
     }
-    sessionCommentsRef.current = []
-    sessionStartRef.current    = null
-    setSessionCommentCount(0)
-    setNotifying(false)
-    setNotifySuccess(true)
+    sessionCommentsRef.current = []; sessionStartRef.current = null; setSessionCommentCount(0)
+    setNotifying(false); setNotifySuccess(true)
     setTimeout(() => setNotifySuccess(false), 3000)
   }
 
@@ -393,7 +302,7 @@ export default function App() {
     await supabase.auth.signOut()
     localStorage.removeItem('pp_commenter')
     setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false)
-    setActiveTab('brief')
+    setActiveTab('consolidated')
   }
 
   function handleLogin(user, profile) {
@@ -403,15 +312,12 @@ export default function App() {
   }
 
   const fiscalLabel = getFiscalLabel(currentWeek)
-  // Header shows "Results: Week of..." to make clear it's last week's data
-  const weekLabel = `Results: Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+  const weekLabel   = `Results: Week of ${format(currentWeek, 'MMMM d, yyyy')}`
 
   if (authLoading) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--cream)' }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {[0, 1, 2].map(i => (
-          <span key={i} style={{ width: 8, height: 8, background: 'var(--ink-30)', borderRadius: '50%', animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-        ))}
+    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--cream)' }}>
+      <div style={{ display:'flex', gap:6 }}>
+        {[0,1,2].map(i=><span key={i} style={{ width:8, height:8, background:'var(--ink-30)', borderRadius:'50%', animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite` }}/>)}
       </div>
     </div>
   )
@@ -424,55 +330,44 @@ export default function App() {
     <div className={styles.app}>
       <header className={styles.header}>
         <div className={styles.headerTop}>
-
-          {/* Brand */}
           <div className={styles.brand}>
-            <img src="/ParamountLogo.png" alt="Paramount Prints" style={{ height: 64, width: 'auto', display: 'block' }} />
-            <p style={{ margin: 0, marginTop: 4, fontSize: 15, fontWeight: 700, fontFamily: 'Georgia, serif', color: 'var(--ink)' }}>
+            <img src="/ParamountLogo.png" alt="Paramount Prints" style={{ height:64, width:'auto', display:'block' }}/>
+            <p style={{ margin:0, marginTop:4, fontSize:15, fontWeight:700, fontFamily:'Georgia, serif', color:'var(--ink)' }}>
               Executive Operations Dashboard
             </p>
           </div>
 
-          {/* Week nav */}
           <div className={styles.weekNav}>
-            <button onClick={() => setCurrentWeek(w => subWeeks(w, 1))} className={styles.weekBtn}>←</button>
+            <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
             <div className={styles.weekLabelStack}>
               <span className={styles.weekLabel}>{weekLabel}</span>
               {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
             </div>
-            <button onClick={() => setCurrentWeek(w => addWeeks(w, 1))} className={styles.weekBtn}>→</button>
-            {/* "Last week" — anchors back to previous completed week */}
-            <button onClick={() => setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>
-              Last week
-            </button>
+            <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
+            <button onClick={()=>setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>Last week</button>
           </div>
 
-          {/* Right side — Slack + gear */}
           <div className={styles.headerRight}>
             <div className={styles.sendUpdateArea}>
               {notifySuccess ? (
                 <span className={styles.sendSuccessMsg}>✓ Slack notified</span>
               ) : (
                 <button
-                  className={`${styles.sendUpdateBtn} ${sessionCommentCount > 0 ? styles.sendUpdateBtnActive : ''}`}
+                  className={`${styles.sendUpdateBtn} ${sessionCommentCount>0?styles.sendUpdateBtnActive:''}`}
                   onClick={handleNotifySlack}
-                  disabled={notifying || sessionCommentCount === 0}
-                  title={sessionCommentCount > 0 ? `Notify Slack about ${sessionCommentCount} comment${sessionCommentCount !== 1 ? 's' : ''}` : 'Post comments first'}
+                  disabled={notifying||sessionCommentCount===0}
                 >
-                  <SlackIcon size={14} />
-                  {notifying ? 'Notifying…' : sessionCommentCount > 0 ? `Notify Slack (${sessionCommentCount})` : 'Notify Slack'}
+                  <SlackIcon size={14}/>
+                  {notifying?'Notifying…':sessionCommentCount>0?`Notify Slack (${sessionCommentCount})`:'Notify Slack'}
                 </button>
               )}
             </div>
-            {/* Gear — admin only, not in nav */}
             {isAdmin && (
               <button
-                className={`${styles.gearBtn} ${activeTab === 'admin' ? styles.gearBtnActive : ''}`}
-                onClick={() => setActiveTab('admin')}
+                className={`${styles.gearBtn} ${activeTab==='admin'?styles.gearBtnActive:''}`}
+                onClick={()=>setActiveTab('admin')}
                 title="Admin panel"
-              >
-                ⚙
-              </button>
+              >⚙</button>
             )}
           </div>
         </div>
@@ -483,16 +378,13 @@ export default function App() {
           </div>
         )}
 
-        {/* Nav — 3 tabs only */}
         <nav className={styles.nav}>
-          {PUBLIC_TABS.map(t => (
+          {PUBLIC_TABS.map(t=>(
             <button
               key={t.id}
-              className={`${styles.navTab} ${activeTab === t.id ? styles.navTabActive : ''}`}
-              onClick={() => setActiveTab(t.id)}
-            >
-              {t.label}
-            </button>
+              className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
+              onClick={()=>setActiveTab(t.id)}
+            >{t.label}</button>
           ))}
           <div className={styles.navUserArea}>
             <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
@@ -503,42 +395,16 @@ export default function App() {
 
       <main className={styles.main}>
         {loading ? (
-          <div className={styles.loading}>
-            <div className={styles.loadingDots}><span /><span /><span /></div>
-          </div>
+          <div className={styles.loading}><div className={styles.loadingDots}><span/><span/><span/></div></div>
         ) : (
           <>
-            {activeTab === 'brief' && (
-              <WeeklyBriefPage
-                weekStart={currentWeek}
-                weekData={weekData}
-                dbReady={dbReady}
-                commentProps={commentProps}
-              />
+            {activeTab==='consolidated' && (
+              <ConsolidatedPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
             )}
-
-            {activeTab === 'production' && (
-              <ProductionTab weekStart={currentWeek} />
-            )}
-
-            {activeTab === 'history' && (
-              <HistoryPanel
-                onSelectWeek={(w) => {
-                  setCurrentWeek(new Date(w + 'T12:00:00'))
-                  setActiveTab('brief')
-                }}
-              />
-            )}
-
-            {activeTab === 'admin' && adminAuthenticated && (
-              <AdminPage
-                weekStart={currentWeek}
-                weekData={weekData}
-                onSave={saveWeekData}
-                dbReady={dbReady}
-                userProfile={userProfile}
-                commentProps={commentProps}
-              />
+            {activeTab==='bny' && <BNYTab weekStart={currentWeek}/>}
+            {activeTab==='passaic' && <PassaicTab weekStart={currentWeek}/>}
+            {activeTab==='admin' && adminAuthenticated && (
+              <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
             )}
           </>
         )}

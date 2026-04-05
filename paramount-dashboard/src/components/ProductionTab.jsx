@@ -27,6 +27,7 @@ const NJ_DAYS = [
 ]
 const NJ_WK_SCHED=27, NJ_WK_ACTUAL=28, NJ_WK_WASTE=29
 
+// ── Data fetching & parsing ───────────────────────────────────────────────────
 async function fetchSheet(sheetId, range) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`
   const res = await fetch(url)
@@ -67,12 +68,13 @@ function parseWeek(rows, weekNum, dayCols, wkSched, wkActual, wkWaste, isNJ) {
       const days=dayCols.map(d => {
         const a=num(row[d.actual]), o=str(row[d.op]), o2=isNJ?str(row[d.op2]):null
         if (a!==null) {
-          if (o) { if(!ops[o]) ops[o]={yds:0,days:0}; ops[o].yds+=a; ops[o].days++ }
+          if (o)  { if(!ops[o])  ops[o] ={yds:0,days:0}; ops[o].yds +=a; ops[o].days++  }
           if (o2) { if(!ops[o2]) ops[o2]={yds:0,days:0}; ops[o2].yds+=a; ops[o2].days++ }
         }
         return { sched:num(row[d.sched])??0, actual:a, waste:num(row[d.waste]), op:o, op2:o2 }
       })
-      sec.machines.push({ name:c0, budget, days, wkSched:num(row[wkSched])??0, wkActual:num(row[wkActual]), wkWaste:num(row[wkWaste]) })
+      sec.machines.push({ name:c0, budget, days,
+        wkSched:num(row[wkSched])??0, wkActual:num(row[wkActual]), wkWaste:num(row[wkWaste]) })
     }
     i++
   }
@@ -82,139 +84,89 @@ function parseWeek(rows, weekNum, dayCols, wkSched, wkActual, wkWaste, isNJ) {
 
 function calcTotals(data, budget, daysIn) {
   if (!data||!data.sections.length) return null
-  const all = data.sections.flatMap(s=>s.machines)
-  const wkSched   = all.reduce((s,m)=>s+m.wkSched,0)
-  const allNull   = all.every(m=>m.wkActual===null)
-  const wkActual  = allNull ? null : all.reduce((s,m)=>s+(m.wkActual||0),0)
-  const noWaste   = all.every(m=>!m.wkWaste)
-  const wkWaste   = noWaste ? null : all.reduce((s,m)=>s+(m.wkWaste||0),0)
+  const all      = data.sections.flatMap(s=>s.machines)
+  const wkSched  = all.reduce((s,m)=>s+m.wkSched,0)
+  const allNull  = all.every(m=>m.wkActual===null)
+  const wkActual = allNull ? null : all.reduce((s,m)=>s+(m.wkActual||0),0)
+  const noWaste  = all.every(m=>!m.wkWaste)
+  const wkWaste  = noWaste ? null : all.reduce((s,m)=>s+(m.wkWaste||0),0)
   const schedPct  = pct(wkActual, wkSched)
   const budgetPct = pct(wkActual, budget)
   const wastePct  = pct(wkWaste, wkActual)
   const exp       = daysIn>0 ? Math.round(wkSched/5*daysIn) : null
   const overUnder = wkActual!==null&&exp!==null ? wkActual-exp : null
-  return { wkSched, wkActual, wkWaste, schedPct, budgetPct, wastePct, overUnder, wasteOver: wastePct!==null&&wastePct>WASTE_TARGET*100 }
+  return { wkSched, wkActual, wkWaste, schedPct, budgetPct, wastePct, overUnder,
+    wasteOver: wastePct!==null&&wastePct>WASTE_TARGET*100 }
 }
 
-function calcPrinterStats(bnyOps, njOps) {
-  const all = {}
-  Object.entries(bnyOps||{}).forEach(([name,d])=>{ all[name]={...(all[name]||{yds:0,days:0}),facility:'BNY'}; all[name].yds+=d.yds; all[name].days+=d.days })
-  Object.entries(njOps||{}).forEach(([name,d])=>{ all[name]={...(all[name]||{yds:0,days:0}),facility:'NJ'}; all[name].yds+=d.yds; all[name].days+=d.days })
-  const ranked = Object.entries(all).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
+function calcPrinterStats(ops) {
+  const ranked = Object.entries(ops||{}).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
   if (!ranked.length) return null
   const totalYds = ranked.reduce((s,[,d])=>s+d.yds,0)
-  const avgYds   = Math.round(totalYds / ranked.length)
-  const top      = ranked[0]
-  const topAvg   = top[1].days>0 ? Math.round(top[1].yds/top[1].days) : 0
-  return { topName: top[0], topYds: top[1].yds, topAvg, count: ranked.length, avgYds, facility: top[1].facility }
+  const top = ranked[0]
+  return { topName:top[0], topYds:top[1].yds, topAvg:top[1].days>0?Math.round(top[1].yds/top[1].days):0,
+    count:ranked.length, avgYds:Math.round(totalYds/ranked.length) }
 }
 
-// ── KPI Bar ───────────────────────────────────────────────────────────────────
-const pctColor  = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
-const wasteColor= p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
-const ouFmt     = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
+// ── Shared colours ────────────────────────────────────────────────────────────
+const pctColor   = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
+const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
+const ouFmt      = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
 
+// ── KPI sticky bar (used by BNY and Passaic detail tabs) ─────────────────────
 function Bubble({ label, value, sub, color }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(255,255,255,0.06)', borderRadius:7, padding:'7px 12px', minWidth:88, gap:1 }}>
       <div style={{ fontSize:9, color:'rgba(212,168,67,0.65)', fontWeight:'bold', letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
-      <div style={{ fontSize:15, fontWeight:'bold', color: color||'#FAF7F2', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
+      <div style={{ fontSize:15, fontWeight:'bold', color:color||'#FAF7F2', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
       {sub && <div style={{ fontSize:9, color:'rgba(250,247,242,0.45)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
     </div>
   )
 }
-
-function Divider() {
-  return <div style={{ width:1, alignSelf:'stretch', background:'rgba(212,168,67,0.18)', margin:'0 2px' }}/>
-}
-
+function Divider() { return <div style={{ width:1, alignSelf:'stretch', background:'rgba(212,168,67,0.18)', margin:'0 2px' }}/> }
 function GroupLabel({ text }) {
-  return (
-    <div style={{ fontSize:9, color:'rgba(212,168,67,0.55)', fontWeight:'bold', letterSpacing:'0.07em', writingMode:'vertical-lr', transform:'rotate(180deg)', userSelect:'none' }}>
-      {text}
-    </div>
-  )
+  return <div style={{ fontSize:9, color:'rgba(212,168,67,0.55)', fontWeight:'bold', letterSpacing:'0.07em', writingMode:'vertical-lr', transform:'rotate(180deg)', userSelect:'none' }}>{text}</div>
 }
 
-function KPIBar({ bnyT, njT, printerStats, weekNum, weekInfo, todayLabel, onRefresh, loading, lastRefresh }) {
-  if (!bnyT && !njT) return null
-
-  const combSched   = (bnyT?.wkSched||0)+(njT?.wkSched||0)
-  const combActual  = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
-  const combWaste   = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
-  const combBudget  = BNY_BUDGET+NJ_BUDGET
-  const combSchedP  = pct(combActual, combSched)
-  const combBudgetP = pct(combActual, combBudget)
-  const combWasteP  = pct(combWaste, combActual)
-
-  // Row 1: identity + combined + BNY
-  // Row 2: NJ + printers
+function FacilityKPIBar({ totals, budget, facilityLabel, printerStats, weekNum, weekInfo, todayLabel, onRefresh, loading, lastRefresh }) {
+  if (!totals) return null
   return (
     <div style={{ position:'sticky', top:0, zIndex:100, background:'#2C2420', borderBottom:'2px solid rgba(212,168,67,0.2)', boxShadow:'0 3px 16px rgba(0,0,0,0.35)', padding:'10px 20px' }}>
-
-      {/* Row 1 */}
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-        {/* Identity */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
         <div style={{ marginRight:6 }}>
           <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-            <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold', whiteSpace:'nowrap' }}>FY WK {weekNum}</span>
+            <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold', whiteSpace:'nowrap' }}>{facilityLabel}</span>
+            {weekNum && <span style={{ background:'rgba(212,168,67,0.15)', color:'#D4A843', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>}
             {weekInfo && <span style={{ fontSize:10, color:'rgba(212,168,67,0.6)' }}>{weekInfo.month} · {weekInfo.quarter}</span>}
             {todayLabel && <span style={{ fontSize:10, color:'rgba(212,168,67,0.45)' }}>Today: {todayLabel}</span>}
           </div>
           {lastRefresh && <div style={{ fontSize:9, color:'rgba(250,247,242,0.3)', marginTop:2 }}>{lastRefresh.toLocaleTimeString()}</div>}
         </div>
-
         <Divider/>
-        <GroupLabel text="COMBINED"/>
-        <Bubble label="Total Yds"   value={combActual!==null?fmt(combActual):'—'} sub={`of ${fmt(combSched)} sched`} color={pctColor(combSchedP)}/>
-        <Bubble label="vs Schedule" value={combSchedP!==null?`${combSchedP}%`:'—'} sub={`${fmt(combBudget)} yd budget`} color={pctColor(combSchedP)}/>
-        <Bubble label="vs Budget"   value={combBudgetP!==null?`${combBudgetP}%`:'—'} sub="wk target" color={pctColor(combBudgetP)}/>
-        <Bubble label="Waste"       value={combWasteP!==null?`${combWasteP}%`:'—'} sub={`${fmt(combWaste)} yds · <10%`} color={wasteColor(combWasteP)}/>
-
-        <Divider/>
-        <GroupLabel text="BNY"/>
-        <Bubble label="Actual"    value={bnyT?.wkActual!==null?fmt(bnyT.wkActual):'—'} sub={`sched ${fmt(bnyT?.wkSched)}`} color={pctColor(bnyT?.schedPct)}/>
-        <Bubble label="% Sched"   value={bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—'} sub={ouFmt(bnyT?.overUnder)??'vs expected'} color={pctColor(bnyT?.schedPct)}/>
-        <Bubble label="vs Budget" value={bnyT?.budgetPct!==null?`${bnyT.budgetPct}%`:'—'} sub={`${fmt(BNY_BUDGET)} yd tgt`} color={pctColor(bnyT?.budgetPct)}/>
-        <Bubble label="Waste"     value={bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—'} sub={`${fmt(bnyT?.wkWaste)} yds`} color={wasteColor(bnyT?.wastePct)}/>
-
-        <div style={{ flex:1 }}/>
-        <button onClick={onRefresh} disabled={loading} style={{ background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4, padding:'4px 12px', fontSize:11, color:'rgba(212,168,67,0.6)', cursor:'pointer', whiteSpace:'nowrap', alignSelf:'flex-start' }}>
-          {loading ? 'Loading…' : '↻ Refresh'}
-        </button>
-      </div>
-
-      {/* Row 2 */}
-      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-        <div style={{ marginRight:6, minWidth:120 }}/> {/* spacer to align with row 1 */}
-        <Divider/>
-        <GroupLabel text="NJ"/>
-        <Bubble label="Actual"    value={njT?.wkActual!==null?fmt(njT.wkActual):'—'} sub={`sched ${fmt(njT?.wkSched)}`} color={pctColor(njT?.schedPct)}/>
-        <Bubble label="% Sched"   value={njT?.schedPct!==null?`${njT.schedPct}%`:'—'} sub={ouFmt(njT?.overUnder)??'vs expected'} color={pctColor(njT?.schedPct)}/>
-        <Bubble label="vs Budget" value={njT?.budgetPct!==null?`${njT.budgetPct}%`:'—'} sub={`${fmt(NJ_BUDGET)} yd tgt`} color={pctColor(njT?.budgetPct)}/>
-        <Bubble label="Waste"     value={njT?.wastePct!==null?`${njT.wastePct}%`:'—'} sub={`${fmt(njT?.wkWaste)} yds`} color={wasteColor(njT?.wastePct)}/>
-
-        <Divider/>
-        <GroupLabel text="PRINTERS"/>
-        {printerStats ? (
+        <GroupLabel text="THIS WEEK"/>
+        <Bubble label="Actual Yds"  value={totals.wkActual!==null?fmt(totals.wkActual):'—'} sub={`of ${fmt(totals.wkSched)} sched`} color={pctColor(totals.schedPct)}/>
+        <Bubble label="vs Schedule" value={totals.schedPct!==null?`${totals.schedPct}%`:'—'} sub={ouFmt(totals.overUnder)??'vs expected'} color={pctColor(totals.schedPct)}/>
+        <Bubble label="vs Budget"   value={totals.budgetPct!==null?`${totals.budgetPct}%`:'—'} sub={`${fmt(budget)} yd target`} color={pctColor(totals.budgetPct)}/>
+        <Bubble label="Waste"       value={totals.wastePct!==null?`${totals.wastePct}%`:'—'} sub={`${fmt(totals.wkWaste)} yds · <10%`} color={wasteColor(totals.wastePct)}/>
+        {printerStats && (
           <>
-            <Bubble label="Top Performer" value={printerStats.topName} sub={`${fmt(printerStats.topYds)} yds · ${fmt(printerStats.topAvg)}/day`} color="#D4A843"/>
-            <Bubble label="Active Ops"    value={printerStats.count}   sub="assigned this week" color="#FAF7F2"/>
-            <Bubble label="Fleet Avg"     value={fmt(printerStats.avgYds)} sub="yds/operator/wk" color="#FAF7F2"/>
-          </>
-        ) : (
-          <>
-            <Bubble label="Top Performer" value="—" sub="assign operators Mon" color="rgba(250,247,242,0.35)"/>
-            <Bubble label="Active Ops"    value="—" sub="assign operators Mon" color="rgba(250,247,242,0.35)"/>
-            <Bubble label="Fleet Avg"     value="—" sub="yds/operator/wk"      color="rgba(250,247,242,0.35)"/>
+            <Divider/>
+            <GroupLabel text="PRINTERS"/>
+            <Bubble label="Top"       value={printerStats.topName} sub={`${fmt(printerStats.topYds)} yds`} color="#D4A843"/>
+            <Bubble label="Active"    value={printerStats.count}   sub="operators" color="#FAF7F2"/>
+            <Bubble label="Fleet Avg" value={fmt(printerStats.avgYds)} sub="yds/op/wk" color="#FAF7F2"/>
           </>
         )}
+        <div style={{ flex:1 }}/>
+        <button onClick={onRefresh} disabled={loading} style={{ background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4, padding:'4px 12px', fontSize:11, color:'rgba(212,168,67,0.6)', cursor:'pointer', whiteSpace:'nowrap' }}>
+          {loading ? 'Loading…' : '↻ Refresh'}
+        </button>
       </div>
     </div>
   )
 }
 
-// ── Cell components ───────────────────────────────────────────────────────────
+// ── Day cell ──────────────────────────────────────────────────────────────────
 function WasteTag({waste, actual}) {
   if (!waste||waste===0) return null
   const p=pct(waste,actual), over=p!==null&&p>WASTE_TARGET*100
@@ -222,8 +174,7 @@ function WasteTag({waste, actual}) {
 }
 
 function DayCell({day, isToday}) {
-  const has=day.actual!==null
-  const ou=has?day.actual-day.sched:null
+  const has=day.actual!==null, ou=has?day.actual-day.sched:null
   const ouC=ou===null?'#9C8F87':ou>=0?'#2E7D32':'#C62828'
   return (
     <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:isToday?'2px solid #D4A843':'1px solid #F2EDE4',background:isToday?'rgba(212,168,67,0.07)':'transparent',textAlign:'center',minWidth:85,verticalAlign:'top'}}>
@@ -231,17 +182,15 @@ function DayCell({day, isToday}) {
       <div style={{fontSize:13,fontWeight:has?'bold':'normal',color:has?'#2C2420':'#D0C8C0'}}>{has?fmt(day.actual):'·'}</div>
       {ou!==null&&<div style={{fontSize:10,color:ouC,fontWeight:'bold'}}>{ou>=0?'+':''}{fmt(ou)}</div>}
       <WasteTag waste={day.waste} actual={day.actual}/>
-      {day.op&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic',marginTop:2}}>{day.op}</div>}
+      {day.op &&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic',marginTop:2}}>{day.op}</div>}
       {day.op2&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{day.op2}</div>}
     </td>
   )
 }
 
 function WkCell({wkSched, wkActual, wkWaste, daysIn}) {
-  const p=pct(wkActual,wkSched)
-  const exp=daysIn>0?Math.round(wkSched/5*daysIn):null
-  const ou=wkActual!==null&&exp!==null?wkActual-exp:null
-  const wp=pct(wkWaste,wkActual)
+  const p=pct(wkActual,wkSched), exp=daysIn>0?Math.round(wkSched/5*daysIn):null
+  const ou=wkActual!==null&&exp!==null?wkActual-exp:null, wp=pct(wkWaste,wkActual)
   return (
     <td style={{padding:'5px 8px',borderBottom:'1px solid #F2EDE4',borderLeft:'2px solid #E8DDD0',textAlign:'center',minWidth:90,verticalAlign:'top'}}>
       <div style={{fontSize:11,color:'#B0A89F'}}>{fmt(wkSched)}</div>
@@ -294,8 +243,7 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
             <tr>
               <td colSpan={2} style={{padding:'5px 12px',background:'#EDE5DC',color:'#5C4F47',fontWeight:'bold',fontStyle:'italic',fontSize:11,position:'sticky',left:0}}>{sec.label} TOTAL</td>
               {dayTotals.map((dt,di)=>{
-                const ou=dt.actual!==null?dt.actual-dt.sched:null
-                const wp=pct(dt.waste,dt.actual)
+                const ou=dt.actual!==null?dt.actual-dt.sched:null, wp=pct(dt.waste,dt.actual)
                 return (
                   <td key={di} style={{padding:'5px 6px',background:di===todayIdx?'rgba(212,168,67,0.1)':'#EDE5DC',borderLeft:di===todayIdx?'2px solid #D4A843':'1px solid #E8DDD0',textAlign:'center',fontSize:11}}>
                     <div style={{color:'#9C8F87'}}>{fmt(dt.sched)}</div>
@@ -319,7 +267,7 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
   )
 }
 
-function FacilityBlock({title, data, dayCols, todayIdx, budget}) {
+function FacilityDetail({data, dayCols, todayIdx, budget, title}) {
   if (!data||!data.sections.length) return null
   const {dayDates,sections}=data
   const daysIn=todayIdx>=0?todayIdx+1:0
@@ -334,7 +282,6 @@ function FacilityBlock({title, data, dayCols, todayIdx, budget}) {
   const wastePct=pct(grandWaste,grandActual)
   return (
     <div style={{marginBottom:40}}>
-      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>{title}</div>
       {sections.map((sec,si)=><SectionTable key={si} sec={sec} dayDates={dayDates} dayCols={dayCols} todayIdx={todayIdx} daysIn={daysIn}/>)}
       <div style={{background:'#DDD4C8',borderRadius:6,padding:'10px 16px',display:'flex',gap:20,alignItems:'center',flexWrap:'wrap'}}>
         <div style={{fontWeight:'bold',color:'#2C2420',fontSize:13}}>WEEK TOTAL</div>
@@ -348,21 +295,17 @@ function FacilityBlock({title, data, dayCols, todayIdx, budget}) {
   )
 }
 
-function OperatorScorecard({bnyOps, njOps}) {
-  const all={}
-  Object.entries(bnyOps||{}).forEach(([name,d])=>{ all[name]={...(all[name]||{yds:0,days:0}),facility:'BNY'}; all[name].yds+=d.yds; all[name].days+=d.days })
-  Object.entries(njOps||{}).forEach(([name,d])=>{ all[name]={...(all[name]||{yds:0,days:0}),facility:'NJ'}; all[name].yds+=d.yds; all[name].days+=d.days })
-  const ranked=Object.entries(all).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
+function OperatorScorecard({ops, facility}) {
+  const ranked=Object.entries(ops||{}).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
   if (!ranked.length) return (
-    <div style={{marginTop:40}}>
-      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:8,fontFamily:'Georgia, serif'}}>Operator Scorecard</div>
-      <div style={{background:'#F2EDE4',borderRadius:8,padding:16,color:'#9C8F87',fontSize:13}}>No operator data yet — assign operators in the Google Sheets to see rankings here.</div>
+    <div style={{marginTop:32,background:'#F2EDE4',borderRadius:8,padding:16,color:'#9C8F87',fontSize:13}}>
+      No operator data yet — assign operators in the Google Sheets to see rankings here.
     </div>
   )
   const maxYds=ranked[0][1].yds
   return (
-    <div style={{marginTop:40}}>
-      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:4,fontFamily:'Georgia, serif'}}>Operator Scorecard</div>
+    <div style={{marginTop:32}}>
+      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:4,fontFamily:'Georgia, serif'}}>Operator Scorecard · {facility}</div>
       <div style={{fontSize:13,color:'#9C8F87',marginBottom:16}}>Ranked by yards produced this week</div>
       <div style={{background:'#fff',border:'1px solid #E8DDD0',borderRadius:8,overflow:'hidden'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
@@ -370,8 +313,7 @@ function OperatorScorecard({bnyOps, njOps}) {
             <tr style={{background:'#2C2420'}}>
               <th style={{padding:'8px 12px',textAlign:'left',color:'#D4A843',fontSize:11,fontWeight:'bold',width:36}}>#</th>
               <th style={{padding:'8px 12px',textAlign:'left',color:'#D4A843',fontSize:11,fontWeight:'bold'}}>Operator</th>
-              <th style={{padding:'8px 12px',textAlign:'center',color:'#D4A843',fontSize:11,fontWeight:'bold',width:60}}>Facility</th>
-              <th style={{padding:'8px 12px',textAlign:'right',color:'#D4A843',fontSize:11,fontWeight:'bold',width:90}}>Yds This Wk</th>
+              <th style={{padding:'8px 12px',textAlign:'right',color:'#D4A843',fontSize:11,fontWeight:'bold',width:90}}>Yds</th>
               <th style={{padding:'8px 12px',textAlign:'right',color:'#D4A843',fontSize:11,fontWeight:'bold',width:60}}>Days</th>
               <th style={{padding:'8px 12px',textAlign:'right',color:'#D4A843',fontSize:11,fontWeight:'bold',width:80}}>Avg/Day</th>
               <th style={{padding:'8px 16px',textAlign:'left',color:'#D4A843',fontSize:11,fontWeight:'bold'}}>vs Top</th>
@@ -386,9 +328,6 @@ function OperatorScorecard({bnyOps, njOps}) {
                 <tr key={name} style={{background:idx%2===0?'#fff':'#FAF7F2'}}>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',color:'#9C8F87',textAlign:'center',fontWeight:'bold'}}>{medal||idx+1}</td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',color:'#2C2420',fontWeight:idx<3?'bold':'normal'}}>{name}</td>
-                  <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',textAlign:'center'}}>
-                    <span style={{fontSize:10,background:d.facility==='BNY'?'#E8EEF5':'#E8DDD0',color:d.facility==='BNY'?'#2C5F8A':'#5C4F47',borderRadius:3,padding:'2px 6px',fontWeight:'bold'}}>{d.facility}</span>
-                  </td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',textAlign:'right',fontWeight:'bold',color:'#2C2420'}}>{fmt(d.yds)}</td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',textAlign:'right',color:'#9C8F87'}}>{d.days}</td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',textAlign:'right',color:'#2C2420'}}>{fmt(avg)}</td>
@@ -410,73 +349,173 @@ function OperatorScorecard({bnyOps, njOps}) {
   )
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-export default function ProductionTab({weekStart}) {
+// ── Consolidated summary cards (used by App.jsx WeeklyBrief) ──────────────────
+export function ConsolidatedProductionSummary({ bnyT, njT, weekNum }) {
+  const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
+  const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
+  const combWaste  = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
+  const combBudget = BNY_BUDGET+NJ_BUDGET
+  const combSchedP = pct(combActual, combSched)
+  const combWasteP = pct(combWaste, combActual)
+
+  const card = (label, value, sub, color, bg='#fff') => (
+    <div style={{ background:bg, border:'1px solid #E8DDD0', borderRadius:10, padding:'16px 20px', flex:1, minWidth:140 }}>
+      <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9C8F87', marginBottom:8 }}>{label}</div>
+      <div style={{ fontSize:22, fontWeight:700, color:color||'#2C2420', fontFamily:'Georgia, serif', lineHeight:1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize:12, color:'#9C8F87', marginTop:4 }}>{sub}</div>}
+    </div>
+  )
+
+  const statusColor = p => p===null?'#2C2420':p>=95?'#15803d':p>=80?'#b45309':'#b91c1c'
+  const wColor      = p => p===null?'#2C2420':p<=10?'#15803d':'#b91c1c'
+
+  return (
+    <div>
+      {/* Combined row */}
+      <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9C8F87', marginBottom:10 }}>Combined</div>
+      <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
+        {card('Total Yards', combActual!==null?fmt(combActual):'—', `of ${fmt(combSched)} scheduled`, statusColor(combSchedP))}
+        {card('vs Schedule', combSchedP!==null?`${combSchedP}%`:'—', `${fmt(combBudget)} yd weekly budget`, statusColor(combSchedP))}
+        {card('Waste', combWasteP!==null?`${combWasteP}%`:'—', `${fmt(combWaste)} yds wasted · target <10%`, wColor(combWasteP))}
+      </div>
+
+      {/* BNY + NJ side by side */}
+      <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+        {/* BNY */}
+        <div style={{ flex:1, minWidth:260 }}>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9C8F87', marginBottom:10 }}>BNY — Digital</div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {card('Actual', bnyT?.wkActual!==null?fmt(bnyT.wkActual):'—', `sched ${fmt(bnyT?.wkSched)}`, statusColor(bnyT?.schedPct), '#F8F4FF')}
+            {card('% Sched', bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—', bnyT?.overUnder!==null?`${ouFmt(bnyT.overUnder)} vs exp`:null, statusColor(bnyT?.schedPct), '#F8F4FF')}
+            {card('Waste', bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—', `${fmt(bnyT?.wkWaste)} yds`, wColor(bnyT?.wastePct), '#F8F4FF')}
+          </div>
+        </div>
+
+        {/* NJ */}
+        <div style={{ flex:1, minWidth:260 }}>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9C8F87', marginBottom:10 }}>Passaic — Screen Print</div>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {card('Actual', njT?.wkActual!==null?fmt(njT.wkActual):'—', `sched ${fmt(njT?.wkSched)}`, statusColor(njT?.schedPct), '#FFF8F0')}
+            {card('% Sched', njT?.schedPct!==null?`${njT.schedPct}%`:'—', njT?.overUnder!==null?`${ouFmt(njT.overUnder)} vs exp`:null, statusColor(njT?.schedPct), '#FFF8F0')}
+            {card('Waste', njT?.wastePct!==null?`${njT.wastePct}%`:'—', `${fmt(njT?.wkWaste)} yds`, wColor(njT?.wastePct), '#FFF8F0')}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Hook for loading both sheets (shared by BNY, Passaic, and Consolidated) ──
+export function useProductionData(weekStart) {
   const [bny,  setBny]  = useState(null)
   const [nj,   setNj]   = useState(null)
-  const [loading,setLoading]=useState(true)
-  const [error,  setError]  =useState(null)
-  const [weekNum,setWeekNum]=useState(null)
-  const [weekInfo,setWeekInfo]=useState(null)
-  const [lastRefresh,setLastRefresh]=useState(null)
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState(null)
+  const [weekNum,  setWeekNum]  = useState(null)
+  const [weekInfo, setWeekInfo] = useState(null)
+  const [lastRefresh, setLastRefresh] = useState(null)
 
-  const todayIdx=(()=>{ const d=new Date().getDay(); return d>=1&&d<=5?d-1:-1 })()
-  const todayLabel=todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
-
-  async function loadData(ws) {
+  async function load(ws) {
     setLoading(true); setError(null)
     try {
-      const key=format(ws,'yyyy-MM-dd')
-      const info=getFiscalInfo(key)
-      if (!info) { setError('No fiscal week found. Sheets cover Weeks 14–28 (Apr 6 – Jul 18).'); setLoading(false); return }
+      const key  = format(ws, 'yyyy-MM-dd')
+      const info = getFiscalInfo(key)
+      if (!info) { setError('No fiscal week found for this date.'); setLoading(false); return }
       setWeekNum(info.fiscalWeek); setWeekInfo(info)
-      const [bnyRows,njRows]=await Promise.all([
-        fetchSheet(BNY_SHEET_ID,'Schedule!A:W'),
-        fetchSheet(NJ_SHEET_ID, 'Schedule!A:AE'),
+      const [bnyRows, njRows] = await Promise.all([
+        fetchSheet(BNY_SHEET_ID, 'Schedule!A:W'),
+        fetchSheet(NJ_SHEET_ID,  'Schedule!A:AE'),
       ])
-      setBny(parseWeek(bnyRows,info.fiscalWeek,BNY_DAYS,BNY_WK_SCHED,BNY_WK_ACTUAL,BNY_WK_WASTE,false))
-      setNj( parseWeek(njRows, info.fiscalWeek,NJ_DAYS, NJ_WK_SCHED, NJ_WK_ACTUAL, NJ_WK_WASTE, true))
+      setBny(parseWeek(bnyRows, info.fiscalWeek, BNY_DAYS, BNY_WK_SCHED, BNY_WK_ACTUAL, BNY_WK_WASTE, false))
+      setNj( parseWeek(njRows,  info.fiscalWeek, NJ_DAYS,  NJ_WK_SCHED,  NJ_WK_ACTUAL,  NJ_WK_WASTE,  true))
       setLastRefresh(new Date())
     } catch(e) { setError(e.message) }
     finally { setLoading(false) }
   }
 
-  useEffect(()=>{ if(weekStart) loadData(weekStart) },[weekStart])
+  useEffect(() => { if (weekStart) load(weekStart) }, [weekStart])
 
-  const daysIn=todayIdx>=0?todayIdx+1:0
-  const bnyT          = calcTotals(bny, BNY_BUDGET, daysIn)
-  const njT           = calcTotals(nj,  NJ_BUDGET,  daysIn)
-  const printerStats  = calcPrinterStats(bny?.ops, nj?.ops)
+  const todayIdx = (() => { const d=new Date().getDay(); return d>=1&&d<=5?d-1:-1 })()
+  const daysIn   = todayIdx>=0?todayIdx+1:0
+
+  return {
+    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
+    todayIdx, daysIn,
+    bnyT: calcTotals(bny, BNY_BUDGET, daysIn),
+    njT:  calcTotals(nj,  NJ_BUDGET,  daysIn),
+    reload: () => load(weekStart),
+  }
+}
+
+// ── BNY tab ───────────────────────────────────────────────────────────────────
+export function BNYTab({ weekStart }) {
+  const { bny, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, bnyT, reload } = useProductionData(weekStart)
+  const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
+  const printerStats = calcPrinterStats(bny?.ops)
 
   return (
     <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
-      <KPIBar
-        bnyT={bnyT} njT={njT}
-        printerStats={printerStats}
-        weekNum={weekNum} weekInfo={weekInfo}
-        todayLabel={todayLabel}
-        onRefresh={()=>loadData(weekStart)}
-        loading={loading} lastRefresh={lastRefresh}
-      />
+      <FacilityKPIBar totals={bnyT} budget={BNY_BUDGET} facilityLabel="BNY — Digital"
+        printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
+        todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
       <div style={{padding:'24px'}}>
         <div style={{fontSize:13,color:'#9C8F87',marginBottom:24}}>
-          Source: Google Sheets (live)
-          <span style={{marginLeft:16,fontSize:11,color:'#C8BDB8'}}>Each cell: Sched / Actual / +− · Waste · Operator · Waste target &lt;10%</span>
+          Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Operator
         </div>
-        {error&&<div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
-        {loading&&<div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading production data from Google Sheets...</div>}
+        {error  && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
+        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading BNY data...</div>}
         {!loading&&!error&&(
           <>
-            <FacilityBlock title="BNY — Digital Production"     data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={BNY_BUDGET}/>
-            <FacilityBlock title="NJ — Screen Print Production" data={nj}  dayCols={NJ_DAYS}  todayIdx={todayIdx} budget={NJ_BUDGET}/>
-            {(!bny||!bny.sections.length)&&(!nj||!nj.sections.length)&&(
-              <div style={{background:'#F2EDE4',border:'1px solid #E8DDD0',borderRadius:8,padding:16,color:'#9C8F87',fontSize:13}}>
-                No production data found for FY Week {weekNum}.
-              </div>
-            )}
-            <OperatorScorecard bnyOps={bny?.ops} njOps={nj?.ops}/>
+            <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={BNY_BUDGET} title="BNY"/>
+            <OperatorScorecard ops={bny?.ops} facility="BNY"/>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Passaic tab ───────────────────────────────────────────────────────────────
+export function PassaicTab({ weekStart }) {
+  const { nj, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, njT, reload } = useProductionData(weekStart)
+  const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
+  const printerStats = calcPrinterStats(nj?.ops)
+
+  return (
+    <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+      <FacilityKPIBar totals={njT} budget={NJ_BUDGET} facilityLabel="Passaic — Screen Print"
+        printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
+        todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
+      <div style={{padding:'24px'}}>
+        <div style={{fontSize:13,color:'#9C8F87',marginBottom:24}}>
+          Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Op 1 · Op 2
+        </div>
+        {error  && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
+        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading Passaic data...</div>}
+        {!loading&&!error&&(
+          <>
+            <FacilityDetail data={nj} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={NJ_BUDGET} title="Passaic"/>
+            <OperatorScorecard ops={nj?.ops} facility="Passaic"/>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Default export (kept for backwards compat — shows both facilities) ────────
+export default function ProductionTab({ weekStart }) {
+  const { bny, nj, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, bnyT, njT, reload } = useProductionData(weekStart)
+  const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
+  return (
+    <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+      <div style={{padding:'24px'}}>
+        {error   && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
+        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading...</div>}
+        {!loading&&!error&&<>
+          <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={BNY_BUDGET} title="BNY"/>
+          <FacilityDetail data={nj}  dayCols={NJ_DAYS}  todayIdx={todayIdx} budget={NJ_BUDGET}  title="Passaic"/>
+        </>}
       </div>
     </div>
   )
