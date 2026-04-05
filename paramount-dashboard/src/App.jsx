@@ -231,12 +231,15 @@ function LiveOpsPage({ weekStart }) {
   const combBudgetP= pct(combActual, 12000+8610)
   const combWasteP = pct(combWaste, combActual)
 
+  // Don't render KPI bar until data is loaded
+  const hasData = bnyT !== null || njT !== null
+
   return (
     <div style={{ fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh' }}>
       {/* Combined sticky KPI bar — 2 rows */}
       <div style={{ position:'sticky', top:0, zIndex:100, background:'#2C2420', borderBottom:'2px solid rgba(212,168,67,0.2)', boxShadow:'0 3px 16px rgba(0,0,0,0.35)', padding:'10px 20px' }}>
         {/* Row 1: identity + combined + BNY */}
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:hasData?8:0, flexWrap:'wrap' }}>
           <div style={{ marginRight:6 }}>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
               <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold' }}>Live Ops</span>
@@ -246,6 +249,7 @@ function LiveOpsPage({ weekStart }) {
             </div>
             {lastRefresh && <div style={{ fontSize:9, color:'rgba(250,247,242,0.3)', marginTop:2 }}>{lastRefresh.toLocaleTimeString()}</div>}
           </div>
+          {hasData && <>
           <Div/>
           <GL text="COMBINED"/>
           <Bubble label="Total Yds"   value={combActual!==null?fmt(combActual):'—'} sub={`of ${fmt(combSched)} sched`} color={pctColor(combSchedP)}/>
@@ -258,12 +262,14 @@ function LiveOpsPage({ weekStart }) {
           <Bubble label="% Sched"   value={bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—'} sub={ouFmt(bnyT?.overUnder)??'vs exp'} color={pctColor(bnyT?.schedPct)}/>
           <Bubble label="vs Budget" value={bnyT?.budgetPct!==null?`${bnyT.budgetPct}%`:'—'} sub="12,000 yd tgt" color={pctColor(bnyT?.budgetPct)}/>
           <Bubble label="Waste"     value={bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—'} sub={`${fmt(bnyT?.wkWaste)} yds`} color={wasteColor(bnyT?.wastePct)}/>
+          </>}
           <div style={{ flex:1 }}/>
           <button onClick={reload} disabled={loading} style={{ background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4, padding:'4px 12px', fontSize:11, color:'rgba(212,168,67,0.6)', cursor:'pointer' }}>
             {loading ? 'Loading…' : '↻ Refresh'}
           </button>
         </div>
         {/* Row 2: NJ */}
+        {hasData && (
         <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
           <div style={{ marginRight:6, minWidth:140 }}/>
           <Div/>
@@ -273,6 +279,7 @@ function LiveOpsPage({ weekStart }) {
           <Bubble label="vs Budget" value={njT?.budgetPct!==null?`${njT.budgetPct}%`:'—'} sub="8,610 yd tgt" color={pctColor(njT?.budgetPct)}/>
           <Bubble label="Waste"     value={njT?.wastePct!==null?`${njT.wastePct}%`:'—'} sub={`${fmt(njT?.wkWaste)} yds`} color={wasteColor(njT?.wastePct)}/>
         </div>
+        )}
       </div>
 
       {/* Both facility tables */}
