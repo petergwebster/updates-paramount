@@ -12,7 +12,7 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
-import { BNYTab, PassaicTab } from './components/ProductionTab'
+import { BNYTab, PassaicTab, useProductionData } from './components/ProductionTab'
 import styles from './App.module.css'
 
 // ── Nav: Consolidated | Financials | People | (Live Ops — admin only) | ⚙ ────
@@ -193,6 +193,102 @@ function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentP
       {section==='people'  && <AdminPeople weekStart={weekKey(weekStart)} currentUser={userProfile} onSaved={()=>setSection('data')}/>}
       {section==='files'   && <Correspondence weekStart={weekStart} dbReady={dbReady} {...commentProps}/>}
       {section==='history' && <HistoryPanel onSelectWeek={(w)=>{ /* week change handled in App */ }}/>}
+    </div>
+  )
+}
+
+
+// ── Live Ops page — combined KPI bar + both facility tables ──────────────────
+function LiveOpsPage({ weekStart }) {
+  const {
+    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
+    todayIdx, daysIn, bnyT, njT, reload
+  } = useProductionData(weekStart)
+
+  const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
+  const fmt  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'
+  const pct  = (a,b) => a!==null&&b&&b>0 ? Math.round(a/b*100) : null
+  const pctColor   = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
+  const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
+  const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
+
+  function Bubble({ label, value, sub, color }) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(255,255,255,0.06)', borderRadius:7, padding:'7px 12px', minWidth:88, gap:1 }}>
+        <div style={{ fontSize:9, color:'rgba(212,168,67,0.65)', fontWeight:'bold', letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
+        <div style={{ fontSize:15, fontWeight:'bold', color:color||'#FAF7F2', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
+        {sub && <div style={{ fontSize:9, color:'rgba(250,247,242,0.45)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
+      </div>
+    )
+  }
+  function Div() { return <div style={{ width:1, alignSelf:'stretch', background:'rgba(212,168,67,0.18)', margin:'0 2px' }}/> }
+  function GL({ text }) { return <div style={{ fontSize:9, color:'rgba(212,168,67,0.55)', fontWeight:'bold', letterSpacing:'0.07em', writingMode:'vertical-lr', transform:'rotate(180deg)' }}>{text}</div> }
+
+  const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
+  const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
+  const combWaste  = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
+  const combSchedP = pct(combActual, combSched)
+  const combBudgetP= pct(combActual, 12000+8610)
+  const combWasteP = pct(combWaste, combActual)
+
+  return (
+    <div style={{ fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh' }}>
+      {/* Combined sticky KPI bar — 2 rows */}
+      <div style={{ position:'sticky', top:0, zIndex:100, background:'#2C2420', borderBottom:'2px solid rgba(212,168,67,0.2)', boxShadow:'0 3px 16px rgba(0,0,0,0.35)', padding:'10px 20px' }}>
+        {/* Row 1: identity + combined + BNY */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8, flexWrap:'wrap' }}>
+          <div style={{ marginRight:6 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold' }}>Live Ops</span>
+              {weekNum && <span style={{ background:'rgba(212,168,67,0.15)', color:'#D4A843', borderRadius:4, padding:'2px 8px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>}
+              {weekInfo && <span style={{ fontSize:10, color:'rgba(212,168,67,0.6)' }}>{weekInfo.month} · {weekInfo.quarter}</span>}
+              {todayLabel && <span style={{ fontSize:10, color:'rgba(212,168,67,0.45)' }}>Today: {todayLabel}</span>}
+            </div>
+            {lastRefresh && <div style={{ fontSize:9, color:'rgba(250,247,242,0.3)', marginTop:2 }}>{lastRefresh.toLocaleTimeString()}</div>}
+          </div>
+          <Div/>
+          <GL text="COMBINED"/>
+          <Bubble label="Total Yds"   value={combActual!==null?fmt(combActual):'—'} sub={`of ${fmt(combSched)} sched`} color={pctColor(combSchedP)}/>
+          <Bubble label="vs Schedule" value={combSchedP!==null?`${combSchedP}%`:'—'} sub="combined" color={pctColor(combSchedP)}/>
+          <Bubble label="vs Budget"   value={combBudgetP!==null?`${combBudgetP}%`:'—'} sub="20,610 yd target" color={pctColor(combBudgetP)}/>
+          <Bubble label="Waste"       value={combWasteP!==null?`${combWasteP}%`:'—'} sub={`${fmt(combWaste)} yds`} color={wasteColor(combWasteP)}/>
+          <Div/>
+          <GL text="BNY"/>
+          <Bubble label="Actual"    value={bnyT?.wkActual!==null?fmt(bnyT?.wkActual):'—'} sub={`sched ${fmt(bnyT?.wkSched)}`} color={pctColor(bnyT?.schedPct)}/>
+          <Bubble label="% Sched"   value={bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—'} sub={ouFmt(bnyT?.overUnder)??'vs exp'} color={pctColor(bnyT?.schedPct)}/>
+          <Bubble label="vs Budget" value={bnyT?.budgetPct!==null?`${bnyT.budgetPct}%`:'—'} sub="12,000 yd tgt" color={pctColor(bnyT?.budgetPct)}/>
+          <Bubble label="Waste"     value={bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—'} sub={`${fmt(bnyT?.wkWaste)} yds`} color={wasteColor(bnyT?.wastePct)}/>
+          <div style={{ flex:1 }}/>
+          <button onClick={reload} disabled={loading} style={{ background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4, padding:'4px 12px', fontSize:11, color:'rgba(212,168,67,0.6)', cursor:'pointer' }}>
+            {loading ? 'Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+        {/* Row 2: NJ */}
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+          <div style={{ marginRight:6, minWidth:140 }}/>
+          <Div/>
+          <GL text="NJ"/>
+          <Bubble label="Actual"    value={njT?.wkActual!==null?fmt(njT?.wkActual):'—'} sub={`sched ${fmt(njT?.wkSched)}`} color={pctColor(njT?.schedPct)}/>
+          <Bubble label="% Sched"   value={njT?.schedPct!==null?`${njT.schedPct}%`:'—'} sub={ouFmt(njT?.overUnder)??'vs exp'} color={pctColor(njT?.schedPct)}/>
+          <Bubble label="vs Budget" value={njT?.budgetPct!==null?`${njT.budgetPct}%`:'—'} sub="8,610 yd tgt" color={pctColor(njT?.budgetPct)}/>
+          <Bubble label="Waste"     value={njT?.wastePct!==null?`${njT.wastePct}%`:'—'} sub={`${fmt(njT?.wkWaste)} yds`} color={wasteColor(njT?.wastePct)}/>
+        </div>
+      </div>
+
+      {/* Both facility tables */}
+      <div style={{ padding:'24px' }}>
+        <div style={{ fontSize:13, color:'#9C8F87', marginBottom:24 }}>
+          Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Operator · Waste target &lt;10%
+        </div>
+        {error   && <div style={{ background:'#FFF3E0', border:'1px solid #FFB74D', borderRadius:8, padding:16, color:'#E65100', marginBottom:16 }}>⚠ {error}</div>}
+        {loading && <div style={{ color:'#9C8F87', padding:40, textAlign:'center', fontSize:14 }}>Loading from Google Sheets...</div>}
+        {!loading && !error && (
+          <>
+            <BNYTab weekStart={weekStart}/>
+            <PassaicTab weekStart={weekStart}/>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -416,14 +512,7 @@ export default function App() {
               <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
             )}
             {activeTab==='liveops' && adminAuthenticated && (
-              <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
-                <div style={{background:'#2C2420', padding:'10px 20px', display:'flex', alignItems:'center', gap:12}}>
-                  <span style={{background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 10px', fontSize:12, fontWeight:'bold'}}>Live Ops</span>
-                  <span style={{fontSize:12, color:'rgba(212,168,67,0.7)'}}>Google Sheets · Daily scheduling & actuals · Your view only</span>
-                </div>
-                <BNYTab weekStart={currentWeek}/>
-                <PassaicTab weekStart={currentWeek}/>
-              </div>
+              <LiveOpsPage weekStart={currentWeek}/>
             )}
             {activeTab==='admin' && adminAuthenticated && (
               <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
