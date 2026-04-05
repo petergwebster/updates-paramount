@@ -807,11 +807,49 @@ export default function WIPTab(){
       {error&&<div style={{background:C.roseBg,border:`1px solid #E8A0A0`,borderRadius:8,padding:'12px 16px',color:C.rose,fontSize:13,marginBottom:16}}>{error}</div>}
 
       {!data&&!loading&&(
-        <div style={{textAlign:'center',padding:'80px 20px'}}>
-          <div style={{fontSize:48,marginBottom:16,opacity:0.2}}>⚑</div>
-          <div style={{fontSize:18,fontWeight:600,color:C.inkMid,fontFamily:'Georgia,serif',marginBottom:8}}>No data loaded</div>
-          <div style={{fontSize:13,color:C.inkLight}}>Click "Load Data" to pull live from Monday.com</div>
-        </div>
+        snapshots.length>0 ? (
+          // Show locked snapshot summary when live data isn't loaded
+          <div style={{background:C.goldBg,border:`1px solid ${C.warm}`,borderRadius:12,padding:'24px 28px',marginBottom:24}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+              <span style={{fontSize:16}}>🔒</span>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:C.ink,fontFamily:'Georgia,serif'}}>Locked Snapshot — {snapshots[0].week_label}</div>
+                <div style={{fontSize:12,color:C.inkLight}}>Locked {new Date(snapshots[0].locked_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} · Load Data to see live Monday.com view</div>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:16}}>
+              {[
+                {label:'Active WIP',val:snapshots[0].wip_orders,sub:Math.round(snapshots[0].wip_yards).toLocaleString()+' yds'},
+                {label:'Held to Invoice',val:snapshots[0].hti_orders,sub:Math.round(snapshots[0].hti_yards).toLocaleString()+' yds'},
+                {label:'New Goods',val:snapshots[0].new_goods_orders,sub:Math.round(snapshots[0].new_goods_yards).toLocaleString()+' yds'},
+              ].map(c=>(
+                <div key={c.label} style={{flex:1,minWidth:140,background:'#fff',borderRadius:8,padding:'14px 18px',border:`1px solid ${C.border}`}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase',color:C.inkLight,marginBottom:6}}>{c.label}</div>
+                  <div style={{fontSize:24,fontWeight:700,color:C.ink,fontFamily:'Georgia,serif'}}>{c.val}</div>
+                  <div style={{fontSize:11,color:C.inkLight,marginTop:2}}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+              {[
+                {label:'Wallpaper',orders:snapshots[0].wallpaper_orders,yards:snapshots[0].wallpaper_yards},
+                {label:'Grasscloth',orders:snapshots[0].grasscloth_orders,yards:snapshots[0].grasscloth_yards},
+                {label:'Fabric',orders:snapshots[0].fabric_orders,yards:snapshots[0].fabric_yards},
+              ].map(d=>(
+                <div key={d.label} style={{background:'#fff',borderRadius:8,padding:'10px 16px',border:`1px solid ${C.border}`,fontSize:13}}>
+                  <span style={{fontWeight:600,color:C.ink}}>{d.label}</span>
+                  <span style={{color:C.inkLight,marginLeft:8}}>{d.orders} orders · {Math.round(d.yards).toLocaleString()} yds</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{textAlign:'center',padding:'80px 20px'}}>
+            <div style={{fontSize:48,marginBottom:16,opacity:0.2}}>⚑</div>
+            <div style={{fontSize:18,fontWeight:600,color:C.inkMid,fontFamily:'Georgia,serif',marginBottom:8}}>No data loaded</div>
+            <div style={{fontSize:13,color:C.inkLight}}>Click "Load Data" to pull live from Monday.com</div>
+          </div>
+        )
       )}
       {loading&&<div style={{textAlign:'center',padding:'80px 20px',color:C.inkLight,fontSize:14}}>Fetching from Monday.com…</div>}
 
