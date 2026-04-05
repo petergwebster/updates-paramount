@@ -557,27 +557,34 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               </div>
             </div>
             {/* Invoiced KPI strip */}
-            {(njTotalInvYds > 0 || njTotalInvRev > 0) && (
-              <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
-                {[
-                  { label:'Produced', val:njTotalYards, tgt:NJ_TOTAL_TARGET, unit:'yds' },
-                  { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds' },
-                  { label:'Invoiced Rev', val:njTotalInvRev, tgt:njInvRevTgt, unit:'$', isDollar:true },
-                ].map((k,i,arr) => {
-                  const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
-                  const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
-                  const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' '+k.unit
-                  const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' '+k.unit
-                  return (
-                    <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
-                      <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
-                      <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
-                      <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            {(njTotalInvYds > 0 || njTotalInvRev > 0) && (() => {
+              const njSchInv = n(njData.schInvoiced)
+              const njTpInv  = n(njData.tpInvoiced)
+              const cols = [
+                { label:'Produced', val:njTotalYards, tgt:NJ_TOTAL_TARGET, unit:'yds' },
+                { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds',
+                  sub: njSchInv||njTpInv ? `SCH ${njSchInv.toLocaleString()} · 3P ${njTpInv.toLocaleString()}` : null },
+                { label:'Invoiced Rev', val:njTotalInvRev, tgt:njInvRevTgt, unit:'$', isDollar:true },
+              ]
+              return (
+                <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+                  {cols.map((k,i,arr) => {
+                    const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                    const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
+                    const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
+                    const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
+                    return (
+                      <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
+                        <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                        <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
+                        {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
             {/* Band 1: Capacity headline numbers */}
             <div className={styles.band}>
@@ -672,27 +679,34 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               </div>
             </div>
             {/* Invoiced KPI strip */}
-            {(bnyTotalInvYds > 0 || bnyTotalInvRev > 0) && (
-              <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
-                {[
-                  { label:'Produced', val:bnyTotal, tgt:BNY_TARGETS.total, unit:'yds' },
-                  { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds' },
-                  { label:'Invoiced Rev', val:bnyTotalInvRev, tgt:bnyInvRevTgt, unit:'$', isDollar:true },
-                ].map((k,i,arr) => {
-                  const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
-                  const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
-                  const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' '+k.unit
-                  const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' '+k.unit
-                  return (
-                    <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
-                      <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
-                      <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
-                      <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            {(bnyTotalInvYds > 0 || bnyTotalInvRev > 0) && (() => {
+              const bnySchInv = n(bnyData.schInvoiced)
+              const bnyTpInv  = n(bnyData.tpInvoiced)
+              const cols = [
+                { label:'Produced', val:bnyTotal, tgt:BNY_TARGETS.total, unit:'yds' },
+                { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds',
+                  sub: bnySchInv||bnyTpInv ? `SCH ${bnySchInv.toLocaleString()} · 3P ${bnyTpInv.toLocaleString()}` : null },
+                { label:'Invoiced Rev', val:bnyTotalInvRev, tgt:bnyInvRevTgt, unit:'$', isDollar:true },
+              ]
+              return (
+                <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+                  {cols.map((k,i,arr) => {
+                    const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                    const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
+                    const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
+                    const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
+                    return (
+                      <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
+                        <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                        <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
+                        {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
 
             {/* Band 1: Capacity */}
             <div className={styles.band}>
