@@ -182,6 +182,27 @@ function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentP
   const [genError,   setGenError]   = useState(null)
   const [genSuccess, setGenSuccess] = useState(false)
 
+  // Live saved-state checks — query existing tables, no schema changes needed
+  const [hasProd,    setHasProd]    = useState(false)
+  const [hasFinance, setHasFinance] = useState(false)
+  const [hasPeople,  setHasPeople]  = useState(false)
+
+  const wk = format(weekStart, 'yyyy-MM-dd')
+
+  useEffect(() => {
+    async function checkSavedState() {
+      const [{ data: prod }, { data: fin }, { data: ppl }] = await Promise.all([
+        supabase.from('production').select('week_start').eq('week_start', wk).maybeSingle(),
+        supabase.from('financial_uploads').select('period').ilike('period', wk.slice(0,7)+'%').limit(1),
+        supabase.from('people_weekly').select('week_start').eq('week_start', wk).maybeSingle(),
+      ])
+      setHasProd(!!prod)
+      setHasFinance(!!(fin && fin.length > 0))
+      setHasPeople(!!ppl)
+    }
+    checkSavedState()
+  }, [wk, section]) // re-check when tab changes so chips update after saving
+
   const tabs = [
     { id:'production', label:'🏭 Production'   },
     { id:'kpis',       label:'🎯 KPI Scorecard' },
@@ -192,15 +213,11 @@ function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentP
     { id:'history',    label:'🕘 History'       },
   ]
 
-  // Status chip logic
-  const kpis      = weekData?.kpis || {}
-  const days      = weekData?.days || {}
-  const narrative = weekData?.executive_narrative || weekData?.narrative || ''
-  const hasKPIs   = Object.values(kpis).some(k => k?.status && k.status !== 'gray')
-  const hasLog    = Object.values(days).some(d => d?.text?.trim())
-  const hasProd   = !!weekData?.production_saved
-  const hasFinance= !!weekData?.financials_saved
-  const hasPeople = !!weekData?.people_saved
+  // Status chip logic — production/financials/people from DB, KPIs/log from weekData
+  const kpis   = weekData?.kpis || {}
+  const days   = weekData?.days || {}
+  const hasKPIs = Object.values(kpis).some(k => k?.status && k.status !== 'gray')
+  const hasLog  = Object.values(days).some(d => d?.text?.trim())
 
   const chips = [
     { label:'Production', done: hasProd    },
