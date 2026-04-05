@@ -250,8 +250,8 @@ function KPIFileAttach({ kpiId, kpiName, fileData, onFileData }) {
 }
 
 // ── Main AdminPanel component ─────────────────────────────────────────────────
-export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
-  const [activeSection, setActiveSection] = useState('production')
+export default function AdminPanel({ weekStart, weekData, onSave, dbReady, defaultSection }) {
+  const [activeSection, setActiveSection] = useState(defaultSection || 'production')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(null) // 'production' | 'kpis' | 'log'
 
@@ -413,7 +413,8 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         </div>
       </div>
 
-      {/* Section tabs */}
+      {/* Section tabs — hidden when controlled by outer AdminPage nav */}
+      {!defaultSection && (
       <div className={styles.sectionTabs}>
         {SECTIONS.map(s => (
           <button key={s.id} className={`${styles.sectionTab} ${activeSection === s.id ? styles.sectionTabActive : ''}`} onClick={() => setActiveSection(s.id)}>
@@ -421,6 +422,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           </button>
         ))}
       </div>
+      )}
 
       {/* ── PRODUCTION DATA ── */}
       {activeSection === 'production' && (
