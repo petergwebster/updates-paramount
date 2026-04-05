@@ -178,9 +178,11 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
 // ── Admin page ────────────────────────────────────────────────────────────────
 function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps }) {
   const [section, setSection] = useState('production')
-  const [generating, setGenerating] = useState(false)
-  const [genError,   setGenError]   = useState(null)
-  const [genSuccess, setGenSuccess] = useState(false)
+  const [generating,     setGenerating]     = useState(false)
+  const [genError,       setGenError]       = useState(null)
+  const [genSuccess,     setGenSuccess]     = useState(false)
+  const [draftNarrative, setDraftNarrative] = useState('')
+  const [publishing,     setPublishing]     = useState(false)
 
   // Live saved-state checks — query existing tables, no schema changes needed
   const [hasProd,    setHasProd]    = useState(false)
@@ -237,37 +239,57 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
         supabase.from('production').select('week_start,nj_data,bny_data').order('week_start',{ascending:false}).limit(13),
         supabase.from('financial_uploads').select('period,bu,cogs,opex,inv_purchases').order('period',{ascending:false}).limit(8),
       ])
+
       const thisProd = prodHistory?.find(p => p.week_start === wk)
       const njD = thisProd?.nj_data || {}, bnyD = thisProd?.bny_data || {}
+
+      // Produced yds
       const njYds  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.yards)||0),0)
       const bnyYds = ['replen','mto','hos','memo','contract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
       const totalYds = njYds + bnyYds
-      const njPct  = Math.round(njYds/8610*100), bnyPct = Math.round(bnyYds/12000*100)
+      const njPct  = Math.round(njYds/8610*100)
+      const bnyPct = Math.round(bnyYds/12000*100)
       const totalPct = Math.round(totalYds/20610*100)
+
+      // Invoiced yds
+      const njInvYds  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.invoiceYds)||0),0)
+      const njInvRev  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.invoiceRev)||0),0)
+      const bnyInvYds = ['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
+      const bnyInvRev = ['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
+
+      // MTD
       const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
       const monthKey = wk.slice(0,7)
       const mtdWeeks = prodHistory?.filter(p=>p.week_start?.startsWith(monthKey))||[]
       const mtdTotal = mtdWeeks.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+(parseFloat(p.nj_data?.[c]?.yards)||0),0)+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+(parseFloat(p.bny_data?.[c])||0),0),0)
-      const mtdPct = Math.round(mtdTotal/(20610*mtdWeeks.length)*100)
+      const mtdPct = mtdWeeks.length>0 ? Math.round(mtdTotal/(20610*mtdWeeks.length)*100) : 0
+
+      // Detect if this is the last week of the month (week 4 or 5)
+      const fiscalInfo = weekData ? null : null
+      const isMonthEnd = mtdWeeks.length >= 4
+
       const kpiLines = Object.entries(kpis).filter(([,v])=>v?.status&&v.status!=='gray').map(([id,v])=>`  ${id}: ${SL[v.status]}${v.notes?' — '+v.notes:''}`).join('\n')
       const logLines = Object.entries(days).filter(([,v])=>v?.text?.trim()).map(([day,v])=>`  ${day}: ${v.text.slice(0,200)}`).join('\n')
       const finLines = finHistory?.slice(0,4).map(f=>`  ${f.period} ${f.bu}: COGS $${(f.cogs||0).toLocaleString()} · OpEx $${(f.opex||0).toLocaleString()} · Inv $${(f.inv_purchases||0).toLocaleString()}`).join('\n')||'  No financial data'
 
-      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a weekly executive summary for his CEO Timur and Chief of Staff Emily.
+      const monthRecapInstruction = isMonthEnd ? `
+IMPORTANT: This is Week ${mtdWeeks.length} of the month — the final weekly report before month close. Paragraph 1 should be a MONTHLY RECAP covering the full month's performance, not just this week. Reference MTD totals prominently and assess whether we hit the monthly budget. The tone should be conclusive — how did the month go overall?` : ''
+
+      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a weekly executive summary for CEO Timur and Chief of Staff Emily.
 
 Two facilities: Brooklyn BNY (digital printing) and Passaic NJ (screen print: fabric, grass cloth, wallpaper). ~$10M/year revenue.
-
-WEEK OF: ${format(weekStart,'MMMM d, yyyy')}
+${monthRecapInstruction}
+WEEK OF: ${format(weekStart,'MMMM d, yyyy')} (Week ${mtdWeeks.length} of month)
 
 PRODUCTION THIS WEEK:
-  BNY Brooklyn: ${bnyYds.toLocaleString()} yds of 12,000 target (${bnyPct}%)
-  NJ Passaic: ${njYds.toLocaleString()} yds of 8,610 target (${njPct}%)
-  Combined: ${totalYds.toLocaleString()} yds of 20,610 target (${totalPct}%)
+  BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced of 12,000 target (${bnyPct}%)${bnyInvYds>0?' · '+bnyInvYds.toLocaleString()+' yds invoiced'+(bnyInvRev>0?' · $'+Math.round(bnyInvRev).toLocaleString()+' revenue':''):''}
+  NJ Passaic: ${njYds.toLocaleString()} yds produced of 8,610 target (${njPct}%)${njInvYds>0?' · '+njInvYds.toLocaleString()+' yds invoiced'+(njInvRev>0?' · $'+Math.round(njInvRev).toLocaleString()+' revenue':''):''}
+  Combined: ${totalYds.toLocaleString()} yds produced of 20,610 target (${totalPct}%)
 
-MTD PRODUCTION (${mtdWeeks.length} weeks): ${mtdTotal.toLocaleString()} yds · ${mtdPct}% of budget
+MTD PRODUCTION (${mtdWeeks.length} weeks this month): ${mtdTotal.toLocaleString()} yds · ${mtdPct}% of budget
 
 KPI SCORECARD:
-${kpiLines||'  No KPI data entered'}
+${kpiLines||'  No KPI data entered this week'}
 
 DAILY LOG:
 ${logLines||'  No log entries'}
@@ -277,25 +299,40 @@ ${finLines}
 
 ${weekData?.concerns?'AREAS OF CONCERN:\n  '+weekData.concerns:''}
 
-Write exactly 4 paragraphs in Peter's voice — direct, factual, candid. Follow this structure precisely:
+Write exactly 4 paragraphs in Peter's voice — direct, factual, candid. Follow this structure:
 
-Paragraph 1 — OVERALL: One or two sentences on the combined week result vs target and MTD tracking. Set the tone.
+Paragraph 1 — ${isMonthEnd?'MONTHLY RECAP: Assess the full month vs budget. How did we finish? Key themes.':'OVERALL: Combined week result vs target and MTD tracking in 1-2 sentences.'}
 
-Paragraph 2 — BNY BROOKLYN: Performance vs 12,000 yd target. Key KPI highlights relevant to BNY (financial contribution, delivery, quality, vendor). What's working and what to watch.
+Paragraph 2 — BNY BROOKLYN: Performance vs 12,000 yd target. Reference produced vs invoiced if available. Key KPI highlights for BNY. What's working and what to watch.
 
-Paragraph 3 — PASSAIC NJ: Performance vs 8,610 yd target. Key KPI highlights relevant to Passaic (cost efficiency, quality/waste, grounds, inventory). What's working and what to watch.
+Paragraph 3 — PASSAIC NJ: Performance vs 8,610 yd target. Reference produced vs invoiced if available. Key KPI highlights for Passaic. What's working and what to watch.
 
-Paragraph 4 — NEXT WEEK / ACTION PLAN: Specific actions Peter is taking or monitoring. What Timur and Emily should expect in next week's report. Forward-looking and concrete.
+Paragraph 4 — NEXT WEEK / ACTION PLAN: Specific actions Peter is taking. What Timur and Emily should watch for next week. Concrete and forward-looking.
 
-Under 250 words total. First person as Peter. No bullet points. No headers. No title line. Start directly with the first sentence.`
+Under 260 words. First person as Peter. No bullets. No headers. No title. Start directly with the first sentence.`
 
-      const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})})
-      const data = await resp.json()
-      const text = data.content?.find(c=>c.type==='text')?.text
-      if (text) { await onSave({executive_narrative:text.trim()}); onRefresh && onRefresh(); setGenSuccess(true); setTimeout(()=>setGenSuccess(false),5000) }
-      else setGenError('Could not generate — try again.')
+      // Set draft for review — don't save yet
+      setDraftNarrative(prompt ? await generateText(prompt) : '')
     } catch(e) { setGenError('Generation failed. Check connection.') }
     setGenerating(false)
+  }
+
+  async function generateText(prompt) {
+    const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1200,messages:[{role:'user',content:prompt}]})})
+    const data = await resp.json()
+    return data.content?.find(c=>c.type==='text')?.text?.trim() || ''
+  }
+
+  async function handlePublishSummary() {
+    if (!draftNarrative) return
+    setPublishing(true)
+    try {
+      await onSave({executive_narrative: draftNarrative})
+      onRefresh && onRefresh()
+      setGenSuccess(true)
+      setTimeout(()=>setGenSuccess(false),5000)
+    } catch(e) { setGenError('Publish failed.') }
+    setPublishing(false)
   }
 
   return (
@@ -308,18 +345,45 @@ Under 250 words total. First person as Peter. No bullet points. No headers. No t
       </div>
 
       {/* Generate Summary card */}
-      <div style={{ background: allDone?'var(--ink)':'#FAFAF8', border:`2px solid ${allDone?'var(--ink)':'var(--ink-10)'}`, borderRadius:12, padding:'20px 24px', marginBottom:24, display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, flexWrap:'wrap', transition:'all 0.2s' }}>
-        <div>
-          <div style={{ fontSize:15, fontWeight:700, color:allDone?'#fff':'var(--ink)', marginBottom:4, fontFamily:'Georgia, serif' }}>✦ Generate Executive Summary</div>
-          <div style={{ fontSize:12, color:allDone?'rgba(255,255,255,0.65)':'var(--ink-40)' }}>
-            {allDone ? 'All data entered — AI will look at WTD, MTD and financials.' : 'Fill in the sections below, then generate the summary for Timur & Emily.'}
+      <div style={{ background:'#FAFAF8', border:'2px solid var(--ink-10)', borderRadius:12, padding:'20px 24px', marginBottom:24, transition:'all 0.2s' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, flexWrap:'wrap', marginBottom: draftNarrative ? 16 : 0 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:'var(--ink)', marginBottom:4, fontFamily:'Georgia, serif' }}>✦ Executive Summary</div>
+            <div style={{ fontSize:12, color:'var(--ink-40)' }}>
+              {draftNarrative ? 'Review and edit below, then publish to Consolidated.' : allDone ? 'All data entered — ready to generate.' : 'Fill in sections below, then generate the summary for Timur & Emily.'}
+            </div>
+            {genError  && <div style={{ fontSize:12, color:'#E65100', marginTop:6 }}>⚠ {genError}</div>}
+            {genSuccess && <div style={{ fontSize:12, color:'#2E7D32', marginTop:6 }}>✓ Published to Consolidated</div>}
           </div>
-          {genError   && <div style={{ fontSize:12, color:'#E65100', marginTop:6 }}>⚠ {genError}</div>}
-          {genSuccess  && <div style={{ fontSize:12, color:'#2E7D32', marginTop:6 }}>✓ Summary generated and saved to Consolidated</div>}
+          <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+            <button onClick={handleGenerateSummary} disabled={generating} style={{ background:'var(--ink)', color:'#fff', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:600, cursor:generating?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif', opacity:generating?0.6:1 }}>
+              {generating ? '⏳ Generating…' : draftNarrative ? '↻ Regenerate' : '✦ Generate'}
+            </button>
+            {draftNarrative && (
+              <button onClick={handlePublishSummary} disabled={publishing} style={{ background:'#D4A843', color:'#2C2420', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:700, cursor:publishing?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif' }}>
+                {publishing ? 'Publishing…' : '✓ Publish to Dashboard'}
+              </button>
+            )}
+          </div>
         </div>
-        <button onClick={handleGenerateSummary} disabled={generating} style={{ background:generating?'rgba(255,255,255,0.15)':allDone?'#D4A843':'var(--ink)', color:allDone&&!generating?'#2C2420':'#fff', border:'none', borderRadius:8, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:generating?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif', flexShrink:0 }}>
-          {generating ? '⏳ Generating…' : '✦ Generate Summary'}
-        </button>
+        {draftNarrative && (
+          <div>
+            <div style={{ fontSize:11, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:8 }}>Draft — edit freely before publishing</div>
+            <textarea
+              value={draftNarrative}
+              onChange={e => setDraftNarrative(e.target.value)}
+              rows={10}
+              style={{ width:'100%', fontFamily:'Georgia, serif', fontSize:14, lineHeight:1.8, padding:'16px', border:'1px solid var(--ink-20)', borderRadius:8, background:'#fff', resize:'vertical', boxSizing:'border-box', color:'var(--ink)' }}
+            />
+          </div>
+        )}
+        {weekData?.executive_narrative && !draftNarrative && (
+          <div style={{ marginTop:12, padding:'12px 16px', background:'var(--cream-dark,#F5F0EA)', borderRadius:8, borderLeft:'3px solid var(--ink-20)' }}>
+            <div style={{ fontSize:10, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:6 }}>Currently published</div>
+            <div style={{ fontSize:13, color:'var(--ink-60)', lineHeight:1.7, whiteSpace:'pre-wrap' }}>{weekData.executive_narrative.slice(0,300)}{weekData.executive_narrative.length>300?'…':''}</div>
+            <button onClick={()=>setDraftNarrative(weekData.executive_narrative)} style={{ marginTop:8, fontSize:12, color:'var(--ink-40)', background:'none', border:'none', cursor:'pointer', padding:0 }}>Edit current version →</button>
+          </div>
+        )}
       </div>
 
       {/* Status chips */}
