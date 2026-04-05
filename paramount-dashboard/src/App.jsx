@@ -259,10 +259,10 @@ function LiveOpsPage({ weekStart }) {
 
   function GroupLabel({ text }) {
     return (
-      <div style={{ fontSize:8, color:'rgba(212,168,67,0.5)', fontWeight:'bold',
-        letterSpacing:'0.08em', writingMode:'vertical-lr', transform:'rotate(180deg)',
-        userSelect:'none', flexShrink:0, alignSelf:'stretch', display:'flex',
-        alignItems:'center' }}>{text}</div>
+      <div style={{ fontSize:9, color:'rgba(212,168,67,0.7)', fontWeight:'bold',
+        letterSpacing:'0.08em', background:'rgba(212,168,67,0.1)', borderRadius:3,
+        padding:'2px 6px', whiteSpace:'nowrap', flexShrink:0, alignSelf:'center',
+        userSelect:'none' }}>{text}</div>
     )
   }
 
@@ -343,7 +343,7 @@ function LiveOpsPage({ weekStart }) {
             </div>
 
             {/* Combined spacer — matches COMBINED group width */}
-            <div style={{ display:'flex', alignItems:'center', gap:5, visibility:'hidden' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5, visibility:'hidden', pointerEvents:'none' }}>
               <VDiv/>
               <GroupLabel text="COMBINED"/>
               <Bubble label="Total Yds"   value="—" sub="placeholder"/>
