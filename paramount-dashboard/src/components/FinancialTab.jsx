@@ -47,7 +47,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
   const [selected, setSelected]   = useState(null)
   const [data, setData]           = useState(null)
   const [loading, setLoading]     = useState(false)
-  const [apData,  setApData]      = useState(null)   // { paramount, bny }
+  const [apData,  setApData]      = useState(null)
   const [arData,  setArData]      = useState(null)
 
   // Period key includes fiscal week: "2026-01-W2"
@@ -72,17 +72,14 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
 
   async function loadAll(period) {
     setLoading(true)
-    setData(null)
+    setData(null); setApData(null); setArData(null)
     try {
-      // Load period list — and current period's data if we have a period
-      const queries = [
+      const [periodsRes, dataRes, apRes, arRes] = await Promise.all([
         supabase.from('financials_monthly').select('period, uploaded_at, upload_notes').order('period', { ascending: false }),
-      ]
-      if (period) queries.push(supabase.from('financials_monthly').select('*').eq('period', period))
-      if (period) queries.push(supabase.from('financial_ap').select('*').eq('period', period))
-      if (period) queries.push(supabase.from('financial_ar').select('*').eq('period', period).maybeSingle())
-      const [periodsRes, dataRes, apRes, arRes] = await Promise.all(queries)
-      // Update periods list
+        period ? supabase.from('financials_monthly').select('*').eq('period', period) : Promise.resolve({ data: [] }),
+        period ? supabase.from('financial_ap').select('*').eq('period', period) : Promise.resolve({ data: [] }),
+        period ? supabase.from('financial_ar').select('*').eq('period', period).maybeSingle() : Promise.resolve({ data: null }),
+      ])
       const seen = new Set()
       const unique = (periodsRes.data || []).filter(r => {
         if (seen.has(r.period)) return false
@@ -90,14 +87,20 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
       })
       setPeriods(unique)
       setSelected(period || unique[0]?.period)
-      // Update data if we queried for a specific period
-      if (dataRes && dataRes.data && dataRes.data.length > 0) {
+      if (dataRes?.data?.length > 0) {
         setData({
           nj:     dataRes.data.find(r => r.business_unit === BU_NJ)     || null,
           bny:    dataRes.data.find(r => r.business_unit === BU_BNY)    || null,
           shared: dataRes.data.find(r => r.business_unit === BU_SHARED) || null,
         })
       }
+      if (apRes?.data?.length) {
+        setApData({
+          paramount: apRes.data.find(r => r.facility === 'Paramount') || null,
+          bny:       apRes.data.find(r => r.facility === 'BNY')       || null,
+        })
+      }
+      if (arRes?.data) setArData(arRes.data)
     } catch(e) {
       console.error('Financial load error:', e)
     } finally {
@@ -107,14 +110,14 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
 
   async function loadForPeriod(period) {
     setLoading(true)
-    setData(null)
+    setData(null); setApData(null); setArData(null)
     try {
       const [{ data: rows }, { data: apRows }, { data: arRow }] = await Promise.all([
         supabase.from('financials_monthly').select('*').eq('period', period),
         supabase.from('financial_ap').select('*').eq('period', period),
         supabase.from('financial_ar').select('*').eq('period', period).maybeSingle(),
       ])
-      if (rows && rows.length > 0) {
+      if (rows?.length > 0) {
         setData({
           nj:     rows.find(r => r.business_unit === BU_NJ)     || null,
           bny:    rows.find(r => r.business_unit === BU_BNY)    || null,
@@ -339,13 +342,12 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         return (
           <div className={styles.section} style={{marginTop:32}}>
             <div className={styles.sectionTitle}>Accounts Payable</div>
-            {/* Summary cards */}
             <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
               {[
-                {label:'Total AP Balance',   val:fmtAP(totalBalance), sub:'Both facilities combined'},
-                {label:'Total Past Due',     val:fmtAP(totalPastDue), sub:'All aging buckets', alert:totalPastDue>0},
-                {label:'Paramount Balance',  val:fmtAP(para?.total),  sub:`Past due: ${fmtAP(para?.past_due)}`},
-                {label:'BNY Balance',        val:fmtAP(bny?.total),   sub:`Past due: ${fmtAP(bny?.past_due)}`},
+                {label:'Total AP Balance',  val:fmtAP(totalBalance), sub:'Both facilities'},
+                {label:'Total Past Due',    val:fmtAP(totalPastDue), sub:'All aging buckets', alert:totalPastDue>0},
+                {label:'Paramount Balance', val:fmtAP(para?.total),  sub:`Past due: ${fmtAP(para?.past_due)}`},
+                {label:'BNY Balance',       val:fmtAP(bny?.total),   sub:`Past due: ${fmtAP(bny?.past_due)}`},
               ].map(c=>(
                 <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?'1px solid #fecaca':undefined}}>
                   <div className={styles.cardLabel}>{c.label}</div>
@@ -354,7 +356,6 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 </div>
               ))}
             </div>
-            {/* Aging table */}
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead><tr>
@@ -375,22 +376,19 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 </tbody>
               </table>
             </div>
-            {/* Top vendors */}
             <div className={styles.twoCol} style={{marginTop:16}}>
               {[{label:'Paramount',d:para},{label:'BNY',d:bny}].filter(r=>r.d&&r.d.top_vendors?.length).map(({label,d})=>(
                 <div key={label}>
                   <div style={{fontSize:11,fontWeight:700,color:'var(--ink-40)',letterSpacing:'0.05em',textTransform:'uppercase',marginBottom:8}}>{label} — Top Vendors</div>
-                  <table className={styles.vendorTable}>
-                    <tbody>
-                      {d.top_vendors.slice(0,6).map((v,i)=>(
-                        <tr key={i}>
-                          <td className={styles.vendorName}>{v.name?.slice(0,30)}</td>
-                          <td className={styles.vendorAmt}>{fmtAP(v.balance)}</td>
-                          {v.pastDue>0&&<td style={{fontSize:11,color:'#b91c1c',paddingLeft:8}}>({fmtAP(v.pastDue)} overdue)</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <table className={styles.vendorTable}><tbody>
+                    {d.top_vendors.slice(0,6).map((v,i)=>(
+                      <tr key={i}>
+                        <td className={styles.vendorName}>{v.name?.slice(0,30)}</td>
+                        <td className={styles.vendorAmt}>{fmtAP(v.balance)}</td>
+                        {v.pastDue>0&&<td style={{fontSize:11,color:'#b91c1c',paddingLeft:8}}>({fmtAP(v.pastDue)} overdue)</td>}
+                      </tr>
+                    ))}
+                  </tbody></table>
                 </div>
               ))}
             </div>
@@ -404,12 +402,11 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         return (
           <div className={styles.section} style={{marginTop:32}}>
             <div className={styles.sectionTitle}>Accounts Receivable</div>
-            {/* Summary cards */}
             <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
               {[
                 {label:'Total Outstanding', val:fmtAR(arData.total_outstanding), sub:'All aging buckets'},
-                {label:'Current',           val:fmtAR(arData.aging_current),      sub:'Not yet due'},
-                {label:'Total Past Due',    val:fmtAR(arData.total_past_due),     sub:'1–30d through 91d+', alert:arData.total_past_due>0},
+                {label:'Current',           val:fmtAR(arData.aging_current),     sub:'Not yet due'},
+                {label:'Total Past Due',    val:fmtAR(arData.total_past_due),    sub:'1–30d through 91d+', alert:arData.total_past_due>0},
               ].map(c=>(
                 <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?'1px solid #fecaca':undefined}}>
                   <div className={styles.cardLabel}>{c.label}</div>
@@ -418,7 +415,6 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 </div>
               ))}
             </div>
-            {/* Aging buckets */}
             <div style={{display:'flex',gap:0,border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',marginBottom:20}}>
               {[['Current',arData.aging_current,false],['1–30d',arData.aging_1_30,true],['31–60d',arData.aging_31_60,true],['61–90d',arData.aging_61_90,true],['91d+',arData.aging_91plus,true]]
                 .map(([label,val,isPast],i,arr)=>(
@@ -428,7 +424,6 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 </div>
               ))}
             </div>
-            {/* Key accounts */}
             {arData.key_accounts?.length>0&&(
               <>
                 <div style={{fontSize:11,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:10}}>Key Accounts to Watch</div>
@@ -446,7 +441,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                           <td className={styles.rowLabel} style={{fontWeight:500}}>{a.name}</td>
                           <td className={styles.val}>{fmtAR(a.unapplied)}</td>
                           <td className={styles.val}>{fmtAR(a.current)}</td>
-                          <td className={`${styles.val} ${styles.combined}`} style={{color:a.pastDue>0?'#b91c1c':'#15803d',fontWeight:a.pastDue>0?600:400}}>{fmtAR(a.pastDue)}</td>
+                          <td className={`${styles.val} ${styles.combined}`} style={{color:a.pastDue>0?'#b91c1c':'inherit',fontWeight:a.pastDue>0?600:400}}>{fmtAR(a.pastDue)}</td>
                           <td style={{padding:'6px 12px',fontSize:12,color:'var(--ink-60)'}}>{a.notes?.slice(0,80)}</td>
                         </tr>
                       ))}
