@@ -12,14 +12,17 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
-import { BNYTab, PassaicTab, ConsolidatedProductionSummary, useProductionData } from './components/ProductionTab'
+import { BNYTab, PassaicTab } from './components/ProductionTab'
 import styles from './App.module.css'
 
-// ── Nav: Consolidated | BNY | Passaic | ⚙ ────────────────────────────────────
+// ── Nav: Consolidated | BNY | Passaic | (Live Ops — admin only) | ⚙ ──────────
 const PUBLIC_TABS = [
   { id: 'consolidated', label: 'Consolidated' },
   { id: 'bny',          label: 'BNY' },
   { id: 'passaic',      label: 'Passaic' },
+]
+const ADMIN_TABS = [
+  { id: 'liveops', label: '📊 Live Ops' },
 ]
 
 function SlackIcon({ size = 14 }) {
@@ -62,9 +65,6 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
   const hasKPIs     = kpiList.length > 0
   const weekEnd     = addDays(weekStart, 4)
   const dateRange   = `${format(weekStart,'MMM d')}–${format(weekEnd,'d, yyyy')}`
-
-  // Load production data for combined summary
-  const { bnyT, njT, loading: prodLoading } = useProductionData(weekStart)
 
   return (
     <div style={{ maxWidth:980, margin:'0 auto', padding:'36px 24px 80px', fontFamily:'Georgia, serif' }}>
@@ -127,14 +127,10 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
         </div>
       )}
 
-      {/* 3. Production — combined summary cards */}
+      {/* 3. Production — from Supabase (works for all historical weeks) */}
       <div style={{ marginBottom:48 }}>
-        <SectionLabel>Production — Combined</SectionLabel>
-        {prodLoading ? (
-          <div style={{ color:'var(--ink-40)', fontSize:13, padding:'16px 0' }}>Loading production data...</div>
-        ) : (
-          <ConsolidatedProductionSummary bnyT={bnyT} njT={njT} />
-        )}
+        <SectionLabel>Production — NJ &amp; Brooklyn</SectionLabel>
+        <ProductionDashboard weekStart={weekStart} dbReady={dbReady} readOnly {...commentProps} />
       </div>
 
       {/* 4. Financials */}
@@ -386,6 +382,15 @@ export default function App() {
               onClick={()=>setActiveTab(t.id)}
             >{t.label}</button>
           ))}
+          {isAdmin && ADMIN_TABS.map(t=>(
+            <button
+              key={t.id}
+              className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
+              onClick={()=>setActiveTab(t.id)}
+              style={{ color: activeTab===t.id ? undefined : 'var(--ink-30)', fontSize: 13 }}
+              title="Your daily ops view — not visible to C-suite"
+            >{t.label}</button>
+          ))}
           <div className={styles.navUserArea}>
             <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
             <button className={styles.signOutBtn} onClick={handleSignOut}>Sign out</button>
@@ -401,8 +406,18 @@ export default function App() {
             {activeTab==='consolidated' && (
               <ConsolidatedPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
             )}
-            {activeTab==='bny' && <BNYTab weekStart={currentWeek}/>}
-            {activeTab==='passaic' && <PassaicTab weekStart={currentWeek}/>}
+            {activeTab==='bny' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} readOnly {...commentProps}/>}
+            {activeTab==='passaic' && <ProductionDashboard weekStart={currentWeek} dbReady={dbReady} readOnly {...commentProps}/>}
+            {activeTab==='liveops' && adminAuthenticated && (
+              <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+                <div style={{background:'#2C2420', padding:'10px 20px', display:'flex', alignItems:'center', gap:12}}>
+                  <span style={{background:'#D4A843', color:'#2C2420', borderRadius:4, padding:'2px 10px', fontSize:12, fontWeight:'bold'}}>Live Ops</span>
+                  <span style={{fontSize:12, color:'rgba(212,168,67,0.7)'}}>Google Sheets · Daily scheduling & actuals · Your view only</span>
+                </div>
+                <BNYTab weekStart={currentWeek}/>
+                <PassaicTab weekStart={currentWeek}/>
+              </div>
+            )}
             {activeTab==='admin' && adminAuthenticated && (
               <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
             )}
