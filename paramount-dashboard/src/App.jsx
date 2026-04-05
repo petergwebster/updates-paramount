@@ -12,8 +12,24 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
-import { BNYTab, PassaicTab, useProductionData } from './components/ProductionTab'
+import { FacilityDetail, OperatorScorecard, useProductionData } from './components/ProductionTab'
 import styles from './App.module.css'
+
+// ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
+const BNY_DAYS = [
+  { label:'Mon', sched:2,  actual:3,  waste:4,  op:5  },
+  { label:'Tue', sched:6,  actual:7,  waste:8,  op:9  },
+  { label:'Wed', sched:10, actual:11, waste:12, op:13 },
+  { label:'Thu', sched:14, actual:15, waste:16, op:17 },
+  { label:'Fri', sched:18, actual:19, waste:20, op:21 },
+]
+const NJ_DAYS = [
+  { label:'Mon', sched:2,  actual:3,  waste:4,  op1:5,  op2:6  },
+  { label:'Tue', sched:7,  actual:8,  waste:9,  op1:10, op2:11 },
+  { label:'Wed', sched:12, actual:13, waste:14, op1:15, op2:16 },
+  { label:'Thu', sched:17, actual:18, waste:19, op1:20, op2:21 },
+  { label:'Fri', sched:22, actual:23, waste:24, op1:25, op2:26 },
+]
 
 // ── Nav: Consolidated | Financials | People | (Live Ops — admin only) | ⚙ ────
 const PUBLIC_TABS = [
@@ -291,8 +307,16 @@ function LiveOpsPage({ weekStart }) {
         {loading && <div style={{ color:'#9C8F87', padding:40, textAlign:'center', fontSize:14 }}>Loading from Google Sheets...</div>}
         {!loading && !error && (
           <>
-            <BNYTab weekStart={weekStart}/>
-            <PassaicTab weekStart={weekStart}/>
+            <div style={{marginBottom:40}}>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>BNY — Digital Production</div>
+              <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={12000} title="BNY"/>
+              <OperatorScorecard ops={bny?.ops} facility="BNY"/>
+            </div>
+            <div style={{marginBottom:40}}>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Passaic — Screen Print</div>
+              <FacilityDetail data={nj} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={8610} title="Passaic"/>
+              <OperatorScorecard ops={nj?.ops} facility="Passaic"/>
+            </div>
           </>
         )}
       </div>

@@ -267,7 +267,7 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
   )
 }
 
-function FacilityDetail({data, dayCols, todayIdx, budget, title}) {
+export function FacilityDetail({data, dayCols, todayIdx, budget, title}) {
   if (!data||!data.sections.length) return null
   const {dayDates,sections}=data
   const daysIn=todayIdx>=0?todayIdx+1:0
@@ -295,7 +295,7 @@ function FacilityDetail({data, dayCols, todayIdx, budget, title}) {
   )
 }
 
-function OperatorScorecard({ops, facility}) {
+export function OperatorScorecard({ops, facility}) {
   const ranked=Object.entries(ops||{}).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
   if (!ranked.length) return (
     <div style={{marginTop:32,background:'#F2EDE4',borderRadius:8,padding:16,color:'#9C8F87',fontSize:13}}>
