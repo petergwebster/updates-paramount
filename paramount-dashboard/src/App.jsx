@@ -57,7 +57,9 @@ function SlackIcon({ size = 14 }) {
 }
 
 function getDefaultWeek() {
-  return startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 })
+  // Always land on the most recently completed Mon-Sun week
+  const thisWeekMonday = startOfWeek(new Date(), { weekStartsOn: 1 })
+  return subWeeks(thisWeekMonday, 1)
 }
 function weekKey(date) { return format(date, 'yyyy-MM-dd') }
 

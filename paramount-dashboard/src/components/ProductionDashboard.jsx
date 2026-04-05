@@ -308,6 +308,16 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   // Computed BNY totals
   const bnyTotal = ['replen','mto','hos','memo','contract'].reduce((s,k) => s + n(bnyData[k]), 0)
 
+  const njTotalInvYds = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.invoiceYds), 0)
+  const njTotalInvRev  = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.invoiceRev), 0)
+  const njInvYdsTgt    = NJ_TARGETS.fabric.invoiceYds + NJ_TARGETS.grass.invoiceYds + NJ_TARGETS.paper.invoiceYds
+  const njInvRevTgt    = NJ_TARGETS.fabric.invoiceRev + NJ_TARGETS.grass.invoiceRev + NJ_TARGETS.paper.invoiceRev
+
+  const bnyTotalInvYds = ['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((s,k) => s + n(bnyData[k]), 0)
+  const bnyTotalInvRev = ['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((s,k) => s + n(bnyData[k]), 0)
+  const bnyInvYdsTgt   = BNY_TARGETS.replen + BNY_TARGETS.mto + BNY_TARGETS.hos + BNY_TARGETS.memo + BNY_TARGETS.contract
+  const bnyInvRevTgt   = BNY_TARGETS.totalIncomeInvoiced
+
   const hasData = njTotalYards > 0 || bnyTotal > 0
 
   // History data for charts/table
@@ -546,6 +556,28 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 <CommentButton weekStart={weekStart} section="nj-summary" label="NJ Passaic Production" currentUser={currentUser} onCommentPosted={onCommentPosted} />
               </div>
             </div>
+            {/* Invoiced KPI strip */}
+            {(njTotalInvYds > 0 || njTotalInvRev > 0) && (
+              <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+                {[
+                  { label:'Produced', val:njTotalYards, tgt:NJ_TOTAL_TARGET, unit:'yds' },
+                  { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds' },
+                  { label:'Invoiced Rev', val:njTotalInvRev, tgt:njInvRevTgt, unit:'$', isDollar:true },
+                ].map((k,i,arr) => {
+                  const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                  const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
+                  const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' '+k.unit
+                  const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' '+k.unit
+                  return (
+                    <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
+                      <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                      <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Band 1: Capacity headline numbers */}
             <div className={styles.band}>
@@ -639,6 +671,28 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 <CommentButton weekStart={weekStart} section="bny-summary" label="BNY Brooklyn Production" currentUser={currentUser} onCommentPosted={onCommentPosted} />
               </div>
             </div>
+            {/* Invoiced KPI strip */}
+            {(bnyTotalInvYds > 0 || bnyTotalInvRev > 0) && (
+              <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+                {[
+                  { label:'Produced', val:bnyTotal, tgt:BNY_TARGETS.total, unit:'yds' },
+                  { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds' },
+                  { label:'Invoiced Rev', val:bnyTotalInvRev, tgt:bnyInvRevTgt, unit:'$', isDollar:true },
+                ].map((k,i,arr) => {
+                  const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                  const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
+                  const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' '+k.unit
+                  const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' '+k.unit
+                  return (
+                    <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
+                      <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
+                      <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                      <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Band 1: Capacity */}
             <div className={styles.band}>
