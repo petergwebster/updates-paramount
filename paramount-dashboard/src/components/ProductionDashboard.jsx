@@ -720,10 +720,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     {bnyTotal ? `${bnyTotal.toLocaleString()} of ${BNY_TARGETS.total.toLocaleString()} yds · ${Math.round((bnyTotal/BNY_TARGETS.total)*100)}% of target` : 'No data entered'}
                   </div>
                 </div>
-                <div className={styles.statBlock}>
-                  <div className={styles.statLabel}>SCH Invoiced</div>
-                  <div className={styles.statValue} style={{ color: 'var(--ink)' }}>{fmt(bnyData.schInvoiced)}<span className={styles.statUnit}>yds</span></div>
-                </div>
+
               </div>
               <BarChart data={[
                 { label: 'Replen', value: bnyData.replen, target: BNY_TARGETS.replen },
