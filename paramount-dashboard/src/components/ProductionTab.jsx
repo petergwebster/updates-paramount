@@ -351,6 +351,7 @@ function OperatorScorecard({ops, facility}) {
 
 // ── Consolidated summary cards (used by App.jsx WeeklyBrief) ──────────────────
 export function ConsolidatedProductionSummary({ bnyT, njT, weekNum }) {
+  if (!bnyT && !njT) return <div style={{ color:"#9C8F87", fontSize:13, padding:"16px 0" }}>Loading production data...</div>
   const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
   const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
   const combWaste  = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
