@@ -810,7 +810,7 @@ export default function App() {
               <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
             )}
             {activeTab==='wip' && (
-              <WIPTab />
+              <WIPTab weekStart={currentWeek} />
             )}
             {activeTab==='liveops' && adminAuthenticated && (
               <LiveOpsPage weekStart={currentWeek}/>

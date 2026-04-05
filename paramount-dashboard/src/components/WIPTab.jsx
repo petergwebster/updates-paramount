@@ -41,12 +41,16 @@ async function fetchAllItems() {
 }
 
 // ─── Snapshot fetch ───────────────────────────────────────────────────────────
-async function fetchLastSnapshot() {
-  const { data } = await supabase
+async function fetchLastSnapshot(weekStart) {
+  const query = supabase
     .from('wip_snapshots')
     .select('week_start,week_label,locked_at,wip_orders,wip_yards,hti_orders,hti_yards,new_goods_orders,new_goods_yards,wallpaper_orders,wallpaper_yards,grasscloth_orders,grasscloth_yards,fabric_orders,fabric_yards,age_0_30_orders,age_31_60_orders,age_61_90_orders,age_90plus_orders,age_no_date_orders')
     .order('week_start', { ascending: false })
-    .limit(2)
+  if (weekStart) {
+    const wk = typeof weekStart === 'string' ? weekStart : weekStart.toISOString().slice(0,10)
+    query.eq('week_start', wk)
+  }
+  const { data } = await query.limit(2)
   return data || []
 }
 
@@ -699,7 +703,7 @@ function WoWBanner({snapshots, liveWip, liveYards, liveHti, liveNewGoods, onLock
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export default function WIPTab(){
+export default function WIPTab({ weekStart }){
   const [data,setData]=useState(null)
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState(null)
@@ -714,19 +718,19 @@ export default function WIPTab(){
   useEffect(() => {
     async function loadSnapshots() {
       try {
-        const snaps = await fetchLastSnapshot()
+        const snaps = await fetchLastSnapshot(weekStart)
         setSnapshots(snaps)
       } catch(e) {
         console.error('WIP snapshot load error:', e)
       }
     }
     loadSnapshots()
-  }, [])
+  }, [weekStart])
 
   async function load(){
     setLoading(true);setError(null)
     try{
-      const [items, snaps] = await Promise.all([fetchAllItems(), fetchLastSnapshot()])
+      const [items, snaps] = await Promise.all([fetchAllItems(), fetchLastSnapshot(weekStart)])
       setSnapshots(snaps)
       const buckets={SCHEDULE:[],HTI:[],POST:[],HOLD:[],NEW_GOODS:[],WIP:[]}
       items.forEach(i=>buckets[classify(i)].push(i))
@@ -765,7 +769,7 @@ export default function WIPTab(){
       const result=await lockWIP(weekStart, weekLabel, 'manual', data?.rawItems || [])
       if(result.success){
         setLockMsg({type:'success',text:`✓ Locked ${result.weekLabel} — ${result.wip} WIP orders · ${fmt(result.yards)} yds`})
-        const snaps=await fetchLastSnapshot(); setSnapshots(snaps)
+        const snaps=await fetchLastSnapshot(weekStart); setSnapshots(snaps)
       } else {
         setLockMsg({type:'error',text:`Lock failed: ${result.error}`})
       }
@@ -830,7 +834,7 @@ export default function WIPTab(){
                 </div>
               ))}
             </div>
-            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>
               {[
                 {label:'Wallpaper',orders:snapshots[0].wallpaper_orders,yards:snapshots[0].wallpaper_yards},
                 {label:'Grasscloth',orders:snapshots[0].grasscloth_orders,yards:snapshots[0].grasscloth_yards},
@@ -841,6 +845,25 @@ export default function WIPTab(){
                   <span style={{color:C.inkLight,marginLeft:8}}>{d.orders} orders · {Math.round(d.yards).toLocaleString()} yds</span>
                 </div>
               ))}
+            </div>
+            {/* Age buckets */}
+            <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.08em',textTransform:'uppercase',color:C.inkLight,marginBottom:10}}>WIP Age</div>
+              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                {[
+                  {label:'0–30d', val:snapshots[0].age_0_30_orders, color:C.sage},
+                  {label:'31–60d',val:snapshots[0].age_31_60_orders,color:C.amber},
+                  {label:'61–90d',val:snapshots[0].age_61_90_orders,color:C.rose},
+                  {label:'90d+',  val:snapshots[0].age_90plus_orders,color:C.rose},
+                  {label:'No Date',val:snapshots[0].age_no_date_orders,color:C.inkLight},
+                ].map(a=>(
+                  <div key={a.label} style={{background:'#fff',borderRadius:8,padding:'8px 14px',border:`1px solid ${C.border}`,textAlign:'center',minWidth:80}}>
+                    <div style={{fontSize:10,color:C.inkLight,fontWeight:600,letterSpacing:'0.06em',marginBottom:4}}>{a.label}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:a.val>0?a.color:C.inkLight}}>{a.val??'—'}</div>
+                    <div style={{fontSize:9,color:C.inkLight}}>orders</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
