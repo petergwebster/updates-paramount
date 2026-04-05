@@ -253,15 +253,15 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
       const logLines = Object.entries(days).filter(([,v])=>v?.text?.trim()).map(([day,v])=>`  ${day}: ${v.text.slice(0,200)}`).join('\n')
       const finLines = finHistory?.slice(0,4).map(f=>`  ${f.period} ${f.bu}: COGS $${(f.cogs||0).toLocaleString()} · OpEx $${(f.opex||0).toLocaleString()} · Inv $${(f.inv_purchases||0).toLocaleString()}`).join('\n')||'  No financial data'
 
-      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing, F. Schumacher & Co), write a weekly executive summary for CEO Timur and Chief of Staff Emily.
+      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a weekly executive summary for his CEO Timur and Chief of Staff Emily.
 
-Two facilities: Passaic NJ (screen print) and Brooklyn BNY (digital). ~$10M/year revenue.
+Two facilities: Brooklyn BNY (digital printing) and Passaic NJ (screen print: fabric, grass cloth, wallpaper). ~$10M/year revenue.
 
 WEEK OF: ${format(weekStart,'MMMM d, yyyy')}
 
 PRODUCTION THIS WEEK:
-  NJ Passaic: ${njYds.toLocaleString()} yds of 8,610 target (${njPct}%)
   BNY Brooklyn: ${bnyYds.toLocaleString()} yds of 12,000 target (${bnyPct}%)
+  NJ Passaic: ${njYds.toLocaleString()} yds of 8,610 target (${njPct}%)
   Combined: ${totalYds.toLocaleString()} yds of 20,610 target (${totalPct}%)
 
 MTD PRODUCTION (${mtdWeeks.length} weeks): ${mtdTotal.toLocaleString()} yds · ${mtdPct}% of budget
@@ -277,13 +277,17 @@ ${finLines}
 
 ${weekData?.concerns?'AREAS OF CONCERN:\n  '+weekData.concerns:''}
 
-Write 3–4 paragraphs in Peter's voice — direct, factual, candid:
-1. Overall week vs target
-2. Key highlights and what's working
-3. Concerns/watch items with context
-4. Forward look for next week
+Write exactly 4 paragraphs in Peter's voice — direct, factual, candid. Follow this structure precisely:
 
-Under 220 words. First person. No bullets. No headers. No title. Start directly.`
+Paragraph 1 — OVERALL: One or two sentences on the combined week result vs target and MTD tracking. Set the tone.
+
+Paragraph 2 — BNY BROOKLYN: Performance vs 12,000 yd target. Key KPI highlights relevant to BNY (financial contribution, delivery, quality, vendor). What's working and what to watch.
+
+Paragraph 3 — PASSAIC NJ: Performance vs 8,610 yd target. Key KPI highlights relevant to Passaic (cost efficiency, quality/waste, grounds, inventory). What's working and what to watch.
+
+Paragraph 4 — NEXT WEEK / ACTION PLAN: Specific actions Peter is taking or monitoring. What Timur and Emily should expect in next week's report. Forward-looking and concrete.
+
+Under 250 words total. First person as Peter. No bullet points. No headers. No title line. Start directly with the first sentence.`
 
       const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})})
       const data = await resp.json()
