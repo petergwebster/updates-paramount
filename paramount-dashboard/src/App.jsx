@@ -176,7 +176,7 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
 }
 
 // ── Admin page ────────────────────────────────────────────────────────────────
-function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentProps }) {
+function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps }) {
   const [section, setSection] = useState('production')
   const [generating, setGenerating] = useState(false)
   const [genError,   setGenError]   = useState(null)
@@ -288,7 +288,7 @@ Under 220 words. First person. No bullets. No headers. No title. Start directly.
       const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})})
       const data = await resp.json()
       const text = data.content?.find(c=>c.type==='text')?.text
-      if (text) { await onSave({executive_narrative:text.trim()}); setGenSuccess(true); setTimeout(()=>setGenSuccess(false),5000) }
+      if (text) { await onSave({executive_narrative:text.trim()}); onRefresh && onRefresh(); setGenSuccess(true); setTimeout(()=>setGenSuccess(false),5000) }
       else setGenError('Could not generate — try again.')
     } catch(e) { setGenError('Generation failed. Check connection.') }
     setGenerating(false)
@@ -743,7 +743,7 @@ export default function App() {
               <LiveOpsPage weekStart={currentWeek}/>
             )}
             {activeTab==='admin' && adminAuthenticated && (
-              <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
+              <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} onRefresh={()=>loadWeek(currentWeek)} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
             )}
           </>
         )}
