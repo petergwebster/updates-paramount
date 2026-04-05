@@ -72,7 +72,7 @@ function SectionLabel({ children }) {
 function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
   const fiscalLabel = getFiscalLabel(weekStart)
   const narrative   = weekData?.executive_narrative || null
-  const kpis        = weekData?.kpi_scores || {}
+  const kpis        = weekData?.kpis || {}
   const flags       = weekData?.flags || null
   const kpiList     = Object.values(kpis)
   const onTrack     = kpiList.filter(k=>k?.status==='green').length
