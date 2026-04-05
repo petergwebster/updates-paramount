@@ -193,7 +193,7 @@ function AdminPage({ weekStart, weekData, onSave, dbReady, userProfile, commentP
     async function checkSavedState() {
       const [{ data: prod }, { data: fin }, { data: ppl }] = await Promise.all([
         supabase.from('production').select('week_start').eq('week_start', wk).maybeSingle(),
-        supabase.from('financial_uploads').select('period').ilike('period', wk.slice(0,7)+'%').limit(1),
+        supabase.from('financials_monthly').select('period').ilike('period', wk.slice(0,7)+'%').limit(1),
         supabase.from('people_weekly').select('week_start').eq('week_start', wk).maybeSingle(),
       ])
       setHasProd(!!prod)

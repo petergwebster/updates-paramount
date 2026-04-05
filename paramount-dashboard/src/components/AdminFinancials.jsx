@@ -180,11 +180,28 @@ export default function AdminFinancials({ weekStart }) {
   const [preview, setPreview]               = useState(null);
   const [uploads, setUploads]               = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState("");
+  const [showPeriodPicker, setShowPeriodPicker] = useState(false);
   const fileInputRef = useRef(null);
   const periodOptions = generatePeriodOptions();
 
-  useEffect(() => { loadHistory(); }, []);
+  // Auto-derive period from weekStart prop
+  function derivePeriodFromWeekStart(ws) {
+    if (!ws) return "";
+    const d = typeof ws === "string" ? new Date(ws + "T12:00:00") : ws;
+    const yr = d.getFullYear();
+    const mo = d.getMonth() + 1;
+    const mm = String(mo).padStart(2, "0");
+    const day = d.getDate();
+    const wk = Math.min(Math.ceil(day / 7), 5);
+    return `${yr}-${mm}-W${wk}`;
+  }
+
+  const [selectedPeriod, setSelectedPeriod] = useState(() => derivePeriodFromWeekStart(weekStart));
+
+  useEffect(() => {
+    setSelectedPeriod(derivePeriodFromWeekStart(weekStart));
+    loadHistory();
+  }, [weekStart]);
 
   async function loadHistory() {
     setLoadingHistory(true);
@@ -220,7 +237,7 @@ export default function AdminFinancials({ weekStart }) {
       }
       const totals  = parseGL(rows);
       const guessed = guessPeriod(rows);
-      if (guessed && !selectedPeriod) setSelectedPeriod(guessed);
+      if (guessed && !selectedPeriod) setSelectedPeriod(guessed); // only override if weekStart didn't set one
       setPreview({ totals, rowCount:rows.length, guessed });
     } catch(err) { setMessage({type:"error", text:`Parse error: ${err.message}`}); }
   }
@@ -251,17 +268,18 @@ export default function AdminFinancials({ weekStart }) {
         <p style={{fontSize:13,color:"#666",marginTop:4}}>Upload the weekly GP purchase report. <strong>Select the correct week</strong> before saving.</p>
       </div>
 
-      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-        <label style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap"}}>Save to period:</label>
-        <select value={selectedPeriod} onChange={(e)=>setSelectedPeriod(e.target.value)}
-          style={{border:"1px solid #ccc",borderRadius:8,padding:"6px 10px",fontSize:13,background:"#fff",cursor:"pointer"}}>
-          <option value="">— pick a week —</option>
-          {periodOptions.map((o)=><option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        {selectedPeriod && (
-          <span style={{fontFamily:"monospace",fontSize:12,background:"#eef2ff",color:"#4338ca",border:"1px solid #c7d2fe",padding:"3px 8px",borderRadius:6}}>
-            {selectedPeriod}
-          </span>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px"}}>
+        <span style={{fontSize:12,color:"#15803d",fontWeight:600}}>📅 Saving to period:</span>
+        <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#15803d"}}>{selectedPeriod || "—"}</span>
+        <button onClick={()=>setShowPeriodPicker(p=>!p)} style={{fontSize:11,color:"#4338ca",background:"none",border:"1px solid #c7d2fe",borderRadius:4,padding:"2px 8px",cursor:"pointer",marginLeft:4}}>
+          {showPeriodPicker ? "✕ close" : "change"}
+        </button>
+        {showPeriodPicker && (
+          <select value={selectedPeriod} onChange={(e)=>{setSelectedPeriod(e.target.value);setShowPeriodPicker(false);}}
+            style={{border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",fontSize:12,background:"#fff",cursor:"pointer"}}>
+            <option value="">— pick a week —</option>
+            {periodOptions.map((o)=><option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         )}
       </div>
 
