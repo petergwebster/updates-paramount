@@ -93,7 +93,7 @@ function emptyNJ() {
     paper:  { yards: '', colorYards: '', waste: '', postWaste: '', invoiceYds: '', invoiceRev: '' },
     schWritten: '', schProduced: '', schInvoiced: '',
     tpWritten: '', tpProduced: '', tpInvoiced: '',
-    commentary: '',
+    commentary: '', miscFees: '',
   }
 }
 function emptyBNY() {
@@ -105,7 +105,7 @@ function emptyBNY() {
     incomeReplen: '', incomeMto: '', incomeHos: '', incomeMemo: '', incomeContract: '',
     schWritten: '', schProduced: '', schInvoiced: '',
     tpWritten: '', tpProduced: '', tpInvoiced: '',
-    commentary: '', machines: emptyMachines(), procurement: '',
+    commentary: '', machines: emptyMachines(), procurement: '', miscFees: '',
   }
 }
 function getDefaultDays() {
@@ -250,8 +250,8 @@ function KPIFileAttach({ kpiId, kpiName, fileData, onFileData }) {
 }
 
 // ── Main AdminPanel component ─────────────────────────────────────────────────
-export default function AdminPanel({ weekStart, weekData, onSave, dbReady, defaultSection }) {
-  const [activeSection, setActiveSection] = useState(defaultSection || 'production')
+export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
+  const [activeSection, setActiveSection] = useState('production')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(null) // 'production' | 'kpis' | 'log'
 
@@ -406,17 +406,14 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
 
   return (
     <div className={styles.container}>
-      {!defaultSection && (
       <div className={styles.topRow}>
         <div>
           <h2 className={styles.pageTitle}>Admin Panel</h2>
           <p className={styles.pageSub}>Week of {format(weekStart, 'MMMM d, yyyy')} · Data entry & management</p>
         </div>
       </div>
-      )}
 
-      {/* Section tabs — hidden when controlled by outer AdminPage nav */}
-      {!defaultSection && (
+      {/* Section tabs */}
       <div className={styles.sectionTabs}>
         {SECTIONS.map(s => (
           <button key={s.id} className={`${styles.sectionTab} ${activeSection === s.id ? styles.sectionTabActive : ''}`} onClick={() => setActiveSection(s.id)}>
@@ -424,7 +421,6 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           </button>
         ))}
       </div>
-      )}
 
       {/* ── PRODUCTION DATA ── */}
       {activeSection === 'production' && (
@@ -453,7 +449,16 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                   </div>
                 ))}
               </div>
-              <div className={styles.editSubHeader}>Schumacher vs 3rd Party</div>
+              <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Miscellaneous Fees</div>
+              <div style={{ maxWidth: 220 }}>
+                <NumberInput
+                  label="Misc fees charged this week $ (no target)"
+                  value={njData.miscFees}
+                  onChange={v => updateNJ('miscFees', v)}
+                  placeholder="0"
+                />
+              </div>
+              <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Schumacher vs 3rd Party</div>
               <div className={styles.editThreeCol}>
                 {[['Written', 'Written'], ['Produced', 'Produced'], ['Invoiced', 'Invoiced']].map(([label, key]) => (
                   <div key={key}>
@@ -520,6 +525,15 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
                 </div>
               </div>
 
+              <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Miscellaneous Fees</div>
+              <div style={{ maxWidth: 220 }}>
+                <NumberInput
+                  label="Misc fees charged this week $ (no target)"
+                  value={bnyData.miscFees}
+                  onChange={v => updateBNY('miscFees', v)}
+                  placeholder="0"
+                />
+              </div>
               <div className={styles.editSubHeader} style={{ marginTop: 16 }}>Schumacher vs 3rd Party</div>
               <div className={styles.editThreeCol}>
                 {[['Written', 'Written'], ['Produced', 'Produced'], ['Invoiced', 'Invoiced']].map(([label, key]) => (

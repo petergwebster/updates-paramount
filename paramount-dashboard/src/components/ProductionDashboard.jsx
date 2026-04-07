@@ -318,6 +318,13 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const bnyInvYdsTgt   = BNY_TARGETS.replen + BNY_TARGETS.mto + BNY_TARGETS.hos + BNY_TARGETS.memo + BNY_TARGETS.contract
   const bnyInvRevTgt   = BNY_TARGETS.totalIncomeInvoiced
 
+  const njMiscFees  = n(njData.miscFees)
+  const bnyMiscFees = n(bnyData.miscFees)
+
+  // MTD misc fees
+  const mtdNJMiscFees  = mtdData.reduce((s,h) => s + n(h.nj_data?.miscFees), 0)
+  const mtdBNYMiscFees = mtdData.reduce((s,h) => s + n(h.bny_data?.miscFees), 0)
+
   const hasData = njTotalYards > 0 || bnyTotal > 0
 
   // History data for charts/table
@@ -565,6 +572,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds',
                   sub: njSchInv||njTpInv ? `SCH ${njSchInv.toLocaleString()} · 3P ${njTpInv.toLocaleString()}` : null },
                 { label:'Invoiced Rev', val:njTotalInvRev, tgt:njInvRevTgt, unit:'$', isDollar:true },
+                ...(njMiscFees>0||mtdNJMiscFees>0 ? [{ label:'Misc Fees', val:njMiscFees, tgt:null, unit:'$', isDollar:true,
+                  sub: mtdNJMiscFees>0 ? `MTD $${Math.round(mtdNJMiscFees).toLocaleString()}` : null }] : []),
               ]
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
@@ -687,6 +696,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds',
                   sub: bnySchInv||bnyTpInv ? `SCH ${bnySchInv.toLocaleString()} · 3P ${bnyTpInv.toLocaleString()}` : null },
                 { label:'Invoiced Rev', val:bnyTotalInvRev, tgt:bnyInvRevTgt, unit:'$', isDollar:true },
+                ...(bnyMiscFees>0||mtdBNYMiscFees>0 ? [{ label:'Misc Fees', val:bnyMiscFees, tgt:null, unit:'$', isDollar:true,
+                  sub: mtdBNYMiscFees>0 ? `MTD $${Math.round(mtdBNYMiscFees).toLocaleString()}` : null }] : []),
               ]
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
