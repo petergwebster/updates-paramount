@@ -339,17 +339,20 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     try {
       const monthKey = format(weekStart, 'yyyy-MM')
       const monthLabel = format(weekStart, 'MMMM yyyy')
+      const monthStart = monthKey + '-01'
+      const monthEnd   = monthKey + '-31'
+      const periodPrefix = monthKey  // for financials which use 2026-03-W1 format
 
       // Pull all data for the month
       const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRow },
              { data: peopleRows }, { data: weekRows }, { data: wipSnap }] = await Promise.all([
-        supabase.from('production').select('*').like('week_start', monthKey + '%').order('week_start'),
-        supabase.from('financials_monthly').select('*').like('period', monthKey + '%'),
-        supabase.from('financial_ap').select('*').like('period', monthKey + '%'),
-        supabase.from('financial_ar').select('*').like('period', monthKey + '%').order('uploaded_at', {ascending:false}).limit(1),
-        supabase.from('people_weekly').select('*').like('week_start', monthKey + '%').order('week_start', {ascending:false}).limit(1),
-        supabase.from('weeks').select('*').like('week_start', monthKey + '%').order('week_start'),
-        supabase.from('wip_snapshots').select('*').like('week_start', monthKey + '%').order('week_start', {ascending:false}).limit(1),
+        supabase.from('production').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
+        supabase.from('financials_monthly').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5'),
+        supabase.from('financial_ap').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5'),
+        supabase.from('financial_ar').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5').order('uploaded_at', {ascending:false}).limit(1),
+        supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start', {ascending:false}).limit(1),
+        supabase.from('weeks').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
+        supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start', {ascending:false}).limit(1),
       ])
 
       const n = v => parseFloat(v)||0
