@@ -188,6 +188,25 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
   const [draftNarrative, setDraftNarrative] = useState('')
   const [publishing,     setPublishing]     = useState(false)
 
+  // Load saved reports for current month on weekStart change
+  useEffect(() => {
+    async function loadSavedReports() {
+      const monthKey = format(weekStart, 'yyyy-MM')
+      const { data } = await supabase
+        .from('monthly_reports')
+        .select('type, report_title, generated_at, narrative')
+        .eq('month', monthKey)
+      if (data) {
+        const map = {}
+        data.forEach(r => { map[r.type] = r })
+        setSavedReports(map)
+      } else {
+        setSavedReports({})
+      }
+    }
+    loadSavedReports()
+  }, [weekStart])
+
   // One-pager state
   const [onePagerType,    setOnePagerType]    = useState(null)
   const [onePagerDraft,   setOnePagerDraft]   = useState('')
@@ -197,6 +216,7 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
   const [onePagerPayload, setOnePagerPayload] = useState(null)
   const [pdfGenerating,   setPdfGenerating]   = useState(false)
   const [onePagerSaved,   setOnePagerSaved]   = useState(false)
+  const [savedReports,    setSavedReports]    = useState({}) // { mid: {...}, end: {...} }
 
   // Live saved-state checks — query existing tables, no schema changes needed
   const [hasProd,    setHasProd]    = useState(false)
@@ -352,6 +372,14 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     const { jsPDF } = window.jspdf
     const doc = new jsPDF({ unit: 'pt', format: 'letter' })
     const PW = 612 - 86, L = 43, MID = L + PW / 2
+    const PAGE_H = 792, BOTTOM_MARGIN = 50
+    const checkPage = (currentY, needed = 60) => {
+      if (currentY + needed > PAGE_H - BOTTOM_MARGIN) {
+        doc.addPage()
+        return 50
+      }
+      return currentY
+    }
 
     const INK = '#2C2420', GOLD = '#D4A843', BORDER = '#DDD4C8'
     const INK_LIGHT = '#9C8F87', CREAM_DK = '#F2EDE4'
@@ -373,11 +401,12 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
 
     // ── HEADER ──────────────────────────────────────────────────────────────
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PARAMOUNT PRINTS', L, 52); doc.setCharSpace(0)
-    setFont(18, INK, true); doc.text(data.report_title, L, 64)
-    setFont(9, INK_LIGHT); doc.text(data.period_label, L, 80)
-    doc.text(data.date_generated, L + PW, 80, { align: 'right' })
-    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 88, L + PW, 88)
+    doc.text('PARAMOUNT PRINTS', L, 50); doc.setCharSpace(0)
+    setFont(16, INK, true); doc.text(data.report_title, L, 62)
+    setFont(9, INK_LIGHT)
+    doc.text(data.period_label, L, 76)
+    doc.text(data.date_generated, L + PW, 76, { align: 'right' })
+    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 84, L + PW, 84)
 
     // ── NARRATIVE ────────────────────────────────────────────────────────────
     let y = 98
@@ -393,7 +422,9 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
       y += lines.length * 13 + 5
     })
 
-    y += 4; hline(y, BORDER); y += 8
+    y += 4
+    y = checkPage(y, 120)
+    hline(y, BORDER); y += 8
 
     // ── PRODUCTION ───────────────────────────────────────────────────────────
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
@@ -429,7 +460,9 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     })
 
     // ── FINANCIALS ────────────────────────────────────────────────────────────
-    y += 4; hline(y, BORDER); y += 8
+    y += 4
+    y = checkPage(y, 150)
+    hline(y, BORDER); y += 8
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('FINANCIALS', L, y); doc.setCharSpace(0)
     y += 13
@@ -462,7 +495,9 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     })
 
     // ── PEOPLE + WIP ─────────────────────────────────────────────────────────
-    y += 10; hline(y, BORDER); y += 8
+    y += 10
+    y = checkPage(y, 100)
+    hline(y, BORDER); y += 8
     const ppl = data.people, wip = data.wip
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('PEOPLE', L, y)
@@ -484,10 +519,10 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     doc.text(`By type: Wallpaper ${wip.wallpaper||'—'}  ·  Grasscloth ${wip.grasscloth||'—'}  ·  Fabric ${wip.fabric||'—'}`, MID+6, y+26)
 
     // ── FOOTER ───────────────────────────────────────────────────────────────
-    const footerY = 792 - 35
-    hline(footerY, BORDER)
+    const footerY = PAGE_H - 28
+    hline(footerY, BORDER, 0.5)
     setFont(7.5, INK_LIGHT)
-    doc.text(`Paramount Prints · F. Schumacher & Co. · ${data.report_title} · Confidential`, L + PW/2, footerY+10, { align: 'center' })
+    doc.text(`Paramount Prints · F. Schumacher & Co. · ${data.report_title} · Confidential`, L + PW/2, footerY + 10, { align: 'center' })
 
     doc.save(data.filename || 'paramount-report.pdf')
   }
@@ -506,6 +541,8 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
       }, { onConflict: 'month,type' })
       setOnePagerSaved(true)
       setTimeout(() => setOnePagerSaved(false), 3000)
+      // Refresh saved reports indicator
+      setSavedReports(prev => ({ ...prev, [onePagerType]: { type: onePagerType, generated_at: new Date().toISOString(), narrative: onePagerDraft } }))
     } catch(e) { setOnePagerError('Save failed: '+e.message) }
   }
 
@@ -785,20 +822,37 @@ Write exactly 4 paragraphs:
         {[
           { type:'mid', label:'📄 Mid-Month Brief', desc:'MTD snapshot — where we are tracking' },
           { type:'end', label:'📋 Month-End Report', desc:'Full month close — how did we finish' },
-        ].map(btn=>(
-          <button key={btn.type} onClick={()=>generateOnePager(btn.type)} disabled={onePagerLoading}
-            style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
-              background: onePagerType===btn.type&&onePagerDraft ? '#1f2937' : '#F5F5F5',
-              color: onePagerType===btn.type&&onePagerDraft ? '#fff' : 'var(--ink)',
-              border:`1px solid ${onePagerType===btn.type&&onePagerDraft?'#1f2937':'var(--ink-10)'}`,
-              borderRadius:10, padding:'12px 18px', cursor:onePagerLoading?'not-allowed':'pointer',
-              opacity:onePagerLoading?0.7:1, textAlign:'left', minWidth:200 }}>
-            <span style={{ fontSize:14, fontWeight:700, fontFamily:'Georgia,serif' }}>
-              {onePagerLoading&&onePagerType===btn.type ? '⏳ Generating…' : btn.label}
-            </span>
-            <span style={{ fontSize:11, opacity:0.6 }}>{btn.desc}</span>
-          </button>
-        ))}
+        ].map(btn => {
+          const saved = savedReports[btn.type]
+          const isActive = onePagerType===btn.type && onePagerDraft
+          return (
+            <div key={btn.type} style={{ display:'flex', flexDirection:'column', gap:0, minWidth:220 }}>
+              <button onClick={()=>generateOnePager(btn.type)} disabled={onePagerLoading}
+                style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
+                  background: isActive ? '#1f2937' : saved ? '#1f2937' : '#F5F5F5',
+                  color: isActive||saved ? '#fff' : 'var(--ink)',
+                  border:`1.5px solid ${isActive||saved?'#1f2937':'var(--ink-10)'}`,
+                  borderRadius: saved ? '10px 10px 0 0' : 10,
+                  padding:'12px 18px', cursor:onePagerLoading?'not-allowed':'pointer',
+                  opacity:onePagerLoading&&onePagerType!==btn.type?0.6:1, textAlign:'left', width:'100%' }}>
+                <span style={{ fontSize:14, fontWeight:700, fontFamily:'Georgia,serif' }}>
+                  {onePagerLoading&&onePagerType===btn.type ? '⏳ Generating…' : btn.label}
+                </span>
+                <span style={{ fontSize:11, opacity:0.6 }}>{saved ? (isActive?'Editing…':'Saved — click to load/edit') : btn.desc}</span>
+              </button>
+              {saved && !isActive && (
+                <div style={{ background:'#F0F4F0', border:'1.5px solid #1f2937', borderTop:'none', borderRadius:'0 0 10px 10px', padding:'8px 18px' }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:'#4a7c59', letterSpacing:'0.06em', marginBottom:3 }}>
+                    ✓ SAVED · {new Date(saved.generated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                  </div>
+                  <div style={{ fontSize:11, color:'#555', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
+                    {saved.narrative?.slice(0,120)}…
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* One-pager draft */}
