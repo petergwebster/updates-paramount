@@ -334,6 +334,163 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     return data.content?.find(c=>c.type==='text')?.text?.trim() || ''
   }
 
+  async function generatePDFClientSide(data) {
+    // Load jsPDF dynamically from CDN
+    if (!window.jspdf) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+        script.onload = resolve
+        script.onerror = reject
+        document.head.appendChild(script)
+      })
+    }
+
+    const { jsPDF } = window.jspdf
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+    const PW = 612 - 86, L = 43, MID = L + PW / 2
+
+    const INK = '#2C2420', GOLD = '#D4A843', BORDER = '#DDD4C8'
+    const INK_LIGHT = '#9C8F87', CREAM_DK = '#F2EDE4'
+    const GREEN = '#15803d', AMBER = '#b45309', RED = '#b91c1c'
+
+    const pctColor = p => p == null ? INK_LIGHT : p >= 95 ? GREEN : p >= 80 ? AMBER : RED
+
+    const setFont = (size, color, bold = false) => {
+      doc.setFontSize(size)
+      doc.setTextColor(color)
+      doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    }
+
+    const hline = (y, color, w = 0.5) => {
+      doc.setDrawColor(color)
+      doc.setLineWidth(w)
+      doc.line(L, y, L + PW, y)
+    }
+
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
+    doc.text('PARAMOUNT PRINTS', L, 52); doc.setCharSpace(0)
+    setFont(18, INK, true); doc.text(data.report_title, L, 64)
+    setFont(9, INK_LIGHT); doc.text(data.period_label, L, 80)
+    doc.text(data.date_generated, L + PW, 80, { align: 'right' })
+    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 88, L + PW, 88)
+
+    // ── NARRATIVE ────────────────────────────────────────────────────────────
+    let y = 98
+    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
+    doc.text('EXECUTIVE SUMMARY', L, y); doc.setCharSpace(0)
+    y += 12
+
+    const paras = data.narrative.split('
+
+').filter(p => p.trim())
+    paras.forEach(para => {
+      setFont(9.5, INK)
+      const lines = doc.splitTextToSize(para.trim(), PW)
+      doc.text(lines, L, y)
+      y += lines.length * 13 + 5
+    })
+
+    y += 4; hline(y, BORDER); y += 8
+
+    // ── PRODUCTION ───────────────────────────────────────────────────────────
+    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
+    doc.text('PRODUCTION — MONTH-TO-DATE', L, y); doc.setCharSpace(0)
+    y += 13
+
+    const bny = data.bny, nj = data.nj
+    setFont(10, INK, true)
+    doc.text('BNY — BROOKLYN DIGITAL', L, y)
+    doc.text('NJ — PASSAIC SCREEN PRINT', MID + 6, y)
+    y += 16
+
+    const colW = PW / 2 - 6
+    const metricRows = [
+      { bny: { label:'PRODUCED', val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, color:pctColor(bny.prod_pct) },
+        nj:  { label:'PRODUCED', val:nj.prod_yds, sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`, color:pctColor(nj.prod_pct) } },
+      { bny: { label:'INVOICED YDS', val:bny.inv_yds, sub:`Revenue: ${bny.inv_rev}`, color:INK },
+        nj:  { label:'INVOICED YDS', val:nj.inv_yds, sub:`Revenue: ${nj.inv_rev}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, color:INK } },
+      { bny: { label:'OPEX MTD', val:bny.opex, sub:`Inv Purchases: ${bny.inv_purch}`, color:INK },
+        nj:  { label:'OPEX MTD', val:nj.opex, sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, color:INK } },
+    ]
+
+    metricRows.forEach((row, i) => {
+      ;[{d:row.bny, x:L},{d:row.nj, x:MID+6}].forEach(({d, x}) => {
+        setFont(7, INK_LIGHT); doc.text(d.label, x, y)
+        setFont(13, d.color, true); doc.text(d.val||'—', x, y+11)
+        setFont(7.5, INK_LIGHT); doc.text(doc.splitTextToSize(d.sub, colW), x, y+23)
+      })
+      doc.setDrawColor(BORDER); doc.setLineWidth(0.5)
+      doc.line(MID, y-2, MID, y+38)
+      if (i < metricRows.length - 1) { doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3); doc.line(L, y+42, L+PW, y+42) }
+      y += 46
+    })
+
+    // ── FINANCIALS ────────────────────────────────────────────────────────────
+    y += 4; hline(y, BORDER); y += 8
+    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
+    doc.text('FINANCIALS', L, y); doc.setCharSpace(0)
+    y += 13
+
+    const fin = data.financials
+    const cw = PW / 4
+    const headers = ['METRIC', 'PARAMOUNT NJ', 'BNY BROOKLYN', 'COMBINED']
+    const rows = [
+      ['OpEx MTD', nj.opex, bny.opex, fin.opex_combined],
+      ['Inv Purchases', nj.inv_purch, bny.inv_purch, fin.inv_combined],
+      ['AP Total', fin.ap_para_total, fin.ap_bny_total, fin.ap_combined],
+      ['AP Past Due', fin.ap_para_pd, fin.ap_bny_pd, fin.ap_combined_pd, true],
+      ['AR Outstanding', '—', '—', fin.ar_outstanding],
+      ['AR Past Due', '—', '—', fin.ar_past_due, true],
+    ]
+
+    doc.setFillColor(INK); doc.rect(L, y, PW, 16, 'F')
+    setFont(7, '#ffffff', true)
+    headers.forEach((h, i) => doc.text(h, L + i*cw + 5, y+11))
+    y += 16
+
+    rows.forEach((row, ri) => {
+      if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, 16, 'F') }
+      row.slice(0,4).forEach((cell, ci) => {
+        const isPD = row[4]===true && ci > 0
+        setFont(8, ci===0 ? INK_LIGHT : isPD ? RED : INK, ci===3)
+        doc.text(cell||'—', L + ci*cw + 5, y+11)
+      })
+      hline(y+16, BORDER, 0.3); y += 16
+    })
+
+    // ── PEOPLE + WIP ─────────────────────────────────────────────────────────
+    y += 10; hline(y, BORDER); y += 8
+    const ppl = data.people, wip = data.wip
+    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
+    doc.text('PEOPLE', L, y)
+    doc.text('WIP SNAPSHOT', MID+6, y); doc.setCharSpace(0)
+    y += 12
+
+    setFont(9, INK)
+    doc.text(`Headcount: ${ppl.headcount||'—'}`, L, y)
+    doc.text(`Payroll MTD: ${ppl.payroll||'—'}`, L, y+12)
+    doc.text(`OT Hours: ${ppl.ot||'—'}`, L, y+24)
+    if (ppl.hr_notes) { setFont(7.5, INK_LIGHT); doc.text(ppl.hr_notes, L, y+36) }
+
+    doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.line(MID, y-2, MID, y+50)
+
+    setFont(9, INK)
+    doc.text(`Active: ${wip.orders||'—'} orders · ${wip.yards||'—'} yds`, MID+6, y)
+    setFont(7.5, INK_LIGHT)
+    doc.text(`Age: 0-30d ${wip.age_0_30||'—'}  ·  31-60d ${wip.age_31_60||'—'}  ·  61-90d ${wip.age_61_90||'—'}  ·  90d+ ${wip.age_90plus||'—'}`, MID+6, y+14)
+    doc.text(`By type: Wallpaper ${wip.wallpaper||'—'}  ·  Grasscloth ${wip.grasscloth||'—'}  ·  Fabric ${wip.fabric||'—'}`, MID+6, y+26)
+
+    // ── FOOTER ───────────────────────────────────────────────────────────────
+    const footerY = 792 - 35
+    hline(footerY, BORDER)
+    setFont(7.5, INK_LIGHT)
+    doc.text(`Paramount Prints · F. Schumacher & Co. · ${data.report_title} · Confidential`, L + PW/2, footerY+10, { align: 'center' })
+
+    doc.save(data.filename || 'paramount-report.pdf')
+  }
+
   async function generateOnePager(type) {
     setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type)
     try {
@@ -464,19 +621,8 @@ Write exactly 4 paragraphs:
         } : {},
       }
 
-      // Call PDF function and download
-      const pdfResp = await fetch('/api/generate-pdf', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(pdfPayload)
-      })
-
-      if (!pdfResp.ok) throw new Error('PDF generation failed')
-
-      const blob = await pdfResp.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = pdfPayload.filename; a.click()
-      URL.revokeObjectURL(url)
+      // Generate PDF client-side using jsPDF
+      await generatePDFClientSide(pdfPayload)
 
       // Save record to Supabase
       await supabase.from('monthly_reports').upsert({
