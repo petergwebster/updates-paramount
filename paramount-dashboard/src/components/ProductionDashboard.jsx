@@ -461,6 +461,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     schProduced: ytdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0),
     schInvoiced: ytdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0),
   }
+  const ytdNJMiscFees  = ytdData.reduce((s,h) => s + n(h.nj_data?.miscFees), 0)
+  const ytdBNYMiscFees = ytdData.reduce((s,h) => s + n(h.bny_data?.miscFees), 0)
   const ytdNJTarget = { fabric: NJ_TARGETS.fabric.yards * ytdWeeksWithData, grass: NJ_TARGETS.grass.yards * ytdWeeksWithData, paper: NJ_TARGETS.paper.yards * ytdWeeksWithData, total: NJ_TOTAL_TARGET * ytdWeeksWithData }
   const ytdBNYTarget = { total: BNY_TARGETS.total * ytdWeeksWithData, replen: BNY_TARGETS.replen * ytdWeeksWithData, mto: BNY_TARGETS.mto * ytdWeeksWithData, hos: BNY_TARGETS.hos * ytdWeeksWithData, memo: BNY_TARGETS.memo * ytdWeeksWithData, contract: BNY_TARGETS.contract * ytdWeeksWithData }
   const ytdNJNet = ytdNJ.total - ytdNJ.waste
