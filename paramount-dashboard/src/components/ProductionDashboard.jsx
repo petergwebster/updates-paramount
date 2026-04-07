@@ -579,10 +579,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
                   {cols.map((k,i,arr) => {
-                    const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                    const pctVal = k.tgt>0 && k.val!==null ? Math.round(k.val/k.tgt*100) : null
                     const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
-                    const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
-                    const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
+                    const valStr = k.val===null ? '—' : k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
+                    const tgtStr = k.tgt===null ? '—' : k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
                     return (
                       <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
@@ -703,10 +703,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
                   {cols.map((k,i,arr) => {
-                    const pctVal = k.tgt>0 ? Math.round(k.val/k.tgt*100) : null
+                    const pctVal = k.tgt>0 && k.val!==null ? Math.round(k.val/k.tgt*100) : null
                     const color  = pctVal===null?'var(--ink-40)':pctVal>=95?'#15803d':pctVal>=80?'#b45309':'#b91c1c'
-                    const valStr = k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
-                    const tgtStr = k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
+                    const valStr = k.val===null ? '—' : k.isDollar ? '$'+Math.round(k.val).toLocaleString() : k.val.toLocaleString()+' yds'
+                    const tgtStr = k.tgt===null ? '—' : k.isDollar ? '$'+Math.round(k.tgt).toLocaleString() : k.tgt.toLocaleString()+' yds'
                     return (
                       <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
