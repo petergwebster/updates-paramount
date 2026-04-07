@@ -194,6 +194,9 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
   const [onePagerLoading, setOnePagerLoading] = useState(false)
   const [onePagerError,   setOnePagerError]   = useState(null)
   const [onePagerCopied,  setOnePagerCopied]  = useState(false)
+  const [onePagerPayload, setOnePagerPayload] = useState(null)
+  const [pdfGenerating,   setPdfGenerating]   = useState(false)
+  const [onePagerSaved,   setOnePagerSaved]   = useState(false)
 
   // Live saved-state checks — query existing tables, no schema changes needed
   const [hasProd,    setHasProd]    = useState(false)
@@ -489,10 +492,62 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     doc.save(data.filename || 'paramount-report.pdf')
   }
 
+  async function saveOnePager() {
+    if (!onePagerDraft || !onePagerType) return
+    try {
+      const monthKey = format(weekStart, 'yyyy-MM')
+      await supabase.from('monthly_reports').upsert({
+        month: monthKey,
+        type: onePagerType,
+        report_title: onePagerPayload?.report_title || `${format(weekStart,'MMMM yyyy')} — ${onePagerType==='mid'?'Mid-Month Brief':'Month-End Report'}`,
+        narrative: onePagerDraft,
+        generated_at: new Date().toISOString(),
+        generated_by: 'peter',
+      }, { onConflict: 'month,type' })
+      setOnePagerSaved(true)
+      setTimeout(() => setOnePagerSaved(false), 3000)
+    } catch(e) { setOnePagerError('Save failed: '+e.message) }
+  }
+
+  async function downloadPDF() {
+    if (!onePagerPayload) return
+    setPdfGenerating(true)
+    try {
+      // Update narrative with any edits the user made
+      const payload = { ...onePagerPayload, narrative: onePagerDraft }
+      await generatePDFClientSide(payload)
+      // Save to Supabase
+      await supabase.from('monthly_reports').upsert({
+        month: format(weekStart, 'yyyy-MM'),
+        type: onePagerType,
+        report_title: payload.report_title,
+        narrative: onePagerDraft,
+        generated_at: new Date().toISOString(),
+        generated_by: 'peter',
+      }, { onConflict: 'month,type' })
+    } catch(e) { setOnePagerError('PDF failed: '+e.message) }
+    setPdfGenerating(false)
+  }
+
   async function generateOnePager(type) {
-    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type)
+    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type); setOnePagerSaved(false)
     try {
       const monthKey   = format(weekStart, 'yyyy-MM')
+
+      // Check if a saved report already exists for this month/type
+      const { data: existingReport } = await supabase
+        .from('monthly_reports')
+        .select('narrative, report_title')
+        .eq('month', monthKey)
+        .eq('type', type)
+        .single()
+
+      if (existingReport?.narrative) {
+        // Load saved version — user can regenerate if they want
+        setOnePagerDraft(existingReport.narrative)
+        setOnePagerLoading(false)
+        return
+      }
       const monthLabel = format(weekStart, 'MMMM yyyy')
       const monthStart = monthKey + '-01'
       const monthEnd   = monthKey + '-31'
@@ -619,18 +674,8 @@ Write exactly 4 paragraphs:
         } : {},
       }
 
-      // Generate PDF client-side using jsPDF
-      await generatePDFClientSide(pdfPayload)
-
-      // Save record to Supabase
-      await supabase.from('monthly_reports').upsert({
-        month: monthKey,
-        type,
-        report_title: pdfPayload.report_title,
-        narrative,
-        generated_at: new Date().toISOString(),
-        generated_by: 'peter',
-      }, { onConflict: 'month,type' })
+      // Store payload for PDF generation after editing
+      setOnePagerPayload(pdfPayload)
 
     } catch(e) { setOnePagerError('Failed: '+e.message) }
     setOnePagerLoading(false)
@@ -738,8 +783,16 @@ Write exactly 4 paragraphs:
             </div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={()=>{navigator.clipboard.writeText(onePagerDraft);setOnePagerCopied(true);setTimeout(()=>setOnePagerCopied(false),3000)}}
-                style={{ background:'#D4A843', color:'#1f2937', border:'none', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                {onePagerCopied ? '✓ Copied!' : '📋 Copy to Clipboard'}
+                style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                {onePagerCopied ? '✓ Copied!' : '📋 Copy'}
+              </button>
+              <button onClick={downloadPDF} disabled={pdfGenerating}
+                style={{ background:'#D4A843', color:'#1f2937', border:'none', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:700, cursor:pdfGenerating?'not-allowed':'pointer', opacity:pdfGenerating?0.7:1 }}>
+                {pdfGenerating ? '⏳ Building…' : '⬇ Download PDF'}
+              </button>
+              <button onClick={saveOnePager}
+                style={{ background:'none', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                {onePagerSaved ? '✓ Saved' : '💾 Save'}
               </button>
               <button onClick={()=>{setOnePagerDraft('');setOnePagerType(null)}}
                 style={{ background:'none', color:'rgba(255,255,255,0.5)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>
