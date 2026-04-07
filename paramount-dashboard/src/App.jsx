@@ -400,16 +400,22 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     }
 
     // ── HEADER ──────────────────────────────────────────────────────────────
+    // Split title into month label + report type
+    const titleParts = data.report_title.split(' — ')
+    const titleMonth = titleParts[0] || data.report_title
+    const titleType  = titleParts[1] || ''
+
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PARAMOUNT PRINTS', L, 50); doc.setCharSpace(0)
-    setFont(16, INK, true); doc.text(data.report_title, L, 62)
+    doc.text('PARAMOUNT PRINTS', L, 44); doc.setCharSpace(0)
+    setFont(11, INK_LIGHT, false); doc.text(titleMonth.toUpperCase(), L, 56)
+    setFont(20, INK, true); doc.text(titleType || titleMonth, L, 72)
     setFont(9, INK_LIGHT)
-    doc.text(data.period_label, L, 76)
-    doc.text(data.date_generated, L + PW, 76, { align: 'right' })
-    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 84, L + PW, 84)
+    doc.text(data.period_label, L, 84)
+    doc.text(data.date_generated, L + PW, 84, { align: 'right' })
+    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 92, L + PW, 92)
 
     // ── NARRATIVE ────────────────────────────────────────────────────────────
-    let y = 98
+    let y = 102
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('EXECUTIVE SUMMARY', L, y); doc.setCharSpace(0)
     y += 12
