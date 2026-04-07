@@ -465,7 +465,7 @@ Write exactly 4 paragraphs:
       }
 
       // Call PDF function and download
-      const pdfResp = await fetch('/.netlify/functions/generate-pdf', {
+      const pdfResp = await fetch('/api/generate-pdf', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(pdfPayload)
       })
