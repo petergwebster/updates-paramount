@@ -893,6 +893,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Schumacher', produced: mtdNJ.schProduced, invYds: mtdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, invTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, revTgt: null, bold: true },
                     ...(mtdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: mtdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
                   ].map(row => {
+                    if (row.isMisc) return (
+                      <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td colSpan={9} className={styles.mtdActual} style={{textAlign:'right'}}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
+                      </tr>
+                    )
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
                     const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
@@ -935,15 +941,29 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invYds: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), income: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, incTgt: null, bold: true },
                     ...(mtdBNYMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, income: mtdBNYMiscFees, prodTgt: null, incTgt: null, isMisc: true }] : []),
                   ].map(row => {
+                    if (row.isMisc) return (
+                      <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td className={styles.mtdActual}>—</td>
+                        <td className={styles.mtdActual}>—</td>
+                        <td className={styles.mtdActual}>{row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={styles.mtdTarget}>—</td>
+                        <td className={styles.mtdTarget}>—</td>
+                      </tr>
+                    )
                     const invYds = row.invYds !== undefined ? row.invYds : null
-                    const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
+                    const prodDiff = row.prodTgt && row.produced !== null ? row.produced - row.prodTgt : null
                     const invDiff  = invYds !== null && row.prodTgt ? invYds - row.prodTgt : null
                     const incDiff  = row.incTgt && row.income !== null && row.income !== undefined ? row.income - row.incTgt : null
-                    const prodSt   = row.prodTgt ? statusColor(row.produced, row.prodTgt) : 'gray'
+                    const prodSt   = row.prodTgt && row.produced !== null ? statusColor(row.produced, row.prodTgt) : 'gray'
                     return (
                       <tr key={row.label} className={row.bold ? styles.mtdBoldRow : ''}>
                         <td className={styles.mtdLabel}>{row.label}</td>
-                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.produced ? row.produced.toLocaleString() : '—'}</td>
+                        <td className={styles.mtdActual}><Dot status={prodSt} />{row.produced !== null ? row.produced.toLocaleString() : '—'}</td>
                         <td className={styles.mtdActual}>{invYds !== null ? invYds.toLocaleString() : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
                         <td className={styles.mtdActual}>{row.income !== null && row.income !== undefined && row.income > 0 ? fmtDollar(Math.round(row.income)) : <span style={{color:'var(--ink-30)'}}>—</span>}</td>
                         <td className={styles.mtdTarget}>{row.prodTgt ? row.prodTgt.toLocaleString() : '—'}</td>
@@ -1050,6 +1070,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Schumacher', produced: ytdNJ.schProduced, invYds: ytdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, invTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, revTgt: null, bold: true },
                     ...(ytdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: ytdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
                   ].map(row => {
+                    if (row.isMisc) return (
+                      <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td colSpan={9} className={styles.mtdActual} style={{textAlign:'right'}}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
+                      </tr>
+                    )
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
                     const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
@@ -1093,6 +1119,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     ...(ytdBNYMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, income: ytdBNYMiscFees, prodTgt: null, incTgt: null, isMisc: true }] : []),
                     { label: 'Procurement $', produced: ytdProcurement, income: null, prodTgt: null, incTgt: null, isDollar: true },
                   ].map(row => {
+                    if (row.isMisc) return (
+                      <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
+                        <td className={styles.mtdLabel}>{row.label}</td>
+                        <td colSpan={9} className={styles.mtdActual} style={{textAlign:'right'}}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
+                      </tr>
+                    )
                     const invYds = row.invYds !== undefined ? row.invYds : null
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const incDiff  = row.incTgt && row.income !== null && row.income !== undefined ? row.income - row.incTgt : null
