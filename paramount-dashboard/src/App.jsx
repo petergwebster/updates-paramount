@@ -510,11 +510,24 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
   }
 
   async function downloadPDF() {
-    if (!onePagerPayload) return
+    if (!onePagerDraft) return
     setPdfGenerating(true)
     try {
-      // Update narrative with any edits the user made
-      const payload = { ...onePagerPayload, narrative: onePagerDraft }
+      // Build payload — use stored one or create minimal version from current state
+      const monthLabel = format(weekStart, 'MMMM yyyy')
+      const isMid = onePagerType === 'mid'
+      const basePayload = onePagerPayload || {
+        report_title: `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
+        period_label: `${monthLabel} · Fiscal Q${Math.ceil(parseInt(format(weekStart,'MM'))/3)}`,
+        date_generated: format(new Date(), 'MMMM d, yyyy'),
+        filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
+        bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—' },
+        nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—' },
+        financials: { opex_combined:'—', inv_combined:'—', ap_para_total:'—', ap_bny_total:'—', ap_combined:'—', ap_para_pd:'—', ap_bny_pd:'—', ap_combined_pd:'—', ar_outstanding:'—', ar_past_due:'—' },
+        people: { headcount:'—', payroll:'—', ot:'—', hr_notes:'' },
+        wip: { orders:'—', yards:'—', age_0_30:'—', age_31_60:'—', age_61_90:'—', age_90plus:'—', wallpaper:'—', grasscloth:'—', fabric:'—' },
+      }
+      const payload = { ...basePayload, narrative: onePagerDraft }
       await generatePDFClientSide(payload)
       // Save to Supabase
       await supabase.from('monthly_reports').upsert({
@@ -545,6 +558,20 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
       if (existingReport?.narrative) {
         // Load saved version — user can regenerate if they want
         setOnePagerDraft(existingReport.narrative)
+        // Set minimal payload so Download PDF still works
+        const monthLabel = format(weekStart, 'MMMM yyyy')
+        const isMid = type === 'mid'
+        setOnePagerPayload({
+          report_title: existingReport.report_title || `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
+          period_label: `${monthLabel} · Fiscal Q${Math.ceil(parseInt(format(weekStart,'MM'))/3)}`,
+          date_generated: format(new Date(), 'MMMM d, yyyy'),
+          filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
+          bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—' },
+          nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—' },
+          financials: { opex_combined:'—', inv_combined:'—', ap_para_total:'—', ap_bny_total:'—', ap_combined:'—', ap_para_pd:'—', ap_bny_pd:'—', ap_combined_pd:'—', ar_outstanding:'—', ar_past_due:'—' },
+          people: { headcount:'—', payroll:'—', ot:'—', hr_notes:'' },
+          wip: { orders:'—', yards:'—', age_0_30:'—', age_31_60:'—', age_61_90:'—', age_90plus:'—', wallpaper:'—', grasscloth:'—', fabric:'—' },
+        })
         setOnePagerLoading(false)
         return
       }
