@@ -570,10 +570,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               const njSchInv = n(njData.schInvoiced)
               const njTpInv  = n(njData.tpInvoiced)
               const cols = [
-                { label:'Produced', val:njTotalYards, tgt:NJ_TOTAL_TARGET, unit:'yds' },
-                { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds',
-                  sub: njSchInv||njTpInv ? `SCH ${njSchInv.toLocaleString()} · 3P ${njTpInv.toLocaleString()}` : null },
-                { label:'Invoiced Rev', val:njTotalInvRev + njMiscFees, tgt:njInvRevTgt, unit:'$', isDollar:true,
+                { label:'Produced', val:njTotalYards||0, tgt:NJ_TOTAL_TARGET, unit:'yds' },
+                { label:'Invoiced Yds', val:njTotalInvYds||0, tgt:njInvYdsTgt, unit:'yds',
+                  sub: (njSchInv||njTpInv) ? `SCH ${(njSchInv||0).toLocaleString()} · 3P ${(njTpInv||0).toLocaleString()}` : null },
+                { label:'Invoiced Rev', val:(njTotalInvRev||0) + (njMiscFees||0), tgt:njInvRevTgt, unit:'$', isDollar:true,
                   sub2: njMiscFees>0 ? `incl. $${Math.round(njMiscFees).toLocaleString()} misc fees` : null },
               ]
               return (
@@ -694,10 +694,10 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
               const bnySchInv = n(bnyData.schInvoiced)
               const bnyTpInv  = n(bnyData.tpInvoiced)
               const cols = [
-                { label:'Produced', val:bnyTotal, tgt:BNY_TARGETS.total, unit:'yds' },
-                { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds',
-                  sub: bnySchInv||bnyTpInv ? `SCH ${bnySchInv.toLocaleString()} · 3P ${bnyTpInv.toLocaleString()}` : null },
-                { label:'Invoiced Rev', val:bnyTotalInvRev + bnyMiscFees, tgt:bnyInvRevTgt, unit:'$', isDollar:true,
+                { label:'Produced', val:bnyTotal||0, tgt:BNY_TARGETS.total, unit:'yds' },
+                { label:'Invoiced Yds', val:bnyTotalInvYds||0, tgt:bnyInvYdsTgt, unit:'yds',
+                  sub: (bnySchInv||bnyTpInv) ? `SCH ${(bnySchInv||0).toLocaleString()} · 3P ${(bnyTpInv||0).toLocaleString()}` : null },
+                { label:'Invoiced Rev', val:(bnyTotalInvRev||0) + (bnyMiscFees||0), tgt:bnyInvRevTgt, unit:'$', isDollar:true,
                   sub2: bnyMiscFees>0 ? `incl. $${Math.round(bnyMiscFees).toLocaleString()} misc fees` : null },
               ]
               return (
