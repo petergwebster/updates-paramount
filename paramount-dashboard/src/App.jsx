@@ -188,6 +188,13 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
   const [draftNarrative, setDraftNarrative] = useState('')
   const [publishing,     setPublishing]     = useState(false)
 
+  // One-pager state
+  const [onePagerType,    setOnePagerType]    = useState(null)
+  const [onePagerDraft,   setOnePagerDraft]   = useState('')
+  const [onePagerLoading, setOnePagerLoading] = useState(false)
+  const [onePagerError,   setOnePagerError]   = useState(null)
+  const [onePagerCopied,  setOnePagerCopied]  = useState(false)
+
   // Live saved-state checks — query existing tables, no schema changes needed
   const [hasProd,    setHasProd]    = useState(false)
   const [hasFinance, setHasFinance] = useState(false)
@@ -327,6 +334,155 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     return data.content?.find(c=>c.type==='text')?.text?.trim() || ''
   }
 
+  async function generateOnePager(type) {
+    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type)
+    try {
+      const monthKey = format(weekStart, 'yyyy-MM')
+      const monthLabel = format(weekStart, 'MMMM yyyy')
+
+      // Pull all data for the month
+      const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRow },
+             { data: peopleRows }, { data: weekRows }, { data: wipSnap }] = await Promise.all([
+        supabase.from('production').select('*').like('week_start', monthKey + '%').order('week_start'),
+        supabase.from('financials_monthly').select('*').like('period', monthKey + '%'),
+        supabase.from('financial_ap').select('*').like('period', monthKey + '%'),
+        supabase.from('financial_ar').select('*').like('period', monthKey + '%').order('uploaded_at', {ascending:false}).limit(1),
+        supabase.from('people_weekly').select('*').like('week_start', monthKey + '%').order('week_start', {ascending:false}).limit(1),
+        supabase.from('weeks').select('*').like('week_start', monthKey + '%').order('week_start'),
+        supabase.from('wip_snapshots').select('*').like('week_start', monthKey + '%').order('week_start', {ascending:false}).limit(1),
+      ])
+
+      const n = v => parseFloat(v)||0
+      const fmtD = v => '$'+Math.round(v||0).toLocaleString()
+      const pct = (a,b) => b>0 ? Math.round(a/b*100) : null
+
+      // Production MTD
+      const weeks = prodRows?.length || 0
+      const njYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.yards),0),0)||0
+      const bnyYds = prodRows?.reduce((s,p)=>s+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+      const njTgt  = 8610 * weeks, bnyTgt = 12000 * weeks, totalTgt = 20610 * weeks
+      const njPct  = pct(njYds, njTgt), bnyPct = pct(bnyYds, bnyTgt)
+      const totalPct = pct(njYds+bnyYds, totalTgt)
+
+      // Invoiced MTD
+      const njInvYds = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
+      const njInvRev = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
+      const njMisc   = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
+      const bnyInvYds= prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+      const bnyInvRev= prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+      const bnyMisc  = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
+      const njInvTgt = 77089 * weeks, bnyInvTgt = 132900 * weeks
+
+      // Waste MTD
+      const njWaste = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
+      const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1) : null
+
+      // Financials
+      const opexNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.opex_total),0)||0
+      const opexBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.opex_total),0)||0
+      const opexSh  = finRows?.filter(r=>r.business_unit==='612').reduce((s,r)=>s+n(r.opex_total),0)||0
+      const invPurchNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+      const invPurchBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+
+      // AP
+      const apPara = apRows?.find(r=>r.facility==='Paramount')
+      const apBNY  = apRows?.find(r=>r.facility==='BNY')
+      const apTotalPastDue = (n(apPara?.past_due) + n(apBNY?.past_due))
+
+      // AR
+      const arData = arRow?.[0]
+      const arOutstanding = n(arData?.total_outstanding)
+      const arPastDue = n(arData?.total_past_due)
+
+      // People
+      const ppl = peopleRows?.[0]
+      const totalHead = (n(ppl?.bny_headcount)+n(ppl?.nj_headcount))
+      const totalPay  = (n(ppl?.bny_total_pay)+n(ppl?.nj_total_pay))
+      const totalOT   = (n(ppl?.bny_ot_hrs)+n(ppl?.nj_ot_hrs))
+
+      // WIP
+      const wip = wipSnap?.[0]
+
+      // KPIs from weeks
+      const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
+      const allKpis = {}
+      weekRows?.forEach(w => { Object.entries(w.kpis||{}).forEach(([k,v])=>{ if(v?.status&&v.status!=='gray') allKpis[k]=v }) })
+      const kpiLines = Object.entries(allKpis).map(([k,v])=>`${k}: ${SL[v.status]}${v.notes?' ('+v.notes+')':''}`).join(', ')
+      const concerns = weekRows?.map(w=>w.concerns).filter(Boolean).join(' | ')
+      const logHighlights = weekRows?.flatMap(w=>Object.entries(w.days||{}).filter(([,d])=>d?.text?.trim()&&d.status==='red').map(([day,d])=>d.text.slice(0,100))).slice(0,3).join(' | ')
+
+      const isMidMonth = type === 'mid'
+      const weekLabel = isMidMonth ? `${weeks}-week MTD` : `Full month — ${weeks} weeks`
+
+      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a ${isMidMonth ? 'mid-month' : 'month-end'} update to his fellow business unit leaders and the executive team.
+
+Paramount Prints: Brooklyn BNY (digital printing) + Passaic NJ (screen print). ~$10M/year revenue.
+
+PERIOD: ${monthLabel} — ${weekLabel}
+${isMidMonth ? 'This is a mid-month check-in — where we are tracking and what to watch.' : 'This is the month-end close — how did we finish vs plan.'}
+
+PRODUCTION MTD:
+BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced vs ${bnyTgt.toLocaleString()} target (${bnyPct}%)
+  Invoiced: ${bnyInvYds.toLocaleString()} yds · ${fmtD(bnyInvRev+bnyMisc)} revenue${bnyMisc>0?' (incl '+fmtD(bnyMisc)+' misc fees)':''}
+  vs target: ${fmtD(bnyInvTgt)}
+
+NJ Passaic: ${njYds.toLocaleString()} yds produced vs ${njTgt.toLocaleString()} target (${njPct}%)
+  Invoiced: ${njInvYds.toLocaleString()} yds · ${fmtD(njInvRev+njMisc)} revenue${njMisc>0?' (incl '+fmtD(njMisc)+' misc fees)':''}
+  Waste: ${njWaste.toLocaleString()} yds (${njWastePct}%) — target <10%
+  vs target: ${fmtD(njInvTgt)}
+
+COMBINED: ${(njYds+bnyYds).toLocaleString()} yds (${totalPct}% of ${totalTgt.toLocaleString()} target)
+Total invoiced revenue: ${fmtD(njInvRev+bnyInvRev+njMisc+bnyMisc)}
+
+FINANCIALS MTD:
+OpEx — NJ: ${fmtD(opexNJ)} · BNY: ${fmtD(opexBNY)} · Shared: ${fmtD(opexSh)} · Combined: ${fmtD(opexNJ+opexBNY+opexSh)}
+Inventory purchases — NJ: ${fmtD(invPurchNJ)} · BNY: ${fmtD(invPurchBNY)}
+
+AP (Accounts Payable):
+  Paramount: ${fmtD(n(apPara?.total))} total · ${fmtD(n(apPara?.past_due))} past due
+  BNY: ${fmtD(n(apBNY?.total))} total · ${fmtD(n(apBNY?.past_due))} past due
+  Combined past due: ${fmtD(apTotalPastDue)}
+
+AR (Accounts Receivable): ${fmtD(arOutstanding)} outstanding · ${fmtD(arPastDue)} past due
+
+PEOPLE:
+${ppl ? `Total headcount: ${totalHead} · Total payroll: ${fmtD(totalPay)} · OT hours: ${totalOT.toFixed(0)}` : 'No people data for this period'}
+${ppl?.hr_notes ? 'HR notes: '+ppl.hr_notes : ''}
+
+WIP:
+${wip ? `Active WIP: ${wip.wip_orders} orders · ${Math.round(wip.wip_yards).toLocaleString()} yds
+  Age: 0-30d: ${wip.age_0_30_orders} · 31-60d: ${wip.age_31_60_orders} · 61-90d: ${wip.age_61_90_orders} · 90d+: ${wip.age_90plus_orders}
+  By type: Wallpaper ${wip.wallpaper_orders} orders · Grasscloth ${wip.grasscloth_orders} · Fabric ${wip.fabric_orders}` : 'No WIP snapshot available'}
+
+KPI STATUS: ${kpiLines||'No KPI data'}
+${concerns ? 'CONCERNS: '+concerns : ''}
+${logHighlights ? 'FLAGS: '+logHighlights : ''}
+
+Write a Slack message in Peter's voice — same peer-to-peer tone as a BU leader update, like Emily Romero's end-of-month style. 
+
+Structure (all in one flowing message, no headers):
+1. Opening line: overall ${isMidMonth ? 'MTD tracking' : 'month close'} — are we ahead/behind/on plan, any headline number
+2. BNY Brooklyn: production vs target, invoiced vs target, what's driving it, anything to flag
+3. Passaic NJ: production vs target, invoiced vs target, waste, what's working/not
+4. Financials: OpEx, AP/AR callouts if notable, inventory purchases
+5. People: headcount, any OT/staffing notes
+6. WIP: active orders, age bucket concern if any
+7. ${isMidMonth ? 'Forward look: what to watch for close of month' : 'Close: Q outlook, momentum into next month'}
+
+Tone: candid, data-grounded, no fluff. Write in first person as Peter. No bullet points. No headers. One continuous message, paragraph breaks only. Peer audience — not formal. Start directly, no greeting needed.`
+
+      const resp = await fetch('/api/claude', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:prompt}]})
+      })
+      const data = await resp.json()
+      const text = data.content?.find(c=>c.type==='text')?.text?.trim()
+      if (text) setOnePagerDraft(text)
+      else setOnePagerError('Could not generate — try again.')
+    } catch(e) { setOnePagerError('Generation failed: '+e.message) }
+    setOnePagerLoading(false)
+  }
+
   async function handlePublishSummary() {
     if (!draftNarrative) return
     setPublishing(true)
@@ -398,6 +554,55 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
           </div>
         ))}
       </div>
+
+      {/* ── One-Pager Buttons ── */}
+      <div style={{ display:'flex', gap:12, marginBottom:28, flexWrap:'wrap' }}>
+        {[
+          { type:'mid', label:'📄 Mid-Month Brief', desc:'MTD snapshot — where we are tracking' },
+          { type:'end', label:'📋 Month-End Report', desc:'Full month close — how did we finish' },
+        ].map(btn=>(
+          <button key={btn.type} onClick={()=>generateOnePager(btn.type)} disabled={onePagerLoading}
+            style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
+              background: onePagerType===btn.type&&onePagerDraft ? '#1f2937' : '#F5F5F5',
+              color: onePagerType===btn.type&&onePagerDraft ? '#fff' : 'var(--ink)',
+              border:`1px solid ${onePagerType===btn.type&&onePagerDraft?'#1f2937':'var(--ink-10)'}`,
+              borderRadius:10, padding:'12px 18px', cursor:onePagerLoading?'not-allowed':'pointer',
+              opacity:onePagerLoading?0.7:1, textAlign:'left', minWidth:200 }}>
+            <span style={{ fontSize:14, fontWeight:700, fontFamily:'Georgia,serif' }}>
+              {onePagerLoading&&onePagerType===btn.type ? '⏳ Generating…' : btn.label}
+            </span>
+            <span style={{ fontSize:11, opacity:0.6 }}>{btn.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* One-pager draft */}
+      {(onePagerDraft||onePagerError) && (
+        <div style={{ marginBottom:28, border:'1px solid var(--ink-10)', borderRadius:12, overflow:'hidden' }}>
+          <div style={{ background:'#1f2937', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>
+              {onePagerType==='mid' ? '📄 Mid-Month Brief' : '📋 Month-End Report'} — {format(weekStart,'MMMM yyyy')}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={()=>{navigator.clipboard.writeText(onePagerDraft);setOnePagerCopied(true);setTimeout(()=>setOnePagerCopied(false),3000)}}
+                style={{ background:'#D4A843', color:'#1f2937', border:'none', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                {onePagerCopied ? '✓ Copied!' : '📋 Copy to Clipboard'}
+              </button>
+              <button onClick={()=>{setOnePagerDraft('');setOnePagerType(null)}}
+                style={{ background:'none', color:'rgba(255,255,255,0.5)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>
+                ✕
+              </button>
+            </div>
+          </div>
+          {onePagerError && <div style={{ padding:'12px 16px', color:'#b91c1c', fontSize:13 }}>⚠ {onePagerError}</div>}
+          {onePagerDraft && (
+            <textarea value={onePagerDraft} onChange={e=>setOnePagerDraft(e.target.value)}
+              rows={14} style={{ width:'100%', padding:'16px', fontFamily:'Georgia, serif', fontSize:14,
+                lineHeight:1.8, border:'none', outline:'none', resize:'vertical', boxSizing:'border-box',
+                background:'#FAFAFA', color:'var(--ink)' }}/>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display:'flex', gap:0, marginBottom:32, borderBottom:'1px solid var(--ink-10)', overflowX:'auto' }}>
