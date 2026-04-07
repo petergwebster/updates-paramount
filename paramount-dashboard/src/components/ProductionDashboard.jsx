@@ -571,9 +571,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 { label:'Produced', val:njTotalYards, tgt:NJ_TOTAL_TARGET, unit:'yds' },
                 { label:'Invoiced Yds', val:njTotalInvYds, tgt:njInvYdsTgt, unit:'yds',
                   sub: njSchInv||njTpInv ? `SCH ${njSchInv.toLocaleString()} · 3P ${njTpInv.toLocaleString()}` : null },
-                { label:'Invoiced Rev', val:njTotalInvRev, tgt:njInvRevTgt, unit:'$', isDollar:true },
-                ...(njMiscFees>0||mtdNJMiscFees>0 ? [{ label:'Misc Fees', val:njMiscFees, tgt:null, unit:'$', isDollar:true,
-                  sub: mtdNJMiscFees>0 ? `MTD $${Math.round(mtdNJMiscFees).toLocaleString()}` : null }] : []),
+                { label:'Invoiced Rev', val:njTotalInvRev + njMiscFees, tgt:njInvRevTgt, unit:'$', isDollar:true,
+                  sub2: njMiscFees>0 ? `incl. $${Math.round(njMiscFees).toLocaleString()} misc fees` : null },
               ]
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
@@ -588,6 +587,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                         <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
                         <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
                         {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
+                      {k.sub2 && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:1, fontStyle:'italic' }}>{k.sub2}</div>}
                       </div>
                     )
                   })}
@@ -695,9 +695,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                 { label:'Produced', val:bnyTotal, tgt:BNY_TARGETS.total, unit:'yds' },
                 { label:'Invoiced Yds', val:bnyTotalInvYds, tgt:bnyInvYdsTgt, unit:'yds',
                   sub: bnySchInv||bnyTpInv ? `SCH ${bnySchInv.toLocaleString()} · 3P ${bnyTpInv.toLocaleString()}` : null },
-                { label:'Invoiced Rev', val:bnyTotalInvRev, tgt:bnyInvRevTgt, unit:'$', isDollar:true },
-                ...(bnyMiscFees>0||mtdBNYMiscFees>0 ? [{ label:'Misc Fees', val:bnyMiscFees, tgt:null, unit:'$', isDollar:true,
-                  sub: mtdBNYMiscFees>0 ? `MTD $${Math.round(mtdBNYMiscFees).toLocaleString()}` : null }] : []),
+                { label:'Invoiced Rev', val:bnyTotalInvRev + bnyMiscFees, tgt:bnyInvRevTgt, unit:'$', isDollar:true,
+                  sub2: bnyMiscFees>0 ? `incl. $${Math.round(bnyMiscFees).toLocaleString()} misc fees` : null },
               ]
               return (
                 <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
@@ -712,6 +711,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                         <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
                         <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
                         {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
+                      {k.sub2 && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:1, fontStyle:'italic' }}>{k.sub2}</div>}
                       </div>
                     )
                   })}
@@ -889,6 +889,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Net Yds', produced: mtdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: mtdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: mtdNJ.schProduced, invYds: mtdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, invTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, revTgt: null, bold: true },
+                    ...(mtdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: mtdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
                   ].map(row => {
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
@@ -930,6 +931,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Contract', produced: mtdBNY.contract, invYds: mtdBNYInvYds.contract, income: mtdBNYIncomeInvoiced.contract, prodTgt: mtdBNYTarget.contract, incTgt: mtdBNYIncomeTarget.contract },
                     { label: 'Total Yds', produced: mtdBNY.total, invYds: Object.values(mtdBNYInvYds).reduce((a,b)=>a+b,0), income: Object.values(mtdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: mtdBNYTarget.total, incTgt: mtdBNYIncomeTarget.total, bold: true },
                     { label: 'Schumacher', produced: mtdData.reduce((s,h) => s + n(h.bny_data?.schProduced), 0), invYds: mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0), income: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, incTgt: null, bold: true },
+                    ...(mtdBNYMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, income: mtdBNYMiscFees, prodTgt: null, incTgt: null, isMisc: true }] : []),
                   ].map(row => {
                     const invYds = row.invYds !== undefined ? row.invYds : null
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
@@ -1044,6 +1046,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Net Yds', produced: ytdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: ytdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: ytdNJ.schProduced, invYds: ytdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, invTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, revTgt: null, bold: true },
+                    ...(ytdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: ytdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
                   ].map(row => {
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
@@ -1085,6 +1088,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Contract', produced: ytdBNY.contract, invYds: ytdBNYInvYds.contract, income: ytdBNYIncomeInvoiced.contract, prodTgt: ytdBNYTarget.contract, incTgt: ytdBNYIncomeTarget.contract },
                     { label: 'Total Yds', produced: ytdBNY.total, invYds: Object.values(ytdBNYInvYds).reduce((a,b)=>a+b,0), income: Object.values(ytdBNYIncomeInvoiced).reduce((a,b)=>a+b,0), prodTgt: ytdBNYTarget.total, incTgt: ytdBNYIncomeTarget.total, bold: true },
                     { label: 'Schumacher', produced: ytdBNY.schProduced, invYds: ytdBNY.schInvoiced, income: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, incTgt: null, bold: true },
+                    ...(ytdBNYMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, income: ytdBNYMiscFees, prodTgt: null, incTgt: null, isMisc: true }] : []),
                     { label: 'Procurement $', produced: ytdProcurement, income: null, prodTgt: null, incTgt: null, isDollar: true },
                   ].map(row => {
                     const invYds = row.invYds !== undefined ? row.invYds : null
