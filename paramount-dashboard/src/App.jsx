@@ -337,156 +337,162 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
   async function generateOnePager(type) {
     setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type)
     try {
-      const monthKey = format(weekStart, 'yyyy-MM')
+      const monthKey   = format(weekStart, 'yyyy-MM')
       const monthLabel = format(weekStart, 'MMMM yyyy')
       const monthStart = monthKey + '-01'
       const monthEnd   = monthKey + '-31'
-      const periodPrefix = monthKey  // for financials which use 2026-03-W1 format
 
-      // Pull all data for the month
-      const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRow },
+      const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
              { data: peopleRows }, { data: weekRows }, { data: wipSnap }] = await Promise.all([
         supabase.from('production').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
-        supabase.from('financials_monthly').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5'),
-        supabase.from('financial_ap').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5'),
-        supabase.from('financial_ar').select('*').gte('period', periodPrefix+'-W1').lte('period', periodPrefix+'-W5').order('uploaded_at', {ascending:false}).limit(1),
-        supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start', {ascending:false}).limit(1),
+        supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
+        supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
+        supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
+        supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
         supabase.from('weeks').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
-        supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start', {ascending:false}).limit(1),
+        supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
       ])
 
       const n = v => parseFloat(v)||0
-      const fmtD = v => '$'+Math.round(v||0).toLocaleString()
-      const pct = (a,b) => b>0 ? Math.round(a/b*100) : null
+      const fmtD = v => v ? '$'+Math.round(v).toLocaleString() : '—'
+      const fmtY = v => v ? v.toLocaleString()+' yds' : '—'
+      const pct  = (a,b) => b>0 ? Math.round(a/b*100) : null
 
-      // Production MTD
       const weeks = prodRows?.length || 0
       const njYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.yards),0),0)||0
       const bnyYds = prodRows?.reduce((s,p)=>s+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const njTgt  = 8610 * weeks, bnyTgt = 12000 * weeks, totalTgt = 20610 * weeks
-      const njPct  = pct(njYds, njTgt), bnyPct = pct(bnyYds, bnyTgt)
-      const totalPct = pct(njYds+bnyYds, totalTgt)
+      const njTgt=8610*weeks, bnyTgt=12000*weeks
+      const njInvYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
+      const njInvRev  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
+      const njMisc    = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
+      const bnyInvYds = prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+      const bnyInvRev = prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+      const bnyMisc   = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
+      const njWaste   = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
+      const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1)+'%' : '—'
 
-      // Invoiced MTD
-      const njInvYds = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
-      const njInvRev = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
-      const njMisc   = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
-      const bnyInvYds= prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const bnyInvRev= prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const bnyMisc  = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
-      const njInvTgt = 77089 * weeks, bnyInvTgt = 132900 * weeks
-
-      // Waste MTD
-      const njWaste = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
-      const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1) : null
-
-      // Financials
       const opexNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.opex_total),0)||0
       const opexBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.opex_total),0)||0
-      const opexSh  = finRows?.filter(r=>r.business_unit==='612').reduce((s,r)=>s+n(r.opex_total),0)||0
-      const invPurchNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
-      const invPurchBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+      const invNJ   = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+      const invBNY  = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+      const apPara  = apRows?.find(r=>r.facility==='Paramount')
+      const apBNY   = apRows?.find(r=>r.facility==='BNY')
+      const arData  = arRows?.[0]
+      const ppl     = peopleRows?.[0]
+      const wip     = wipSnap?.[0]
 
-      // AP
-      const apPara = apRows?.find(r=>r.facility==='Paramount')
-      const apBNY  = apRows?.find(r=>r.facility==='BNY')
-      const apTotalPastDue = (n(apPara?.past_due) + n(apBNY?.past_due))
-
-      // AR
-      const arData = arRow?.[0]
-      const arOutstanding = n(arData?.total_outstanding)
-      const arPastDue = n(arData?.total_past_due)
-
-      // People
-      const ppl = peopleRows?.[0]
-      const totalHead = (n(ppl?.bny_headcount)+n(ppl?.nj_headcount))
-      const totalPay  = (n(ppl?.bny_total_pay)+n(ppl?.nj_total_pay))
-      const totalOT   = (n(ppl?.bny_ot_hrs)+n(ppl?.nj_ot_hrs))
-
-      // WIP
-      const wip = wipSnap?.[0]
-
-      // KPIs from weeks
       const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
       const allKpis = {}
-      weekRows?.forEach(w => { Object.entries(w.kpis||{}).forEach(([k,v])=>{ if(v?.status&&v.status!=='gray') allKpis[k]=v }) })
+      weekRows?.forEach(w=>Object.entries(w.kpis||{}).forEach(([k,v])=>{ if(v?.status&&v.status!=='gray') allKpis[k]=v }))
       const kpiLines = Object.entries(allKpis).map(([k,v])=>`${k}: ${SL[v.status]}${v.notes?' ('+v.notes+')':''}`).join(', ')
       const concerns = weekRows?.map(w=>w.concerns).filter(Boolean).join(' | ')
-      const logHighlights = weekRows?.flatMap(w=>Object.entries(w.days||{}).filter(([,d])=>d?.text?.trim()&&d.status==='red').map(([day,d])=>d.text.slice(0,100))).slice(0,3).join(' | ')
 
-      const isMidMonth = type === 'mid'
-      const weekLabel = isMidMonth ? `${weeks}-week MTD` : `Full month — ${weeks} weeks`
+      const isMid = type === 'mid'
 
-      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a ${isMidMonth ? 'mid-month' : 'month-end'} update to his fellow business unit leaders and the executive team.
+      // Generate narrative via Claude
+      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a ${isMid?'mid-month':'month-end'} update for fellow BU leaders and the executive team. Tone: direct, candid, peer-to-peer — like a sharp Slack message from a BU head. First person as Peter. No headers. No bullets.
 
-Paramount Prints: Brooklyn BNY (digital printing) + Passaic NJ (screen print). ~$10M/year revenue.
+PERIOD: ${monthLabel} — ${weeks} weeks${isMid?' MTD':' (full month close)'}
 
-PERIOD: ${monthLabel} — ${weekLabel}
-${isMidMonth ? 'This is a mid-month check-in — where we are tracking and what to watch.' : 'This is the month-end close — how did we finish vs plan.'}
+PRODUCTION:
+BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced / ${bnyTgt.toLocaleString()} target (${pct(bnyYds,bnyTgt)}%) · Invoiced ${fmtY(bnyInvYds)} · ${fmtD(bnyInvRev+bnyMisc)} revenue
+NJ Passaic: ${njYds.toLocaleString()} yds produced / ${njTgt.toLocaleString()} target (${pct(njYds,njTgt)}%) · Invoiced ${fmtY(njInvYds)} · ${fmtD(njInvRev+njMisc)} revenue · Waste ${njWastePct}
+Combined: ${(njYds+bnyYds).toLocaleString()} yds / ${(njTgt+bnyTgt).toLocaleString()} target (${pct(njYds+bnyYds,njTgt+bnyTgt)}%)
 
-PRODUCTION MTD:
-BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced vs ${bnyTgt.toLocaleString()} target (${bnyPct}%)
-  Invoiced: ${bnyInvYds.toLocaleString()} yds · ${fmtD(bnyInvRev+bnyMisc)} revenue${bnyMisc>0?' (incl '+fmtD(bnyMisc)+' misc fees)':''}
-  vs target: ${fmtD(bnyInvTgt)}
+FINANCIALS: OpEx NJ ${fmtD(opexNJ)} · BNY ${fmtD(opexBNY)} · Combined ${fmtD(opexNJ+opexBNY)}
+Inv purchases NJ ${fmtD(invNJ)} · BNY ${fmtD(invBNY)}
+AP past due: Paramount ${fmtD(n(apPara?.past_due))} · BNY ${fmtD(n(apBNY?.past_due))}
+AR outstanding ${fmtD(n(arData?.total_outstanding))} · past due ${fmtD(n(arData?.total_past_due))}
 
-NJ Passaic: ${njYds.toLocaleString()} yds produced vs ${njTgt.toLocaleString()} target (${njPct}%)
-  Invoiced: ${njInvYds.toLocaleString()} yds · ${fmtD(njInvRev+njMisc)} revenue${njMisc>0?' (incl '+fmtD(njMisc)+' misc fees)':''}
-  Waste: ${njWaste.toLocaleString()} yds (${njWastePct}%) — target <10%
-  vs target: ${fmtD(njInvTgt)}
+PEOPLE: ${ppl?(n(ppl.bny_headcount)+n(ppl.nj_headcount))+' total headcount · payroll '+fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)):'No people data'}
+WIP: ${wip?wip.wip_orders+' active orders · '+Math.round(wip.wip_yards).toLocaleString()+' yds · 90d+ '+wip.age_90plus_orders+' orders':'No WIP snapshot'}
+${kpiLines?'KPIs: '+kpiLines:''}
+${concerns?'Concerns: '+concerns:''}
 
-COMBINED: ${(njYds+bnyYds).toLocaleString()} yds (${totalPct}% of ${totalTgt.toLocaleString()} target)
-Total invoiced revenue: ${fmtD(njInvRev+bnyInvRev+njMisc+bnyMisc)}
-
-FINANCIALS MTD:
-OpEx — NJ: ${fmtD(opexNJ)} · BNY: ${fmtD(opexBNY)} · Shared: ${fmtD(opexSh)} · Combined: ${fmtD(opexNJ+opexBNY+opexSh)}
-Inventory purchases — NJ: ${fmtD(invPurchNJ)} · BNY: ${fmtD(invPurchBNY)}
-
-AP (Accounts Payable):
-  Paramount: ${fmtD(n(apPara?.total))} total · ${fmtD(n(apPara?.past_due))} past due
-  BNY: ${fmtD(n(apBNY?.total))} total · ${fmtD(n(apBNY?.past_due))} past due
-  Combined past due: ${fmtD(apTotalPastDue)}
-
-AR (Accounts Receivable): ${fmtD(arOutstanding)} outstanding · ${fmtD(arPastDue)} past due
-
-PEOPLE:
-${ppl ? `Total headcount: ${totalHead} · Total payroll: ${fmtD(totalPay)} · OT hours: ${totalOT.toFixed(0)}` : 'No people data for this period'}
-${ppl?.hr_notes ? 'HR notes: '+ppl.hr_notes : ''}
-
-WIP:
-${wip ? `Active WIP: ${wip.wip_orders} orders · ${Math.round(wip.wip_yards).toLocaleString()} yds
-  Age: 0-30d: ${wip.age_0_30_orders} · 31-60d: ${wip.age_31_60_orders} · 61-90d: ${wip.age_61_90_orders} · 90d+: ${wip.age_90plus_orders}
-  By type: Wallpaper ${wip.wallpaper_orders} orders · Grasscloth ${wip.grasscloth_orders} · Fabric ${wip.fabric_orders}` : 'No WIP snapshot available'}
-
-KPI STATUS: ${kpiLines||'No KPI data'}
-${concerns ? 'CONCERNS: '+concerns : ''}
-${logHighlights ? 'FLAGS: '+logHighlights : ''}
-
-Write a Slack message in Peter's voice — same peer-to-peer tone as a BU leader update, like Emily Romero's end-of-month style. 
-
-Structure (all in one flowing message, no headers):
-1. Opening line: overall ${isMidMonth ? 'MTD tracking' : 'month close'} — are we ahead/behind/on plan, any headline number
-2. BNY Brooklyn: production vs target, invoiced vs target, what's driving it, anything to flag
-3. Passaic NJ: production vs target, invoiced vs target, waste, what's working/not
-4. Financials: OpEx, AP/AR callouts if notable, inventory purchases
-5. People: headcount, any OT/staffing notes
-6. WIP: active orders, age bucket concern if any
-7. ${isMidMonth ? 'Forward look: what to watch for close of month' : 'Close: Q outlook, momentum into next month'}
-
-Tone: candid, data-grounded, no fluff. Write in first person as Peter. No bullet points. No headers. One continuous message, paragraph breaks only. Peer audience — not formal. Start directly, no greeting needed.`
+Write exactly 4 paragraphs:
+1. ONE sentence — combined ${isMid?'MTD tracking':'month close'} headline
+2. BNY Brooklyn — 3-4 sentences: production vs target, invoiced revenue, what drove it, anything to flag
+3. Passaic NJ — 3-4 sentences: production vs target, invoiced, waste, what's working/not
+4. ${isMid?'Forward look — what to watch for close of month':'Close — AP/AR/OpEx callout, Q2 outlook, momentum'}`
 
       const resp = await fetch('/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:prompt}]})
+        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:900, messages:[{role:'user',content:prompt}] })
       })
-      const data = await resp.json()
-      const text = data.content?.find(c=>c.type==='text')?.text?.trim()
-      if (text) setOnePagerDraft(text)
-      else setOnePagerError('Could not generate — try again.')
-    } catch(e) { setOnePagerError('Generation failed: '+e.message) }
+      const aiData = await resp.json()
+      const narrative = aiData.content?.find(c=>c.type==='text')?.text?.trim() || ''
+
+      if (!narrative) { setOnePagerError('Could not generate narrative — try again.'); setOnePagerLoading(false); return }
+      setOnePagerDraft(narrative)
+
+      // Build PDF payload
+      const pdfPayload = {
+        report_title: `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
+        period_label: `${monthLabel} · ${weeks} week${weeks!==1?'s':''} · Fiscal Q${Math.ceil(parseInt(monthKey.split('-')[1])/3)}`,
+        date_generated: format(new Date(), 'MMMM d, yyyy'),
+        filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
+        narrative,
+        bny: {
+          prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
+          inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
+          opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
+        },
+        nj: {
+          prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
+          inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev), misc_fees: njMisc>0?fmtD(njMisc):null,
+          opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
+        },
+        financials: {
+          opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
+          ap_para_total: fmtD(n(apPara?.total)), ap_bny_total: fmtD(n(apBNY?.total)),
+          ap_combined: fmtD(n(apPara?.total)+n(apBNY?.total)),
+          ap_para_pd: fmtD(n(apPara?.past_due)), ap_bny_pd: fmtD(n(apBNY?.past_due)),
+          ap_combined_pd: fmtD(n(apPara?.past_due)+n(apBNY?.past_due)),
+          ar_outstanding: fmtD(n(arData?.total_outstanding)), ar_past_due: fmtD(n(arData?.total_past_due)),
+        },
+        people: {
+          headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
+          payroll: ppl ? fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)) : '—',
+          ot: ppl ? (n(ppl.bny_ot_hrs)+n(ppl.nj_ot_hrs)).toFixed(1)+' hrs' : '—',
+          hr_notes: ppl?.hr_notes || '',
+        },
+        wip: wip ? {
+          orders: wip.wip_orders, yards: Math.round(wip.wip_yards).toLocaleString(),
+          age_0_30: wip.age_0_30_orders, age_31_60: wip.age_31_60_orders,
+          age_61_90: wip.age_61_90_orders, age_90plus: wip.age_90plus_orders,
+          wallpaper: wip.wallpaper_orders, grasscloth: wip.grasscloth_orders, fabric: wip.fabric_orders,
+        } : {},
+      }
+
+      // Call PDF function and download
+      const pdfResp = await fetch('/api/generate-pdf', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(pdfPayload)
+      })
+
+      if (!pdfResp.ok) throw new Error('PDF generation failed')
+
+      const blob = await pdfResp.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = pdfPayload.filename; a.click()
+      URL.revokeObjectURL(url)
+
+      // Save record to Supabase
+      await supabase.from('monthly_reports').upsert({
+        month: monthKey,
+        type,
+        report_title: pdfPayload.report_title,
+        narrative,
+        generated_at: new Date().toISOString(),
+        generated_by: 'peter',
+      }, { onConflict: 'month,type' })
+
+    } catch(e) { setOnePagerError('Failed: '+e.message) }
     setOnePagerLoading(false)
   }
 
-  async function handlePublishSummary() {
+    async function handlePublishSummary() {
     if (!draftNarrative) return
     setPublishing(true)
     try {

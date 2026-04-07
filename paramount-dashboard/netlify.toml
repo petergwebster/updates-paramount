@@ -4,8 +4,18 @@
   functions = "netlify/functions"
 
 [[edge_functions]]
-  path = "/api/*"
+  path = "/api/claude"
   function = "edge"
+
+[[edge_functions]]
+  path = "/api/lock-wip"
+  function = "edge"
+
+[[redirects]]
+  from = "/api/generate-pdf"
+  to = "/.netlify/functions/generate-pdf"
+  status = 200
+  force = true
 
 # Scheduled WIP lockdown - every Saturday at midnight ET (05:00 UTC)
 [[scheduled_functions]]
