@@ -382,9 +382,7 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     doc.text('EXECUTIVE SUMMARY', L, y); doc.setCharSpace(0)
     y += 12
 
-    const paras = data.narrative.split('
-
-').filter(p => p.trim())
+    const paras = data.narrative.split('\n\n').filter(p => p.trim())
     paras.forEach(para => {
       setFont(9.5, INK)
       const lines = doc.splitTextToSize(para.trim(), PW)
