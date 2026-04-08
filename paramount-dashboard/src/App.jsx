@@ -455,18 +455,20 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
         nj:  { label:'OPEX MTD',     val:nj.opex,      sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch||'—'}`, subColor:INK_LIGHT } },
     ]
 
+    const ROW_PAD = 8  // top padding inside each row before the label
     metricRows.forEach((row, i) => {
+      const rowY = y + ROW_PAD
       ;[{d:row.bny, x:L}, {d:row.nj, x:MID+8}].forEach(({d, x}) => {
-        setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, y); doc.setCharSpace(0)
-        setFont(12, INK_DARK, false); doc.text(d.val||'—', x, y+13)
+        setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, rowY); doc.setCharSpace(0)
+        setFont(12, INK_DARK, false); doc.text(d.val||'—', x, rowY+13)
         setFont(7.5, d.subColor||INK_LIGHT)
-        doc.text(doc.splitTextToSize(d.sub, colW), x, y+25)
+        doc.text(doc.splitTextToSize(d.sub, colW), x, rowY+25)
       })
       doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
-      doc.line(MID, y-4, MID, y+ROW_H-4)
+      doc.line(MID, y, MID, y+ROW_H)
       if (i < metricRows.length - 1) {
         doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3)
-        doc.line(L, y+ROW_H-2, L+PW, y+ROW_H-2)
+        doc.line(L, y+ROW_H, L+PW, y+ROW_H)
       }
       y += ROW_H
     })
