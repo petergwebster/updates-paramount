@@ -415,37 +415,36 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 92, L + PW, 92)
 
     // ── NARRATIVE ────────────────────────────────────────────────────────────
-    let y = 102
+    let y = 100
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('EXECUTIVE SUMMARY', L, y); doc.setCharSpace(0)
-    y += 12
+    y += 10
 
     const paras = data.narrative.split('\n\n').filter(p => p.trim())
     paras.forEach(para => {
-      setFont(9.5, INK)
+      setFont(9, INK)
       const lines = doc.splitTextToSize(para.trim(), PW)
       doc.text(lines, L, y)
-      y += lines.length * 13 + 5
+      y += lines.length * 12 + 3
     })
 
     y += 4
-    y = checkPage(y, 120)
-    hline(y, BORDER); y += 8
+    hline(y, BORDER); y += 7
 
     // ── PRODUCTION ───────────────────────────────────────────────────────────
     const bny = data.bny, nj = data.nj
     const colW = PW / 2 - 16
     const INK_DARK = '#3D3530'
-    const ROW_H = 52
+    const ROW_H = 44
 
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('PRODUCTION — MONTH-TO-DATE', L, y); doc.setCharSpace(0)
-    y += 14
+    y += 12
 
-    setFont(10, INK, true)
+    setFont(9, INK, true)
     doc.text('BNY — BROOKLYN DIGITAL', L, y)
     doc.text('NJ — PASSAIC SCREEN PRINT', MID + 8, y)
-    y += 18
+    y += 14
 
     const metricRows = [
       { bny: { label:'PRODUCED',    val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
@@ -457,35 +456,31 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     ]
 
     metricRows.forEach((row, i) => {
-      y = checkPage(y, ROW_H + 10)
       ;[{d:row.bny, x:L}, {d:row.nj, x:MID+8}].forEach(({d, x}) => {
         setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, y); doc.setCharSpace(0)
-        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+14)
+        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+12)
         setFont(7.5, d.subColor||INK_LIGHT)
-        doc.text(doc.splitTextToSize(d.sub, colW), x, y+27)
+        doc.text(doc.splitTextToSize(d.sub, colW), x, y+23)
       })
-      // vertical divider — full row height
       doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
-      doc.line(MID, y-6, MID, y+ROW_H-8)
-      // horizontal row separator
+      doc.line(MID, y-4, MID, y+ROW_H-6)
       if (i < metricRows.length - 1) {
         doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3)
-        doc.line(L, y+ROW_H-4, L+PW, y+ROW_H-4)
+        doc.line(L, y+ROW_H-3, L+PW, y+ROW_H-3)
       }
       y += ROW_H
     })
 
     // ── PRODUCTION SUMMARY TABLE ─────────────────────────────────────────────
-    y += 6
-    y = checkPage(y, 160)
-    hline(y, BORDER); y += 10
+    y += 4
+    hline(y, BORDER); y += 8
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('PRODUCTION SUMMARY — MTD TRACKING', L, y); doc.setCharSpace(0)
-    y += 14
+    y += 11
 
     const fin = data.financials
     const cw = PW / 4
-    const FIN_ROW_H = 18
+    const FIN_ROW_H = 16
 
     const pctColorStr = p => p == null ? INK_LIGHT : p >= 95 ? GREEN : p >= 80 ? AMBER : RED
 
@@ -503,48 +498,42 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
       { cells: ['NJ Waste %',    nj.waste_pct, '—',           '—'] },
     ]
 
-    // Header
     doc.setFillColor(INK); doc.rect(L, y, PW, FIN_ROW_H, 'F')
     setFont(7, '#ffffff', true)
-    summaryHeaders.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 12))
+    summaryHeaders.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 11))
     y += FIN_ROW_H
 
     summaryRows.forEach((row, ri) => {
-      y = checkPage(y, FIN_ROW_H + 4)
       if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, FIN_ROW_H, 'F') }
       row.cells.forEach((cell, ci) => {
         let color = ci === 0 ? INK_LIGHT : INK
         if (row.pcts && ci > 0) color = pctColorStr(row.pcts[ci-1])
-        setFont(8, color, ci === 3 || row.bold)
-        doc.text(cell||'—', L + ci*cw + 6, y + 12)
+        setFont(7.5, color, ci === 3 || row.bold)
+        doc.text(cell||'—', L + ci*cw + 6, y + 11)
       })
       hline(y + FIN_ROW_H, BORDER, 0.3)
       y += FIN_ROW_H
     })
 
     // ── PEOPLE + WIP ─────────────────────────────────────────────────────────
-    y += 10
-    y = checkPage(y, 100)
-    hline(y, BORDER); y += 8
+    y += 6
+    hline(y, BORDER); y += 7
     const ppl = data.people, wip = data.wip
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('PEOPLE', L, y)
     doc.text('WIP SNAPSHOT', MID+6, y); doc.setCharSpace(0)
-    y += 12
+    y += 10
 
-    setFont(9, INK)
-    doc.text(`Headcount: ${ppl.headcount||'—'}`, L, y)
-    doc.text(`Payroll MTD: ${ppl.payroll||'—'}`, L, y+12)
-    doc.text(`OT Hours: ${ppl.ot||'—'}`, L, y+24)
-    if (ppl.hr_notes) { setFont(7.5, INK_LIGHT); doc.text(ppl.hr_notes, L, y+36) }
+    setFont(8, INK)
+    doc.text(`Headcount: ${ppl.headcount||'—'}  ·  Payroll MTD: ${ppl.payroll||'—'}`, L, y)
 
-    doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.line(MID, y-2, MID, y+50)
+    doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.line(MID, y-8, MID, y+26)
 
-    setFont(9, INK)
+    setFont(8, INK)
     doc.text(`Active: ${wip.orders||'—'} orders · ${wip.yards||'—'} yds`, MID+6, y)
     setFont(7.5, INK_LIGHT)
-    doc.text(`Age: 0-30d ${wip.age_0_30||'—'}  ·  31-60d ${wip.age_31_60||'—'}  ·  61-90d ${wip.age_61_90||'—'}  ·  90d+ ${wip.age_90plus||'—'}`, MID+6, y+14)
-    doc.text(`By type: Wallpaper ${wip.wallpaper||'—'}  ·  Grasscloth ${wip.grasscloth||'—'}  ·  Fabric ${wip.fabric||'—'}`, MID+6, y+26)
+    doc.text(`Age: 0-30d ${wip.age_0_30||'—'} · 31-60d ${wip.age_31_60||'—'} · 61-90d ${wip.age_61_90||'—'} · 90d+ ${wip.age_90plus||'—'}`, MID+6, y+12)
+    doc.text(`Wallpaper ${wip.wallpaper||'—'} · Grasscloth ${wip.grasscloth||'—'} · Fabric ${wip.fabric||'—'}`, MID+6, y+22)
 
     // ── FOOTER ───────────────────────────────────────────────────────────────
     const footerY = PAGE_H - 28
