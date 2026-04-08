@@ -475,39 +475,47 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
       y += ROW_H
     })
 
-    // ── FINANCIALS ────────────────────────────────────────────────────────────
+    // ── PRODUCTION SUMMARY TABLE ─────────────────────────────────────────────
     y += 6
     y = checkPage(y, 160)
     hline(y, BORDER); y += 10
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('FINANCIALS', L, y); doc.setCharSpace(0)
+    doc.text('PRODUCTION SUMMARY — MTD TRACKING', L, y); doc.setCharSpace(0)
     y += 14
 
     const fin = data.financials
     const cw = PW / 4
     const FIN_ROW_H = 18
-    const headers = ['METRIC', 'PARAMOUNT NJ', 'BNY BROOKLYN', 'COMBINED']
-    const rows = [
-      ['OpEx MTD',      nj.opex,          bny.opex,          fin.opex_combined],
-      ['Inv Purchases', nj.inv_purch,      bny.inv_purch,     fin.inv_combined],
-      ['AP Total',      fin.ap_para_total, fin.ap_bny_total,  fin.ap_combined],
-      ['AP Past Due',   fin.ap_para_pd,    fin.ap_bny_pd,     fin.ap_combined_pd, true],
-      ['AR Outstanding','—',               '—',               fin.ar_outstanding],
-      ['AR Past Due',   '—',               '—',               fin.ar_past_due, true],
+
+    const pctColorStr = p => p == null ? INK_LIGHT : p >= 95 ? GREEN : p >= 80 ? AMBER : RED
+
+    const summaryHeaders = ['METRIC', 'PARAMOUNT NJ', 'BNY BROOKLYN', 'COMBINED']
+    const summaryRows = [
+      { cells: ['Produced MTD',  nj.prod_yds,  bny.prod_yds,  fin.combined_prod_yds] },
+      { cells: ['vs Target',
+          `${nj.prod_pct}% of ${nj.prod_tgt}`,
+          `${bny.prod_pct}% of ${bny.prod_tgt}`,
+          `${fin.combined_prod_pct}% of ${fin.combined_prod_tgt}`],
+        pcts: [nj.prod_pct, bny.prod_pct, fin.combined_prod_pct] },
+      { cells: ['Invoiced YDS',  nj.inv_yds,   bny.inv_yds,   fin.combined_inv_yds] },
+      { cells: ['Revenue MTD',   fin.rev_nj,   fin.rev_bny,   fin.rev_combined], bold: true },
+      { cells: ['OpEx MTD',      nj.opex,      bny.opex,      fin.opex_combined] },
+      { cells: ['NJ Waste %',    nj.waste_pct, '—',           '—'] },
     ]
 
-    // Header row
+    // Header
     doc.setFillColor(INK); doc.rect(L, y, PW, FIN_ROW_H, 'F')
     setFont(7, '#ffffff', true)
-    headers.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 12))
+    summaryHeaders.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 12))
     y += FIN_ROW_H
 
-    rows.forEach((row, ri) => {
+    summaryRows.forEach((row, ri) => {
       y = checkPage(y, FIN_ROW_H + 4)
       if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, FIN_ROW_H, 'F') }
-      row.slice(0,4).forEach((cell, ci) => {
-        const isPD = row[4]===true && ci > 0
-        setFont(8, ci===0 ? INK_LIGHT : isPD ? RED : INK, ci===3)
+      row.cells.forEach((cell, ci) => {
+        let color = ci === 0 ? INK_LIGHT : INK
+        if (row.pcts && ci > 0) color = pctColorStr(row.pcts[ci-1])
+        setFont(8, color, ci === 3 || row.bold)
         doc.text(cell||'—', L + ci*cw + 6, y + 12)
       })
       hline(y + FIN_ROW_H, BORDER, 0.3)
@@ -578,9 +586,9 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
         period_label: `${monthLabel} · Fiscal Q${Math.ceil(parseInt(format(weekStart,'MM'))/3)}`,
         date_generated: format(new Date(), 'MMMM d, yyyy'),
         filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
-        bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—' },
-        nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—' },
-        financials: { opex_combined:'—', inv_combined:'—', ap_para_total:'—', ap_bny_total:'—', ap_combined:'—', ap_para_pd:'—', ap_bny_pd:'—', ap_combined_pd:'—', ar_outstanding:'—', ar_past_due:'—' },
+        bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', prod_yds_raw:0, prod_tgt_raw:0 },
+        nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—', prod_yds_raw:0, prod_tgt_raw:0 },
+        financials: { opex_combined:'—', inv_combined:'—', rev_nj:'—', rev_bny:'—', rev_combined:'—', combined_prod_yds:'—', combined_prod_tgt:'—', combined_prod_pct:null, combined_inv_yds:'—' },
         people: { headcount:'—', payroll:'—', ot:'—', hr_notes:'' },
         wip: { orders:'—', yards:'—', age_0_30:'—', age_31_60:'—', age_61_90:'—', age_90plus:'—', wallpaper:'—', grasscloth:'—', fabric:'—' },
       }
@@ -666,19 +674,21 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
             prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
             inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
             opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
+            prod_yds_raw: bnyYds, prod_tgt_raw: bnyTgt,
           },
           nj: {
             prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
-            inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev), misc_fees: njMisc>0?fmtD(njMisc):null,
+            inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev+njMisc), misc_fees: njMisc>0?fmtD(njMisc):null,
             opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
+            prod_yds_raw: njYds, prod_tgt_raw: njTgt,
           },
           financials: {
             opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
-            ap_para_total: fmtD(n(apPara?.total)), ap_bny_total: fmtD(n(apBNY?.total)),
-            ap_combined: fmtD(n(apPara?.total)+n(apBNY?.total)),
-            ap_para_pd: fmtD(n(apPara?.past_due)), ap_bny_pd: fmtD(n(apBNY?.past_due)),
-            ap_combined_pd: fmtD(n(apPara?.past_due)+n(apBNY?.past_due)),
-            ar_outstanding: fmtD(n(arData?.total_outstanding)), ar_past_due: fmtD(n(arData?.total_past_due)),
+            rev_nj: fmtD(njInvRev+njMisc), rev_bny: fmtD(bnyInvRev+bnyMisc),
+            rev_combined: fmtD(njInvRev+njMisc+bnyInvRev+bnyMisc),
+            combined_prod_yds: fmtY(njYds+bnyYds), combined_prod_tgt: (njTgt+bnyTgt).toLocaleString(),
+            combined_prod_pct: pct(njYds+bnyYds, njTgt+bnyTgt),
+            combined_inv_yds: fmtY(njInvYds+bnyInvYds),
           },
           people: {
             headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
@@ -794,19 +804,21 @@ Write exactly 4 paragraphs:
           prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
           inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
           opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
+          prod_yds_raw: bnyYds, prod_tgt_raw: bnyTgt,
         },
         nj: {
           prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
-          inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev), misc_fees: njMisc>0?fmtD(njMisc):null,
+          inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev+njMisc), misc_fees: njMisc>0?fmtD(njMisc):null,
           opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
+          prod_yds_raw: njYds, prod_tgt_raw: njTgt,
         },
         financials: {
           opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
-          ap_para_total: fmtD(n(apPara?.total)), ap_bny_total: fmtD(n(apBNY?.total)),
-          ap_combined: fmtD(n(apPara?.total)+n(apBNY?.total)),
-          ap_para_pd: fmtD(n(apPara?.past_due)), ap_bny_pd: fmtD(n(apBNY?.past_due)),
-          ap_combined_pd: fmtD(n(apPara?.past_due)+n(apBNY?.past_due)),
-          ar_outstanding: fmtD(n(arData?.total_outstanding)), ar_past_due: fmtD(n(arData?.total_past_due)),
+          rev_nj: fmtD(njInvRev+njMisc), rev_bny: fmtD(bnyInvRev+bnyMisc),
+          rev_combined: fmtD(njInvRev+njMisc+bnyInvRev+bnyMisc),
+          combined_prod_yds: fmtY(njYds+bnyYds), combined_prod_tgt: (njTgt+bnyTgt).toLocaleString(),
+          combined_prod_pct: pct(njYds+bnyYds, njTgt+bnyTgt),
+          combined_inv_yds: fmtY(njInvYds+bnyInvYds),
         },
         people: {
           headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
