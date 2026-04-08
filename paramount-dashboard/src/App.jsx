@@ -599,21 +599,85 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
         .single()
 
       if (existingReport?.narrative) {
-        // Load saved version — user can regenerate if they want
+        // Load saved narrative — but still fetch real data for PDF numbers
         setOnePagerDraft(existingReport.narrative)
-        // Set minimal payload so Download PDF still works
         const monthLabel = format(weekStart, 'MMMM yyyy')
+        const monthStart = monthKey + '-01'
+        const monthEnd   = monthKey + '-31'
         const isMid = type === 'mid'
+
+        const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
+               { data: peopleRows }, { data: wipSnap }] = await Promise.all([
+          supabase.from('production').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
+          supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
+          supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
+          supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
+          supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
+          supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
+        ])
+
+        const n = v => parseFloat(v)||0
+        const fmtD = v => v ? '$'+Math.round(v).toLocaleString() : '—'
+        const fmtY = v => v ? v.toLocaleString()+' yds' : '—'
+        const pct  = (a,b) => b>0 ? Math.round(a/b*100) : null
+        const weeks = prodRows?.length || 0
+
+        const njYds     = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.yards),0),0)||0
+        const bnyYds    = prodRows?.reduce((s,p)=>s+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+        const njTgt=8610*weeks, bnyTgt=12000*weeks
+        const njInvYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
+        const njInvRev  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
+        const njMisc    = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
+        const bnyInvYds = prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+        const bnyInvRev = prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
+        const bnyMisc   = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
+        const njWaste   = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
+        const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1)+'%' : '—'
+        const opexNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.opex_total),0)||0
+        const opexBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.opex_total),0)||0
+        const invNJ   = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+        const invBNY  = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
+        const apPara  = apRows?.find(r=>r.facility==='Paramount')
+        const apBNY   = apRows?.find(r=>r.facility==='BNY')
+        const arData  = arRows?.[0]
+        const ppl     = peopleRows?.[0]
+        const wip     = wipSnap?.[0]
+
         setOnePagerPayload({
           report_title: existingReport.report_title || `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
-          period_label: `${monthLabel} · Fiscal Q${Math.ceil(parseInt(format(weekStart,'MM'))/3)}`,
+          period_label: `${monthLabel} · ${weeks} week${weeks!==1?'s':''} · Fiscal Q${Math.ceil(parseInt(monthKey.split('-')[1])/3)}`,
           date_generated: format(new Date(), 'MMMM d, yyyy'),
           filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
-          bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—' },
-          nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—' },
-          financials: { opex_combined:'—', inv_combined:'—', ap_para_total:'—', ap_bny_total:'—', ap_combined:'—', ap_para_pd:'—', ap_bny_pd:'—', ap_combined_pd:'—', ar_outstanding:'—', ar_past_due:'—' },
-          people: { headcount:'—', payroll:'—', ot:'—', hr_notes:'' },
-          wip: { orders:'—', yards:'—', age_0_30:'—', age_31_60:'—', age_61_90:'—', age_90plus:'—', wallpaper:'—', grasscloth:'—', fabric:'—' },
+          bny: {
+            prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
+            inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
+            opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
+          },
+          nj: {
+            prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
+            inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev), misc_fees: njMisc>0?fmtD(njMisc):null,
+            opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
+          },
+          financials: {
+            opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
+            ap_para_total: fmtD(n(apPara?.total)), ap_bny_total: fmtD(n(apBNY?.total)),
+            ap_combined: fmtD(n(apPara?.total)+n(apBNY?.total)),
+            ap_para_pd: fmtD(n(apPara?.past_due)), ap_bny_pd: fmtD(n(apBNY?.past_due)),
+            ap_combined_pd: fmtD(n(apPara?.past_due)+n(apBNY?.past_due)),
+            ar_outstanding: fmtD(n(arData?.total_outstanding)), ar_past_due: fmtD(n(arData?.total_past_due)),
+          },
+          people: {
+            headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
+            payroll: ppl ? fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)) : '—',
+            ot: ppl ? (n(ppl.bny_ot_hrs)+n(ppl.nj_ot_hrs)).toFixed(1)+' hrs' : '—',
+            hr_notes: ppl?.hr_notes || '',
+          },
+          wip: wip ? {
+            orders: wip.wip_orders, yards: Math.round(wip.wip_yards).toLocaleString(),
+            age_0_30: wip.age_0_30_orders, age_31_60: wip.age_31_60_orders,
+            age_61_90: wip.age_61_90_orders, age_90plus: wip.age_90plus_orders,
+            wallpaper: wip.wallpaper_orders, grasscloth: wip.grasscloth_orders, fabric: wip.fabric_orders,
+          } : {},
         })
         setOnePagerLoading(false)
         return
