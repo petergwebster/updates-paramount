@@ -216,6 +216,7 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
   const [onePagerPayload, setOnePagerPayload] = useState(null)
   const [pdfGenerating,   setPdfGenerating]   = useState(false)
   const [onePagerSaved,   setOnePagerSaved]   = useState(false)
+  const [isSavedReport,   setIsSavedReport]   = useState(false)
   const [savedReports,    setSavedReports]    = useState({}) // { mid: {...}, end: {...} }
 
   // Live saved-state checks — query existing tables, no schema changes needed
@@ -598,8 +599,17 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     setPdfGenerating(false)
   }
 
+  async function regenerateOnePager() {
+    if (!onePagerType) return
+    const monthKey = format(weekStart, 'yyyy-MM')
+    await supabase.from('monthly_reports').delete().eq('month', monthKey).eq('type', onePagerType)
+    setSavedReports(prev => { const n = {...prev}; delete n[onePagerType]; return n })
+    setIsSavedReport(false)
+    generateOnePager(onePagerType)
+  }
+
   async function generateOnePager(type) {
-    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type); setOnePagerSaved(false)
+    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type); setOnePagerSaved(false); setIsSavedReport(false)
     try {
       const monthKey   = format(weekStart, 'yyyy-MM')
 
@@ -613,6 +623,7 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
 
       if (existingReport?.narrative) {
         // Load saved narrative — but still fetch real data for PDF numbers
+        setIsSavedReport(true)
         setOnePagerDraft(existingReport.narrative)
         const monthLabel = format(weekStart, 'MMMM yyyy')
         const monthStart = monthKey + '-01'
@@ -950,6 +961,12 @@ Write exactly 4 paragraphs:
               {onePagerType==='mid' ? '📄 Mid-Month Brief' : '📋 Month-End Report'} — {format(weekStart,'MMMM yyyy')}
             </div>
             <div style={{ display:'flex', gap:8 }}>
+              {isSavedReport && (
+                <button onClick={regenerateOnePager}
+                  style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  ↺ Regenerate
+                </button>
+              )}
               <button onClick={()=>{navigator.clipboard.writeText(onePagerDraft);setOnePagerCopied(true);setTimeout(()=>setOnePagerCopied(false),3000)}}
                 style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
                 {onePagerCopied ? '✓ Copied!' : '📋 Copy'}
