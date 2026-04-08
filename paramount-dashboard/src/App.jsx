@@ -443,26 +443,28 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     doc.text('NJ — PASSAIC SCREEN PRINT', MID + 6, y)
     y += 16
 
-    const colW = PW / 2 - 6
+    const colW = PW / 2 - 12
+    const INK_DARK = '#3D3530'
     const metricRows = [
-      { bny: { label:'PRODUCED', val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, color:pctColor(bny.prod_pct) },
-        nj:  { label:'PRODUCED', val:nj.prod_yds, sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`, color:pctColor(nj.prod_pct) } },
-      { bny: { label:'INVOICED YDS', val:bny.inv_yds, sub:`Revenue: ${bny.inv_rev}`, color:INK },
-        nj:  { label:'INVOICED YDS', val:nj.inv_yds, sub:`Revenue: ${nj.inv_rev}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, color:INK } },
-      { bny: { label:'OPEX MTD', val:bny.opex, sub:`Inv Purchases: ${bny.inv_purch}`, color:INK },
-        nj:  { label:'OPEX MTD', val:nj.opex, sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, color:INK } },
+      { bny: { label:'PRODUCED', val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
+        nj:  { label:'PRODUCED', val:nj.prod_yds,  sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
+      { bny: { label:'INVOICED YDS', val:bny.inv_yds, sub:`Revenue: ${bny.inv_rev}`, subColor:INK_LIGHT },
+        nj:  { label:'INVOICED YDS', val:nj.inv_yds,  sub:`Revenue: ${nj.inv_rev}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, subColor:INK_LIGHT } },
+      { bny: { label:'OPEX MTD', val:bny.opex, sub:`Inv Purchases: ${bny.inv_purch}`, subColor:INK_LIGHT },
+        nj:  { label:'OPEX MTD', val:nj.opex,  sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, subColor:INK_LIGHT } },
     ]
 
+    const ROW_H = 48
     metricRows.forEach((row, i) => {
       ;[{d:row.bny, x:L},{d:row.nj, x:MID+6}].forEach(({d, x}) => {
-        setFont(7, INK_LIGHT); doc.text(d.label, x, y)
-        setFont(13, d.color, true); doc.text(d.val||'—', x, y+11)
-        setFont(7.5, INK_LIGHT); doc.text(doc.splitTextToSize(d.sub, colW), x, y+23)
+        setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, y); doc.setCharSpace(0)
+        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+13)
+        setFont(7.5, d.subColor||INK_LIGHT); doc.text(doc.splitTextToSize(d.sub, colW), x, y+25)
       })
-      doc.setDrawColor(BORDER); doc.setLineWidth(0.5)
-      doc.line(MID, y-2, MID, y+38)
-      if (i < metricRows.length - 1) { doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3); doc.line(L, y+42, L+PW, y+42) }
-      y += 46
+      doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
+      doc.line(MID, y-4, MID, y+ROW_H-6)
+      if (i < metricRows.length - 1) { doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3); doc.line(L, y+ROW_H-2, L+PW, y+ROW_H-2) }
+      y += ROW_H
     })
 
     // ── FINANCIALS ────────────────────────────────────────────────────────────
