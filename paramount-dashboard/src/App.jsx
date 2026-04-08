@@ -433,73 +433,85 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     hline(y, BORDER); y += 8
 
     // ── PRODUCTION ───────────────────────────────────────────────────────────
+    const bny = data.bny, nj = data.nj
+    const colW = PW / 2 - 16
+    const INK_DARK = '#3D3530'
+    const ROW_H = 52
+
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('PRODUCTION — MONTH-TO-DATE', L, y); doc.setCharSpace(0)
-    y += 13
+    y += 14
 
-    const bny = data.bny, nj = data.nj
     setFont(10, INK, true)
     doc.text('BNY — BROOKLYN DIGITAL', L, y)
-    doc.text('NJ — PASSAIC SCREEN PRINT', MID + 6, y)
-    y += 16
+    doc.text('NJ — PASSAIC SCREEN PRINT', MID + 8, y)
+    y += 18
 
-    const colW = PW / 2 - 12
-    const INK_DARK = '#3D3530'
     const metricRows = [
-      { bny: { label:'PRODUCED', val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
-        nj:  { label:'PRODUCED', val:nj.prod_yds,  sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
+      { bny: { label:'PRODUCED',    val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
+        nj:  { label:'PRODUCED',    val:nj.prod_yds,  sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
       { bny: { label:'INVOICED YDS', val:bny.inv_yds, sub:`Revenue: ${bny.inv_rev}`, subColor:INK_LIGHT },
         nj:  { label:'INVOICED YDS', val:nj.inv_yds,  sub:`Revenue: ${nj.inv_rev}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, subColor:INK_LIGHT } },
-      { bny: { label:'OPEX MTD', val:bny.opex, sub:`Inv Purchases: ${bny.inv_purch}`, subColor:INK_LIGHT },
-        nj:  { label:'OPEX MTD', val:nj.opex,  sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, subColor:INK_LIGHT } },
+      { bny: { label:'OPEX MTD',    val:bny.opex,     sub:`Inv Purchases: ${bny.inv_purch}`, subColor:INK_LIGHT },
+        nj:  { label:'OPEX MTD',    val:nj.opex,      sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, subColor:INK_LIGHT } },
     ]
 
-    const ROW_H = 48
     metricRows.forEach((row, i) => {
-      ;[{d:row.bny, x:L},{d:row.nj, x:MID+6}].forEach(({d, x}) => {
+      y = checkPage(y, ROW_H + 10)
+      ;[{d:row.bny, x:L}, {d:row.nj, x:MID+8}].forEach(({d, x}) => {
         setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, y); doc.setCharSpace(0)
-        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+13)
-        setFont(7.5, d.subColor||INK_LIGHT); doc.text(doc.splitTextToSize(d.sub, colW), x, y+25)
+        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+14)
+        setFont(7.5, d.subColor||INK_LIGHT)
+        doc.text(doc.splitTextToSize(d.sub, colW), x, y+27)
       })
+      // vertical divider — full row height
       doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
-      doc.line(MID, y-4, MID, y+ROW_H-6)
-      if (i < metricRows.length - 1) { doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3); doc.line(L, y+ROW_H-2, L+PW, y+ROW_H-2) }
+      doc.line(MID, y-6, MID, y+ROW_H-8)
+      // horizontal row separator
+      if (i < metricRows.length - 1) {
+        doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3)
+        doc.line(L, y+ROW_H-4, L+PW, y+ROW_H-4)
+      }
       y += ROW_H
     })
 
     // ── FINANCIALS ────────────────────────────────────────────────────────────
-    y += 4
-    y = checkPage(y, 150)
-    hline(y, BORDER); y += 8
+    y += 6
+    y = checkPage(y, 160)
+    hline(y, BORDER); y += 10
     setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
     doc.text('FINANCIALS', L, y); doc.setCharSpace(0)
-    y += 13
+    y += 14
 
     const fin = data.financials
     const cw = PW / 4
+    const FIN_ROW_H = 18
     const headers = ['METRIC', 'PARAMOUNT NJ', 'BNY BROOKLYN', 'COMBINED']
     const rows = [
-      ['OpEx MTD', nj.opex, bny.opex, fin.opex_combined],
-      ['Inv Purchases', nj.inv_purch, bny.inv_purch, fin.inv_combined],
-      ['AP Total', fin.ap_para_total, fin.ap_bny_total, fin.ap_combined],
-      ['AP Past Due', fin.ap_para_pd, fin.ap_bny_pd, fin.ap_combined_pd, true],
-      ['AR Outstanding', '—', '—', fin.ar_outstanding],
-      ['AR Past Due', '—', '—', fin.ar_past_due, true],
+      ['OpEx MTD',      nj.opex,          bny.opex,          fin.opex_combined],
+      ['Inv Purchases', nj.inv_purch,      bny.inv_purch,     fin.inv_combined],
+      ['AP Total',      fin.ap_para_total, fin.ap_bny_total,  fin.ap_combined],
+      ['AP Past Due',   fin.ap_para_pd,    fin.ap_bny_pd,     fin.ap_combined_pd, true],
+      ['AR Outstanding','—',               '—',               fin.ar_outstanding],
+      ['AR Past Due',   '—',               '—',               fin.ar_past_due, true],
     ]
 
-    doc.setFillColor(INK); doc.rect(L, y, PW, 16, 'F')
+    // Header row
+    doc.setFillColor(INK); doc.rect(L, y, PW, FIN_ROW_H, 'F')
     setFont(7, '#ffffff', true)
-    headers.forEach((h, i) => doc.text(h, L + i*cw + 5, y+11))
-    y += 16
+    headers.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 12))
+    y += FIN_ROW_H
 
     rows.forEach((row, ri) => {
-      if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, 16, 'F') }
+      y = checkPage(y, FIN_ROW_H + 4)
+      if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, FIN_ROW_H, 'F') }
       row.slice(0,4).forEach((cell, ci) => {
         const isPD = row[4]===true && ci > 0
         setFont(8, ci===0 ? INK_LIGHT : isPD ? RED : INK, ci===3)
-        doc.text(cell||'—', L + ci*cw + 5, y+11)
+        doc.text(cell||'—', L + ci*cw + 6, y + 12)
       })
-      hline(y+16, BORDER, 0.3); y += 16
+      hline(y + FIN_ROW_H, BORDER, 0.3)
+      y += FIN_ROW_H
     })
 
     // ── PEOPLE + WIP ─────────────────────────────────────────────────────────
