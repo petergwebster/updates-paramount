@@ -528,7 +528,7 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     y += 10
 
     setFont(8, INK)
-    doc.text(`Headcount: ${ppl.headcount||'—'}  ·  Payroll MTD: ${ppl.payroll||'—'}`, L, y)
+    doc.text(`Headcount: ${ppl.headcount||'—'}`, L, y)
 
     doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.line(MID, y-8, MID, y+26)
 
