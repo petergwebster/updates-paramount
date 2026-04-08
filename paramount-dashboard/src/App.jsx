@@ -447,26 +447,26 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     y += 14
 
     const metricRows = [
-      { bny: { label:'PRODUCED',    val:bny.prod_yds, sub:`${bny.prod_pct}% of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
-        nj:  { label:'PRODUCED',    val:nj.prod_yds,  sub:`${nj.prod_pct}% of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
-      { bny: { label:'INVOICED YDS', val:bny.inv_yds, sub:`Revenue: ${bny.inv_rev}`, subColor:INK_LIGHT },
-        nj:  { label:'INVOICED YDS', val:nj.inv_yds,  sub:`Revenue: ${nj.inv_rev}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, subColor:INK_LIGHT } },
-      { bny: { label:'OPEX MTD',    val:bny.opex,     sub:`Inv Purchases: ${bny.inv_purch}`, subColor:INK_LIGHT },
-        nj:  { label:'OPEX MTD',    val:nj.opex,      sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch}`, subColor:INK_LIGHT } },
+      { bny: { label:'PRODUCED',     val:bny.prod_yds, sub:`${bny.prod_pct != null ? bny.prod_pct+'%' : '—'} of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
+        nj:  { label:'PRODUCED',     val:nj.prod_yds,  sub:`${nj.prod_pct  != null ? nj.prod_pct+'%'  : '—'} of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
+      { bny: { label:'INVOICED YDS', val:bny.inv_yds,  sub:`Revenue: ${bny.inv_rev||'—'}`, subColor:INK_LIGHT },
+        nj:  { label:'INVOICED YDS', val:nj.inv_yds,   sub:`Revenue: ${nj.inv_rev||'—'}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, subColor:INK_LIGHT } },
+      { bny: { label:'OPEX MTD',     val:bny.opex,     sub:`Inv Purchases: ${bny.inv_purch||'—'}`, subColor:INK_LIGHT },
+        nj:  { label:'OPEX MTD',     val:nj.opex,      sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch||'—'}`, subColor:INK_LIGHT } },
     ]
 
     metricRows.forEach((row, i) => {
       ;[{d:row.bny, x:L}, {d:row.nj, x:MID+8}].forEach(({d, x}) => {
         setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, y); doc.setCharSpace(0)
-        setFont(11, INK_DARK, false); doc.text(d.val||'—', x, y+12)
+        setFont(12, INK_DARK, false); doc.text(d.val||'—', x, y+13)
         setFont(7.5, d.subColor||INK_LIGHT)
-        doc.text(doc.splitTextToSize(d.sub, colW), x, y+23)
+        doc.text(doc.splitTextToSize(d.sub, colW), x, y+25)
       })
       doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
-      doc.line(MID, y-4, MID, y+ROW_H-6)
+      doc.line(MID, y-4, MID, y+ROW_H-4)
       if (i < metricRows.length - 1) {
         doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3)
-        doc.line(L, y+ROW_H-3, L+PW, y+ROW_H-3)
+        doc.line(L, y+ROW_H-2, L+PW, y+ROW_H-2)
       }
       y += ROW_H
     })
