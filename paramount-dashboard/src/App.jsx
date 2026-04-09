@@ -1018,9 +1018,176 @@ Write exactly 4 paragraphs:
 // ── Live Ops page — unified single-row KPI bar + both facility tables ─────────
 function LiveOpsPage({ weekStart }) {
   const {
-    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
-    todayIdx, daysIn, bnyT, njT, reload
+    digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
+    todayIdx, daysIn, digitalT, hsT, reload
   } = useProductionData(weekStart)
+
+  const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
+  const fmt  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'
+  const pct  = (a,b) => a!==null&&b&&b>0 ? Math.round(a/b*100) : null
+  const pctColor   = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
+  const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
+  const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
+
+  // Combined totals
+  const combSched  = (digitalT?.wkSched||0)+(hsT?.wkSched||0)
+  const combActual = digitalT?.wkActual!==null||hsT?.wkActual!==null ? (digitalT?.wkActual||0)+(hsT?.wkActual||0) : null
+  const combWaste  = digitalT?.wkWaste!==null||hsT?.wkWaste!==null   ? (digitalT?.wkWaste||0)+(hsT?.wkWaste||0)   : null
+  const combSchedP = pct(combActual, combSched)
+  const combBudgetP= pct(combActual, 12000+8610)
+  const combWasteP = pct(combWaste, combActual)
+
+  const hasData = digitalT !== null || hsT !== null
+
+  // ── Sub-components scoped to this bar ──
+  function Bubble({ label, value, sub, color }) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+        background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'5px 10px',
+        minWidth:76, gap:1, flexShrink:0 }}>
+        <div style={{ fontSize:8, color:'rgba(212,168,67,0.65)', fontWeight:'bold',
+          letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
+        <div style={{ fontSize:14, fontWeight:'bold', color:color||'#FAF7F2',
+          fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
+        {sub && <div style={{ fontSize:8, color:'rgba(250,247,242,0.4)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
+      </div>
+    )
+  }
+
+  function VDiv() {
+    return <div style={{ width:1, alignSelf:'stretch', background:'rgba(212,168,67,0.2)', flexShrink:0, margin:'0 4px' }}/>
+  }
+
+  function GroupLabel({ text }) {
+    return (
+      <div style={{ fontSize:9, color:'rgba(212,168,67,0.7)', fontWeight:'bold',
+        letterSpacing:'0.08em', background:'rgba(212,168,67,0.1)', borderRadius:3,
+        padding:'2px 6px', whiteSpace:'nowrap', flexShrink:0, alignSelf:'center',
+        userSelect:'none' }}>{text}</div>
+    )
+  }
+
+  return (
+    <div style={{ fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh' }}>
+
+      {/* ── Sticky KPI bar — two clean rows, no wrapping ── */}
+      <div style={{
+        position:'sticky', top:0, zIndex:100,
+        background:'#2C2420',
+        borderBottom:'2px solid rgba(212,168,67,0.2)',
+        boxShadow:'0 3px 16px rgba(0,0,0,0.35)',
+        padding:'8px 16px',
+        overflowX:'auto',
+      }}>
+
+        {/* ROW 1: identity + Combined + Digital + Refresh */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:'max-content', marginBottom: hasData ? 6 : 0 }}>
+
+          {/* Identity */}
+          <div style={{ flexShrink:0, marginRight:4 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+              <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4,
+                padding:'2px 7px', fontSize:11, fontWeight:'bold', whiteSpace:'nowrap' }}>Live Ops</span>
+              {weekNum && (
+                <span style={{ background:'rgba(212,168,67,0.15)', color:'#D4A843',
+                  borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>
+              )}
+              {weekInfo && (
+                <span style={{ fontSize:10, color:'rgba(212,168,67,0.6)', whiteSpace:'nowrap' }}>
+                  {weekInfo.month} · {weekInfo.quarter}
+                </span>
+              )}
+            </div>
+            {lastRefresh && (
+              <div style={{ fontSize:8, color:'rgba(250,247,242,0.3)', marginTop:2 }}>
+                {lastRefresh.toLocaleTimeString()}
+              </div>
+            )}
+          </div>
+
+          {hasData && <>
+            <VDiv/>
+            <GroupLabel text="COMBINED"/>
+            <Bubble label="Total Yds"   value={combActual!==null?fmt(combActual):'—'} sub={`of ${fmt(combSched)} sched`} color={pctColor(combSchedP)}/>
+            <Bubble label="vs Schedule" value={combSchedP!==null?`${combSchedP}%`:'—'} sub="combined"                   color={pctColor(combSchedP)}/>
+            <Bubble label="vs Budget"   value={combBudgetP!==null?`${combBudgetP}%`:'—'} sub="20,610 yd tgt"            color={pctColor(combBudgetP)}/>
+            <Bubble label="Waste"       value={combWasteP!==null?`${combWasteP}%`:'—'} sub={`${fmt(combWaste)} yds`}   color={wasteColor(combWasteP)}/>
+            <VDiv/>
+            <GroupLabel text="DIGITAL"/>
+            <Bubble label="Actual"    value={digitalT?.wkActual!==null?fmt(digitalT?.wkActual):'—'} sub={`sched ${fmt(digitalT?.wkSched)}`}   color={pctColor(digitalT?.schedPct)}/>
+            <Bubble label="% Sched"   value={digitalT?.schedPct!==null?`${digitalT.schedPct}%`:'—'} sub={ouFmt(digitalT?.overUnder)??'vs exp'} color={pctColor(digitalT?.schedPct)}/>
+            <Bubble label="vs Budget" value={digitalT?.budgetPct!==null?`${digitalT.budgetPct}%`:'—'} sub="12,000 yd tgt"                     color={pctColor(digitalT?.budgetPct)}/>
+            <Bubble label="Waste"     value={digitalT?.wastePct!==null?`${digitalT.wastePct}%`:'—'} sub={`${fmt(digitalT?.wkWaste)} yds`}    color={wasteColor(digitalT?.wastePct)}/>
+          </>}
+
+          <div style={{ flex:1, minWidth:12 }}/>
+          <button onClick={reload} disabled={loading} style={{
+            background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
+            padding:'4px 11px', fontSize:11, color:'rgba(212,168,67,0.6)',
+            cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
+          }}>
+            {loading ? 'Loading…' : '↻ Refresh'}
+          </button>
+        </div>
+
+        {/* ROW 2: Hand Screen — indented to align with Digital bubbles above */}
+        {hasData && (
+          <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:'max-content' }}>
+            {/* Invisible spacer — matches identity block width exactly */}
+            <div style={{ flexShrink:0, visibility:'hidden', marginRight:4 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                <span style={{ borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>Live Ops</span>
+                {weekNum && <span style={{ borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>}
+                {weekInfo && <span style={{ fontSize:10 }}>{weekInfo.month} · {weekInfo.quarter}</span>}
+              </div>
+              <div style={{ fontSize:8, marginTop:2 }}>00:00:00 AM</div>
+            </div>
+
+            {/* Combined spacer — matches COMBINED group width */}
+            <div style={{ display:'flex', alignItems:'center', gap:5, visibility:'hidden', pointerEvents:'none' }}>
+              <VDiv/>
+              <GroupLabel text="COMBINED"/>
+              <Bubble label="Total Yds"   value="—" sub="placeholder"/>
+              <Bubble label="vs Schedule" value="—" sub="placeholder"/>
+              <Bubble label="vs Budget"   value="—" sub="placeholder"/>
+              <Bubble label="Waste"       value="—" sub="placeholder"/>
+            </div>
+
+            <VDiv/>
+            <GroupLabel text="HAND SCREEN"/>
+            <Bubble label="Actual"    value={hsT?.wkActual!==null?fmt(hsT?.wkActual):'—'} sub={`sched ${fmt(hsT?.wkSched)}`}    color={pctColor(hsT?.schedPct)}/>
+            <Bubble label="% Sched"   value={hsT?.schedPct!==null?`${hsT.schedPct}%`:'—'} sub={ouFmt(hsT?.overUnder)??'vs exp'} color={pctColor(hsT?.schedPct)}/>
+            <Bubble label="vs Budget" value={hsT?.budgetPct!==null?`${hsT.budgetPct}%`:'—'} sub="8,610 yd tgt"                  color={pctColor(hsT?.budgetPct)}/>
+            <Bubble label="Waste"     value={hsT?.wastePct!==null?`${hsT.wastePct}%`:'—'} sub={`${fmt(hsT?.wkWaste)} yds`}     color={wasteColor(hsT?.wastePct)}/>
+          </div>
+        )}
+      </div>
+
+      {/* ── Facility tables ── */}
+      <div style={{ padding:'24px' }}>
+        <div style={{ fontSize:13, color:'#9C8F87', marginBottom:24 }}>
+          Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Operator · Waste target &lt;10%
+        </div>
+        {error   && <div style={{ background:'#FFF3E0', border:'1px solid #FFB74D', borderRadius:8, padding:16, color:'#E65100', marginBottom:16 }}>⚠ {error}</div>}
+        {loading && <div style={{ color:'#9C8F87', padding:40, textAlign:'center', fontSize:14 }}>Loading from Google Sheets...</div>}
+        {!loading && !error && (
+          <>
+            <div style={{marginBottom:40}}>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Digital — Brooklyn + Passaic</div>
+              <FacilityDetail data={digital} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={12000} title="Digital"/>
+              <OperatorScorecard ops={digital?.ops} facility="Digital"/>
+            </div>
+            <div style={{marginBottom:40}}>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Hand Screen — Passaic</div>
+              <FacilityDetail data={hs} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={8610} title="Hand Screen"/>
+              <OperatorScorecard ops={hs?.ops} facility="Hand Screen"/>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
   const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
   const fmt  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'

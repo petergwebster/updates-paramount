@@ -2,30 +2,30 @@ import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { getFiscalInfo } from '../fiscalCalendar'
 
-const BNY_SHEET_ID = '1nVuGPNIxRCEHOLSr6v5OrwFZO7sWOZT2zeeB7CkX_Ys'
-const NJ_SHEET_ID  = '1dT6mc8kKzcUJsUjHsFZdANMF_UpJ9LhEd0xQUj00I6k'
-const API_KEY      = import.meta.env.VITE_GOOGLE_SHEETS_API_KEY
-const WASTE_TARGET = 0.10
-const BNY_BUDGET   = 12000
-const NJ_BUDGET    = 8610
+const DIGITAL_SHEET_ID = '1nVuGPNIxRCEHOLSr6v5OrwFZO7sWOZT2zeeB7CkX_Ys' // Brooklyn + Passaic digital
+const HS_SHEET_ID      = '1dT6mc8kKzcUJsUjHsFZdANMF_UpJ9LhEd0xQUj00I6k' // Hand screen (Passaic)
+const API_KEY          = import.meta.env.VITE_GOOGLE_SHEETS_API_KEY
+const WASTE_TARGET     = 0.10
+const DIGITAL_BUDGET   = 12000  // Brooklyn + Passaic digital combined
+const HS_BUDGET        = 8610   // Hand screen
 
-const BNY_DAYS = [
+const DIGITAL_DAYS = [
   { label:'Mon', sched:2,  actual:3,  waste:4,  op:5  },
   { label:'Tue', sched:6,  actual:7,  waste:8,  op:9  },
   { label:'Wed', sched:10, actual:11, waste:12, op:13 },
   { label:'Thu', sched:14, actual:15, waste:16, op:17 },
   { label:'Fri', sched:18, actual:19, waste:20, op:21 },
 ]
-const BNY_WK_SCHED=22, BNY_WK_ACTUAL=23, BNY_WK_WASTE=24
+const DIGITAL_WK_SCHED=22, DIGITAL_WK_ACTUAL=23, DIGITAL_WK_WASTE=24
 
-const NJ_DAYS = [
+const HS_DAYS = [
   { label:'Mon', sched:2,  actual:3,  waste:4,  op1:5,  op2:6  },
   { label:'Tue', sched:7,  actual:8,  waste:9,  op1:10, op2:11 },
   { label:'Wed', sched:12, actual:13, waste:14, op1:15, op2:16 },
   { label:'Thu', sched:17, actual:18, waste:19, op1:20, op2:21 },
   { label:'Fri', sched:22, actual:23, waste:24, op1:25, op2:26 },
 ]
-const NJ_WK_SCHED=27, NJ_WK_ACTUAL=28, NJ_WK_WASTE=29
+const HS_WK_SCHED=27, HS_WK_ACTUAL=28, HS_WK_WASTE=29
 
 // ── Data fetching & parsing ───────────────────────────────────────────────────
 async function fetchSheet(sheetId, range) {
@@ -406,10 +406,10 @@ export function ConsolidatedProductionSummary({ bnyT, njT, weekNum }) {
   )
 }
 
-// ── Hook for loading both sheets (shared by BNY, Passaic, and Consolidated) ──
+// ── Hook for loading both sheets (shared by Digital, Hand Screen, and Consolidated) ──
 export function useProductionData(weekStart) {
-  const [bny,  setBny]  = useState(null)
-  const [nj,   setNj]   = useState(null)
+  const [digital, setDigital] = useState(null)
+  const [hs,      setHs]      = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState(null)
   const [weekNum,  setWeekNum]  = useState(null)
@@ -423,12 +423,12 @@ export function useProductionData(weekStart) {
       const info = getFiscalInfo(key)
       if (!info) { setError('No fiscal week found for this date.'); setLoading(false); return }
       setWeekNum(info.fiscalWeek); setWeekInfo(info)
-      const [bnyRows, njRows] = await Promise.all([
-        fetchSheet(BNY_SHEET_ID, 'Schedule!A:W'),
-        fetchSheet(NJ_SHEET_ID,  'Schedule!A:AE'),
+      const [digitalRows, hsRows] = await Promise.all([
+        fetchSheet(DIGITAL_SHEET_ID, 'Schedule!A:W'),
+        fetchSheet(HS_SHEET_ID,      'Schedule!A:AE'),
       ])
-      setBny(parseWeek(bnyRows, info.fiscalWeek, BNY_DAYS, BNY_WK_SCHED, BNY_WK_ACTUAL, BNY_WK_WASTE, false))
-      setNj( parseWeek(njRows,  info.fiscalWeek, NJ_DAYS,  NJ_WK_SCHED,  NJ_WK_ACTUAL,  NJ_WK_WASTE,  true))
+      setDigital(parseWeek(digitalRows, info.fiscalWeek, DIGITAL_DAYS, DIGITAL_WK_SCHED, DIGITAL_WK_ACTUAL, DIGITAL_WK_WASTE, false))
+      setHs(     parseWeek(hsRows,      info.fiscalWeek, HS_DAYS,      HS_WK_SCHED,      HS_WK_ACTUAL,      HS_WK_WASTE,      true))
       setLastRefresh(new Date())
     } catch(e) { setError(e.message) }
     finally { setLoading(false) }
@@ -440,23 +440,27 @@ export function useProductionData(weekStart) {
   const daysIn   = todayIdx>=0?todayIdx+1:0
 
   return {
-    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
+    digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
     todayIdx, daysIn,
-    bnyT: calcTotals(bny, BNY_BUDGET, daysIn),
-    njT:  calcTotals(nj,  NJ_BUDGET,  daysIn),
+    // Keep bny/nj aliases so App.jsx LiveOpsPage still works until we update it
+    bny: digital, nj: hs,
+    digitalT: calcTotals(digital, DIGITAL_BUDGET, daysIn),
+    hsT:      calcTotals(hs,      HS_BUDGET,      daysIn),
+    bnyT: calcTotals(digital, DIGITAL_BUDGET, daysIn),
+    njT:  calcTotals(hs,      HS_BUDGET,      daysIn),
     reload: () => load(weekStart),
   }
 }
 
-// ── BNY tab ───────────────────────────────────────────────────────────────────
+// ── Digital tab (Brooklyn + Passaic digital combined) ────────────────────────
 export function BNYTab({ weekStart }) {
-  const { bny, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, bnyT, reload } = useProductionData(weekStart)
+  const { digital, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, digitalT, reload } = useProductionData(weekStart)
   const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
-  const printerStats = calcPrinterStats(bny?.ops)
+  const printerStats = calcPrinterStats(digital?.ops)
 
   return (
     <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
-      <FacilityKPIBar totals={bnyT} budget={BNY_BUDGET} facilityLabel="BNY — Digital"
+      <FacilityKPIBar totals={digitalT} budget={DIGITAL_BUDGET} facilityLabel="Digital — Brooklyn + Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
       <div style={{padding:'24px'}}>
@@ -464,11 +468,11 @@ export function BNYTab({ weekStart }) {
           Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Operator
         </div>
         {error  && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
-        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading BNY data...</div>}
+        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading Digital data...</div>}
         {!loading&&!error&&(
           <>
-            <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={BNY_BUDGET} title="BNY"/>
-            <OperatorScorecard ops={bny?.ops} facility="BNY"/>
+            <FacilityDetail data={digital} dayCols={DIGITAL_DAYS} todayIdx={todayIdx} budget={DIGITAL_BUDGET} title="Digital"/>
+            <OperatorScorecard ops={digital?.ops} facility="Digital"/>
           </>
         )}
       </div>
@@ -476,15 +480,15 @@ export function BNYTab({ weekStart }) {
   )
 }
 
-// ── Passaic tab ───────────────────────────────────────────────────────────────
+// ── Hand Screen tab (Passaic screen print) ────────────────────────────────────
 export function PassaicTab({ weekStart }) {
-  const { nj, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, njT, reload } = useProductionData(weekStart)
+  const { hs, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, hsT, reload } = useProductionData(weekStart)
   const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
-  const printerStats = calcPrinterStats(nj?.ops)
+  const printerStats = calcPrinterStats(hs?.ops)
 
   return (
     <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
-      <FacilityKPIBar totals={njT} budget={NJ_BUDGET} facilityLabel="Passaic — Screen Print"
+      <FacilityKPIBar totals={hsT} budget={HS_BUDGET} facilityLabel="Hand Screen — Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
       <div style={{padding:'24px'}}>
@@ -492,11 +496,11 @@ export function PassaicTab({ weekStart }) {
           Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Op 1 · Op 2
         </div>
         {error  && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
-        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading Passaic data...</div>}
+        {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading Hand Screen data...</div>}
         {!loading&&!error&&(
           <>
-            <FacilityDetail data={nj} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={NJ_BUDGET} title="Passaic"/>
-            <OperatorScorecard ops={nj?.ops} facility="Passaic"/>
+            <FacilityDetail data={hs} dayCols={HS_DAYS} todayIdx={todayIdx} budget={HS_BUDGET} title="Hand Screen"/>
+            <OperatorScorecard ops={hs?.ops} facility="Hand Screen"/>
           </>
         )}
       </div>
@@ -504,18 +508,17 @@ export function PassaicTab({ weekStart }) {
   )
 }
 
-// ── Default export (kept for backwards compat — shows both facilities) ────────
+// ── Default export (backwards compat — shows both facilities) ─────────────────
 export default function ProductionTab({ weekStart }) {
-  const { bny, nj, loading, error, weekNum, weekInfo, lastRefresh, todayIdx, daysIn, bnyT, njT, reload } = useProductionData(weekStart)
-  const todayLabel = todayIdx>=0?['Mon','Tue','Wed','Thu','Fri'][todayIdx]:null
+  const { digital, hs, loading, error, todayIdx } = useProductionData(weekStart)
   return (
     <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
       <div style={{padding:'24px'}}>
         {error   && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
         {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading...</div>}
         {!loading&&!error&&<>
-          <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={BNY_BUDGET} title="BNY"/>
-          <FacilityDetail data={nj}  dayCols={NJ_DAYS}  todayIdx={todayIdx} budget={NJ_BUDGET}  title="Passaic"/>
+          <FacilityDetail data={digital} dayCols={DIGITAL_DAYS} todayIdx={todayIdx} budget={DIGITAL_BUDGET} title="Digital"/>
+          <FacilityDetail data={hs}      dayCols={HS_DAYS}      todayIdx={todayIdx} budget={HS_BUDGET}      title="Hand Screen"/>
         </>}
       </div>
     </div>
