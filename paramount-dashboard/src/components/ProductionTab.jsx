@@ -115,7 +115,7 @@ function calcPrinterStats(ops) {
 }
 
 // ── Live Ops PDF generator ────────────────────────────────────────────────────
-export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facilityLabel, weekNum, weekInfo, todayIdx }) {
+export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facilityLabel, weekNum, weekInfo, todayIdx, returnBase64=false }) {
   if (!window.jspdf) {
     await new Promise((res, rej) => {
       const s = document.createElement('script')
@@ -360,6 +360,9 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
   doc.text(`Generated ${new Date().toLocaleString()} · Source: Google Sheets (live)`, L, PH+T-4)
 
   const filename = `${facilityLabel.replace(/[^a-zA-Z0-9]/g,'_')}_WK${weekNum||''}_${format(new Date(),'yyyyMMdd')}.pdf`
+  if (returnBase64) {
+    return doc.output('datauristring').split(',')[1]  // return base64 string only
+  }
   doc.save(filename)
 }
 

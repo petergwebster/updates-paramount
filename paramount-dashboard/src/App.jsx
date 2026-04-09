@@ -1030,6 +1030,10 @@ function LiveOpsPage({ weekStart }) {
   const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
 
   const [pdfFacility, setPdfFacility] = useState(null) // 'digital' | 'hs' | null
+  const [slackModal,  setSlackModal]  = useState(null) // { facility, filename, pdfBase64 } | null
+  const [slackTo,     setSlackTo]     = useState('')
+  const [slackSending,setSlackSending]= useState(false)
+  const [slackResult, setSlackResult] = useState(null) // 'ok' | error string
 
   async function handlePrintPDF(facility) {
     if (pdfFacility) return
@@ -1048,6 +1052,51 @@ function LiveOpsPage({ weekStart }) {
       console.error('PDF generation failed:', e)
       alert('PDF failed: ' + e.message)
     } finally { setPdfFacility(null) }
+  }
+
+  async function handleSlackPDF(facility) {
+    if (pdfFacility) return
+    setPdfFacility(facility)
+    try {
+      const isDigital = facility === 'digital'
+      const facilityLabel = isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic'
+      const filename = `${facilityLabel.replace(/[^a-zA-Z0-9]/g,'_')}_WK${weekNum||''}_${format(new Date(),'yyyyMMdd')}.pdf`
+      const pdfBase64 = await generateLiveOpsPDF({
+        data:          isDigital ? digital : hs,
+        dayCols:       isDigital ? BNY_DAYS : NJ_DAYS,
+        totals:        isDigital ? digitalT : hsT,
+        budget:        isDigital ? 12000 : 8610,
+        facilityLabel, weekNum, weekInfo, todayIdx,
+        returnBase64:  true,  // signal to return base64 instead of saving
+      })
+      setSlackModal({ facility, filename, pdfBase64 })
+      setSlackTo(''); setSlackResult(null)
+    } catch(e) {
+      alert('PDF failed: ' + e.message)
+    } finally { setPdfFacility(null) }
+  }
+
+  async function sendToSlack() {
+    if (!slackTo.trim() || !slackModal) return
+    setSlackSending(true); setSlackResult(null)
+    try {
+      const isDigital = slackModal.facility === 'digital'
+      const facilityLabel = isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic'
+      const res = await fetch('/api/slack-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdfBase64: slackModal.pdfBase64,
+          filename:  slackModal.filename,
+          recipient: slackTo.trim(),
+          message:   `${facilityLabel} · FY WK ${weekNum||''} Production Report`,
+        })
+      })
+      const data = await res.json()
+      if (data.ok) { setSlackResult('ok') }
+      else { setSlackResult(data.error || 'Send failed') }
+    } catch(e) { setSlackResult(e.message) }
+    finally { setSlackSending(false) }
   }
 
   // Combined totals
@@ -1150,12 +1199,26 @@ function LiveOpsPage({ weekStart }) {
             }}>
               {pdfFacility==='digital' ? '⏳ Building…' : '⬇ Digital PDF'}
             </button>
+            <button onClick={()=>handleSlackPDF('digital')} disabled={!!pdfFacility||loading} style={{
+              background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
+              padding:'4px 9px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              whiteSpace:'nowrap',
+            }}>
+              📤
+            </button>
             <button onClick={()=>handlePrintPDF('hs')} disabled={!!pdfFacility||loading} style={{
               background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
               padding:'4px 11px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
               whiteSpace:'nowrap', opacity:pdfFacility==='hs'?0.6:1,
             }}>
               {pdfFacility==='hs' ? '⏳ Building…' : '⬇ Hand Screen PDF'}
+            </button>
+            <button onClick={()=>handleSlackPDF('hs')} disabled={!!pdfFacility||loading} style={{
+              background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
+              padding:'4px 9px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              whiteSpace:'nowrap',
+            }}>
+              📤
             </button>
             <button onClick={reload} disabled={loading} style={{
               background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
@@ -1165,6 +1228,47 @@ function LiveOpsPage({ weekStart }) {
               {loading ? 'Loading…' : '↻ Refresh'}
             </button>
           </div>
+
+          {/* ── Slack modal ── */}
+          {slackModal && (
+            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
+              onClick={e=>{ if(e.target===e.currentTarget) setSlackModal(null) }}>
+              <div style={{ background:'#2C2420', borderRadius:12, padding:28, width:360, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
+                <div style={{ fontSize:15, fontWeight:'bold', color:'#FAF7F2', marginBottom:6 }}>Send to Slack</div>
+                <div style={{ fontSize:12, color:'rgba(250,247,242,0.5)', marginBottom:20 }}>{slackModal.filename}</div>
+                <input
+                  autoFocus
+                  value={slackTo}
+                  onChange={e=>{ setSlackTo(e.target.value); setSlackResult(null) }}
+                  onKeyDown={e=>e.key==='Enter'&&sendToSlack()}
+                  placeholder="@sadams or #scheduling"
+                  style={{ width:'100%', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(212,168,67,0.3)',
+                    borderRadius:6, padding:'9px 12px', fontSize:13, color:'#FAF7F2',
+                    outline:'none', boxSizing:'border-box', marginBottom:14 }}
+                />
+                {slackResult && slackResult !== 'ok' && (
+                  <div style={{ fontSize:12, color:'#EB5757', marginBottom:10 }}>⚠ {slackResult}</div>
+                )}
+                {slackResult === 'ok' && (
+                  <div style={{ fontSize:12, color:'#6FCF97', marginBottom:10 }}>✓ Sent successfully!</div>
+                )}
+                <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                  <button onClick={()=>setSlackModal(null)} style={{
+                    background:'none', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6,
+                    padding:'7px 16px', fontSize:12, color:'rgba(250,247,242,0.6)', cursor:'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={sendToSlack} disabled={slackSending||!slackTo.trim()} style={{
+                    background:'#D4A843', border:'none', borderRadius:6,
+                    padding:'7px 18px', fontSize:12, fontWeight:'bold', color:'#2C2420',
+                    cursor:slackSending||!slackTo.trim()?'not-allowed':'pointer',
+                    opacity:slackSending||!slackTo.trim()?0.6:1 }}>
+                    {slackSending ? 'Sending…' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ROW 2: NJ — indented to align with BNY bubbles above */}
