@@ -195,7 +195,7 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
   if (data?.sections) {
     const dayLabels = dayCols.map((d,i) => data.dayDates?.[i] ? `${d.label} ${data.dayDates[i]}` : d.label)
     const COL_NAME = 110, COL_BGT = 40, COL_DAY = (PW - COL_NAME - COL_BGT - 70) / dayCols.length, COL_WK = 70
-    const ROW_H = 18  // tighter row height
+    const ROW_H = 30  // enough room for sched / actual / delta on separate lines
 
     for (const sec of data.sections) {
       checkPage(60)
@@ -233,32 +233,32 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
           doc.line(todayX, y, todayX, y+ROW_H)
         }
 
-        setFont(7.5, INK); doc.text(m.name, L+4, y+12)
-        setFont(7, LIGHT); doc.text(String(m.budget), L+COL_NAME+COL_BGT/2, y+12, { align:'center' })
+        setFont(7.5, INK); doc.text(m.name, L+4, y+18)
+        setFont(7, LIGHT); doc.text(String(m.budget), L+COL_NAME+COL_BGT/2, y+18, { align:'center' })
 
         // Day cells
         m.days.forEach((day, di) => {
           const dx = L+COL_NAME+COL_BGT + di*COL_DAY
           const cx = dx + COL_DAY/2
-          setFont(6.5, LIGHT); doc.text(fmtN(day.sched), cx, y+6, { align:'center' })
+          setFont(6.5, LIGHT); doc.text(fmtN(day.sched), cx, y+9, { align:'center' })
           if (day.actual !== null) {
             const ou = day.actual - day.sched
-            setFont(8, INK, true); doc.text(fmtN(day.actual), cx, y+12, { align:'center' })
-            setFont(6.5, ou>=0 ? GREEN : RED); doc.text(`${ou>=0?'+':''}${fmtN(ou)}`, cx, y+17, { align:'center' })
+            setFont(8.5, INK, true); doc.text(fmtN(day.actual), cx, y+19, { align:'center' })
+            setFont(7, ou>=0 ? GREEN : RED); doc.text(`${ou>=0?'+':''}${fmtN(ou)}`, cx, y+27, { align:'center' })
           } else {
-            setFont(8, '#D0C8C0'); doc.text('.', cx, y+12, { align:'center' })
+            setFont(9, '#D0C8C0'); doc.text('.', cx, y+19, { align:'center' })
           }
         })
 
         // Wk total cell — bold colored %
         const wkX = L+COL_NAME+COL_BGT+dayCols.length*COL_DAY + COL_WK/2
         const wp = pctV(m.wkActual, m.wkSched)
-        setFont(6.5, LIGHT); doc.text(fmtN(m.wkSched), wkX, y+6, { align:'center' })
+        setFont(6.5, LIGHT); doc.text(fmtN(m.wkSched), wkX, y+9, { align:'center' })
         if (m.wkActual !== null) {
-          setFont(8, INK, true); doc.text(fmtN(m.wkActual), wkX, y+12, { align:'center' })
-          if (wp !== null) { setFont(7, pctC(wp), true); doc.text(`${wp}%`, wkX, y+18, { align:'center' }) }
+          setFont(8.5, INK, true); doc.text(fmtN(m.wkActual), wkX, y+19, { align:'center' })
+          if (wp !== null) { setFont(7.5, pctC(wp), true); doc.text(`${wp}%`, wkX, y+27, { align:'center' }) }
         } else {
-          setFont(8, '#D0C8C0'); doc.text('.', wkX, y+12, { align:'center' })
+          setFont(9, '#D0C8C0'); doc.text('.', wkX, y+19, { align:'center' })
         }
 
         hline(y+ROW_H, BORDER, 0.2)
@@ -271,24 +271,24 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
       const secActual = sec.machines.every(m=>m.wkActual===null) ? null : sec.machines.reduce((s,m)=>s+(m.wkActual||0),0)
       const secWaste  = sec.machines.every(m=>!m.wkWaste) ? null : sec.machines.reduce((s,m)=>s+(m.wkWaste||0),0)
       const secPct    = pctV(secActual, secSched)
-      doc.setFillColor('#EDE5DC'); doc.rect(L, y, PW, 18, 'F')
+      doc.setFillColor('#EDE5DC'); doc.rect(L, y, PW, 22, 'F')
       setFont(7.5, '#5C4F47', true)
-      doc.text(`${sec.label} TOTAL`, L+4, y+12)
+      doc.text(`${sec.label} TOTAL`, L+4, y+14)
       dayCols.forEach((_, di) => {
         const dt = { sched: sec.machines.reduce((s,m)=>s+(m.days[di]?.sched||0),0),
           actual: sec.machines.every(m=>m.days[di]?.actual===null) ? null : sec.machines.reduce((s,m)=>s+(m.days[di]?.actual||0),0) }
         const cx = L+COL_NAME+COL_BGT + di*COL_DAY + COL_DAY/2
-        setFont(6.5, LIGHT); doc.text(fmtN(dt.sched), cx, y+8, { align:'center' })
-        if (dt.actual!==null) { setFont(7.5, '#5C4F47', true); doc.text(fmtN(dt.actual), cx, y+15, { align:'center' }) }
+        setFont(6.5, LIGHT); doc.text(fmtN(dt.sched), cx, y+9, { align:'center' })
+        if (dt.actual!==null) { setFont(8, '#5C4F47', true); doc.text(fmtN(dt.actual), cx, y+18, { align:'center' }) }
       })
       const twkX = L+COL_NAME+COL_BGT+dayCols.length*COL_DAY + COL_WK/2
-      setFont(6.5, LIGHT); doc.text(fmtN(secSched), twkX, y+8, { align:'center' })
+      setFont(6.5, LIGHT); doc.text(fmtN(secSched), twkX, y+9, { align:'center' })
       if (secActual!==null) {
-        setFont(8, '#5C4F47', true); doc.text(fmtN(secActual), twkX, y+15, { align:'center' })
-        if (secPct!==null) { setFont(7, pctC(secPct), true); doc.text(`${secPct}%`, twkX+22, y+15, { align:'center' }) }
+        setFont(8.5, '#5C4F47', true); doc.text(fmtN(secActual), twkX, y+18, { align:'center' })
+        if (secPct!==null) { setFont(7.5, pctC(secPct), true); doc.text(`${secPct}%`, twkX+24, y+18, { align:'center' }) }
       }
-      hline(y+18, '#C8BDB4', 0.5)
-      y += 24
+      hline(y+22, '#C8BDB4', 0.5)
+      y += 28
     }
 
     // ── WEEK GRAND TOTAL ──
