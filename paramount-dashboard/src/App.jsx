@@ -1018,7 +1018,7 @@ Write exactly 4 paragraphs:
 // ── Live Ops page — unified single-row KPI bar + both facility tables ─────────
 function LiveOpsPage({ weekStart }) {
   const {
-    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
+    bny, nj, digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
     todayIdx, daysIn, bnyT, njT, reload
   } = useProductionData(weekStart)
 
