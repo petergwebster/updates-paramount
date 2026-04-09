@@ -1019,7 +1019,7 @@ Write exactly 4 paragraphs:
 function LiveOpsPage({ weekStart }) {
   const {
     bny, nj, digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
-    todayIdx, daysIn, bnyT, njT, reload
+    todayIdx, daysIn, bnyT, njT, digitalT, hsT, reload
   } = useProductionData(weekStart)
 
   const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
