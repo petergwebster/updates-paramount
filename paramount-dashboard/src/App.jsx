@@ -12,7 +12,7 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
-import { FacilityDetail, OperatorScorecard, useProductionData } from './components/ProductionTab'
+import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
 import styles from './App.module.css'
 
@@ -1029,6 +1029,24 @@ function LiveOpsPage({ weekStart }) {
   const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
   const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
 
+  const [pdfFacility, setPdfFacility] = useState(null) // 'digital' | 'hs' | null
+
+  async function handlePrintPDF(facility) {
+    if (pdfFacility) return
+    setPdfFacility(facility)
+    try {
+      const isDigital = facility === 'digital'
+      await generateLiveOpsPDF({
+        data:          isDigital ? digital : hs,
+        dayCols:       isDigital ? BNY_DAYS : NJ_DAYS,
+        totals:        isDigital ? digitalT : hsT,
+        budget:        isDigital ? 12000 : 8610,
+        facilityLabel: isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic',
+        weekNum, weekInfo, todayIdx,
+      })
+    } finally { setPdfFacility(null) }
+  }
+
   // Combined totals
   const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
   const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
@@ -1121,13 +1139,29 @@ function LiveOpsPage({ weekStart }) {
           </>}
 
           <div style={{ flex:1, minWidth:12 }}/>
-          <button onClick={reload} disabled={loading} style={{
-            background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-            padding:'4px 11px', fontSize:11, color:'rgba(212,168,67,0.6)',
-            cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
-          }}>
-            {loading ? 'Loading…' : '↻ Refresh'}
-          </button>
+          <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+            <button onClick={()=>handlePrintPDF('digital')} disabled={!!pdfFacility||loading} style={{
+              background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
+              padding:'4px 11px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              whiteSpace:'nowrap', opacity:pdfFacility==='digital'?0.6:1,
+            }}>
+              {pdfFacility==='digital' ? '⏳ Building…' : '⬇ Digital PDF'}
+            </button>
+            <button onClick={()=>handlePrintPDF('hs')} disabled={!!pdfFacility||loading} style={{
+              background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
+              padding:'4px 11px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              whiteSpace:'nowrap', opacity:pdfFacility==='hs'?0.6:1,
+            }}>
+              {pdfFacility==='hs' ? '⏳ Building…' : '⬇ Hand Screen PDF'}
+            </button>
+            <button onClick={reload} disabled={loading} style={{
+              background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
+              padding:'4px 11px', fontSize:11, color:'rgba(212,168,67,0.6)',
+              cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
+            }}>
+              {loading ? 'Loading…' : '↻ Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* ROW 2: NJ — indented to align with BNY bubbles above */}

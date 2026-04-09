@@ -114,6 +114,249 @@ function calcPrinterStats(ops) {
     count:ranked.length, avgYds:Math.round(totalYds/ranked.length) }
 }
 
+// ── Live Ops PDF generator ────────────────────────────────────────────────────
+export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facilityLabel, weekNum, weekInfo, todayIdx }) {
+  if (!window.jspdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script')
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+      s.onload = res; s.onerror = rej
+      document.head.appendChild(s)
+    })
+  }
+  const { jsPDF } = window.jspdf
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' })
+  const PW = 752, PH = 572   // usable area (landscape letter minus margins)
+  const L = 28, T = 28
+  let y = T
+
+  const INK      = '#2C2420'
+  const GOLD     = '#D4A843'
+  const LIGHT    = '#9C8F87'
+  const GREEN    = '#2E7D32'
+  const AMBER    = '#E65100'
+  const RED      = '#C62828'
+  const CREAM    = '#FAF7F2'
+  const BORDER   = '#E8DDD0'
+
+  const fmtN  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'
+  const pctC  = p => p===null ? LIGHT : p>=95 ? GREEN : p>=80 ? AMBER : RED
+  const wstC  = p => p===null ? LIGHT : p<=10  ? GREEN : RED
+  const pctV  = (a,b) => a!==null&&b&&b>0 ? Math.round(a/b*100) : null
+  const ouFmt = ou => ou===null ? '' : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
+
+  const setFont = (size, color='#2C2420', bold=false) => {
+    doc.setFontSize(size)
+    doc.setTextColor(color)
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+  }
+  const hline = (yy, color=BORDER, lw=0.5) => {
+    doc.setDrawColor(color); doc.setLineWidth(lw)
+    doc.line(L, yy, L+PW, yy)
+  }
+  const checkPage = (needed=40) => {
+    if (y + needed > PH + T) { doc.addPage(); y = T }
+  }
+
+  const daysIn = todayIdx>=0 ? todayIdx+1 : 0
+
+  // ── HEADER ──
+  doc.setFillColor(INK); doc.rect(L, y, PW, 32, 'F')
+  setFont(14, GOLD, true)
+  doc.text(`${facilityLabel} — Weekly Production Detail`, L+10, y+21)
+  setFont(9, '#D4A843')
+  const headerRight = weekNum ? `FY WK ${weekNum}${weekInfo ? '  ·  '+weekInfo.month+'  ·  '+weekInfo.quarter : ''}` : ''
+  doc.text(headerRight, L+PW-10, y+21, { align:'right' })
+  y += 40
+
+  // ── KPI SUMMARY BAR ──
+  if (totals) {
+    doc.setFillColor('#F5F0E8'); doc.rect(L, y, PW, 36, 'F')
+    doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.rect(L, y, PW, 36, 'S')
+    const kpis = [
+      { label:'Actual Yds',  val: totals.wkActual!==null ? fmtN(totals.wkActual) : '—', color: pctC(totals.schedPct) },
+      { label:'Scheduled',   val: fmtN(totals.wkSched), color: LIGHT },
+      { label:'vs Schedule', val: totals.schedPct!==null ? `${totals.schedPct}%` : '—', sub: ouFmt(totals.overUnder), color: pctC(totals.schedPct) },
+      { label:'vs Budget',   val: totals.budgetPct!==null ? `${totals.budgetPct}%` : '—', sub: `${fmtN(budget)} yd tgt`, color: pctC(totals.budgetPct) },
+      { label:'Waste',       val: totals.wastePct!==null ? `${totals.wastePct}%` : '—', sub: totals.wkWaste!==null ? `${fmtN(totals.wkWaste)} yds` : '', color: wstC(totals.wastePct) },
+    ]
+    const kw = PW / kpis.length
+    kpis.forEach((k, i) => {
+      const kx = L + i*kw + kw/2
+      setFont(7.5, LIGHT); doc.text(k.label.toUpperCase(), kx, y+11, { align:'center' })
+      setFont(13, k.color, true); doc.text(k.val, kx, y+24, { align:'center' })
+      if (k.sub) { setFont(7, LIGHT); doc.text(k.sub, kx, y+33, { align:'center' }) }
+      if (i > 0) { doc.setDrawColor(BORDER); doc.setLineWidth(0.3); doc.line(L+i*kw, y+4, L+i*kw, y+32) }
+    })
+    y += 44
+  }
+
+  // ── SECTION TABLES ──
+  if (data?.sections) {
+    const dayLabels = dayCols.map((d,i) => data.dayDates?.[i] ? `${d.label} ${data.dayDates[i]}` : d.label)
+    const COL_NAME = 110, COL_BGT = 40, COL_DAY = (PW - COL_NAME - COL_BGT - 70) / dayCols.length, COL_WK = 70
+
+    for (const sec of data.sections) {
+      checkPage(60)
+      // Section header
+      doc.setFillColor('#E8DDD0'); doc.rect(L, y, PW, 16, 'F')
+      setFont(8, '#5C4F47', true)
+      doc.text(`▸ ${sec.label}`, L+6, y+11)
+      y += 16
+
+      // Column headers
+      doc.setFillColor(INK); doc.rect(L, y, PW, 16, 'F')
+      setFont(7, GOLD, true)
+      doc.text('MACHINE / TABLE', L+4, y+11)
+      doc.text('BGT', L+COL_NAME+COL_BGT/2, y+11, { align:'center' })
+      dayLabels.forEach((dl, di) => {
+        const dx = L+COL_NAME+COL_BGT + di*COL_DAY + COL_DAY/2
+        const isToday = di===todayIdx
+        if (isToday) { doc.setFillColor('#3A2E1A'); doc.rect(L+COL_NAME+COL_BGT+di*COL_DAY, y, COL_DAY, 16, 'F') }
+        setFont(7, isToday ? '#FAD47C' : GOLD, true)
+        doc.text(dl, dx, y+11, { align:'center' })
+      })
+      doc.text('WK TOTAL', L+COL_NAME+COL_BGT+dayCols.length*COL_DAY+COL_WK/2, y+11, { align:'center' })
+      y += 16
+
+      // Machine rows
+      for (let mi=0; mi<sec.machines.length; mi++) {
+        const m = sec.machines[mi]
+        checkPage(22)
+        if (mi%2===1) { doc.setFillColor(CREAM); doc.rect(L, y, PW, 20, 'F') }
+
+        setFont(7.5, INK); doc.text(m.name, L+4, y+13)
+        setFont(7, LIGHT); doc.text(String(m.budget), L+COL_NAME+COL_BGT/2, y+13, { align:'center' })
+
+        // Day cells
+        m.days.forEach((day, di) => {
+          const dx = L+COL_NAME+COL_BGT + di*COL_DAY
+          const cx = dx + COL_DAY/2
+          if (di===todayIdx) { doc.setFillColor('rgba(212,168,67,0.07)'); doc.rect(dx, y, COL_DAY, 20, 'F') }
+          setFont(6.5, LIGHT); doc.text(fmtN(day.sched), cx, y+7, { align:'center' })
+          if (day.actual !== null) {
+            const ou = day.actual - day.sched
+            setFont(8, INK, true); doc.text(fmtN(day.actual), cx, y+14, { align:'center' })
+            setFont(6.5, ou>=0 ? GREEN : RED); doc.text(`${ou>=0?'+':''}${fmtN(ou)}`, cx, y+20, { align:'center' })
+          } else {
+            setFont(8, '#D0C8C0'); doc.text('·', cx, y+14, { align:'center' })
+          }
+        })
+
+        // Wk total cell
+        const wkX = L+COL_NAME+COL_BGT+dayCols.length*COL_DAY + COL_WK/2
+        const wp = pctV(m.wkActual, m.wkSched)
+        setFont(6.5, LIGHT); doc.text(fmtN(m.wkSched), wkX, y+7, { align:'center' })
+        if (m.wkActual !== null) {
+          setFont(8, INK, true); doc.text(fmtN(m.wkActual), wkX, y+14, { align:'center' })
+          if (wp !== null) { setFont(6.5, pctC(wp)); doc.text(`${wp}%`, wkX, y+20, { align:'center' }) }
+        } else {
+          setFont(8, '#D0C8C0'); doc.text('·', wkX, y+14, { align:'center' })
+        }
+
+        hline(y+20, BORDER, 0.2)
+        y += 20
+      }
+
+      // Section total row
+      checkPage(22)
+      const secSched  = sec.machines.reduce((s,m)=>s+m.wkSched,0)
+      const secActual = sec.machines.every(m=>m.wkActual===null) ? null : sec.machines.reduce((s,m)=>s+(m.wkActual||0),0)
+      const secWaste  = sec.machines.every(m=>!m.wkWaste) ? null : sec.machines.reduce((s,m)=>s+(m.wkWaste||0),0)
+      const secPct    = pctV(secActual, secSched)
+      doc.setFillColor('#EDE5DC'); doc.rect(L, y, PW, 18, 'F')
+      setFont(7.5, '#5C4F47', true)
+      doc.text(`${sec.label} TOTAL`, L+4, y+12)
+      // Day totals
+      dayCols.forEach((_, di) => {
+        const dt = { sched: sec.machines.reduce((s,m)=>s+(m.days[di]?.sched||0),0),
+          actual: sec.machines.every(m=>m.days[di]?.actual===null) ? null : sec.machines.reduce((s,m)=>s+(m.days[di]?.actual||0),0) }
+        const cx = L+COL_NAME+COL_BGT + di*COL_DAY + COL_DAY/2
+        setFont(6.5, LIGHT); doc.text(fmtN(dt.sched), cx, y+8, { align:'center' })
+        if (dt.actual!==null) { setFont(7.5, '#5C4F47', true); doc.text(fmtN(dt.actual), cx, y+15, { align:'center' }) }
+      })
+      const twkX = L+COL_NAME+COL_BGT+dayCols.length*COL_DAY + COL_WK/2
+      setFont(6.5, LIGHT); doc.text(fmtN(secSched), twkX, y+8, { align:'center' })
+      if (secActual!==null) {
+        setFont(8, '#5C4F47', true); doc.text(fmtN(secActual), twkX, y+15, { align:'center' })
+        if (secPct!==null) { setFont(6.5, pctC(secPct)); doc.text(`${secPct}%`, twkX+20, y+15, { align:'center' }) }
+      }
+      hline(y+18, '#C8BDB4', 0.5)
+      y += 24
+    }
+
+    // ── WEEK GRAND TOTAL ──
+    checkPage(28)
+    const grandSched  = data.sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+m.wkSched,0),0)
+    const allNull     = data.sections.every(sec=>sec.machines.every(m=>m.wkActual===null))
+    const grandActual = allNull ? null : data.sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkActual||0),0),0)
+    const grandWaste  = data.sections.every(sec=>sec.machines.every(m=>!m.wkWaste)) ? null : data.sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkWaste||0),0),0)
+    const grandPct    = pctV(grandActual, grandSched)
+    const grandExp    = daysIn>0 ? Math.round(grandSched/5*daysIn) : null
+    const grandOU     = grandActual!==null&&grandExp!==null ? grandActual-grandExp : null
+    const grandWstPct = pctV(grandWaste, grandActual)
+
+    doc.setFillColor('#DDD4C8'); doc.rect(L, y, PW, 22, 'F')
+    setFont(8.5, INK, true); doc.text('WEEK TOTAL', L+8, y+14)
+    let tx = L+120
+    setFont(8, LIGHT); doc.text(`Sched ${fmtN(grandSched)}`, tx, y+14); tx+=90
+    if (grandActual!==null) { setFont(8.5, INK, true); doc.text(`Actual ${fmtN(grandActual)}`, tx, y+14); tx+=90 }
+    if (grandPct!==null) { setFont(8.5, pctC(grandPct), true); doc.text(`${grandPct}% of schedule`, tx, y+14); tx+=110 }
+    if (grandOU!==null) { setFont(8, grandOU>=0?GREEN:RED, true); doc.text(`${ouFmt(grandOU)} vs exp`, tx, y+14); tx+=90 }
+    if (grandWaste!==null&&grandWaste>0) { setFont(8, wstC(grandWstPct), true); doc.text(`Waste: ${fmtN(grandWaste)} yds (${grandWstPct}%)`, tx, y+14) }
+    y += 30
+  }
+
+  // ── OPERATOR SCORECARD ──
+  if (data?.ops) {
+    const ranked = Object.entries(data.ops).filter(([,d])=>d.yds>0).sort((a,b)=>b[1].yds-a[1].yds)
+    if (ranked.length) {
+      checkPage(60)
+      hline(y, BORDER); y+=10
+      setFont(10, INK, true); doc.text(`Operator Scorecard · ${facilityLabel}`, L, y); y+=14
+      setFont(8, LIGHT); doc.text('Ranked by yards produced this week', L, y); y+=12
+
+      // Header
+      doc.setFillColor(INK); doc.rect(L, y, PW, 16, 'F')
+      setFont(7, GOLD, true)
+      ;[['#',30],['Operator',180],['Yds',80],['Days',60],['Avg/Day',80],['vs Top',PW-430]].reduce((x,[h,w])=>{
+        doc.text(h, L+x+4, y+11); return x+w
+      },0)
+      y+=16
+
+      const maxYds = ranked[0][1].yds
+      ranked.forEach(([name,d],idx) => {
+        checkPage(18)
+        if (idx%2===1) { doc.setFillColor(CREAM); doc.rect(L, y, PW, 16, 'F') }
+        const avg = d.days>0?Math.round(d.yds/d.days):0
+        const barPct = Math.round(d.yds/maxYds*100)
+        const medal = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':String(idx+1)
+        setFont(7.5, INK, idx<3)
+        doc.text(medal.replace('🥇','1').replace('🥈','2').replace('🥉','3'), L+4, y+11)
+        doc.text(name, L+34, y+11)
+        doc.text(fmtN(d.yds), L+214, y+11, { align:'right' })
+        doc.text(String(d.days), L+274, y+11, { align:'right' })
+        doc.text(fmtN(avg), L+354, y+11, { align:'right' })
+        // Bar
+        const barX = L+370, barW = PW-380, barH = 6
+        doc.setFillColor('#F2EDE4'); doc.rect(barX, y+5, barW, barH, 'F')
+        doc.setFillColor(idx===0?'#D4A843':idx<3?'#8A9B7A':'#B0A89F')
+        doc.rect(barX, y+5, barW*barPct/100, barH, 'F')
+        setFont(7, LIGHT); doc.text(`${barPct}%`, L+PW, y+11, { align:'right' })
+        hline(y+16, BORDER, 0.2)
+        y+=16
+      })
+    }
+  }
+
+  // ── FOOTER ──
+  setFont(7, LIGHT)
+  doc.text(`Generated ${new Date().toLocaleString()} · Source: Google Sheets (live)`, L, PH+T-4)
+
+  const filename = `${facilityLabel.replace(/[^a-zA-Z0-9]/g,'_')}_WK${weekNum||''}_${format(new Date(),'yyyyMMdd')}.pdf`
+  doc.save(filename)
+}
+
 // ── Shared colours ────────────────────────────────────────────────────────────
 const pctColor   = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
 const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
