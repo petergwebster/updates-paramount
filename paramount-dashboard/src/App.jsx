@@ -1044,6 +1044,9 @@ function LiveOpsPage({ weekStart }) {
         facilityLabel: isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic',
         weekNum, weekInfo, todayIdx,
       })
+    } catch(e) {
+      console.error('PDF generation failed:', e)
+      alert('PDF failed: ' + e.message)
     } finally { setPdfFacility(null) }
   }
 
