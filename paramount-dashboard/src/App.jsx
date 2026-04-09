@@ -1199,12 +1199,12 @@ function LiveOpsPage({ weekStart }) {
             }}>
               {pdfFacility==='digital' ? '⏳ Building…' : '⬇ Digital PDF'}
             </button>
-            <button onClick={()=>handleSlackPDF('digital')} disabled={!!pdfFacility||loading} style={{
+            <button onClick={()=>handleSlackPDF('digital')} disabled={!!pdfFacility||loading} title="Send to Slack" style={{
               background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-              padding:'4px 9px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              whiteSpace:'nowrap',
+              padding:'4px 7px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center',
             }}>
-              📤
+              <SlackIcon size={13}/>
             </button>
             <button onClick={()=>handlePrintPDF('hs')} disabled={!!pdfFacility||loading} style={{
               background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
@@ -1213,12 +1213,12 @@ function LiveOpsPage({ weekStart }) {
             }}>
               {pdfFacility==='hs' ? '⏳ Building…' : '⬇ Hand Screen PDF'}
             </button>
-            <button onClick={()=>handleSlackPDF('hs')} disabled={!!pdfFacility||loading} style={{
+            <button onClick={()=>handleSlackPDF('hs')} disabled={!!pdfFacility||loading} title="Send to Slack" style={{
               background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-              padding:'4px 9px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              whiteSpace:'nowrap',
+              padding:'4px 7px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center',
             }}>
-              📤
+              <SlackIcon size={13}/>
             </button>
             <button onClick={reload} disabled={loading} style={{
               background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
@@ -1234,7 +1234,9 @@ function LiveOpsPage({ weekStart }) {
             <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
               onClick={e=>{ if(e.target===e.currentTarget) setSlackModal(null) }}>
               <div style={{ background:'#2C2420', borderRadius:12, padding:28, width:360, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
-                <div style={{ fontSize:15, fontWeight:'bold', color:'#FAF7F2', marginBottom:6 }}>Send to Slack</div>
+                <div style={{ fontSize:15, fontWeight:'bold', color:'#FAF7F2', marginBottom:6, display:'flex', alignItems:'center', gap:8 }}>
+                  <SlackIcon size={16}/> Send to Slack
+                </div>
                 <div style={{ fontSize:12, color:'rgba(250,247,242,0.5)', marginBottom:20 }}>{slackModal.filename}</div>
                 <input
                   autoFocus

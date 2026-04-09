@@ -15,6 +15,10 @@
   path = "/api/generate-pdf"
   function = "generate-pdf"
 
+[[edge_functions]]
+  path = "/api/slack-upload"
+  function = "slack-upload"
+
 # Scheduled WIP lockdown - every Saturday at midnight ET (05:00 UTC)
 [[scheduled_functions]]
   function = "lock-wip"
