@@ -73,8 +73,14 @@ function parseWeek(rows, weekNum, dayCols, wkSched, wkActual, wkWaste, isNJ) {
         }
         return { sched:num(row[d.sched])??0, actual:a, waste:num(row[d.waste]), op:o, op2:o2 }
       })
+      // Compute weekly totals from daily columns (more reliable than sheet formula cols)
+      const computedWkSched  = days.reduce((s,d)=>s+d.sched, 0)
+      const anyActual        = days.some(d=>d.actual!==null)
+      const computedWkActual = anyActual ? days.reduce((s,d)=>s+(d.actual||0), 0) : null
+      const anyWaste         = days.some(d=>d.waste!==null)
+      const computedWkWaste  = anyWaste  ? days.reduce((s,d)=>s+(d.waste||0),  0) : null
       sec.machines.push({ name:c0, budget, days,
-        wkSched:num(row[wkSched])??0, wkActual:num(row[wkActual]), wkWaste:num(row[wkWaste]) })
+        wkSched:computedWkSched, wkActual:computedWkActual, wkWaste:computedWkWaste })
     }
     i++
   }
@@ -424,7 +430,7 @@ export function useProductionData(weekStart) {
       if (!info) { setError('No fiscal week found for this date.'); setLoading(false); return }
       setWeekNum(info.fiscalWeek); setWeekInfo(info)
       const [digitalRows, hsRows] = await Promise.all([
-        fetchSheet(DIGITAL_SHEET_ID, 'Schedule!A:Z'),
+        fetchSheet(DIGITAL_SHEET_ID, 'Schedule!A:V'),
         fetchSheet(HS_SHEET_ID,      'Schedule!A:AE'),
       ])
       setDigital(parseWeek(digitalRows, info.fiscalWeek, DIGITAL_DAYS, DIGITAL_WK_SCHED, DIGITAL_WK_ACTUAL, DIGITAL_WK_WASTE, false))
