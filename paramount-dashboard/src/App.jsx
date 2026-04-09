@@ -1018,8 +1018,8 @@ Write exactly 4 paragraphs:
 // ── Live Ops page — unified single-row KPI bar + both facility tables ─────────
 function LiveOpsPage({ weekStart }) {
   const {
-    digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
-    todayIdx, daysIn, digitalT, hsT, reload
+    bny, nj, loading, error, weekNum, weekInfo, lastRefresh,
+    todayIdx, daysIn, bnyT, njT, reload
   } = useProductionData(weekStart)
 
   const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
@@ -1030,21 +1030,21 @@ function LiveOpsPage({ weekStart }) {
   const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
 
   // Combined totals
-  const combSched  = (digitalT?.wkSched||0)+(hsT?.wkSched||0)
-  const combActual = digitalT?.wkActual!==null||hsT?.wkActual!==null ? (digitalT?.wkActual||0)+(hsT?.wkActual||0) : null
-  const combWaste  = digitalT?.wkWaste!==null||hsT?.wkWaste!==null   ? (digitalT?.wkWaste||0)+(hsT?.wkWaste||0)   : null
+  const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
+  const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
+  const combWaste  = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
   const combSchedP = pct(combActual, combSched)
   const combBudgetP= pct(combActual, 12000+8610)
   const combWasteP = pct(combWaste, combActual)
 
-  const hasData = digitalT !== null || hsT !== null
+  const hasData = bnyT !== null || njT !== null
 
   // ── Sub-components scoped to this bar ──
   function Bubble({ label, value, sub, color }) {
     return (
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
         background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'5px 10px',
-        minWidth:76, gap:1, flexShrink:0 }}>
+        minWidth:64, gap:1, flexShrink:1 }}>
         <div style={{ fontSize:8, color:'rgba(212,168,67,0.65)', fontWeight:'bold',
           letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
         <div style={{ fontSize:14, fontWeight:'bold', color:color||'#FAF7F2',
@@ -1077,11 +1077,11 @@ function LiveOpsPage({ weekStart }) {
         borderBottom:'2px solid rgba(212,168,67,0.2)',
         boxShadow:'0 3px 16px rgba(0,0,0,0.35)',
         padding:'8px 16px',
-        overflowX:'auto',
+        overflowX:'hidden',
       }}>
 
-        {/* ROW 1: identity + Combined + Digital + Refresh */}
-        <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:'max-content', marginBottom: hasData ? 6 : 0 }}>
+        {/* ROW 1: identity + Combined + BNY + Refresh */}
+        <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap', marginBottom: hasData ? 6 : 0 }}>
 
           {/* Identity */}
           <div style={{ flexShrink:0, marginRight:4 }}>
@@ -1113,11 +1113,11 @@ function LiveOpsPage({ weekStart }) {
             <Bubble label="vs Budget"   value={combBudgetP!==null?`${combBudgetP}%`:'—'} sub="20,610 yd tgt"            color={pctColor(combBudgetP)}/>
             <Bubble label="Waste"       value={combWasteP!==null?`${combWasteP}%`:'—'} sub={`${fmt(combWaste)} yds`}   color={wasteColor(combWasteP)}/>
             <VDiv/>
-            <GroupLabel text="DIGITAL"/>
-            <Bubble label="Actual"    value={digitalT?.wkActual!==null?fmt(digitalT?.wkActual):'—'} sub={`sched ${fmt(digitalT?.wkSched)}`}   color={pctColor(digitalT?.schedPct)}/>
-            <Bubble label="% Sched"   value={digitalT?.schedPct!==null?`${digitalT.schedPct}%`:'—'} sub={ouFmt(digitalT?.overUnder)??'vs exp'} color={pctColor(digitalT?.schedPct)}/>
-            <Bubble label="vs Budget" value={digitalT?.budgetPct!==null?`${digitalT.budgetPct}%`:'—'} sub="12,000 yd tgt"                     color={pctColor(digitalT?.budgetPct)}/>
-            <Bubble label="Waste"     value={digitalT?.wastePct!==null?`${digitalT.wastePct}%`:'—'} sub={`${fmt(digitalT?.wkWaste)} yds`}    color={wasteColor(digitalT?.wastePct)}/>
+            <GroupLabel text="BNY"/>
+            <Bubble label="Actual"    value={bnyT?.wkActual!==null?fmt(bnyT?.wkActual):'—'} sub={`sched ${fmt(bnyT?.wkSched)}`}   color={pctColor(bnyT?.schedPct)}/>
+            <Bubble label="% Sched"   value={bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—'} sub={ouFmt(bnyT?.overUnder)??'vs exp'} color={pctColor(bnyT?.schedPct)}/>
+            <Bubble label="vs Budget" value={bnyT?.budgetPct!==null?`${bnyT.budgetPct}%`:'—'} sub="12,000 yd tgt"                 color={pctColor(bnyT?.budgetPct)}/>
+            <Bubble label="Waste"     value={bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—'} sub={`${fmt(bnyT?.wkWaste)} yds`}    color={wasteColor(bnyT?.wastePct)}/>
           </>}
 
           <div style={{ flex:1, minWidth:12 }}/>
@@ -1130,9 +1130,9 @@ function LiveOpsPage({ weekStart }) {
           </button>
         </div>
 
-        {/* ROW 2: Hand Screen — indented to align with Digital bubbles above */}
+        {/* ROW 2: NJ — indented to align with BNY bubbles above */}
         {hasData && (
-          <div style={{ display:'flex', alignItems:'center', gap:5, minWidth:'max-content' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
             {/* Invisible spacer — matches identity block width exactly */}
             <div style={{ flexShrink:0, visibility:'hidden', marginRight:4 }}>
               <div style={{ display:'flex', alignItems:'center', gap:5 }}>
@@ -1154,11 +1154,11 @@ function LiveOpsPage({ weekStart }) {
             </div>
 
             <VDiv/>
-            <GroupLabel text="HAND SCREEN"/>
-            <Bubble label="Actual"    value={hsT?.wkActual!==null?fmt(hsT?.wkActual):'—'} sub={`sched ${fmt(hsT?.wkSched)}`}    color={pctColor(hsT?.schedPct)}/>
-            <Bubble label="% Sched"   value={hsT?.schedPct!==null?`${hsT.schedPct}%`:'—'} sub={ouFmt(hsT?.overUnder)??'vs exp'} color={pctColor(hsT?.schedPct)}/>
-            <Bubble label="vs Budget" value={hsT?.budgetPct!==null?`${hsT.budgetPct}%`:'—'} sub="8,610 yd tgt"                  color={pctColor(hsT?.budgetPct)}/>
-            <Bubble label="Waste"     value={hsT?.wastePct!==null?`${hsT.wastePct}%`:'—'} sub={`${fmt(hsT?.wkWaste)} yds`}     color={wasteColor(hsT?.wastePct)}/>
+            <GroupLabel text="NJ"/>
+            <Bubble label="Actual"    value={njT?.wkActual!==null?fmt(njT?.wkActual):'—'} sub={`sched ${fmt(njT?.wkSched)}`}    color={pctColor(njT?.schedPct)}/>
+            <Bubble label="% Sched"   value={njT?.schedPct!==null?`${njT.schedPct}%`:'—'} sub={ouFmt(njT?.overUnder)??'vs exp'} color={pctColor(njT?.schedPct)}/>
+            <Bubble label="vs Budget" value={njT?.budgetPct!==null?`${njT.budgetPct}%`:'—'} sub="8,610 yd tgt"                  color={pctColor(njT?.budgetPct)}/>
+            <Bubble label="Waste"     value={njT?.wastePct!==null?`${njT.wastePct}%`:'—'} sub={`${fmt(njT?.wkWaste)} yds`}     color={wasteColor(njT?.wastePct)}/>
           </div>
         )}
       </div>
@@ -1173,14 +1173,14 @@ function LiveOpsPage({ weekStart }) {
         {!loading && !error && (
           <>
             <div style={{marginBottom:40}}>
-              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Digital — Brooklyn + Passaic</div>
-              <FacilityDetail data={digital} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={12000} title="Digital"/>
-              <OperatorScorecard ops={digital?.ops} facility="Digital"/>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>BNY — Digital Production</div>
+              <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={12000} title="BNY"/>
+              <OperatorScorecard ops={bny?.ops} facility="BNY"/>
             </div>
             <div style={{marginBottom:40}}>
-              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Hand Screen — Passaic</div>
-              <FacilityDetail data={hs} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={8610} title="Hand Screen"/>
-              <OperatorScorecard ops={hs?.ops} facility="Hand Screen"/>
+              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Passaic — Screen Print</div>
+              <FacilityDetail data={nj} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={8610} title="Passaic"/>
+              <OperatorScorecard ops={nj?.ops} facility="Passaic"/>
             </div>
           </>
         )}
