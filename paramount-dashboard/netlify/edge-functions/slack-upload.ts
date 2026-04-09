@@ -1,5 +1,25 @@
 import type { Context } from "@netlify/edge-functions";
 
+// Known members — add names/shortcuts as needed
+const SLACK_MEMBERS: Record<string, string> = {
+  'peter webster':    'U044K8RGAMS',
+  'pwebster':         'U044K8RGAMS',
+  'peter':            'U044K8RGAMS',
+  'timur':            'U4W6D4CF2',
+  'timur y':          'U4W6D4CF2',
+  'antonella':        'U0372S95NSH',
+  'antonella pilo':   'U0372S95NSH',
+  'abigail':          'U02A3801X28',
+  'abigail pratt':    'U02A3801X28',
+  'emily':            'U09PEFE8VSS',
+  'emily huber':      'U09PEFE8VSS',
+  'brynn':            'U04QFDMLA30',
+  'brynn lawlor':     'U04QFDMLA30',
+  'wendy':            'U08NYSYR4FJ',
+  'wendy reger-hare': 'U08NYSYR4FJ',
+  'estephanie':       'U0ACBRTS3E1',
+};
+
 export default async (request: Request, context: Context) => {
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -21,7 +41,7 @@ export default async (request: Request, context: Context) => {
       });
     }
 
-    const { pdfBase64, filename, recipient, message } = await request.json();
+    const { pdfBase64, filename, recipient, isUserId, message } = await request.json();
 
     if (!pdfBase64 || !filename || !recipient) {
       return new Response(JSON.stringify({ error: "Missing pdfBase64, filename, or recipient" }), {
@@ -33,8 +53,33 @@ export default async (request: Request, context: Context) => {
     const clean = recipient.replace(/^[@#]/, "").trim().toLowerCase();
     let channelId: string | null = null;
 
-    // Try channel lookup first (if starts with # or no @)
-    if (!recipient.startsWith("@")) {
+    // If we already have a Slack user ID, open DM directly
+    if (isUserId && recipient.startsWith('U')) {
+      const dmRes = await fetch("https://slack.com/api/conversations.open", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${BOT_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ users: recipient }),
+      });
+      const dmData = await dmRes.json();
+      if (dmData.ok) channelId = dmData.channel.id;
+    }
+
+    // Check hardcoded member map
+    if (!channelId) {
+      const knownUserId = SLACK_MEMBERS[clean];
+      if (knownUserId) {
+        const dmRes = await fetch("https://slack.com/api/conversations.open", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${BOT_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ users: knownUserId }),
+        });
+        const dmData = await dmRes.json();
+        if (dmData.ok) channelId = dmData.channel.id;
+      }
+    }
+
+    // Try channel lookup (if starts with # or no @)
+    if (!channelId && !recipient.startsWith("@")) {
       const chanRes = await fetch(
         "https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200",
         { headers: { Authorization: `Bearer ${BOT_TOKEN}` } }
@@ -46,7 +91,7 @@ export default async (request: Request, context: Context) => {
       }
     }
 
-    // Try user lookup
+    // Fall back to Slack user API lookup
     if (!channelId) {
       const usersRes = await fetch("https://slack.com/api/users.list?limit=200", {
         headers: { Authorization: `Bearer ${BOT_TOKEN}` },
@@ -65,10 +110,7 @@ export default async (request: Request, context: Context) => {
         if (match) {
           const dmRes = await fetch("https://slack.com/api/conversations.open", {
             method: "POST",
-            headers: {
-              Authorization: `Bearer ${BOT_TOKEN}`,
-              "Content-Type": "application/json",
-            },
+            headers: { Authorization: `Bearer ${BOT_TOKEN}`, "Content-Type": "application/json" },
             body: JSON.stringify({ users: match.id }),
           });
           const dmData = await dmRes.json();

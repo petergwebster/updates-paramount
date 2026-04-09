@@ -1029,11 +1029,40 @@ function LiveOpsPage({ weekStart }) {
   const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
   const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
 
-  const [pdfFacility, setPdfFacility] = useState(null) // 'digital' | 'hs' | null
-  const [slackModal,  setSlackModal]  = useState(null) // { facility, filename, pdfBase64 } | null
+  const [pdfFacility, setPdfFacility] = useState(null)
+  const [slackModal,  setSlackModal]  = useState(null)
   const [slackTo,     setSlackTo]     = useState('')
+  const [slackToId,   setSlackToId]   = useState(null) // resolved Slack user ID
   const [slackSending,setSlackSending]= useState(false)
-  const [slackResult, setSlackResult] = useState(null) // 'ok' | error string
+  const [slackResult, setSlackResult] = useState(null)
+  const [slackSuggestions, setSlackSuggestions] = useState([])
+  const [slackShowDrop,    setSlackShowDrop]    = useState(false)
+  const slackSearchRef = useRef(null)
+
+  async function searchSlackUsers(q) {
+    if (!q || q.length < 1) { setSlackSuggestions([]); setSlackShowDrop(false); return }
+    try {
+      const res = await fetch(`/api/slack-users?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setSlackSuggestions(data.members || [])
+      setSlackShowDrop(true)
+    } catch { setSlackSuggestions([]) }
+  }
+
+  // Debounce search
+  const slackSearchTimer = useRef(null)
+  function onSlackInputChange(val) {
+    setSlackTo(val); setSlackToId(null); setSlackResult(null)
+    clearTimeout(slackSearchTimer.current)
+    slackSearchTimer.current = setTimeout(() => searchSlackUsers(val), 250)
+  }
+
+  function selectSlackUser(member) {
+    setSlackTo(member.name)
+    setSlackToId(member.id)
+    setSlackSuggestions([])
+    setSlackShowDrop(false)
+  }
 
   async function handlePrintPDF(facility) {
     if (pdfFacility) return
@@ -1082,13 +1111,16 @@ function LiveOpsPage({ weekStart }) {
     try {
       const isDigital = slackModal.facility === 'digital'
       const facilityLabel = isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic'
+      // Use resolved ID if available, otherwise pass the typed name
+      const recipient = slackToId || slackTo.trim()
       const res = await fetch('/api/slack-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pdfBase64: slackModal.pdfBase64,
           filename:  slackModal.filename,
-          recipient: slackTo.trim(),
+          recipient,
+          isUserId:  !!slackToId,
           message:   `${facilityLabel} · FY WK ${weekNum||''} Production Report`,
         })
       })
@@ -1238,21 +1270,49 @@ function LiveOpsPage({ weekStart }) {
                   <SlackIcon size={16}/> Send to Slack
                 </div>
                 <div style={{ fontSize:12, color:'rgba(250,247,242,0.5)', marginBottom:20 }}>{slackModal.filename}</div>
-                <input
-                  autoFocus
-                  value={slackTo}
-                  onChange={e=>{ setSlackTo(e.target.value); setSlackResult(null) }}
-                  onKeyDown={e=>e.key==='Enter'&&sendToSlack()}
-                  placeholder="@sadams or #scheduling"
-                  style={{ width:'100%', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(212,168,67,0.3)',
-                    borderRadius:6, padding:'9px 12px', fontSize:13, color:'#FAF7F2',
-                    outline:'none', boxSizing:'border-box', marginBottom:14 }}
-                />
+                <div style={{ position:'relative' }}>
+                  <input
+                    autoFocus
+                    ref={slackSearchRef}
+                    value={slackTo}
+                    onChange={e=>onSlackInputChange(e.target.value)}
+                    onKeyDown={e=>{
+                      if (e.key==='Enter' && !slackShowDrop) sendToSlack()
+                      if (e.key==='Escape') { setSlackShowDrop(false) }
+                    }}
+                    onBlur={()=>setTimeout(()=>setSlackShowDrop(false), 150)}
+                    placeholder="Search by name..."
+                    style={{ width:'100%', background:'rgba(255,255,255,0.08)', border:`1px solid ${slackToId?'#6FCF97':'rgba(212,168,67,0.3)'}`,
+                      borderRadius:6, padding:'9px 12px', fontSize:13, color:'#FAF7F2',
+                      outline:'none', boxSizing:'border-box' }}
+                  />
+                  {slackToId && (
+                    <div style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#6FCF97' }}>✓</div>
+                  )}
+                  {slackShowDrop && slackSuggestions.length > 0 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#3A2E28', border:'1px solid rgba(212,168,67,0.25)',
+                      borderRadius:6, marginTop:4, maxHeight:200, overflowY:'auto', zIndex:10000, boxShadow:'0 8px 24px rgba(0,0,0,0.4)' }}>
+                      {slackSuggestions.map(m=>(
+                        <div key={m.id} onMouseDown={()=>selectSlackUser(m)}
+                          style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', cursor:'pointer',
+                            borderBottom:'1px solid rgba(255,255,255,0.05)' }}
+                          onMouseEnter={e=>e.currentTarget.style.background='rgba(212,168,67,0.1)'}
+                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          {m.avatar && <img src={m.avatar} style={{ width:28, height:28, borderRadius:'50%' }} alt=""/>}
+                          <div>
+                            <div style={{ fontSize:13, color:'#FAF7F2', fontWeight:500 }}>{m.name}</div>
+                            {m.title && <div style={{ fontSize:11, color:'rgba(250,247,242,0.4)' }}>{m.title}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {slackResult && slackResult !== 'ok' && (
-                  <div style={{ fontSize:12, color:'#EB5757', marginBottom:10 }}>⚠ {slackResult}</div>
+                  <div style={{ fontSize:12, color:'#EB5757', marginTop:10 }}>⚠ {slackResult}</div>
                 )}
                 {slackResult === 'ok' && (
-                  <div style={{ fontSize:12, color:'#6FCF97', marginBottom:10 }}>✓ Sent successfully!</div>
+                  <div style={{ fontSize:12, color:'#6FCF97', marginTop:10 }}>✓ Sent successfully!</div>
                 )}
                 <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
                   <button onClick={()=>setSlackModal(null)} style={{
