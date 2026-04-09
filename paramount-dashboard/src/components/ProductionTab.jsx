@@ -232,7 +232,6 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
         m.days.forEach((day, di) => {
           const dx = L+COL_NAME+COL_BGT + di*COL_DAY
           const cx = dx + COL_DAY/2
-          if (di===todayIdx) { doc.setFillColor('rgba(212,168,67,0.07)'); doc.rect(dx, y, COL_DAY, 20, 'F') }
           setFont(6.5, LIGHT); doc.text(fmtN(day.sched), cx, y+7, { align:'center' })
           if (day.actual !== null) {
             const ou = day.actual - day.sched
