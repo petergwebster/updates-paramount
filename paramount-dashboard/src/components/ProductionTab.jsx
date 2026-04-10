@@ -52,16 +52,18 @@ function parseWeek(rows, weekNum, dayCols, wkSched, wkActual, wkWaste, isNJ) {
   const dayDates = dayCols.map(d => String(hdr[d.sched]||'').replace(/^[SAW]:?/,''))
   const sections=[], ops={}
   let sec=null, i=hi+1
+
+  // ── Weekday parsing ──
   while (i<rows.length) {
     const row=rows[i], c0=String(row[0]||'').trim()
     if (c0.startsWith('WK')&&!c0.startsWith(prefix)) break
     if (c0.startsWith('>> ')) {
       const label=c0.replace('>> ','').replace(/\s*[—\-–].*$/,'').trim()
-      if (/saturday|sunday/i.test(label)) { i++; continue }
+      if (/saturday|sunday/i.test(label)) break  // stop weekday parsing, handle below
       if (sec) sections.push(sec)
       sec={label, machines:[]}; i++; continue
     }
-    if (c0.includes('TOTAL')||c0.startsWith('──')||c0===''||c0==='Budget/Day'||c0==='Bgt/Day') { i++; continue }
+    if (c0.includes('TOTAL')||c0.startsWith('──')||c0===''||c0==='Budget/Day'||c0==='Bgt/Day'||c0.startsWith('—')) { i++; continue }
     const budget=parseFloat(row[1])||0
     const isWeekday=budget>0&&sec&&(row[dayCols[0].sched]!==''&&row[dayCols[0].sched]!==undefined)
     if (isWeekday) {
@@ -73,33 +75,82 @@ function parseWeek(rows, weekNum, dayCols, wkSched, wkActual, wkWaste, isNJ) {
         }
         return { sched:num(row[d.sched])??0, actual:a, waste:num(row[d.waste]), op:o, op2:o2 }
       })
-      // Compute weekly totals from daily columns (more reliable than sheet formula cols)
       const computedWkSched  = days.reduce((s,d)=>s+d.sched, 0)
       const anyActual        = days.some(d=>d.actual!==null)
       const computedWkActual = anyActual ? days.reduce((s,d)=>s+(d.actual||0), 0) : null
       const anyWaste         = days.some(d=>d.waste!==null)
       const computedWkWaste  = anyWaste  ? days.reduce((s,d)=>s+(d.waste||0),  0) : null
       sec.machines.push({ name:c0, budget, days,
-        wkSched:computedWkSched, wkActual:computedWkActual, wkWaste:computedWkWaste })
+        wkSched:computedWkSched, wkActual:computedWkActual, wkWaste:computedWkWaste,
+        satSched:0, satActual:null, satWaste:null, satOp:null,
+        sunSched:0, sunActual:null, sunWaste:null, sunOp:null })
     }
     i++
   }
   if (sec) sections.push(sec)
-  return {dayDates, sections, ops}
+
+  // ── Weekend parsing — Sat and Sun rows use cols 2,3,4,5 ──
+  // Build a flat name→machine map for quick lookup
+  const machineMap = {}
+  sections.forEach(s => s.machines.forEach(m => { machineMap[m.name.toLowerCase()] = m }))
+
+  let satDate = null, sunDate = null
+  let inSat = false, inSun = false
+
+  while (i < rows.length) {
+    const row = rows[i], c0 = String(row[0]||'').trim()
+    if (c0.startsWith('WK') && !c0.startsWith(prefix)) break
+
+    if (/^>>\s*SATURDAY/i.test(c0)) {
+      inSat = true; inSun = false
+      // Extract date from header e.g. ">> SATURDAY  04/11 — all machines"
+      const m = c0.match(/(\d{1,2}\/\d{1,2})/)
+      satDate = m ? m[1] : 'Sat'
+      i++; continue
+    }
+    if (/^>>\s*SUNDAY/i.test(c0)) {
+      inSun = true; inSat = false
+      const m = c0.match(/(\d{1,2}\/\d{1,2})/)
+      sunDate = m ? m[1] : 'Sun'
+      i++; continue
+    }
+    if (c0.startsWith('WK') || /WEEKEND TOTAL/i.test(c0)) break
+    if (c0.includes('TOTAL') || c0 === '' || c0 === 'Budget/Day' || c0 === 'Bgt/Day' || c0.startsWith('—')) { i++; continue }
+
+    const budget = parseFloat(row[1])||0
+    if (budget > 0 && (inSat || inSun)) {
+      const sched  = num(row[2])??0
+      const actual = num(row[3])
+      const waste  = num(row[4])
+      const op     = str(row[5])
+      const machine = machineMap[c0.toLowerCase()]
+      if (machine) {
+        if (actual !== null && op) {
+          if (!ops[op]) ops[op] = {yds:0,days:0}
+          ops[op].yds += actual; ops[op].days++
+        }
+        if (inSat) { machine.satSched=sched; machine.satActual=actual; machine.satWaste=waste; machine.satOp=op }
+        if (inSun) { machine.sunSched=sched; machine.sunActual=actual; machine.sunWaste=waste; machine.sunOp=op }
+      }
+    }
+    i++
+  }
+
+  return {dayDates, sections, ops, satDate, sunDate}
 }
 
 function calcTotals(data, budget, daysIn) {
   if (!data||!data.sections.length) return null
   const all      = data.sections.flatMap(s=>s.machines)
-  const wkSched  = all.reduce((s,m)=>s+m.wkSched,0)
-  const allNull  = all.every(m=>m.wkActual===null)
-  const wkActual = allNull ? null : all.reduce((s,m)=>s+(m.wkActual||0),0)
-  const noWaste  = all.every(m=>!m.wkWaste)
-  const wkWaste  = noWaste ? null : all.reduce((s,m)=>s+(m.wkWaste||0),0)
+  const wkSched  = all.reduce((s,m)=>s+m.wkSched+(m.satSched||0)+(m.sunSched||0),0)
+  const allNull  = all.every(m=>m.wkActual===null&&m.satActual===null&&m.sunActual===null)
+  const wkActual = allNull ? null : all.reduce((s,m)=>s+(m.wkActual||0)+(m.satActual||0)+(m.sunActual||0),0)
+  const noWaste  = all.every(m=>!m.wkWaste&&!m.satWaste&&!m.sunWaste)
+  const wkWaste  = noWaste ? null : all.reduce((s,m)=>s+(m.wkWaste||0)+(m.satWaste||0)+(m.sunWaste||0),0)
   const schedPct  = pct(wkActual, wkSched)
   const budgetPct = pct(wkActual, budget)
   const wastePct  = pct(wkWaste, wkActual)
-  const exp       = daysIn>0 ? Math.round(wkSched/5*daysIn) : null
+  const exp       = daysIn>0 ? Math.round(wkSched/7*daysIn) : null  // 7 days now
   const overUnder = wkActual!==null&&exp!==null ? wkActual-exp : null
   return { wkSched, wkActual, wkWaste, schedPct, budgetPct, wastePct, overUnder,
     wasteOver: wastePct!==null&&wastePct>WASTE_TARGET*100 }
@@ -460,15 +511,22 @@ function WkCell({wkSched, wkActual, wkWaste, daysIn}) {
   )
 }
 
-function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
+function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDate}) {
+  const hasSat = sec.machines.some(m=>m.satSched>0||m.satActual!==null)
+  const hasSun = sec.machines.some(m=>m.sunSched>0||m.sunActual!==null)
   const dayTotals=dayCols.map((_,di)=>({
     sched:  sec.machines.reduce((s,m)=>s+(m.days[di]?.sched||0),0),
     actual: sec.machines.every(m=>m.days[di]?.actual===null)?null:sec.machines.reduce((s,m)=>s+(m.days[di]?.actual||0),0),
     waste:  sec.machines.every(m=>!m.days[di]?.waste)?null:sec.machines.reduce((s,m)=>s+(m.days[di]?.waste||0),0),
   }))
-  const secSched=sec.machines.reduce((s,m)=>s+m.wkSched,0)
-  const secActual=sec.machines.every(m=>m.wkActual===null)?null:sec.machines.reduce((s,m)=>s+(m.wkActual||0),0)
-  const secWaste=sec.machines.every(m=>!m.wkWaste)?null:sec.machines.reduce((s,m)=>s+(m.wkWaste||0),0)
+  const secSched=sec.machines.reduce((s,m)=>s+m.wkSched+(m.satSched||0)+(m.sunSched||0),0)
+  const secActual=sec.machines.every(m=>m.wkActual===null&&m.satActual===null&&m.sunActual===null)?null:sec.machines.reduce((s,m)=>s+(m.wkActual||0)+(m.satActual||0)+(m.sunActual||0),0)
+  const secWaste=sec.machines.every(m=>!m.wkWaste&&!m.satWaste&&!m.sunWaste)?null:sec.machines.reduce((s,m)=>s+(m.wkWaste||0)+(m.satWaste||0)+(m.sunWaste||0),0)
+
+  const wkdStyle = {background:'#2C2420',color:'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:85,borderLeft:'1px solid #3C3028'}
+  const wkdTodayStyle = {...wkdStyle, background:'#3A2E1A', color:'#FAD47C', borderLeft:'2px solid #D4A843'}
+  const wkendStyle = {background:'#1A2820',color:'#6FCF97',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:85,borderLeft:'2px solid #2E4A3A'}
+
   return (
     <div style={{marginBottom:20}}>
       <div style={{background:'#E8DDD0',padding:'6px 12px',fontWeight:'bold',fontSize:12,color:'#5C4F47',letterSpacing:'0.05em',textTransform:'uppercase',borderRadius:'4px 4px 0 0'}}>▸ {sec.label}</div>
@@ -479,22 +537,45 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 12px',textAlign:'left',fontSize:11,fontWeight:'bold',minWidth:130,position:'sticky',left:0}}>Machine / Table</th>
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:55}}>Bgt/Day</th>
               {dayDates.map((date,di)=>(
-                <th key={di} style={{background:di===todayIdx?'#3A2E1A':'#2C2420',color:di===todayIdx?'#FAD47C':'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:85,borderLeft:di===todayIdx?'2px solid #D4A843':'1px solid #3C3028'}}>
+                <th key={di} style={di===todayIdx?wkdTodayStyle:wkdStyle}>
                   {dayCols[di].label} {date}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#888'}}>Sched/Act/+−·Waste·Op</span>
                 </th>
               ))}
+              {hasSat&&<th style={wkendStyle}>Sat {satDate||''}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#6FCF97',opacity:0.7}}>Sched/Act·Op</span></th>}
+              {hasSun&&<th style={wkendStyle}>Sun {sunDate||''}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#6FCF97',opacity:0.7}}>Sched/Act·Op</span></th>}
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:90,borderLeft:'2px solid #5C4F47'}}>Week Total</th>
             </tr>
           </thead>
           <tbody>
             {sec.machines.map((m,mi)=>{
               const bg=mi%2===0?'#fff':'#FAF7F2'
+              const fullSched = m.wkSched+(m.satSched||0)+(m.sunSched||0)
+              const fullActual = m.wkActual!==null||m.satActual!==null||m.sunActual!==null
+                ? (m.wkActual||0)+(m.satActual||0)+(m.sunActual||0) : null
+              const fullWaste = m.wkWaste!==null||m.satWaste!==null||m.sunWaste!==null
+                ? (m.wkWaste||0)+(m.satWaste||0)+(m.sunWaste||0) : null
               return (
                 <tr key={mi} style={{background:bg}}>
                   <td style={{padding:'6px 12px',borderBottom:'1px solid #F2EDE4',color:'#2C2420',fontWeight:500,background:bg,position:'sticky',left:0}}>{m.name}</td>
                   <td style={{padding:'6px 8px',borderBottom:'1px solid #F2EDE4',color:'#9C8F87',textAlign:'center',background:bg}}>{m.budget}</td>
                   {m.days.map((day,di)=><DayCell key={di} day={day} isToday={di===todayIdx}/>)}
-                  <WkCell wkSched={m.wkSched} wkActual={m.wkActual} wkWaste={m.wkWaste} daysIn={daysIn}/>
+                  {hasSat&&(
+                    <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:'2px solid #2E4A3A',background:'#F0FFF4',textAlign:'center',verticalAlign:'top'}}>
+                      <div style={{fontSize:11,color:'#B0A89F'}}>{fmt(m.satSched)}</div>
+                      <div style={{fontSize:13,fontWeight:m.satActual!==null?'bold':'normal',color:m.satActual!==null?'#2C2420':'#D0C8C0'}}>{m.satActual!==null?fmt(m.satActual):'·'}</div>
+                      {m.satActual!==null&&<div style={{fontSize:10,color:m.satActual>=m.satSched?'#2E7D32':'#C62828'}}>{m.satActual>=m.satSched?'+':''}{fmt(m.satActual-m.satSched)}</div>}
+                      {m.satOp&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{m.satOp}</div>}
+                    </td>
+                  )}
+                  {hasSun&&(
+                    <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:'1px solid #2E4A3A',background:'#F0FFF4',textAlign:'center',verticalAlign:'top'}}>
+                      <div style={{fontSize:11,color:'#B0A89F'}}>{fmt(m.sunSched)}</div>
+                      <div style={{fontSize:13,fontWeight:m.sunActual!==null?'bold':'normal',color:m.sunActual!==null?'#2C2420':'#D0C8C0'}}>{m.sunActual!==null?fmt(m.sunActual):'·'}</div>
+                      {m.sunActual!==null&&<div style={{fontSize:10,color:m.sunActual>=m.sunSched?'#2E7D32':'#C62828'}}>{m.sunActual>=m.sunSched?'+':''}{fmt(m.sunActual-m.sunSched)}</div>}
+                      {m.sunOp&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{m.sunOp}</div>}
+                    </td>
+                  )}
+                  <WkCell wkSched={fullSched} wkActual={fullActual} wkWaste={fullWaste} daysIn={daysIn}/>
                 </tr>
               )
             })}
@@ -511,6 +592,14 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
                   </td>
                 )
               })}
+              {hasSat&&<td style={{padding:'5px 6px',background:'#E8F5E9',borderLeft:'2px solid #2E4A3A',textAlign:'center',fontSize:11}}>
+                <div style={{color:'#9C8F87'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.satSched||0),0))}</div>
+                <div style={{fontWeight:'bold',color:'#5C4F47'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.satActual||0),0))}</div>
+              </td>}
+              {hasSun&&<td style={{padding:'5px 6px',background:'#E8F5E9',borderLeft:'1px solid #2E4A3A',textAlign:'center',fontSize:11}}>
+                <div style={{color:'#9C8F87'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunSched||0),0))}</div>
+                <div style={{fontWeight:'bold',color:'#5C4F47'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunActual||0),0))}</div>
+              </td>}
               <td style={{padding:'5px 8px',background:'#EDE5DC',borderLeft:'2px solid #C8BDB4',textAlign:'center',fontSize:11}}>
                 <div style={{color:'#9C8F87'}}>{fmt(secSched)}</div>
                 <div style={{fontWeight:'bold',color:'#5C4F47'}}>{secActual!==null?fmt(secActual):'·'}</div>
@@ -527,25 +616,25 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn}) {
 
 export function FacilityDetail({data, dayCols, todayIdx, budget, title}) {
   if (!data||!data.sections.length) return null
-  const {dayDates,sections}=data
+  const {dayDates, sections, satDate, sunDate} = data
   const daysIn=todayIdx>=0?todayIdx+1:0
-  const grandSched=sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+m.wkSched,0),0)
-  const allNull=sections.every(sec=>sec.machines.every(m=>m.wkActual===null))
-  const grandActual=allNull?null:sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkActual||0),0),0)
-  const noWaste=sections.every(sec=>sec.machines.every(m=>!m.wkWaste))
-  const grandWaste=noWaste?null:sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkWaste||0),0),0)
+  const grandSched=sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+m.wkSched+(m.satSched||0)+(m.sunSched||0),0),0)
+  const allNull=sections.every(sec=>sec.machines.every(m=>m.wkActual===null&&m.satActual===null&&m.sunActual===null))
+  const grandActual=allNull?null:sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkActual||0)+(m.satActual||0)+(m.sunActual||0),0),0)
+  const noWaste=sections.every(sec=>sec.machines.every(m=>!m.wkWaste&&!m.satWaste&&!m.sunWaste))
+  const grandWaste=noWaste?null:sections.reduce((s,sec)=>s+sec.machines.reduce((ss,m)=>ss+(m.wkWaste||0)+(m.satWaste||0)+(m.sunWaste||0),0),0)
   const grandPct=pct(grandActual,grandSched)
-  const exp=daysIn>0?Math.round(grandSched/5*daysIn):null
+  const exp=daysIn>0?Math.round(grandSched/7*daysIn):null
   const grandOU=grandActual!==null&&exp!==null?grandActual-exp:null
   const wastePct=pct(grandWaste,grandActual)
   return (
     <div style={{marginBottom:40}}>
-      {sections.map((sec,si)=><SectionTable key={si} sec={sec} dayDates={dayDates} dayCols={dayCols} todayIdx={todayIdx} daysIn={daysIn}/>)}
+      {sections.map((sec,si)=><SectionTable key={si} sec={sec} dayDates={dayDates} dayCols={dayCols} todayIdx={todayIdx} daysIn={daysIn} satDate={satDate} sunDate={sunDate}/>)}
       <div style={{background:'#DDD4C8',borderRadius:6,padding:'10px 16px',display:'flex',gap:20,alignItems:'center',flexWrap:'wrap'}}>
-        <div style={{fontWeight:'bold',color:'#2C2420',fontSize:13}}>WEEK TOTAL</div>
+        <div style={{fontWeight:'bold',color:'#2C2420',fontSize:13}}>WEEK TOTAL (incl. weekend)</div>
         <div style={{fontSize:13}}><span style={{color:'#9C8F87',fontSize:11}}>Sched </span>{fmt(grandSched)}<span style={{margin:'0 8px',color:'#9C8F87'}}>·</span><span style={{color:'#9C8F87',fontSize:11}}>Actual </span><span style={{fontWeight:'bold'}}>{grandActual!==null?fmt(grandActual):'—'}</span></div>
         {grandPct!==null&&<div style={{fontWeight:'bold',color:grandPct>=95?'#2E7D32':'#E65100',fontSize:13}}>{grandPct}% of schedule</div>}
-        {grandOU!==null&&<div style={{fontSize:12,color:grandOU>=0?'#2E7D32':'#C62828',fontWeight:'bold'}}>{grandOU>=0?'+':''}{fmt(grandOU)} vs exp thru {['Mon','Tue','Wed','Thu','Fri'][todayIdx]}</div>}
+        {grandOU!==null&&<div style={{fontSize:12,color:grandOU>=0?'#2E7D32':'#C62828',fontWeight:'bold'}}>{grandOU>=0?'+':''}{fmt(grandOU)} vs exp</div>}
         {grandWaste!==null&&grandWaste>0&&<div style={{fontSize:12,color:wastePct>10?'#C62828':'#2E7D32',fontWeight:'bold'}}>Waste: {fmt(grandWaste)} yds ({wastePct}%) {wastePct>10?'↑ above 10%':'✓ on target'}</div>}
         {budget&&grandActual!==null&&<div style={{fontSize:12,color:'#9C8F87'}}>{pct(grandActual,budget)}% of {fmt(budget)} yd budget</div>}
       </div>
