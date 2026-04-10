@@ -536,13 +536,13 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
             <tr>
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 12px',textAlign:'left',fontSize:11,fontWeight:'bold',minWidth:130,position:'sticky',left:0}}>Machine / Table</th>
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:55}}>Bgt/Day</th>
+              {hasSun&&<th style={wkendStyle}>Sun {sunDate||''}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#6FCF97',opacity:0.7}}>Sched/Act·Op</span></th>}
               {dayDates.map((date,di)=>(
                 <th key={di} style={di===todayIdx?wkdTodayStyle:wkdStyle}>
                   {dayCols[di].label} {date}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#888'}}>Sched/Act/+−·Waste·Op</span>
                 </th>
               ))}
               {hasSat&&<th style={wkendStyle}>Sat {satDate||''}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#6FCF97',opacity:0.7}}>Sched/Act·Op</span></th>}
-              {hasSun&&<th style={wkendStyle}>Sun {sunDate||''}<br/><span style={{fontWeight:'normal',fontSize:9,color:'#6FCF97',opacity:0.7}}>Sched/Act·Op</span></th>}
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 8px',textAlign:'center',fontSize:11,fontWeight:'bold',minWidth:90,borderLeft:'2px solid #5C4F47'}}>Week Total</th>
             </tr>
           </thead>
@@ -558,6 +558,14 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
                 <tr key={mi} style={{background:bg}}>
                   <td style={{padding:'6px 12px',borderBottom:'1px solid #F2EDE4',color:'#2C2420',fontWeight:500,background:bg,position:'sticky',left:0}}>{m.name}</td>
                   <td style={{padding:'6px 8px',borderBottom:'1px solid #F2EDE4',color:'#9C8F87',textAlign:'center',background:bg}}>{m.budget}</td>
+                  {hasSun&&(
+                    <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:'2px solid #2E4A3A',background:'#F0FFF4',textAlign:'center',verticalAlign:'top'}}>
+                      <div style={{fontSize:11,color:'#B0A89F'}}>{fmt(m.sunSched)}</div>
+                      <div style={{fontSize:13,fontWeight:m.sunActual!==null?'bold':'normal',color:m.sunActual!==null?'#2C2420':'#D0C8C0'}}>{m.sunActual!==null?fmt(m.sunActual):'·'}</div>
+                      {m.sunActual!==null&&<div style={{fontSize:10,color:m.sunActual>=m.sunSched?'#2E7D32':'#C62828'}}>{m.sunActual>=m.sunSched?'+':''}{fmt(m.sunActual-m.sunSched)}</div>}
+                      {m.sunOp&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{m.sunOp}</div>}
+                    </td>
+                  )}
                   {m.days.map((day,di)=><DayCell key={di} day={day} isToday={di===todayIdx}/>)}
                   {hasSat&&(
                     <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:'2px solid #2E4A3A',background:'#F0FFF4',textAlign:'center',verticalAlign:'top'}}>
@@ -567,20 +575,16 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
                       {m.satOp&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{m.satOp}</div>}
                     </td>
                   )}
-                  {hasSun&&(
-                    <td style={{padding:'5px 6px',borderBottom:'1px solid #F2EDE4',borderLeft:'1px solid #2E4A3A',background:'#F0FFF4',textAlign:'center',verticalAlign:'top'}}>
-                      <div style={{fontSize:11,color:'#B0A89F'}}>{fmt(m.sunSched)}</div>
-                      <div style={{fontSize:13,fontWeight:m.sunActual!==null?'bold':'normal',color:m.sunActual!==null?'#2C2420':'#D0C8C0'}}>{m.sunActual!==null?fmt(m.sunActual):'·'}</div>
-                      {m.sunActual!==null&&<div style={{fontSize:10,color:m.sunActual>=m.sunSched?'#2E7D32':'#C62828'}}>{m.sunActual>=m.sunSched?'+':''}{fmt(m.sunActual-m.sunSched)}</div>}
-                      {m.sunOp&&<div style={{fontSize:10,color:'#5C8A5C',fontStyle:'italic'}}>{m.sunOp}</div>}
-                    </td>
-                  )}
                   <WkCell wkSched={fullSched} wkActual={fullActual} wkWaste={fullWaste} daysIn={daysIn}/>
                 </tr>
               )
             })}
             <tr>
               <td colSpan={2} style={{padding:'5px 12px',background:'#EDE5DC',color:'#5C4F47',fontWeight:'bold',fontStyle:'italic',fontSize:11,position:'sticky',left:0}}>{sec.label} TOTAL</td>
+              {hasSun&&<td style={{padding:'5px 6px',background:'#E8F5E9',borderLeft:'2px solid #2E4A3A',textAlign:'center',fontSize:11}}>
+                <div style={{color:'#9C8F87'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunSched||0),0))}</div>
+                <div style={{fontWeight:'bold',color:'#5C4F47'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunActual||0),0))}</div>
+              </td>}
               {dayTotals.map((dt,di)=>{
                 const ou=dt.actual!==null?dt.actual-dt.sched:null, wp=pct(dt.waste,dt.actual)
                 return (
@@ -595,10 +599,6 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
               {hasSat&&<td style={{padding:'5px 6px',background:'#E8F5E9',borderLeft:'2px solid #2E4A3A',textAlign:'center',fontSize:11}}>
                 <div style={{color:'#9C8F87'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.satSched||0),0))}</div>
                 <div style={{fontWeight:'bold',color:'#5C4F47'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.satActual||0),0))}</div>
-              </td>}
-              {hasSun&&<td style={{padding:'5px 6px',background:'#E8F5E9',borderLeft:'1px solid #2E4A3A',textAlign:'center',fontSize:11}}>
-                <div style={{color:'#9C8F87'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunSched||0),0))}</div>
-                <div style={{fontWeight:'bold',color:'#5C4F47'}}>{fmt(sec.machines.reduce((s,m)=>s+(m.sunActual||0),0))}</div>
               </td>}
               <td style={{padding:'5px 8px',background:'#EDE5DC',borderLeft:'2px solid #C8BDB4',textAlign:'center',fontSize:11}}>
                 <div style={{color:'#9C8F87'}}>{fmt(secSched)}</div>
