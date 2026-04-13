@@ -106,73 +106,182 @@ function guessGPPeriod(rows) {
 }
 
 // ── AP parser ─────────────────────────────────────────────────────────────────
-// Sheet: "AP Aging Revised" — row 0 = headers (array format)
-// Cols: [0]VendorID [7]VendorName [8]HOLD [9]Balance [10]Current [11]1-7 [12]8-14 [13]15-30 [14]31-45 [15]45+
+// Sheet: "AP Aging Revised" or Sheet1 (pivot) — handles two formats:
+// Old: [0]VendorID [7]VendorName [8]HOLD [9]Balance [10]Current [11]1-7 [12]8-14 [13]15-30 [14]31-45 [15]45+
+// New pivot: [0]Row Labels [1]Sum of Current [2]Sum of 1 to 7 Days ... [6]Sum of 91 and Over
 function parseAPSheet(XLSX, workbook, facility) {
-  const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes("ap aging"));
+  // Try named sheet first, then fall back to first sheet
+  const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes("ap aging"))
+    || workbook.SheetNames[0];
   if (!sheetName) return null;
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header:1, defval:null });
   if (rows.length < 2) return null;
+
   const vendors = [];
   let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0;
-  for (const row of rows.slice(1)) {
-    if (!row||!row[7]) continue;
-    const balance = parseFloat(row[9])||0;
-    if (balance===0) continue;
-    const name = String(row[7]).trim().replace(/\s*-\s*(FOR\s+)?(PARAMOUNT|BNY)[^,]*/i,"").trim();
-    const c=parseFloat(row[10])||0, r1=parseFloat(row[11])||0, r8=parseFloat(row[12])||0,
-          r15=parseFloat(row[13])||0, r31=parseFloat(row[14])||0, r45=parseFloat(row[15])||0;
-    const pastDue = r1+r8+r15+r31+r45;
-    vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:r15, days31_45:r31, days45plus:r45, pastDue,
-      hold: String(row[8]||"").toLowerCase()==="yes" });
-    total+=balance; current+=c; d1+=r1; d8+=r8; d15+=r15; d31+=r31; d45+=r45;
+
+  // Detect format by looking at header row
+  const hdr = (rows[0]||[]).map(v=>String(v||'').toLowerCase());
+  const isPivot = hdr.some(h=>h.includes('row label')||h.includes('sum of current'));
+
+  if (isPivot) {
+    // New pivot format: Row Labels | Current | 1-7 | 8-30 | 31-60 | 61-90 | 91+
+    // Find header row (may not be row 0 if there are blank rows at top)
+    let headerIdx = rows.findIndex(r => (r||[]).some(v=>String(v||'').toLowerCase().includes('row label')))
+    if (headerIdx < 0) headerIdx = 0
+    const hdrs = (rows[headerIdx]||[]).map(v=>String(v||'').toLowerCase())
+    const col = name => hdrs.findIndex(h=>h.includes(name))
+    const nameCol = col('row label') >= 0 ? col('row label') : 0
+    const curCol  = col('current')
+    const d1Col   = col('1 to 7')  >= 0 ? col('1 to 7')  : col('1-7')
+    const d8Col   = col('8 to 30') >= 0 ? col('8 to 30') : col('8-30')
+    const d31Col  = col('31 to 60')>= 0 ? col('31 to 60'): col('31-60')
+    const d61Col  = col('61 to 90')>= 0 ? col('61 to 90'): col('61-90')
+    const d91Col  = col('91')
+
+    for (const row of rows.slice(headerIdx+1)) {
+      if (!row||!row[nameCol]) continue
+      const name = String(row[nameCol]).trim()
+      if (!name || name.toLowerCase().includes('grand total') || name.toLowerCase().includes('total')) {
+        // Use Grand Total row for totals if present
+        if (name.toLowerCase().includes('grand total')) {
+          total = (curCol>=0?parseFloat(row[curCol])||0:0)
+               + (d1Col>=0?parseFloat(row[d1Col])||0:0)
+               + (d8Col>=0?parseFloat(row[d8Col])||0:0)
+               + (d31Col>=0?parseFloat(row[d31Col])||0:0)
+               + (d61Col>=0?parseFloat(row[d61Col])||0:0)
+               + (d91Col>=0?parseFloat(row[d91Col])||0:0)
+        }
+        continue
+      }
+      const c   = curCol>=0  ? parseFloat(row[curCol])||0  : 0
+      const r1  = d1Col>=0   ? parseFloat(row[d1Col])||0   : 0
+      const r8  = d8Col>=0   ? parseFloat(row[d8Col])||0   : 0
+      const r31 = d31Col>=0  ? parseFloat(row[d31Col])||0  : 0
+      const r61 = d61Col>=0  ? parseFloat(row[d61Col])||0  : 0
+      const r91 = d91Col>=0  ? parseFloat(row[d91Col])||0  : 0
+      const balance = c+r1+r8+r31+r61+r91
+      if (balance===0) continue
+      const pastDue = r1+r8+r31+r61+r91
+      vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:0, days31_45:r31, days45plus:r61+r91, pastDue, hold:false })
+      current+=c; d1+=r1; d8+=r8; d31+=r31; d45+=r61+r91
+    }
+    if (total===0) total = current+d1+d8+d31+d45
+  } else {
+    // Old format
+    for (const row of rows.slice(1)) {
+      if (!row||!row[7]) continue;
+      const balance = parseFloat(row[9])||0;
+      if (balance===0) continue;
+      const name = String(row[7]).trim().replace(/\s*-\s*(FOR\s+)?(PARAMOUNT|BNY)[^,]*/i,"").trim();
+      const c=parseFloat(row[10])||0, r1=parseFloat(row[11])||0, r8=parseFloat(row[12])||0,
+            r15=parseFloat(row[13])||0, r31=parseFloat(row[14])||0, r45=parseFloat(row[15])||0;
+      const pastDue = r1+r8+r15+r31+r45;
+      vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:r15, days31_45:r31, days45plus:r45, pastDue,
+        hold: String(row[8]||"").toLowerCase()==="yes" });
+      total+=balance; current+=c; d1+=r1; d8+=r8; d15+=r15; d31+=r31; d45+=r45;
+    }
   }
+
   vendors.sort((a,b)=>b.balance-a.balance);
   return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45,
     pastDue: d1+d8+d15+d31+d45 };
 }
 
 // ── AR parser ─────────────────────────────────────────────────────────────────
-// "AR" sheet: rows[2]=Current [3]=1-30 [4]=31-60 [5]=61-90 [6]=91+ [7]=Total — take last non-null col
-// "Paramount & BNY Summary": pivot with key accounts + notes
+// Raw "Sheet" tab: col[0]=CustomerID col[1]=CustomerName col[7]=LiftOrderType(PARA/BNY)
+//   col[10]=DocumentAmount col[11]=UnappliedAmount col[12]=Current col[13]=1-7d col[14]=8-30d
+//   col[15]=31-60d col[16]=61-90d col[17]=91+
 function parseARFile(XLSX, workbook) {
-  const result = { aging:{}, keyAccounts:[], totalOutstanding:0, totalPastDue:0 };
+  const makeResult = () => ({ aging:{current:0,days1_7:0,days8_30:0,days31_60:0,days61_90:0,days91plus:0,total:0},
+    customers:[], totalOutstanding:0, totalPastDue:0 })
+  const para = makeResult(), bny = makeResult()
 
-  const arSheet = workbook.Sheets["AR"];
-  if (arSheet) {
-    const rows = XLSX.utils.sheet_to_json(arSheet, { header:1, defval:null });
-    const lastVal = r => {
-      const vals = (r||[]).slice(2).filter(v=>v!==null&&v!=="");
-      return parseFloat(vals[vals.length-1])||0;
-    };
-    result.aging = { current:lastVal(rows[2]), days1_30:lastVal(rows[3]),
-      days31_60:lastVal(rows[4]), days61_90:lastVal(rows[5]), days91plus:lastVal(rows[6]), total:lastVal(rows[7]) };
-    result.totalOutstanding = result.aging.total;
-    result.totalPastDue = result.aging.days1_30+result.aging.days31_60+result.aging.days61_90+result.aging.days91plus;
-  }
+  // Try raw detail sheet first ("Sheet" or second sheet)
+  const rawName = workbook.SheetNames.find(s => s === 'Sheet')
+    || workbook.SheetNames.find(s => !s.toLowerCase().includes('sheet1') && s !== workbook.SheetNames[0])
+    || workbook.SheetNames[workbook.SheetNames.length > 1 ? 1 : 0]
 
-  const summSheet = workbook.Sheets["Paramount & BNY Summary"];
-  if (summSheet) {
-    const rows = XLSX.utils.sheet_to_json(summSheet, { header:1, defval:null });
-    for (let i=0; i<rows.length; i++) {
-      if (!rows[i]||String(rows[i][0]||"").trim()!=="Row Labels") continue;
-      for (let j=i+1; j<rows.length; j++) {
-        const r = rows[j];
-        if (!r||!r[0]) continue;
-        if (String(r[0]).trim()==="Row Labels") break;
-        if (String(r[0]).trim()==="Grand Total") continue;
-        result.keyAccounts.push({
-          name:     String(r[0]).trim(),
-          unapplied:parseFloat(r[1])||0,
-          current:  parseFloat(r[2])||0,
-          days1_7:  parseFloat(r[3])||0,
-          pastDue:  parseFloat(r[8])||0,
-          notes:    String(r[9]||r[10]||"").trim(),
-        });
+  const rawSheet = workbook.Sheets[rawName]
+  if (rawSheet) {
+    const rows = XLSX.utils.sheet_to_json(rawSheet, { header:1, defval:null })
+    // Find header row
+    const hdrIdx = rows.findIndex(r => (r||[]).some(v => String(v||'').toLowerCase().includes('customer id') || String(v||'').toLowerCase().includes('lift order')))
+    if (hdrIdx >= 0) {
+      const hdr = (rows[hdrIdx]||[]).map(v => String(v||'').toLowerCase())
+      const ci = (name) => hdr.findIndex(h => h.includes(name))
+      const nameCol   = ci('customer name') >= 0 ? ci('customer name') : 1
+      const divCol    = ci('lift order')    >= 0 ? ci('lift order')    : 7
+      const unapplCol = ci('unapplied')     >= 0 ? ci('unapplied')     : 11
+      const curCol    = ci('current')       >= 0 ? ci('current')       : 12
+      const d1Col     = hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.+7/)) >= 0
+                          ? hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.+7/)) : 13
+      const d8Col     = hdr.findIndex(h => h.includes('8 to 30') || h.match(/^8.+30/)) >= 0
+                          ? hdr.findIndex(h => h.includes('8 to 30') || h.match(/^8.+30/)) : 14
+      const d31Col    = hdr.findIndex(h => h.includes('31 to 60') || h.match(/^31.+60/)) >= 0
+                          ? hdr.findIndex(h => h.includes('31 to 60') || h.match(/^31.+60/)) : 15
+      const d61Col    = hdr.findIndex(h => h.includes('61 to 90') || h.match(/^61.+90/)) >= 0
+                          ? hdr.findIndex(h => h.includes('61 to 90') || h.match(/^61.+90/)) : 16
+      const d91Col    = hdr.findIndex(h => h.includes('91')) >= 0
+                          ? hdr.findIndex(h => h.includes('91')) : 17
+
+      const customerTotals = {} // { name: { facility, unapplied, current, d1, d8, d31, d61, d91 } }
+
+      for (const row of rows.slice(hdrIdx + 1)) {
+        if (!row || !row[nameCol]) continue
+        const div = String(row[divCol] || '').trim().toUpperCase()
+        if (div !== 'PARA' && div !== 'BNY') continue
+        const name    = String(row[nameCol]).trim()
+        const unappl  = parseFloat(row[unapplCol]) || 0
+        if (unappl === 0) continue
+        const c   = parseFloat(row[curCol])  || 0
+        const r1  = parseFloat(row[d1Col])   || 0
+        const r8  = parseFloat(row[d8Col])   || 0
+        const r31 = parseFloat(row[d31Col])  || 0
+        const r61 = parseFloat(row[d61Col])  || 0
+        const r91 = parseFloat(row[d91Col])  || 0
+        const key = `${div}::${name}`
+        if (!customerTotals[key]) customerTotals[key] = { name, facility:div, unapplied:0, current:0, d1:0, d8:0, d31:0, d61:0, d91:0 }
+        const ct = customerTotals[key]
+        ct.unapplied += unappl; ct.current += c; ct.d1 += r1; ct.d8 += r8; ct.d31 += r31; ct.d61 += r61; ct.d91 += r91
+      }
+
+      for (const ct of Object.values(customerTotals)) {
+        const target = ct.facility === 'PARA' ? para : bny
+        const pastDue = ct.d1 + ct.d8 + ct.d31 + ct.d61 + ct.d91
+        target.customers.push({ name:ct.name, balance:ct.unapplied, current:ct.current,
+          days1_7:ct.d1, days8_30:ct.d8, days31_60:ct.d31, days61_90:ct.d61, days91plus:ct.d91, pastDue })
+        target.aging.current    += ct.current
+        target.aging.days1_7    += ct.d1
+        target.aging.days8_30   += ct.d8
+        target.aging.days31_60  += ct.d31
+        target.aging.days61_90  += ct.d61
+        target.aging.days91plus += ct.d91
+        target.totalOutstanding += ct.unapplied
+      }
+
+      for (const t of [para, bny]) {
+        t.aging.total = t.totalOutstanding
+        t.totalPastDue = t.aging.days1_7 + t.aging.days8_30 + t.aging.days31_60 + t.aging.days61_90 + t.aging.days91plus
+        t.customers.sort((a,b) => b.balance - a.balance)
       }
     }
   }
-  return result;
+
+  return { para, bny,
+    // Combined totals for backward compat
+    aging: {
+      current:    para.aging.current    + bny.aging.current,
+      days1_30:   para.aging.days1_7    + bny.aging.days1_7 + para.aging.days8_30 + bny.aging.days8_30,
+      days31_60:  para.aging.days31_60  + bny.aging.days31_60,
+      days61_90:  para.aging.days61_90  + bny.aging.days61_90,
+      days91plus: para.aging.days91plus + bny.aging.days91plus,
+      total:      para.totalOutstanding + bny.totalOutstanding,
+    },
+    keyAccounts: [...para.customers, ...bny.customers],
+    totalOutstanding: para.totalOutstanding + bny.totalOutstanding,
+    totalPastDue:     para.totalPastDue     + bny.totalPastDue,
+  }
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -226,6 +335,8 @@ export default function AdminFinancials({ weekStart }) {
   const [apParaData, setApParaData] = useState(null);
   const [apBnyData,  setApBnyData]  = useState(null);
   const [arData,     setArData]     = useState(null);
+  const [cashPassaic, setCashPassaic] = useState('');
+  const [cashBNY,     setCashBNY]     = useState('');
   const [fileStatus, setFileStatus] = useState({});
   const setStatus = (key, msg) => setFileStatus(p=>({...p,[key]:msg}));
   const [saving,      setSaving]      = useState(false);
@@ -290,7 +401,7 @@ export default function AdminFinancials({ weekStart }) {
       const wb   = XLSX.read(await file.arrayBuffer(),{type:"array"});
       const data = parseARFile(XLSX, wb);
       setArData(data);
-      setStatus("ar",`✓ ${fmt(data.totalOutstanding)} outstanding · ${data.keyAccounts.length} key accounts`);
+      setStatus("ar",`✓ Paramount: ${fmt(data.para.totalOutstanding)} · BNY: ${fmt(data.bny.totalOutstanding)}`);
     } catch(e) { setStatus("ar","⚠ "+e.message); }
   }
 
@@ -324,20 +435,35 @@ export default function AdminFinancials({ weekStart }) {
           aging_1_30:arData.aging.days1_30||0, aging_31_60:arData.aging.days31_60||0,
           aging_61_90:arData.aging.days61_90||0, aging_91plus:arData.aging.days91plus||0,
           total_outstanding:arData.totalOutstanding||0, total_past_due:arData.totalPastDue||0,
-          key_accounts:arData.keyAccounts, uploaded_at:new Date().toISOString()
+          key_accounts:arData.keyAccounts,
+          para_aging: arData.para?.aging||{}, para_customers: arData.para?.customers||[],
+          para_outstanding: arData.para?.totalOutstanding||0, para_past_due: arData.para?.totalPastDue||0,
+          bny_aging: arData.bny?.aging||{}, bny_customers: arData.bny?.customers||[],
+          bny_outstanding: arData.bny?.totalOutstanding||0, bny_past_due: arData.bny?.totalPastDue||0,
+          uploaded_at:new Date().toISOString()
         },{onConflict:"period"});
         if (error) throw new Error("AR: "+error.message);
+      }
+      if (cashPassaic || cashBNY) {
+        const {error} = await supabase.from("financial_cash").upsert({
+          period: selectedPeriod,
+          passaic_cash: parseFloat(cashPassaic)||0,
+          bny_cash: parseFloat(cashBNY)||0,
+          uploaded_at: new Date().toISOString()
+        },{onConflict:"period"});
+        if (error) throw new Error("Cash: "+error.message);
       }
       setSaveMsg({type:"success",text:`✓ All saved to ${selectedPeriod}`});
       setGpFile(null); setApParaFile(null); setApBnyFile(null); setArFile(null);
       setGpPreview(null); setApParaData(null); setApBnyData(null); setArData(null);
+      setCashPassaic(''); setCashBNY('');
       setFileStatus({});
       loadHistory();
     } catch(e) { setSaveMsg({type:"error",text:e.message}); }
     setSaving(false);
   }
 
-  const hasAnyFile = gpPreview||apParaData||apBnyData||arData;
+  const hasAnyFile = gpPreview||apParaData||apBnyData||arData||(cashPassaic||cashBNY);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:28}}>
@@ -366,7 +492,31 @@ export default function AdminFinancials({ weekStart }) {
         <DropZone label="AP — Paramount" sublabel="Payment Schedule"        accept=".xlsx"           file={apParaFile} onFile={handleAPPara} status={fileStatus.apPara} color="#0369a1"/>
         <DropZone label="AP — BNY"       sublabel="Payment Schedule"        accept=".xlsx"           file={apBnyFile}  onFile={handleAPBny}  status={fileStatus.apBny}  color="#0369a1"/>
         <DropZone label="AR Aging"       sublabel="AR Update"               accept=".xlsx"           file={arFile}     onFile={handleAR}     status={fileStatus.ar}     color="#7c3aed"/>
-        <DropZone label="Cash"           sublabel="Coming soon"             accept=".xlsx"           file={null}       onFile={()=>{}}       status="○ Not yet configured" disabled/>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#374151",textTransform:"uppercase",letterSpacing:"0.05em"}}>Cash</div>
+          <div style={{fontSize:11,color:"#9ca3af",marginTop:-3}}>Cash Position</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px",border:"1px solid #e5e7eb",borderRadius:10,background:"#fafafa"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:11,fontWeight:600,color:"#374151",width:80}}>Passaic</span>
+              <div style={{position:"relative",flex:1}}>
+                <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9ca3af",fontSize:13}}>$</span>
+                <input type="number" value={cashPassaic} onChange={e=>setCashPassaic(e.target.value)}
+                  placeholder="0"
+                  style={{width:"100%",paddingLeft:20,paddingRight:8,paddingTop:6,paddingBottom:6,border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:11,fontWeight:600,color:"#374151",width:80}}>BNY</span>
+              <div style={{position:"relative",flex:1}}>
+                <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9ca3af",fontSize:13}}>$</span>
+                <input type="number" value={cashBNY} onChange={e=>setCashBNY(e.target.value)}
+                  placeholder="0"
+                  style={{width:"100%",paddingLeft:20,paddingRight:8,paddingTop:6,paddingBottom:6,border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            {(cashPassaic||cashBNY)&&<div style={{fontSize:11,color:"#15803d"}}>✓ Total: ${(parseFloat(cashPassaic||0)+parseFloat(cashBNY||0)).toLocaleString()}</div>}
+          </div>
+        </div>
       </div>
 
       {/* GP Preview */}
@@ -438,41 +588,40 @@ export default function AdminFinancials({ weekStart }) {
       {arData&&(
         <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
           <div style={{background:"#f9fafb",padding:"8px 16px",borderBottom:"1px solid #e5e7eb",fontSize:13,fontWeight:600}}>
-            AR — {fmt(arData.totalOutstanding)} total outstanding
+            AR — {fmt(arData.totalOutstanding)} total outstanding · Paramount: {fmt(arData.para?.totalOutstanding||0)} · BNY: {fmt(arData.bny?.totalOutstanding||0)}
           </div>
-          <div style={{display:"flex",borderBottom:"1px solid #f3f4f6"}}>
-            {[["Current",arData.aging.current,0],["1–30d",arData.aging.days1_30,1],
-              ["31–60d",arData.aging.days31_60,2],["61–90d",arData.aging.days61_90,3],["91d+",arData.aging.days91plus,4]]
-              .map(([label,val,i])=>(
-              <div key={label} style={{flex:1,padding:"10px 8px",textAlign:"center",borderRight:i<4?"1px solid #f3f4f6":"none"}}>
-                <div style={{fontSize:10,color:"#9ca3af",fontWeight:600,textTransform:"uppercase"}}>{label}</div>
-                <div style={{fontSize:14,fontWeight:700,marginTop:2,
-                  color:i===0?"#15803d":i>=3?"#b91c1c":"#b45309"}}>{fmt(val)}</div>
+          {[{label:'Paramount (PARA)', d: arData.para}, {label:'Brooklyn (BNY)', d: arData.bny}].map(({label, d}) => d && (
+            <div key={label} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <div style={{padding:"6px 14px",fontSize:11,fontWeight:700,color:"#6b7280",background:"#fafafa",textTransform:"uppercase"}}>{label} — {fmt(d.totalOutstanding)}</div>
+              <div style={{display:"flex"}}>
+                {[["Current",d.aging.current,0],["1–7d",d.aging.days1_7,1],
+                  ["8–30d",d.aging.days8_30,2],["31–60d",d.aging.days31_60,3],
+                  ["61–90d",d.aging.days61_90,4],["91d+",d.aging.days91plus,5]]
+                  .map(([lbl,val,i])=>(
+                  <div key={lbl} style={{flex:1,padding:"8px 6px",textAlign:"center",borderRight:i<5?"1px solid #f3f4f6":"none"}}>
+                    <div style={{fontSize:10,color:"#9ca3af",fontWeight:600,textTransform:"uppercase"}}>{lbl}</div>
+                    <div style={{fontSize:13,fontWeight:700,marginTop:2,
+                      color:i===0?"#15803d":i>=4?"#b91c1c":"#b45309"}}>{fmt(val)}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {arData.keyAccounts.length>0&&(
-            <div style={{padding:"10px 14px"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:8}}>KEY ACCOUNTS TO WATCH</div>
-              <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
-                <thead><tr>
-                  {["Account","Unapplied","Current","Past Due","Notes"].map((h,i)=>
-                    <th key={h} style={{textAlign:i===0?"left":"right",padding:"4px 8px",color:"#9ca3af",fontWeight:500,fontSize:11,borderBottom:"1px solid #f3f4f6"}}>{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {arData.keyAccounts.map(a=>(
-                    <tr key={a.name} style={{borderBottom:"1px solid #f9fafb"}}>
-                      <td style={{padding:"5px 8px",fontWeight:500}}>{a.name}</td>
-                      <td style={{padding:"5px 8px",textAlign:"right"}}>{fmt(a.unapplied)}</td>
-                      <td style={{padding:"5px 8px",textAlign:"right"}}>{fmt(a.current)}</td>
-                      <td style={{padding:"5px 8px",textAlign:"right",color:a.pastDue>0?"#b91c1c":"#15803d",fontWeight:500}}>{fmt(a.pastDue)}</td>
-                      <td style={{padding:"5px 8px",color:"#6b7280",fontSize:11}}>{a.notes.slice(0,80)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {d.customers.length>0&&(
+                <div style={{padding:"8px 14px"}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:6}}>TOP ACCOUNTS</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {d.customers.slice(0,6).map(a=>(
+                      <div key={a.name} style={{fontSize:11,background:a.pastDue>0?"#fef2f2":"#f9fafb",
+                        border:`1px solid ${a.pastDue>0?"#fecaca":"#e5e7eb"}`,borderRadius:6,padding:"3px 8px"}}>
+                        <span style={{fontWeight:500}}>{a.name.slice(0,24)}</span>
+                        <span style={{color:"#6b7280",marginLeft:5}}>{fmt(a.balance)}</span>
+                        {a.pastDue>0&&<span style={{color:"#b91c1c",marginLeft:4}}>({fmt(a.pastDue)} past due)</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          ))}
         </div>
       )}
 
