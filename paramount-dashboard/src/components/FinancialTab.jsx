@@ -49,6 +49,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
   const [loading, setLoading]     = useState(false)
   const [apData,  setApData]      = useState(null)
   const [arData,  setArData]      = useState(null)
+  const [cashData, setCashData]   = useState(null)
 
   // Period key includes fiscal week: "2026-01-W2"
   const currentPeriod = React.useMemo(() => {
@@ -72,13 +73,14 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
 
   async function loadAll(period) {
     setLoading(true)
-    setData(null); setApData(null); setArData(null)
+    setData(null); setApData(null); setArData(null); setCashData(null)
     try {
-      const [periodsRes, dataRes, apRes, arRes] = await Promise.all([
+      const [periodsRes, dataRes, apRes, arRes, cashRes] = await Promise.all([
         supabase.from('financials_monthly').select('period, uploaded_at, upload_notes').order('period', { ascending: false }),
         period ? supabase.from('financials_monthly').select('*').eq('period', period) : Promise.resolve({ data: [] }),
         period ? supabase.from('financial_ap').select('*').eq('period', period) : Promise.resolve({ data: [] }),
         period ? supabase.from('financial_ar').select('*').eq('period', period).maybeSingle() : Promise.resolve({ data: null }),
+        period ? supabase.from('financial_cash').select('*').eq('period', period).maybeSingle() : Promise.resolve({ data: null }),
       ])
       const seen = new Set()
       const unique = (periodsRes.data || []).filter(r => {
@@ -101,6 +103,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         })
       }
       if (arRes?.data) setArData(arRes.data)
+      if (cashRes?.data) setCashData(cashRes.data)
     } catch(e) {
       console.error('Financial load error:', e)
     } finally {
@@ -110,12 +113,13 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
 
   async function loadForPeriod(period) {
     setLoading(true)
-    setData(null); setApData(null); setArData(null)
+    setData(null); setApData(null); setArData(null); setCashData(null)
     try {
-      const [{ data: rows }, { data: apRows }, { data: arRow }] = await Promise.all([
+      const [{ data: rows }, { data: apRows }, { data: arRow }, { data: cashRow }] = await Promise.all([
         supabase.from('financials_monthly').select('*').eq('period', period),
         supabase.from('financial_ap').select('*').eq('period', period),
         supabase.from('financial_ar').select('*').eq('period', period).maybeSingle(),
+        supabase.from('financial_cash').select('*').eq('period', period).maybeSingle(),
       ])
       if (rows?.length > 0) {
         setData({
@@ -131,6 +135,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         })
       }
       if (arRow) setArData(arRow)
+      if (cashRow) setCashData(cashRow)
     } catch(e) {
       console.error('loadForPeriod error:', e)
     } finally {
@@ -454,12 +459,33 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         )
       })()}
 
-      {/* ── Cash placeholder ── */}
-      <div className={styles.section} style={{marginTop:32,opacity:0.5}}>
+      {/* ── Cash Position ── */}
+      <div className={styles.section} style={{marginTop:32}}>
         <div className={styles.sectionTitle}>Cash Position</div>
-        <div style={{background:'var(--cream)',border:'1px dashed var(--border)',borderRadius:8,padding:'24px',textAlign:'center',color:'var(--ink-40)',fontSize:13}}>
-          Cash reporting coming soon — upload cash file in Admin → Financials when available.
-        </div>
+        {cashData ? (() => {
+          const passaic = parseFloat(cashData.passaic_cash) || 0
+          const bny = parseFloat(cashData.bny_cash) || 0
+          const total = passaic + bny
+          return (
+            <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+              {[
+                {label:'Total Cash', val:fmtD(total), sub:'Both facilities'},
+                {label:'Passaic NJ', val:fmtD(passaic), sub:`${total>0?Math.round(passaic/total*100):0}% of total`},
+                {label:'BNY Brooklyn', val:fmtD(bny), sub:`${total>0?Math.round(bny/total*100):0}% of total`},
+              ].map(c=>(
+                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160}}>
+                  <div className={styles.cardLabel}>{c.label}</div>
+                  <div className={styles.cardVal}>{c.val}</div>
+                  <div className={styles.cardSplit}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+          )
+        })() : (
+          <div style={{background:'var(--cream)',border:'1px dashed var(--border)',borderRadius:8,padding:'24px',textAlign:'center',color:'var(--ink-40)',fontSize:13}}>
+            No cash data for this period — enter values in Admin → Financial Data.
+          </div>
+        )}
       </div>
 
     </div>
