@@ -467,18 +467,21 @@ export default function AdminFinancials({ weekStart }) {
         if (error) throw new Error("AP: "+error.message);
       }
       if (arData) {
-        const {error} = await supabase.from("financial_ar").upsert({
+        const arPayload = {
           period:selectedPeriod, aging_current:arData.aging.current||0,
           aging_1_30:arData.aging.days1_30||0, aging_31_60:arData.aging.days31_60||0,
           aging_61_90:arData.aging.days61_90||0, aging_91plus:arData.aging.days91plus||0,
           total_outstanding:arData.totalOutstanding||0, total_past_due:arData.totalPastDue||0,
-          key_accounts:arData.keyAccounts,
-          para_aging: arData.para?.aging||{}, para_customers: arData.para?.customers||[],
-          para_outstanding: arData.para?.totalOutstanding||0, para_past_due: arData.para?.totalPastDue||0,
-          bny_aging: arData.bny?.aging||{}, bny_customers: arData.bny?.customers||[],
-          bny_outstanding: arData.bny?.totalOutstanding||0, bny_past_due: arData.bny?.totalPastDue||0,
+          key_accounts: {
+            combined: arData.keyAccounts,
+            para: { aging: arData.para?.aging||{}, customers: (arData.para?.customers||[]).slice(0,15),
+              totalOutstanding: arData.para?.totalOutstanding||0, totalPastDue: arData.para?.totalPastDue||0 },
+            bny:  { aging: arData.bny?.aging||{}, customers: (arData.bny?.customers||[]).slice(0,15),
+              totalOutstanding: arData.bny?.totalOutstanding||0, totalPastDue: arData.bny?.totalPastDue||0 },
+          },
           uploaded_at:new Date().toISOString()
-        },{onConflict:"period"});
+        };
+        const {error} = await supabase.from("financial_ar").upsert(arPayload,{onConflict:"period"});
         if (error) throw new Error("AR: "+error.message);
       }
       if (cashPassaic || cashBNY) {
@@ -528,6 +531,22 @@ export default function AdminFinancials({ weekStart }) {
             <option value="">— pick —</option>
             {(()=>{const opts=[];const now=new Date();for(let m=-2;m<=1;m++){const d=new Date(now.getFullYear(),now.getMonth()+m,1);const yr=d.getFullYear(),mo=d.getMonth()+1,mm=String(mo).padStart(2,"0"),lb=d.toLocaleString("en-US",{month:"long"});for(let w=1;w<=5;w++)opts.push(<option key={`${yr}-${mm}-W${w}`} value={`${yr}-${mm}-W${w}`}>{lb} {yr} — Week {w}</option>);}return opts;})()}
           </select>
+        )}
+      </div>
+
+      {/* Save bar — always at top */}
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <button onClick={handleSaveAll} disabled={saving||!selectedPeriod||!hasAnyFile}
+          style={{padding:"10px 24px",
+            background:hasAnyFile&&selectedPeriod?"#1f2937":"#d1d5db",
+            color:hasAnyFile&&selectedPeriod?"#fff":"#9ca3af",
+            border:"none",borderRadius:8,fontSize:14,fontWeight:600,
+            cursor:hasAnyFile&&selectedPeriod?"pointer":"not-allowed"}}>
+          {saving?"Saving…":hasAnyFile?`Save All to ${selectedPeriod||"…"}`:"Save All (upload files first)"}
+        </button>
+        {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+        {hasAnyFile&&!saveMsg&&(
+          <span style={{fontSize:12,color:"#92400e",fontWeight:500}}>⚠️ Unsaved uploads — save before navigating away</span>
         )}
       </div>
 
@@ -669,24 +688,6 @@ export default function AdminFinancials({ weekStart }) {
         </div>
       )}
 
-      {/* Save */}
-      {hasAnyFile&&(
-        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",
-          display:"flex",alignItems:"center",gap:10,fontSize:12,color:"#92400e",fontWeight:500}}>
-          ⚠️ You have unsaved uploads — click Save below or your data will be lost if you navigate away.
-        </div>
-      )}
-      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-        <button onClick={handleSaveAll} disabled={saving||!selectedPeriod||!hasAnyFile}
-          style={{padding:"10px 24px",
-            background:hasAnyFile&&selectedPeriod?"#1f2937":"#d1d5db",
-            color:hasAnyFile&&selectedPeriod?"#fff":"#9ca3af",
-            border:"none",borderRadius:8,fontSize:14,fontWeight:600,
-            cursor:hasAnyFile&&selectedPeriod?"pointer":"not-allowed"}}>
-          {saving?"Saving…":hasAnyFile?`Save All to ${selectedPeriod||"…"}`:"Save All (upload files first)"}
-        </button>
-        {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
-      </div>
 
       {/* History */}
       <div>
