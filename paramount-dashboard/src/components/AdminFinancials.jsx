@@ -157,45 +157,6 @@ function parseAPCombinedFile(XLSX, workbook) {
   return { para, bny }
 }
 
-// Legacy single-sheet parser (kept for backward compat)
-function parseAPSheet(XLSX, workbook, facility) {
-  const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes("ap aging"))
-    || workbook.SheetNames[0];
-  if (!sheetName) return null;
-  const sheet = workbook.Sheets[sheetName]
-
-  // Detect pivot format
-  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null })
-  const hdr = (rows[0]||[]).map(v=>String(v||'').toLowerCase())
-  const isPivot = hdr.some(h=>h.includes('row label')||h.includes('sum of current'))
-  if (!isPivot) return parseAPTab(XLSX, sheet, facility)
-
-  // Pivot format fallback
-  const vendors = []
-  let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0
-  let headerIdx = rows.findIndex(r => (r||[]).some(v=>String(v||'').toLowerCase().includes('row label')))
-  if (headerIdx < 0) headerIdx = 0
-  const hdrs = (rows[headerIdx]||[]).map(v=>String(v||'').toLowerCase())
-  const col = name => hdrs.findIndex(h=>h.includes(name))
-  const nameCol=col('row label')>=0?col('row label'):0, curCol=col('current'),
-        d1Col=col('1 to 7')>=0?col('1 to 7'):col('1-7'), d8Col=col('8 to 30')>=0?col('8 to 30'):col('8-30'),
-        d31Col=col('31 to 60')>=0?col('31 to 60'):col('31-60'), d61Col=col('61 to 90')>=0?col('61 to 90'):col('61-90'), d91Col=col('91')
-  for (const row of rows.slice(headerIdx+1)) {
-    if (!row||!row[nameCol]) continue
-    const name=String(row[nameCol]).trim()
-    if (!name||name.toLowerCase().includes('grand total')||name.toLowerCase().includes('total')) continue
-    const c=curCol>=0?parseFloat(row[curCol])||0:0, r1=d1Col>=0?parseFloat(row[d1Col])||0:0,
-          r8=d8Col>=0?parseFloat(row[d8Col])||0:0, r31=d31Col>=0?parseFloat(row[d31Col])||0:0,
-          r61=d61Col>=0?parseFloat(row[d61Col])||0:0, r91=d91Col>=0?parseFloat(row[d91Col])||0:0
-    const balance=c+r1+r8+r31+r61+r91
-    if (balance===0) continue
-    vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:0, days31_45:r31, days45plus:r61+r91, pastDue:r1+r8+r31+r61+r91, hold:false })
-    current+=c; d1+=r1; d8+=r8; d31+=r31; d45+=r61+r91
-  }
-  if (total===0) total=current+d1+d8+d31+d45
-  vendors.sort((a,b)=>b.balance-a.balance)
-  return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45, pastDue:d1+d8+d15+d31+d45 }
-}
 // Old: [0]VendorID [7]VendorName [8]HOLD [9]Balance [10]Current [11]1-7 [12]8-14 [13]15-30 [14]31-45 [15]45+
 // New pivot: [0]Row Labels [1]Sum of Current [2]Sum of 1 to 7 Days ... [6]Sum of 91 and Over
 function parseAPSheet(XLSX, workbook, facility) {
