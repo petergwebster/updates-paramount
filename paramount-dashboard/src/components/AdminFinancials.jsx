@@ -502,6 +502,14 @@ export default function AdminFinancials({ weekStart }) {
 
   const hasAnyFile = gpPreview||apData||arData||(cashPassaic||cashBNY);
 
+  // Warn before navigating away with unsaved uploads
+  useEffect(() => {
+    if (!hasAnyFile) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasAnyFile]);
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:28}}>
 
@@ -663,15 +671,22 @@ export default function AdminFinancials({ weekStart }) {
 
       {/* Save */}
       {hasAnyFile&&(
-        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-          <button onClick={handleSaveAll} disabled={saving||!selectedPeriod}
-            style={{padding:"10px 24px",background:selectedPeriod?"#1f2937":"#9ca3af",color:"#fff",
-              border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:selectedPeriod?"pointer":"not-allowed"}}>
-            {saving?"Saving…":`Save All to ${selectedPeriod||"…"}`}
-          </button>
-          {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",
+          display:"flex",alignItems:"center",gap:10,fontSize:12,color:"#92400e",fontWeight:500}}>
+          ⚠️ You have unsaved uploads — click Save below or your data will be lost if you navigate away.
         </div>
       )}
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <button onClick={handleSaveAll} disabled={saving||!selectedPeriod||!hasAnyFile}
+          style={{padding:"10px 24px",
+            background:hasAnyFile&&selectedPeriod?"#1f2937":"#d1d5db",
+            color:hasAnyFile&&selectedPeriod?"#fff":"#9ca3af",
+            border:"none",borderRadius:8,fontSize:14,fontWeight:600,
+            cursor:hasAnyFile&&selectedPeriod?"pointer":"not-allowed"}}>
+          {saving?"Saving…":hasAnyFile?`Save All to ${selectedPeriod||"…"}`:"Save All (upload files first)"}
+        </button>
+        {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+      </div>
 
       {/* History */}
       <div>
