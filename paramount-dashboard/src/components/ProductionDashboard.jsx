@@ -887,11 +887,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Fabric', produced: mtdNJ.fabric, invYds: mtdNJInvoiceYds.fabric, rev: mtdNJInvoiceRev.fabric, prodTgt: mtdNJTarget.fabric, invTgt: mtdNJInvYdsTarget.fabric, revTgt: mtdNJRevTarget.fabric },
                     { label: 'Grass',  produced: mtdNJ.grass,  invYds: mtdNJInvoiceYds.grass,  rev: mtdNJInvoiceRev.grass,  prodTgt: mtdNJTarget.grass,  invTgt: mtdNJInvYdsTarget.grass,  revTgt: mtdNJRevTarget.grass },
                     { label: 'Paper',  produced: mtdNJ.paper,  invYds: mtdNJInvoiceYds.paper,  rev: mtdNJInvoiceRev.paper,  prodTgt: mtdNJTarget.paper,  invTgt: mtdNJInvYdsTarget.paper,  revTgt: mtdNJRevTarget.paper },
-                    { label: 'Total Yds', produced: mtdNJ.total, invYds: Object.values(mtdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0) + mtdNJMiscFees, prodTgt: mtdNJTarget.total, invTgt: mtdNJInvYdsTarget.total, revTgt: mtdNJRevTarget.total, bold: true },
+                    { label: 'Total Yds', produced: mtdNJ.total, invYds: Object.values(mtdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: mtdNJTarget.total, invTgt: mtdNJInvYdsTarget.total, revTgt: null, bold: true },
                     { label: 'Net Yds', produced: mtdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: mtdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: mtdNJ.schProduced, invYds: mtdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, invTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, revTgt: null, bold: true },
                     ...(mtdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: mtdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
+                    { label: 'Total Revenue (incl. Fees)', produced: null, invYds: null, rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0) + mtdNJMiscFees, prodTgt: null, invTgt: null, revTgt: mtdNJRevTarget.total, bold: true, isTotalRev: true },
                   ].map(row => {
                     if (row.isMisc) return (
                       <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
@@ -899,6 +900,23 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                         <td colSpan={9} className={styles.mtdActual} style={{textAlign:'right'}}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
                       </tr>
                     )
+                    if (row.isTotalRev) {
+                      const revDiff = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
+                      return (
+                        <tr key={row.label} className={styles.mtdBoldRow} style={{borderTop:'2px solid var(--ink-20)'}}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}>—</td>
+                          <td className={styles.mtdActual}>—</td>
+                          <td className={styles.mtdActual}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : '—'}</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>{row.revTgt ? fmtDollar(Math.round(row.revTgt)) : '—'}</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={revDiff !== null ? (revDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{revDiff !== null ? (revDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(revDiff))) : '—'}</td>
+                        </tr>
+                      )
+                    }
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
                     const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
@@ -1064,11 +1082,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Fabric', produced: ytdNJ.fabric, invYds: ytdNJInvoiceYds.fabric, rev: ytdNJInvoiceRev.fabric, prodTgt: ytdNJTarget.fabric, invTgt: ytdNJInvYdsTarget.fabric, revTgt: ytdNJRevTarget.fabric },
                     { label: 'Grass',  produced: ytdNJ.grass,  invYds: ytdNJInvoiceYds.grass,  rev: ytdNJInvoiceRev.grass,  prodTgt: ytdNJTarget.grass,  invTgt: ytdNJInvYdsTarget.grass,  revTgt: ytdNJRevTarget.grass },
                     { label: 'Paper',  produced: ytdNJ.paper,  invYds: ytdNJInvoiceYds.paper,  rev: ytdNJInvoiceRev.paper,  prodTgt: ytdNJTarget.paper,  invTgt: ytdNJInvYdsTarget.paper,  revTgt: ytdNJRevTarget.paper },
-                    { label: 'Total Yds', produced: ytdNJ.total, invYds: Object.values(ytdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0) + ytdNJMiscFees, prodTgt: ytdNJTarget.total, invTgt: ytdNJInvYdsTarget.total, revTgt: ytdNJRevTarget.total, bold: true },
+                    { label: 'Total Yds', produced: ytdNJ.total, invYds: Object.values(ytdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: ytdNJTarget.total, invTgt: ytdNJInvYdsTarget.total, revTgt: null, bold: true },
                     { label: 'Net Yds', produced: ytdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: ytdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: ytdNJ.schProduced, invYds: ytdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, invTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, revTgt: null, bold: true },
                     ...(ytdNJMiscFees>0 ? [{ label: 'Misc Fees', produced: null, invYds: null, rev: ytdNJMiscFees, prodTgt: null, invTgt: null, revTgt: null, isMisc: true }] : []),
+                    { label: 'Total Revenue (incl. Fees)', produced: null, invYds: null, rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0) + ytdNJMiscFees, prodTgt: null, invTgt: null, revTgt: ytdNJRevTarget.total, bold: true, isTotalRev: true },
                   ].map(row => {
                     if (row.isMisc) return (
                       <tr key={row.label} style={{fontStyle:'italic',color:'var(--ink-60)'}}>
@@ -1076,6 +1095,23 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                         <td colSpan={9} className={styles.mtdActual} style={{textAlign:'right'}}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : row.income > 0 ? fmtDollar(Math.round(row.income)) : '—'}</td>
                       </tr>
                     )
+                    if (row.isTotalRev) {
+                      const revDiff = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
+                      return (
+                        <tr key={row.label} className={styles.mtdBoldRow} style={{borderTop:'2px solid var(--ink-20)'}}>
+                          <td className={styles.mtdLabel}>{row.label}</td>
+                          <td className={styles.mtdActual}>—</td>
+                          <td className={styles.mtdActual}>—</td>
+                          <td className={styles.mtdActual}>{row.rev > 0 ? fmtDollar(Math.round(row.rev)) : '—'}</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>{row.revTgt ? fmtDollar(Math.round(row.revTgt)) : '—'}</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={styles.mtdTarget}>—</td>
+                          <td className={revDiff !== null ? (revDiff >= 0 ? styles.mtdOver : styles.mtdUnder) : styles.mtdTarget}>{revDiff !== null ? (revDiff >= 0 ? '+' : '') + fmtDollar(Math.round(Math.abs(revDiff))) : '—'}</td>
+                        </tr>
+                      )
+                    }
                     const prodDiff = row.prodTgt ? row.produced - row.prodTgt : null
                     const invDiff  = row.invTgt && row.invYds !== null ? row.invYds - row.invTgt : null
                     const revDiff  = row.revTgt && row.rev !== null ? row.rev - row.revTgt : null
