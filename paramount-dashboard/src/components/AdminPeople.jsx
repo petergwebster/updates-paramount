@@ -340,46 +340,62 @@ async function extractPptxText(file) {
 }
 
 /* ── Payroll parser ── */
+/* New format (April 2026+): single sheet, location split via column F "Org Level 2"
+ *   idx 0: Company            idx 1: Employee Name
+ *   idx 2: Period Control Date idx 3: Employee Number
+ *   idx 4: Org Level 1        idx 5: Org Level 2  ← "Paramount" | "Brooklyn Navy Yards" | "Paramount Prints - HQ"
+ *   idx 6: GTL Amt   idx 7: GTL Hrs    idx 8: MEDL Amt   idx 9: MEDL Hrs
+ *   idx 10: OT Amt   idx 11: OT Hrs    idx 12: PTO Amt   idx 13: PTO Hrs
+ *   idx 14: REG Amt  idx 15: REG Hrs   idx 16: Total Amt  idx 17: Total Hrs
+ */
 function parsePayrollRows(rows) {
   const employees = []
-  let currentLocation = null
 
   for (const row of rows) {
     if (!row || row.every(v => v == null)) continue
-    if (row[1] && typeof row[1] === 'string' && row[1].trim() && row[2] !== 'Total') {
-      currentLocation = row[1].trim()
-    }
-    const name = row[2]
-    if (!name || name === 'Total' || typeof name !== 'string') continue
+
+    const name = row[1]
+    if (!name || typeof name !== 'string') continue
+    const trimName = name.trim()
+    if (!trimName || trimName === 'Total' || trimName === 'Employee Name') continue
+
+    const orgLevel2 = row[5] ? String(row[5]).trim().toLowerCase() : ''
+    // Skip header rows and total rows
+    if (orgLevel2 === 'org level 2' || orgLevel2 === '') continue
+
+    const isBny = orgLevel2.includes('brooklyn') || orgLevel2.includes('bny')
+    // "Paramount Prints - HQ" goes to NJ bucket (admin/HQ staff)
+    // "Paramount" goes to NJ bucket
 
     const num = v => (v == null || v === '' ? 0 : parseFloat(v) || 0)
-    const otHrs    = num(row[16])
-    const ptoHrs   = num(row[18])
-    const bonusAmt = num(row[9])
-    const totalHrs = num(row[22])
-    const totalPay = num(row[21])
+    const otAmt    = num(row[10])
+    const otHrs    = num(row[11])
+    const ptoAmt   = num(row[12])
+    const ptoHrs   = num(row[13])
+    const regAmt   = num(row[14])
+    const regHrs   = num(row[15])
+    const totalPay = num(row[16])
+    const totalHrs = num(row[17])
+    const gtlAmt   = num(row[6])
 
     const flags = []
     if (otHrs > 0)                     flags.push('OT')
     if (ptoHrs > 0)                    flags.push('PTO')
-    if (bonusAmt > 0)                  flags.push('bonus')
     if (totalHrs < 40 && ptoHrs === 0) flags.push('under40')
 
-    const isBny = currentLocation && (currentLocation.trim() === 'BNY' || currentLocation.trim() === 'BNY   ')
-
     employees.push({
-      name:        name.trim(),
-      title:       row[3] ? String(row[3]).trim() : '',
+      name:        trimName,
+      title:       '',
       location:    isBny ? 'BNY' : 'NJ',
-      salary:      num(row[5]),
+      salary:      0,
       is_salaried: totalHrs === 80,
-      bonus_amt:   bonusAmt,
-      ot_amt:      num(row[15]),
+      bonus_amt:   0,
+      ot_amt:      otAmt,
       ot_hrs:      otHrs,
-      pto_amt:     num(row[17]),
+      pto_amt:     ptoAmt,
       pto_hrs:     ptoHrs,
-      reg_amt:     num(row[19]),
-      reg_hrs:     num(row[20]),
+      reg_amt:     regAmt,
+      reg_hrs:     regHrs,
       total_hrs:   totalHrs,
       total_pay:   totalPay,
       flags,
