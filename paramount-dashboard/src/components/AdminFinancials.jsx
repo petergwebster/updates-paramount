@@ -106,7 +106,96 @@ function guessGPPeriod(rows) {
 }
 
 // ── AP parser ─────────────────────────────────────────────────────────────────
-// Sheet: "AP Aging Revised" or Sheet1 (pivot) — handles two formats:
+// Parse a single AP sheet tab — col headers: Vendor Name[1], HOLD[8], Balance[9], Current[10], 1-7[11], 8-14[12], 15-30[13], 31-45[14], 45+[15]
+function parseAPTab(XLSX, sheet, facility) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null })
+  if (rows.length < 2) return null
+  const hdr = (rows[0]||[]).map(v => String(v||'').toLowerCase())
+  // Find columns by header name
+  const ci = name => hdr.findIndex(h => h.includes(name))
+  const nameCol = ci('vendor name') >= 0 ? ci('vendor name') : 1
+  const holdCol = ci('hold')        >= 0 ? ci('hold')        : 8
+  const balCol  = ci('balance')     >= 0 ? ci('balance')     : 9
+  const curCol  = ci('current')     >= 0 ? ci('current')     : 10
+  const d1Col   = hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) >= 0
+                    ? hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) : 11
+  const d8Col   = hdr.findIndex(h => h.includes('8 to 14') || h.includes('8-14')) >= 0
+                    ? hdr.findIndex(h => h.includes('8 to 14') || h.includes('8-14')) : 12
+  const d15Col  = hdr.findIndex(h => h.includes('15 to 30') || h.includes('15-30')) >= 0
+                    ? hdr.findIndex(h => h.includes('15 to 30') || h.includes('15-30')) : 13
+  const d31Col  = hdr.findIndex(h => h.includes('31 to 45') || h.includes('31-45')) >= 0
+                    ? hdr.findIndex(h => h.includes('31 to 45') || h.includes('31-45')) : 14
+  const d45Col  = hdr.findIndex(h => h.includes('45 and') || h.includes('45+') || h.includes('over')) >= 0
+                    ? hdr.findIndex(h => h.includes('45 and') || h.includes('45+') || h.includes('over')) : 15
+
+  const vendors = []
+  let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0
+  for (const row of rows.slice(1)) {
+    if (!row || !row[nameCol]) continue
+    const balance = parseFloat(row[balCol]) || 0
+    if (balance === 0) continue
+    const name = String(row[nameCol]).trim().replace(/\s*-\s*(FOR\s+)?(PARAMOUNT|BNY)[^,]*/i, '').trim()
+    const c=parseFloat(row[curCol])||0, r1=parseFloat(row[d1Col])||0, r8=parseFloat(row[d8Col])||0,
+          r15=parseFloat(row[d15Col])||0, r31=parseFloat(row[d31Col])||0, r45=parseFloat(row[d45Col])||0
+    const pastDue = r1+r8+r15+r31+r45
+    vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:r15, days31_45:r31, days45plus:r45, pastDue,
+      hold: String(row[holdCol]||'').toLowerCase() === 'yes' })
+    total+=balance; current+=c; d1+=r1; d8+=r8; d15+=r15; d31+=r31; d45+=r45
+  }
+  vendors.sort((a,b) => b.balance - a.balance)
+  return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45,
+    pastDue: d1+d8+d15+d31+d45 }
+}
+
+// Parse combined AP file — finds Paramount and BNY tabs (by name or position)
+function parseAPCombinedFile(XLSX, workbook) {
+  const names = workbook.SheetNames
+  const paraName = names.find(s => /paramount|para|ph/i.test(s)) || names[0]
+  const bnyName  = names.find(s => /bny|brooklyn/i.test(s))       || (names.length > 1 ? names[1] : null)
+  const para = paraName ? parseAPTab(XLSX, workbook.Sheets[paraName], 'Paramount') : null
+  const bny  = bnyName  ? parseAPTab(XLSX, workbook.Sheets[bnyName],  'BNY')       : null
+  return { para, bny }
+}
+
+// Legacy single-sheet parser (kept for backward compat)
+function parseAPSheet(XLSX, workbook, facility) {
+  const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes("ap aging"))
+    || workbook.SheetNames[0];
+  if (!sheetName) return null;
+  const sheet = workbook.Sheets[sheetName]
+
+  // Detect pivot format
+  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null })
+  const hdr = (rows[0]||[]).map(v=>String(v||'').toLowerCase())
+  const isPivot = hdr.some(h=>h.includes('row label')||h.includes('sum of current'))
+  if (!isPivot) return parseAPTab(XLSX, sheet, facility)
+
+  // Pivot format fallback
+  const vendors = []
+  let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0
+  let headerIdx = rows.findIndex(r => (r||[]).some(v=>String(v||'').toLowerCase().includes('row label')))
+  if (headerIdx < 0) headerIdx = 0
+  const hdrs = (rows[headerIdx]||[]).map(v=>String(v||'').toLowerCase())
+  const col = name => hdrs.findIndex(h=>h.includes(name))
+  const nameCol=col('row label')>=0?col('row label'):0, curCol=col('current'),
+        d1Col=col('1 to 7')>=0?col('1 to 7'):col('1-7'), d8Col=col('8 to 30')>=0?col('8 to 30'):col('8-30'),
+        d31Col=col('31 to 60')>=0?col('31 to 60'):col('31-60'), d61Col=col('61 to 90')>=0?col('61 to 90'):col('61-90'), d91Col=col('91')
+  for (const row of rows.slice(headerIdx+1)) {
+    if (!row||!row[nameCol]) continue
+    const name=String(row[nameCol]).trim()
+    if (!name||name.toLowerCase().includes('grand total')||name.toLowerCase().includes('total')) continue
+    const c=curCol>=0?parseFloat(row[curCol])||0:0, r1=d1Col>=0?parseFloat(row[d1Col])||0:0,
+          r8=d8Col>=0?parseFloat(row[d8Col])||0:0, r31=d31Col>=0?parseFloat(row[d31Col])||0:0,
+          r61=d61Col>=0?parseFloat(row[d61Col])||0:0, r91=d91Col>=0?parseFloat(row[d91Col])||0:0
+    const balance=c+r1+r8+r31+r61+r91
+    if (balance===0) continue
+    vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:0, days31_45:r31, days45plus:r61+r91, pastDue:r1+r8+r31+r61+r91, hold:false })
+    current+=c; d1+=r1; d8+=r8; d31+=r31; d45+=r61+r91
+  }
+  if (total===0) total=current+d1+d8+d31+d45
+  vendors.sort((a,b)=>b.balance-a.balance)
+  return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45, pastDue:d1+d8+d15+d31+d45 }
+}
 // Old: [0]VendorID [7]VendorName [8]HOLD [9]Balance [10]Current [11]1-7 [12]8-14 [13]15-30 [14]31-45 [15]45+
 // New pivot: [0]Row Labels [1]Sum of Current [2]Sum of 1 to 7 Days ... [6]Sum of 91 and Over
 function parseAPSheet(XLSX, workbook, facility) {
@@ -328,12 +417,10 @@ export default function AdminFinancials({ weekStart }) {
   const [selectedPeriod,   setSelectedPeriod]   = useState(() => derivePeriod(weekStart));
   const [showPeriodPicker, setShowPeriodPicker] = useState(false);
   const [gpFile,    setGpFile]    = useState(null);
-  const [apParaFile,setApParaFile]= useState(null);
-  const [apBnyFile, setApBnyFile] = useState(null);
+  const [apFile,    setApFile]    = useState(null);
   const [arFile,    setArFile]    = useState(null);
   const [gpPreview,  setGpPreview]  = useState(null);
-  const [apParaData, setApParaData] = useState(null);
-  const [apBnyData,  setApBnyData]  = useState(null);
+  const [apData,     setApData]     = useState(null);  // { para, bny }
   const [arData,     setArData]     = useState(null);
   const [cashPassaic, setCashPassaic] = useState('');
   const [cashBNY,     setCashBNY]     = useState('');
@@ -370,28 +457,17 @@ export default function AdminFinancials({ weekStart }) {
     } catch(e) { setStatus("gp","⚠ "+e.message); }
   }
 
-  async function handleAPPara(file) {
-    setApParaFile(file); setStatus("apPara","Parsing…");
+  async function handleAP(file) {
+    setApFile(file); setStatus("ap","Parsing…");
     try {
       const XLSX = await loadSheetJS();
       const wb   = XLSX.read(await file.arrayBuffer(),{type:"array"});
-      const data = parseAPSheet(XLSX, wb, "Paramount");
-      if (!data) { setStatus("apPara","⚠ AP Aging sheet not found"); return; }
-      setApParaData(data);
-      setStatus("apPara",`✓ ${data.vendors.length} vendors · ${fmt(data.total)}`);
-    } catch(e) { setStatus("apPara","⚠ "+e.message); }
-  }
-
-  async function handleAPBny(file) {
-    setApBnyFile(file); setStatus("apBny","Parsing…");
-    try {
-      const XLSX = await loadSheetJS();
-      const wb   = XLSX.read(await file.arrayBuffer(),{type:"array"});
-      const data = parseAPSheet(XLSX, wb, "BNY");
-      if (!data) { setStatus("apBny","⚠ AP Aging sheet not found"); return; }
-      setApBnyData(data);
-      setStatus("apBny",`✓ ${data.vendors.length} vendors · ${fmt(data.total)}`);
-    } catch(e) { setStatus("apBny","⚠ "+e.message); }
+      const data = parseAPCombinedFile(XLSX, wb);
+      if (!data.para && !data.bny) { setStatus("ap","⚠ No AP data found"); return; }
+      setApData(data);
+      const parts = [data.para&&`Paramount: ${fmt(data.para.total)}`, data.bny&&`BNY: ${fmt(data.bny.total)}`].filter(Boolean)
+      setStatus("ap",`✓ ${parts.join(' · ')}`);
+    } catch(e) { setStatus("ap","⚠ "+e.message); }
   }
 
   async function handleAR(file) {
@@ -415,16 +491,16 @@ export default function AdminFinancials({ weekStart }) {
         if (error) throw new Error("GP: "+error.message);
       }
       const apRows = [];
-      if (apParaData) apRows.push({ period:selectedPeriod, facility:"Paramount",
-        total:apParaData.total, current:apParaData.current, days1_7:apParaData.days1_7,
-        days8_14:apParaData.days8_14, days15_30:apParaData.days15_30, days31_45:apParaData.days31_45,
-        days45plus:apParaData.days45plus, past_due:apParaData.pastDue,
-        top_vendors:apParaData.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
-      if (apBnyData) apRows.push({ period:selectedPeriod, facility:"BNY",
-        total:apBnyData.total, current:apBnyData.current, days1_7:apBnyData.days1_7,
-        days8_14:apBnyData.days8_14, days15_30:apBnyData.days15_30, days31_45:apBnyData.days31_45,
-        days45plus:apBnyData.days45plus, past_due:apBnyData.pastDue,
-        top_vendors:apBnyData.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
+      if (apData?.para) apRows.push({ period:selectedPeriod, facility:"Paramount",
+        total:apData.para.total, current:apData.para.current, days1_7:apData.para.days1_7,
+        days8_14:apData.para.days8_14, days15_30:apData.para.days15_30, days31_45:apData.para.days31_45,
+        days45plus:apData.para.days45plus, past_due:apData.para.pastDue,
+        top_vendors:apData.para.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
+      if (apData?.bny) apRows.push({ period:selectedPeriod, facility:"BNY",
+        total:apData.bny.total, current:apData.bny.current, days1_7:apData.bny.days1_7,
+        days8_14:apData.bny.days8_14, days15_30:apData.bny.days15_30, days31_45:apData.bny.days31_45,
+        days45plus:apData.bny.days45plus, past_due:apData.bny.pastDue,
+        top_vendors:apData.bny.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
       if (apRows.length) {
         const {error} = await supabase.from("financial_ap").upsert(apRows,{onConflict:"period,facility"});
         if (error) throw new Error("AP: "+error.message);
@@ -454,8 +530,8 @@ export default function AdminFinancials({ weekStart }) {
         if (error) throw new Error("Cash: "+error.message);
       }
       setSaveMsg({type:"success",text:`✓ All saved to ${selectedPeriod}`});
-      setGpFile(null); setApParaFile(null); setApBnyFile(null); setArFile(null);
-      setGpPreview(null); setApParaData(null); setApBnyData(null); setArData(null);
+      setGpFile(null); setApFile(null); setArFile(null);
+      setGpPreview(null); setApData(null); setArData(null);
       setCashPassaic(''); setCashBNY('');
       setFileStatus({});
       loadHistory();
@@ -463,7 +539,7 @@ export default function AdminFinancials({ weekStart }) {
     setSaving(false);
   }
 
-  const hasAnyFile = gpPreview||apParaData||apBnyData||arData||(cashPassaic||cashBNY);
+  const hasAnyFile = gpPreview||apData||arData||(cashPassaic||cashBNY);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:28}}>
@@ -489,8 +565,7 @@ export default function AdminFinancials({ weekStart }) {
       {/* Drop zones */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14}}>
         <DropZone label="GP Report"     sublabel="COGS · OpEx · Inventory" accept=".xlsx,.xls,.csv" file={gpFile}     onFile={handleGP}     status={fileStatus.gp}     color="#4f46e5"/>
-        <DropZone label="AP — Paramount" sublabel="Payment Schedule"        accept=".xlsx"           file={apParaFile} onFile={handleAPPara} status={fileStatus.apPara} color="#0369a1"/>
-        <DropZone label="AP — BNY"       sublabel="Payment Schedule"        accept=".xlsx"           file={apBnyFile}  onFile={handleAPBny}  status={fileStatus.apBny}  color="#0369a1"/>
+        <DropZone label="AP Aging"       sublabel="Paramount + BNY (combined)"  accept=".xlsx"           file={apFile}     onFile={handleAP}     status={fileStatus.ap}     color="#0369a1"/>
         <DropZone label="AR Aging"       sublabel="AR Update"               accept=".xlsx"           file={arFile}     onFile={handleAR}     status={fileStatus.ar}     color="#7c3aed"/>
         <div style={{display:"flex",flexDirection:"column",gap:5}}>
           <div style={{fontSize:12,fontWeight:700,color:"#374151",textTransform:"uppercase",letterSpacing:"0.05em"}}>Cash</div>
@@ -547,7 +622,7 @@ export default function AdminFinancials({ weekStart }) {
       )}
 
       {/* AP Preview */}
-      {(apParaData||apBnyData)&&(
+      {apData&&(
         <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
           <div style={{background:"#f9fafb",padding:"8px 16px",borderBottom:"1px solid #e5e7eb",fontSize:13,fontWeight:600}}>AP Preview</div>
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
@@ -556,7 +631,7 @@ export default function AdminFinancials({ weekStart }) {
                 <th key={h} style={{textAlign:i===0?"left":"right",padding:"7px 12px",color:"#6b7280",fontWeight:500,fontSize:11}}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {[apParaData,apBnyData].filter(Boolean).map(d=>(
+              {[apData.para,apData.bny].filter(Boolean).map(d=>(
                 <tr key={d.facility} style={{borderBottom:"1px solid #f3f4f6"}}>
                   <td style={{padding:"8px 12px",fontWeight:600}}>{d.facility}</td>
                   {[d.total,d.current,d.days1_7,d.days8_14,d.days15_30,d.days31_45,d.days45plus].map((v,i)=>
@@ -566,7 +641,7 @@ export default function AdminFinancials({ weekStart }) {
               ))}
             </tbody>
           </table>
-          {[apParaData,apBnyData].filter(Boolean).map(d=>(
+          {[apData.para,apData.bny].filter(Boolean).map(d=>(
             <div key={d.facility} style={{padding:"10px 14px",borderTop:"1px solid #f3f4f6"}}>
               <div style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:6}}>TOP VENDORS — {d.facility.toUpperCase()}</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
