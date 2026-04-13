@@ -311,7 +311,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const njTotalInvYds = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.invoiceYds), 0)
   const njTotalInvRev  = ['fabric','grass','paper'].reduce((s,k) => s + n(njData[k]?.invoiceRev), 0)
   const njInvYdsTgt    = NJ_TARGETS.fabric.invoiceYds + NJ_TARGETS.grass.invoiceYds + NJ_TARGETS.paper.invoiceYds
-  const njInvRevTgt    = NJ_TARGETS.fabric.invoiceRev + NJ_TARGETS.grass.invoiceRev + NJ_TARGETS.paper.invoiceRev
+  const njInvRevTgt    = NJ_TARGETS.weeklyRevenue  // includes misc fees in target
 
   const bnyTotalInvYds = ['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((s,k) => s + n(bnyData[k]), 0)
   const bnyTotalInvRev = ['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((s,k) => s + n(bnyData[k]), 0)
@@ -887,7 +887,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Fabric', produced: mtdNJ.fabric, invYds: mtdNJInvoiceYds.fabric, rev: mtdNJInvoiceRev.fabric, prodTgt: mtdNJTarget.fabric, invTgt: mtdNJInvYdsTarget.fabric, revTgt: mtdNJRevTarget.fabric },
                     { label: 'Grass',  produced: mtdNJ.grass,  invYds: mtdNJInvoiceYds.grass,  rev: mtdNJInvoiceRev.grass,  prodTgt: mtdNJTarget.grass,  invTgt: mtdNJInvYdsTarget.grass,  revTgt: mtdNJRevTarget.grass },
                     { label: 'Paper',  produced: mtdNJ.paper,  invYds: mtdNJInvoiceYds.paper,  rev: mtdNJInvoiceRev.paper,  prodTgt: mtdNJTarget.paper,  invTgt: mtdNJInvYdsTarget.paper,  revTgt: mtdNJRevTarget.paper },
-                    { label: 'Total Yds', produced: mtdNJ.total, invYds: Object.values(mtdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: mtdNJTarget.total, invTgt: mtdNJInvYdsTarget.total, revTgt: mtdNJRevTarget.total, bold: true },
+                    { label: 'Total Yds', produced: mtdNJ.total, invYds: Object.values(mtdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(mtdNJInvoiceRev).reduce((a,b)=>a+b,0) + mtdNJMiscFees, prodTgt: mtdNJTarget.total, invTgt: mtdNJInvYdsTarget.total, revTgt: mtdNJRevTarget.total, bold: true },
                     { label: 'Net Yds', produced: mtdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: mtdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: mtdNJWastePct ? ` (${mtdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: mtdNJ.schProduced, invYds: mtdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, invTgt: WEEKLY_TARGETS.schYards * mtdFiscalWeeks, revTgt: null, bold: true },
@@ -1064,7 +1064,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     { label: 'Fabric', produced: ytdNJ.fabric, invYds: ytdNJInvoiceYds.fabric, rev: ytdNJInvoiceRev.fabric, prodTgt: ytdNJTarget.fabric, invTgt: ytdNJInvYdsTarget.fabric, revTgt: ytdNJRevTarget.fabric },
                     { label: 'Grass',  produced: ytdNJ.grass,  invYds: ytdNJInvoiceYds.grass,  rev: ytdNJInvoiceRev.grass,  prodTgt: ytdNJTarget.grass,  invTgt: ytdNJInvYdsTarget.grass,  revTgt: ytdNJRevTarget.grass },
                     { label: 'Paper',  produced: ytdNJ.paper,  invYds: ytdNJInvoiceYds.paper,  rev: ytdNJInvoiceRev.paper,  prodTgt: ytdNJTarget.paper,  invTgt: ytdNJInvYdsTarget.paper,  revTgt: ytdNJRevTarget.paper },
-                    { label: 'Total Yds', produced: ytdNJ.total, invYds: Object.values(ytdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0), prodTgt: ytdNJTarget.total, invTgt: ytdNJInvYdsTarget.total, revTgt: ytdNJRevTarget.total, bold: true },
+                    { label: 'Total Yds', produced: ytdNJ.total, invYds: Object.values(ytdNJInvoiceYds).reduce((a,b)=>a+b,0), rev: Object.values(ytdNJInvoiceRev).reduce((a,b)=>a+b,0) + ytdNJMiscFees, prodTgt: ytdNJTarget.total, invTgt: ytdNJInvYdsTarget.total, revTgt: ytdNJRevTarget.total, bold: true },
                     { label: 'Net Yds', produced: ytdNJNet, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null },
                     { label: 'Waste', produced: ytdNJ.waste, invYds: null, rev: null, prodTgt: null, invTgt: null, revTgt: null, suffix: ytdNJWastePct ? ` (${ytdNJWastePct}%)` : '' },
                     { label: 'Schumacher', produced: ytdNJ.schProduced, invYds: ytdNJ.schInvoiced, rev: null, prodTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, invTgt: WEEKLY_TARGETS.schYards * ytdWeeksWithData, revTgt: null, bold: true },
