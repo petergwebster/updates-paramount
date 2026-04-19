@@ -230,7 +230,7 @@ export default function SchedulerTab() {
         })}
       </div>
 
-      {site === 'passaic' && (
+      {(site === 'passaic' || site === 'bny') && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
           {[{ v:'wip', l:'WIP List' },{ v:'schedule', l:'Weekly Schedule' }].map(({ v, l }) => (
             <button key={v} onClick={() => setView(v)}
@@ -253,7 +253,7 @@ export default function SchedulerTab() {
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.inkLight, fontSize: 14 }}>Loading…</div>
       )}
 
-      {snapshot && !loading && (view === 'wip' || site !== 'passaic') && (
+      {snapshot && !loading && (view === 'wip' || site === 'procurement') && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             <SummaryCard label="Active orders" value={fmt(totals.orders)} />
