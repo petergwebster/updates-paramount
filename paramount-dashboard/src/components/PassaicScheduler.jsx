@@ -511,7 +511,7 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
               style={{
                 background: '#fff',
                 border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${highlight ? C.navy : overCap ? C.rose : C.border}`,
-                borderRadius: 8, padding: 8, minHeight: 140,
+                borderRadius: 8, padding: 8, minHeight: 220,
                 cursor: canAssign ? 'pointer' : 'default',
               }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -547,10 +547,10 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   )
 }
 
-// Compact Mon-Fri strip showing daily yards target + assigned operators.
-// Always renders the 5-day skeleton (even when empty) so Wendy sees the
-// daily-planning structure from the moment the card loads. Fills in as she
-// sets targets and crew via the PLAN modal.
+// Full daily plan/actual grid. Sits at the bottom of each Passaic table card
+// and surfaces Mon-Fri performance at a glance — plan yards, actual yards,
+// variance, and crew. As Sami enters actuals in Live Ops, they flow up here
+// so the scheduler card doubles as a monitoring view for Wendy's 3pm check.
 function CrewStrip({ tableCode, dailyOps }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
   const byDay = {}
@@ -564,23 +564,47 @@ function CrewStrip({ tableCode, dailyOps }) {
     if (parts.length === 1) return parts[0]
     return `${parts[0]} ${parts[parts.length - 1][0]}.`
   }
+  const varianceColor = (delta, plan) => {
+    if (delta == null || plan == null || plan === 0) return C.inkLight
+    const pct = delta / plan
+    if (Math.abs(pct) < 0.05) return C.sage    // on plan
+    if (pct > 0) return C.gold                  // over
+    if (pct > -0.15) return C.gold              // slightly under
+    return C.rose                                // significantly under
+  }
   return (
-    <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${C.border}` }}>
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+      {/* Header row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 8, color: C.inkLight, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 3, paddingBottom: 3, borderBottom: `1px dashed ${C.border}` }}>
+        <span>Day</span>
+        <span style={{ textAlign: 'right' }}>Plan</span>
+        <span style={{ textAlign: 'right' }}>Actual</span>
+        <span style={{ textAlign: 'right' }}>Δ</span>
+        <span>Crew</span>
+      </div>
       {days.map((d, i) => {
         const row = byDay[d]
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
         const crew = [op1, op2].filter(Boolean).join(' / ')
-        const yd = row?.planned_yards
-        const hasData = yd != null || crew
+        const plan = row?.planned_yards
+        const actual = row?.actual_yards
+        const delta = (plan != null && actual != null) ? actual - plan : null
+        const deltaColor = varianceColor(delta, plan)
         return (
-          <div key={d} style={{ display: 'flex', fontSize: 8, color: hasData ? C.inkMid : C.inkLight, lineHeight: 1.5 }}>
-            <span style={{ width: 22, color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
-            <span style={{ width: 36, color: yd != null ? C.ink : C.inkLight, fontWeight: 600 }}>
-              {yd != null ? `${fmt(yd)}yd` : '—'}
+          <div key={d} style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
+            <span style={{ color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
+            <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
+              {plan != null ? fmt(plan) : '—'}
             </span>
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>—</span>}
+            <span style={{ textAlign: 'right', color: actual != null ? C.ink : C.inkLight, fontWeight: actual != null ? 600 : 400 }}>
+              {actual != null ? fmt(actual) : '—'}
+            </span>
+            <span style={{ textAlign: 'right', color: deltaColor, fontWeight: 600 }}>
+              {delta != null ? (delta > 0 ? `+${fmt(delta)}` : fmt(delta)) : '—'}
+            </span>
+            <span style={{ color: crew ? C.inkMid : C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: crew ? 'normal' : 'italic', fontSize: 9 }}>
+              {crew || '—'}
             </span>
           </div>
         )
