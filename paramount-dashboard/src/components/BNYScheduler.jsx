@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
 const BNY_TARGETS = {
@@ -76,7 +76,8 @@ const BNY_OPERATORS = {
   ],
 }
 
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const NUM_DAYS = 7
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BNYScheduler — weekly machine-day schedule composer for Brooklyn + Passaic
@@ -276,7 +277,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabel(weekStart)}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabelFiscal(weekStart)}</div>
           <div style={{ fontSize: 11, color: C.inkLight }}>{enrichedAssignments.length} assignment{enrichedAssignments.length !== 1 ? 's' : ''}</div>
         </div>
         <button onClick={() => onWeekChange(defaultSchedulerWeek())} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Default week</button>
@@ -307,15 +308,17 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         )}
       </div>
 
-      <BNYTopGauges totals={mixTotals} />
-      <BucketStrip totals={mixTotals} />
+      <div style={{ position: 'sticky', top: 8, zIndex: 10, background: C.cream, paddingTop: 4, paddingBottom: 8, marginBottom: 4 }}>
+        <BNYTopGauges totals={mixTotals} />
+        <BucketStrip totals={mixTotals} />
+      </div>
 
       <div style={{
         display: 'grid',
         gridTemplateColumns: '340px 1fr',
         gap: 16, marginTop: 16,
       }}>
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
+        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 230 }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
@@ -590,7 +593,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
         <h3 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</h3>
         <span style={{ fontSize: 11, color: C.inkLight }}>— {machines.length} machines · {sublabel}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(5, 1fr) 80px`, gap: 4, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, 1fr) 80px`, gap: 4, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
         <span>Machine</span>
         <span style={{ textAlign: 'right' }}>Budget/d</span>
         {DAY_LABELS.map(d => <span key={d} style={{ textAlign: 'center' }}>{d}</span>)}
@@ -615,14 +618,14 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
 
 function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
   let weekTotal = 0
-  for (let d = 0; d < 5; d++) {
+  for (let d = 0; d < NUM_DAYS; d++) {
     const cell = assignmentsByMachineDay[`${machine.name}|${d}`] || []
     weekTotal += cell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   }
-  const weekCap = machine.capacity * 5
+  const weekCap = machine.capacity * NUM_DAYS
   const weekPct = Math.round((weekTotal / weekCap) * 100)
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(5, 1fr) 80px`, gap: 4, marginBottom: 4, alignItems: 'stretch' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, 1fr) 80px`, gap: 4, marginBottom: 4, alignItems: 'stretch' }}>
       <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{machine.name}</div>
         {machine.model && <div style={{ fontSize: 9, color: C.inkLight }}>HP {machine.model}</div>}
@@ -891,7 +894,7 @@ When ready to commit to a draft, include a narrative explanation AND a JSON code
 \`\`\`
 
 Field rules:
-- day_of_week: integer 0-4 (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri). Must be a NUMBER, not a string.
+- day_of_week: integer 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Must be a NUMBER, not a string. The fiscal week starts Sunday and ends Saturday — you can schedule any day.
 - machine: exact name as listed above (case-sensitive).
 - planned_yards: integer. Respect daily capacity (600 on 3600s, 500 elsewhere).
 - DO NOT include an "operator" field. Staffing is Chandler's decision, not yours.
@@ -947,7 +950,7 @@ ${poolLines}
 
 CRITICAL REMINDERS when proposing assignments:
 - Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Ka / Dementia / EMBER / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
-- day_of_week MUST be a number 0-4 (0=Mon, 4=Fri). Not a string.
+- day_of_week MUST be a number 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Not a string. Weekend days (Sat=6, Sun=0) are valid — all machines can run any day.
 - Respect daily capacity: 600 yd on 3600s (Glow/Sasha/Trish), 500 yd on everything else.
 - DO NOT include an operator field. Chandler staffs machines himself.
 - When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences exactly like this:
@@ -1055,7 +1058,7 @@ CRITICAL REMINDERS when proposing assignments:
         }))
         const valid = coerced.filter(p =>
           p.po_number && p.machine &&
-          Number.isInteger(p.day_of_week) && p.day_of_week >= 0 && p.day_of_week <= 4 &&
+          Number.isInteger(p.day_of_week) && p.day_of_week >= 0 && p.day_of_week <= 6 &&
           Number.isFinite(p.planned_yards) && p.planned_yards > 0
         )
         if (valid.length > 0) return valid
@@ -1105,7 +1108,7 @@ CRITICAL REMINDERS when proposing assignments:
         <span style={{ fontSize: 18 }}>✦</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Ask Claude · BNY Scheduling</div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Opus 4.7 · Week of {weekLabel(weekStart)}</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Opus 4.7 · Week of {weekLabelFiscal(weekStart)}</div>
         </div>
         <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
       </div>

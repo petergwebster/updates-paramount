@@ -38,19 +38,30 @@ export function mondayOf(d) {
 export function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x }
 export function addWeeks(d, n) { return addDays(d, n * 7) }
 export function isoDate(d) { return d.toISOString().slice(0,10) }
-export function weekLabel(d) {
-  const end = addDays(d, 4)
+export function weekLabel(d, days = 5) {
+  const end = addDays(d, days - 1)
+  return formatRange(d, end)
+}
+
+// Fiscal Sun–Sat label given a Monday-based week_start.
+// Example: weekLabelFiscal(Mon 2026-04-27) → "Apr 26–May 2, 2026"
+export function weekLabelFiscal(d) {
+  const start = addDays(d, -1)   // Sunday before the Monday week_start
+  const end   = addDays(d, 5)    // Saturday after the Monday week_start
+  return formatRange(start, end)
+}
+
+function formatRange(start, end) {
   const m = { 0:'Jan',1:'Feb',2:'Mar',3:'Apr',4:'May',5:'Jun',6:'Jul',7:'Aug',8:'Sep',9:'Oct',10:'Nov',11:'Dec' }
-  const sameMonth = d.getMonth() === end.getMonth()
-  const sameYear  = d.getFullYear() === end.getFullYear()
+  const sameMonth = start.getMonth() === end.getMonth()
+  const sameYear  = start.getFullYear() === end.getFullYear()
   if (sameMonth && sameYear) {
-    return `${m[d.getMonth()]} ${d.getDate()}–${end.getDate()}, ${d.getFullYear()}`
+    return `${m[start.getMonth()]} ${start.getDate()}–${end.getDate()}, ${start.getFullYear()}`
   }
   if (sameYear) {
-    return `${m[d.getMonth()]} ${d.getDate()}–${m[end.getMonth()]} ${end.getDate()}, ${d.getFullYear()}`
+    return `${m[start.getMonth()]} ${start.getDate()}–${m[end.getMonth()]} ${end.getDate()}, ${start.getFullYear()}`
   }
-  // rare: Dec → Jan year rollover
-  return `${m[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}–${m[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`
+  return `${m[start.getMonth()]} ${start.getDate()}, ${start.getFullYear()}–${m[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`
 }
 
 // Default starting week: April 27, 2026 (Week 4 of April per agreement with Peter)

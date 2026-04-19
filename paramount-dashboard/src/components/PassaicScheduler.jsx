@@ -232,8 +232,10 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         )}
       </div>
 
-      <MixGauges totals={mixTotals} />
-      <CategoryStrip totals={mixTotals} />
+      <div style={{ position: 'sticky', top: 8, zIndex: 10, background: C.cream, paddingTop: 4, paddingBottom: 8, marginBottom: 4 }}>
+        <MixGauges totals={mixTotals} />
+        <CategoryStrip totals={mixTotals} />
+      </div>
 
       {/* Main layout */}
       <div style={{
@@ -242,7 +244,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         gap: 16, marginTop: 16,
       }}>
         {/* POOL */}
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
+        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 230 }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
