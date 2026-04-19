@@ -548,17 +548,15 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 }
 
 // Compact Mon-Fri strip showing daily yards target + assigned operators.
-// Sits at the bottom of each table card and updates when Daily Plan is saved.
+// Always renders the 5-day skeleton (even when empty) so Wendy sees the
+// daily-planning structure from the moment the card loads. Fills in as she
+// sets targets and crew via the PLAN modal.
 function CrewStrip({ tableCode, dailyOps }) {
-  if (!dailyOps) return null
-  const forTable = dailyOps.filter(r => r.table_code === tableCode)
-  if (forTable.length === 0) return null
+  const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
   const byDay = {}
   for (const r of forTable) byDay[r.day_of_week] = r
   const days = [1, 2, 3, 4, 5]
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  const hasAny = days.some(d => byDay[d] && (byDay[d].operator_1 || byDay[d].operator_2 || byDay[d].planned_yards != null))
-  if (!hasAny) return null
   // First name + last initial ("Angel A.") — unique across the 42-person roster
   const shortName = (n) => {
     if (!n) return null
@@ -574,14 +572,15 @@ function CrewStrip({ tableCode, dailyOps }) {
         const op2 = shortName(row?.operator_2)
         const crew = [op1, op2].filter(Boolean).join(' / ')
         const yd = row?.planned_yards
+        const hasData = yd != null || crew
         return (
-          <div key={d} style={{ display: 'flex', fontSize: 8, color: C.inkMid, lineHeight: 1.4 }}>
+          <div key={d} style={{ display: 'flex', fontSize: 8, color: hasData ? C.inkMid : C.inkLight, lineHeight: 1.5 }}>
             <span style={{ width: 22, color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
-            <span style={{ width: 32, color: yd != null ? C.ink : C.inkLight, fontWeight: 600 }}>
+            <span style={{ width: 36, color: yd != null ? C.ink : C.inkLight, fontWeight: 600 }}>
               {yd != null ? `${fmt(yd)}yd` : '—'}
             </span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>no crew</span>}
+              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>—</span>}
             </span>
           </div>
         )
