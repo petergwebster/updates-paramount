@@ -312,9 +312,8 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: askClaudeOpen ? '300px 1fr 420px' : '340px 1fr',
+        gridTemplateColumns: '340px 1fr',
         gap: 16, marginTop: 16,
-        transition: 'grid-template-columns 0.2s',
       }}>
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
@@ -386,7 +385,6 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
             onOperatorChange={updateMachineDayOperator}
-            compact={askClaudeOpen}
           />
           <LocationSection
             locationKey="passaic"
@@ -398,40 +396,40 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
             onOperatorChange={updateMachineDayOperator}
-            compact={askClaudeOpen}
           />
         </div>
-
-        {askClaudeOpen && (
-          <AskClaudeBNYPanel
-            onClose={() => setAskClaudeOpen(false)}
-            weekStart={weekStart}
-            pool={pool}
-            assignments={enrichedAssignments}
-            mixTotals={mixTotals}
-            onApplyAssignments={async (proposals) => {
-              const rows = proposals.map(p => ({
-                site: 'bny',
-                po_number: p.po_number,
-                line_description: p.line_description || null,
-                product_type: p.product_type || null,
-                table_code: p.machine,
-                week_start: isoDate(weekStart),
-                day_of_week: p.day_of_week,
-                planned_yards: p.planned_yards,
-                planned_cy: null,
-                operator: p.operator || null,
-                assigned_by: 'claude',
-                notes: p.rationale || null,
-                status: 'planned',
-              }))
-              const { error } = await supabase.from('sched_assignments').insert(rows)
-              if (error) throw error
-              await onAssignmentsChange()
-            }}
-          />
-        )}
       </div>
+
+      {/* ASK CLAUDE — modal overlay (full-screen) */}
+      {askClaudeOpen && (
+        <AskClaudeBNYPanel
+          onClose={() => setAskClaudeOpen(false)}
+          weekStart={weekStart}
+          pool={pool}
+          assignments={enrichedAssignments}
+          mixTotals={mixTotals}
+          onApplyAssignments={async (proposals) => {
+            const rows = proposals.map(p => ({
+              site: 'bny',
+              po_number: p.po_number,
+              line_description: p.line_description || null,
+              product_type: p.product_type || null,
+              table_code: p.machine,
+              week_start: isoDate(weekStart),
+              day_of_week: p.day_of_week,
+              planned_yards: p.planned_yards,
+              planned_cy: null,
+              operator: null,  // Claude does not staff — Chandler picks the operator
+              assigned_by: 'claude',
+              notes: p.rationale || null,
+              status: 'planned',
+            }))
+            const { error } = await supabase.from('sched_assignments').insert(rows)
+            if (error) throw error
+            await onAssignmentsChange()
+          }}
+        />
+      )}
 
       {assignModal && (
         <AssignModalBNY
@@ -885,16 +883,20 @@ SCHEDULING LOGIC:
 YOUR ROLE:
 Thinking partner for Chandler, not commander. Chandler owns decisions. Propose a starting draft he can react to. Speak warmly, directly, peer-to-peer. Use his name. Reference specific POs, machines, and days.
 
-PROPOSAL FORMAT:
-When ready to commit to a draft, include a narrative explanation AND a JSON code block like:
+PROPOSAL FORMAT (critical — read carefully):
+When ready to commit to a draft, include a narrative explanation AND a JSON code block. The JSON MUST be wrapped in triple-backtick json fences exactly like this:
+
 \`\`\`json
-{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"operator":"Sara Howard","rationale":"FIFO — 145 days old, Replen bucket, 3600 is the right machine"}]}
+{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"rationale":"FIFO — 145 days old, Replen bucket, 3600 is the right machine"}]}
 \`\`\`
-- day_of_week: 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri.
-- machine: exact name as listed above.
-- operator: exact name from the list (optional — omit or use "" if Chandler should decide).
-- planned_yards: respect daily capacity (600 on 3600s, 500 elsewhere).
-- Split POs across multiple machine-days when they exceed a single day's capacity.`
+
+Field rules:
+- day_of_week: integer 0-4 (0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri). Must be a NUMBER, not a string.
+- machine: exact name as listed above (case-sensitive).
+- planned_yards: integer. Respect daily capacity (600 on 3600s, 500 elsewhere).
+- DO NOT include an "operator" field. Staffing is Chandler's decision, not yours.
+- Split POs across multiple machine-days when they exceed a single day's capacity.
+- Top-level object must be {"proposals": [...]}. Do not emit bare objects or arrays.`
 
   async function generateOpening() {
     setStreaming(true); setError(null)
@@ -937,7 +939,26 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
       `  ${p.po_number} | ${p.line_description} | ${p.bny_bucket} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`
     ).join('\n')
 
-    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n\nPOOL (top 100 POs sorted by age):\n${poolLines}\n\nRemember: machine names must match exactly (Glow/Sasha/Trish/Bianca/LASH/Chyna/Rhonda in Brooklyn; Dakota Ka/Dementia/EMBER/Ivy Nile/Jacy Jayne/Ruby/Valhalla/XIA/Apollo/Nemesis/Poseidon/Zoey in Passaic). day_of_week is 0-4. Respect daily capacity (600 for 3600s, 500 for all others).]`
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:
+${JSON.stringify(context, null, 2)}
+
+POOL (top 100 POs sorted by age):
+${poolLines}
+
+CRITICAL REMINDERS when proposing assignments:
+- Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Ka / Dementia / EMBER / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
+- day_of_week MUST be a number 0-4 (0=Mon, 4=Fri). Not a string.
+- Respect daily capacity: 600 yd on 3600s (Glow/Sasha/Trish), 500 yd on everything else.
+- DO NOT include an operator field. Chandler staffs machines himself.
+- When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences exactly like this:
+
+\`\`\`json
+{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"rationale":"..."}]}
+\`\`\`
+
+- The outer object must be {"proposals": [...]}. Do not emit a bare array or loose objects.
+- If you don't include the fenced JSON block, the frontend cannot apply the proposals — Chandler will just see your narrative.
+]`
     convo[convo.length - 1].content += contextNote
 
     try {
@@ -1011,17 +1032,35 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
   }
 
   function extractProposals(text) {
-    const match = text.match(/```json\s*([\s\S]*?)\s*```/i)
-    if (!match) return null
-    try {
-      const obj = JSON.parse(match[1])
-      if (Array.isArray(obj.proposals) && obj.proposals.length > 0) {
-        const valid = obj.proposals.filter(p =>
-          p.po_number && p.machine && typeof p.day_of_week === 'number' && p.planned_yards
+    // Strategy 1: fenced ```json ... ``` block (preferred)
+    // Strategy 2: fenced ``` ... ``` without "json" tag
+    // Strategy 3: bare {"proposals": [...]} anywhere in the text
+    const candidates = []
+    const fencedJson = text.match(/```json\s*([\s\S]*?)\s*```/i)
+    if (fencedJson) candidates.push(fencedJson[1])
+    const fenced = text.match(/```\s*(\{[\s\S]*?\})\s*```/)
+    if (fenced) candidates.push(fenced[1])
+    const bareObj = text.match(/(\{\s*"proposals"\s*:\s*\[[\s\S]*?\]\s*\})/)
+    if (bareObj) candidates.push(bareObj[1])
+
+    for (const candidate of candidates) {
+      try {
+        const obj = JSON.parse(candidate)
+        if (!Array.isArray(obj.proposals) || obj.proposals.length === 0) continue
+        // Coerce then validate — Opus sometimes emits "0" (string) or 0.0 (float)
+        const coerced = obj.proposals.map(p => ({
+          ...p,
+          day_of_week: Number(p.day_of_week),
+          planned_yards: Number(p.planned_yards),
+        }))
+        const valid = coerced.filter(p =>
+          p.po_number && p.machine &&
+          Number.isInteger(p.day_of_week) && p.day_of_week >= 0 && p.day_of_week <= 4 &&
+          Number.isFinite(p.planned_yards) && p.planned_yards > 0
         )
-        return valid.length > 0 ? valid : null
-      }
-    } catch { /* not parseable */ }
+        if (valid.length > 0) return valid
+      } catch { /* try next strategy */ }
+    }
     return null
   }
 
@@ -1050,12 +1089,18 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
   ]
 
   return (
-    <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
-      height: 'calc(100vh - 220px)', minHeight: 600, maxHeight: 900,
-      position: 'sticky', top: 16,
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    }}>
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+      <div style={{
+        background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
+        width: 'min(1100px, 92vw)', height: 'min(820px, 92vh)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      }}>
       <div style={{ padding: '12px 16px', background: C.amber, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 18 }}>✦</span>
         <div style={{ flex: 1 }}>
@@ -1117,6 +1162,7 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
             {streaming ? '⏳' : 'Send'}
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

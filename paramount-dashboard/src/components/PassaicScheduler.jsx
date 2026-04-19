@@ -235,12 +235,11 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       <MixGauges totals={mixTotals} />
       <CategoryStrip totals={mixTotals} />
 
-      {/* Main layout — shrinks width when Ask Claude is open */}
+      {/* Main layout */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: askClaudeOpen ? '300px 1fr 420px' : '340px 1fr',
+        gridTemplateColumns: '340px 1fr',
         gap: 16, marginTop: 16,
-        transition: 'grid-template-columns 0.2s',
       }}>
         {/* POOL */}
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
@@ -301,41 +300,41 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
         </div>
-
-        {/* ASK CLAUDE PANEL */}
-        {askClaudeOpen && (
-          <AskClaudePanel
-            onClose={() => setAskClaudeOpen(false)}
-            weekStart={weekStart}
-            pool={pool}
-            assignments={enrichedAssignments}
-            mixTotals={mixTotals}
-            onApplyAssignments={async (proposals) => {
-              const rows = proposals.map(p => ({
-                site: 'passaic',
-                po_number: p.po_number,
-                line_description: p.line_description || null,
-                product_type: p.product_type || null,
-                table_code: p.table_code,
-                week_start: isoDate(weekStart),
-                day_of_week: null,
-                planned_yards: p.planned_yards,
-                planned_cy: p.planned_cy || null,
-                assigned_by: 'claude',
-                notes: p.rationale || null,
-                status: 'planned',
-              }))
-              const { error } = await supabase.from('sched_assignments').insert(rows)
-              if (error) throw error
-              await onAssignmentsChange()
-            }}
-          />
-        )}
       </div>
+
+      {/* ASK CLAUDE — modal overlay (full-screen) */}
+      {askClaudeOpen && (
+        <AskClaudePanel
+          onClose={() => setAskClaudeOpen(false)}
+          weekStart={weekStart}
+          pool={pool}
+          assignments={enrichedAssignments}
+          mixTotals={mixTotals}
+          onApplyAssignments={async (proposals) => {
+            const rows = proposals.map(p => ({
+              site: 'passaic',
+              po_number: p.po_number,
+              line_description: p.line_description || null,
+              product_type: p.product_type || null,
+              table_code: p.table_code,
+              week_start: isoDate(weekStart),
+              day_of_week: null,
+              planned_yards: p.planned_yards,
+              planned_cy: p.planned_cy || null,
+              assigned_by: 'claude',
+              notes: p.rationale || null,
+              status: 'planned',
+            }))
+            const { error } = await supabase.from('sched_assignments').insert(rows)
+            if (error) throw error
+            await onAssignmentsChange()
+          }}
+        />
+      )}
 
       {assignModal && (
         <AssignModal
@@ -819,12 +818,18 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
   ]
 
   return (
-    <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
-      height: 'calc(100vh - 220px)', minHeight: 600, maxHeight: 900,
-      position: 'sticky', top: 16,
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    }}>
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+      <div style={{
+        background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
+        width: 'min(1100px, 92vw)', height: 'min(820px, 92vh)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      }}>
       <div style={{ padding: '12px 16px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 18 }}>✦</span>
         <div style={{ flex: 1 }}>
@@ -886,6 +891,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
             {streaming ? '⏳' : 'Send'}
           </button>
         </div>
+      </div>
       </div>
     </div>
   )
