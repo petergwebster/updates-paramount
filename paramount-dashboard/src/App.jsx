@@ -14,6 +14,7 @@ import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
+import SchedulerTab from './components/SchedulerTab'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -38,6 +39,7 @@ const PUBLIC_TABS = [
   { id: 'financials',   label: 'Financials'   },
   { id: 'people',       label: 'People'        },
   { id: 'wip',          label: 'WIP'           },
+  { id: 'scheduler',    label: 'Scheduler'     },
 ]
 const ADMIN_TABS = [
   { id: 'liveops', label: '📊 Live Ops' },
@@ -1612,6 +1614,9 @@ export default function App() {
             )}
             {activeTab==='wip' && (
               <WIPTab weekStart={currentWeek} />
+            )}
+            {activeTab==='scheduler' && (
+              <SchedulerTab />
             )}
             {activeTab==='liveops' && adminAuthenticated && (
               <LiveOpsPage weekStart={currentWeek}/>
