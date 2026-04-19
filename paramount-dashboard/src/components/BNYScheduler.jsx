@@ -1100,13 +1100,31 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
 
     setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
 
-    // Throttle state updates during streaming to reduce React re-render pressure.
-    // At ~80 tokens/sec streaming rate, per-token setState ran the browser into the
-    // ground on long drafts. Limit flushes to ~12/sec while streaming; a final
-    // flush after the stream closes catches anything buffered.
+    // Streaming strategy:
+    // 1. During the narrative phase, throttle state flushes to ~12/sec.
+    // 2. Once Opus enters the JSON phase (detected by ```json or {"proposals":),
+    //    STOP flushing entirely — the visible bubble is static anyway, and
+    //    continuing to setState during a 60-90s JSON stream causes the browser
+    //    to lock up even at 12fps. One "writingProposals" marker flush flips
+    //    the bubble to a static "Writing proposals..." indicator.
+    // 3. A final flush after the stream closes lands the full content +
+    //    extracted proposals + streaming:false.
     const FLUSH_INTERVAL_MS = 80
     let lastFlush = 0
+    let jsonPhase = false
     const flushIfDue = () => {
+      if (jsonPhase) return
+      // Detect JSON start — once we see it, flip into jsonPhase and do one
+      // marker flush so the bubble switches to the static indicator.
+      if (fullText.includes('```json') || /\{\s*"proposals"\s*:/.test(fullText)) {
+        jsonPhase = true
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = { role: 'assistant', content: fullText, streaming: true, writingProposals: true }
+          return copy
+        })
+        return
+      }
       const now = Date.now()
       if (now - lastFlush < FLUSH_INTERVAL_MS) return
       lastFlush = now
@@ -1143,7 +1161,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
     const proposals = extractProposals(fullText)
     setMessages(prev => {
       const copy = [...prev]
-      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false }
+      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false, writingProposals: false }
       return copy
     })
     if (onComplete) onComplete(fullText, proposals)
@@ -1322,7 +1340,12 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     <div style={{ marginBottom: 14 }}>
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
         {displayText}
-        {message.streaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+        {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+        {message.writingProposals && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6, fontSize: 11, color: C.inkMid, fontStyle: 'italic', fontFamily: 'system-ui, sans-serif' }}>
+            ✦ Writing proposals… this typically takes 30–90 seconds for a full draft. The Apply button will appear when it's done.
+          </div>
+        )}
       </div>
       {message.proposals && message.proposals.length > 0 && !message.streaming && (
         <div style={{ marginTop: 8, padding: '10px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6 }}>

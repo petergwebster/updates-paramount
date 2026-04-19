@@ -743,10 +743,24 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
 
     setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
 
-    // Throttle state updates during streaming — limit flushes to ~12/sec
+    // Throttle narrative phase to ~12/sec; stop flushing entirely once JSON begins.
+    // Without the cutoff, 60-90s of JSON streaming (which is invisible to the user
+    // thanks to the display stripper) still slams React with updates and locks
+    // the browser. One marker flush switches the bubble to a static indicator.
     const FLUSH_INTERVAL_MS = 80
     let lastFlush = 0
+    let jsonPhase = false
     const flushIfDue = () => {
+      if (jsonPhase) return
+      if (fullText.includes('```json') || /\{\s*"proposals"\s*:/.test(fullText)) {
+        jsonPhase = true
+        setMessages(prev => {
+          const copy = [...prev]
+          copy[copy.length - 1] = { role: 'assistant', content: fullText, streaming: true, writingProposals: true }
+          return copy
+        })
+        return
+      }
       const now = Date.now()
       if (now - lastFlush < FLUSH_INTERVAL_MS) return
       lastFlush = now
@@ -785,7 +799,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
 
     setMessages(prev => {
       const copy = [...prev]
-      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false }
+      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false, writingProposals: false }
       return copy
     })
 
@@ -927,12 +941,22 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     )
   }
   const text = message.content || ''
-  const displayText = text.replace(/```json[\s\S]*?```/gi, '').trim()
+  // Strip fenced and bare JSON from rendered text (mid-stream-safe).
+  const displayText = text
+    .replace(/```json\s*[\s\S]*?```/gi, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\{\s*"proposals"\s*:[\s\S]*$/i, '')
+    .trim()
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
         {displayText}
-        {message.streaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+        {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+        {message.writingProposals && (
+          <div style={{ marginTop: 12, padding: '8px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6, fontSize: 11, color: C.inkMid, fontStyle: 'italic', fontFamily: 'system-ui, sans-serif' }}>
+            ✦ Writing proposals… this typically takes 30–90 seconds for a full draft. The Apply button will appear when it's done.
+          </div>
+        )}
       </div>
       {message.proposals && message.proposals.length > 0 && !message.streaming && (
         <div style={{ marginTop: 8, padding: '10px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6 }}>
