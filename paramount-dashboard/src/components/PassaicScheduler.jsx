@@ -550,7 +550,10 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
                   {canAssign ? 'Click to assign' : 'Empty'}
                 </div>
               )}
-              <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4 }}>{fmt(cyUsed)} / {fmt(t.capacity_cy)} CY</div>
+              <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4, display: 'flex', gap: 10 }}>
+                <span>Yards: <strong style={{ color: C.ink, fontWeight: 700 }}>{fmt(asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0))}</strong></span>
+                <span>CY: <strong style={{ color: overCap ? C.rose : C.ink, fontWeight: 700 }}>{fmt(cyUsed)}</strong> / {fmt(t.capacity_cy)}</span>
+              </div>
               <CrewStrip tableCode={t.code} dailyOps={dailyOps}
                 weeklyYards={asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)} />
             </div>

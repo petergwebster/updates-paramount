@@ -296,7 +296,7 @@ export default function LiveOpsTab() {
 
       {isFuture && (
         <div style={{ background: C.amberBg, border: `1px solid ${C.amber}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.amber, fontWeight: 600 }}>
-          This date is in the future. You can still pre-fill crew staffing here if you want, but actual yards and waste can't be entered until the shift happens.
+          This date is in the future. Fields are enterable (backfill or pre-planning), but most actuals entry happens same-day at end of shift.
         </div>
       )}
 
@@ -326,7 +326,7 @@ export default function LiveOpsTab() {
                   plannedSource={row?.plannedSource || 'none'}
                   plannedDetails={row?.plannedDetails || []}
                   op={row?.op}
-                  canEnterActuals={!isFuture}
+                  canEnterActuals={true}
                   onSave={(patch) => saveRow(t.code, patch)}
                 />
               </div>
@@ -394,7 +394,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '200px 1fr 130px 130px 1fr 1fr 2fr 100px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px 1fr 110px 110px 160px 160px 1.6fr 90px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
