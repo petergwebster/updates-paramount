@@ -631,7 +631,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
         <h3 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</h3>
         <span style={{ fontSize: 11, color: C.inkLight }}>— {machines.length} machines · {sublabel}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, minmax(0, 1fr)) 80px`, gap: 4, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `90px 55px repeat(7, minmax(0, 1fr)) 70px`, gap: 3, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
         <span>Machine</span>
         <span style={{ textAlign: 'right' }}>Budget/d</span>
         {DAY_LABELS.map(d => <span key={d} style={{ textAlign: 'center' }}>{d}</span>)}
@@ -663,12 +663,12 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
   const weekCap = machine.capacity * NUM_DAYS
   const weekPct = Math.round((weekTotal / weekCap) * 100)
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, minmax(0, 1fr)) 80px`, gap: 4, marginBottom: 4, alignItems: 'stretch' }}>
-      <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `90px 55px repeat(7, minmax(0, 1fr)) 70px`, gap: 3, marginBottom: 4, alignItems: 'stretch' }}>
+      <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{machine.name}</div>
         {machine.model && <div style={{ fontSize: 9, color: C.inkLight }}>HP {machine.model}</div>}
       </div>
-      <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
+      <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMid }}>{machine.capacity}</div>
         <div style={{ fontSize: 9, color: C.inkLight }}>yd/day</div>
       </div>
@@ -686,7 +686,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
           compact={compact}
         />
       ))}
-      <div style={{ background: weekPct > 100 ? C.roseBg : weekTotal > 0 ? C.goldBg : C.parchment, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
+      <div style={{ background: weekPct > 100 ? C.roseBg : weekTotal > 0 ? C.goldBg : C.parchment, borderRadius: 6, padding: '8px 6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: weekPct > 100 ? C.rose : C.ink }}>{fmt(weekTotal)}</div>
         <div style={{ fontSize: 9, color: C.inkLight }}>{weekPct}% of {fmt(weekCap)}</div>
       </div>
@@ -712,9 +712,9 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
       style={{
         background: '#fff',
         border: `${canAssign ? 2 : 1}px ${canAssign ? 'dashed' : 'solid'} ${canAssign ? C.amber : over ? C.rose : C.border}`,
-        borderRadius: 6, padding: 6, minHeight: 110,
+        borderRadius: 6, padding: 4, minHeight: 110,
         cursor: canAssign ? 'pointer' : 'default',
-        display: 'flex', flexDirection: 'column', gap: 4,
+        display: 'flex', flexDirection: 'column', gap: 3,
       }}>
       <select
         value={cellOperator}
@@ -727,7 +727,7 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
           color: cellOperator ? C.ink : C.inkLight, cursor: assignments.length === 0 ? 'not-allowed' : 'pointer',
         }}
       >
-        <option value="">{assignments.length === 0 ? '—' : 'operator?'}</option>
+        <option value="">{assignments.length === 0 ? '—' : 'op?'}</option>
         {operatorList.map(op => (
           <option key={op} value={op}>{op}</option>
         ))}
