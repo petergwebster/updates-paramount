@@ -64,24 +64,24 @@ export default function LiveOpsTab() {
   const weekStart = useMemo(() => mondayOf(selectedDate), [selectedDate])
   const dayOfWeek = useMemo(() => dayOfWeekFiscal(weekStart, selectedDate), [weekStart, selectedDate])
 
-  // Auto-jump to the most recent week that has plan data for this site on mount
-  // or when the site toggles. Prevents "no target set" confusion when Wendy
-  // planned one week but Live Ops defaulted to today's (different) week.
+  // Auto-jump to the most recent week that has PO assignments for this site on
+  // mount or when the site toggles. Using sched_assignments (not daily_ops) as
+  // the signal — assignment-to-table is what "I'm planning this week" means;
+  // Wendy may or may not have opened PLAN to set explicit daily targets.
   const initializedFor = useRef(null)
   useEffect(() => {
     if (initializedFor.current === site) return
     let cancelled = false
     async function autoJump() {
       const { data } = await supabase
-        .from('sched_daily_ops')
+        .from('sched_assignments')
         .select('week_start')
         .eq('site', site)
-        .not('planned_yards', 'is', null)
         .order('week_start', { ascending: false })
         .limit(1)
       if (cancelled) return
       initializedFor.current = site
-      if (!data || data.length === 0) return  // no plan data anywhere — stay on today
+      if (!data || data.length === 0) return  // no assignments anywhere — stay on today
       const latestWeekStr = data[0].week_start
       const latestWeekStart = new Date(latestWeekStr + 'T00:00:00')
       const today = new Date(); today.setHours(0,0,0,0)
@@ -133,15 +133,24 @@ export default function LiveOpsTab() {
       ) || null
 
       let plannedYards = 0
+      let plannedSource = 'none'  // 'explicit' | 'derived' | 'none'
       let plannedDetails = []
       if (site === 'passaic') {
-        // Passaic: daily target comes from sched_daily_ops.planned_yards
-        // (Wendy's per-day target set in the Daily Plan modal).
-        plannedYards = Number(op?.planned_yards || 0)
-        // Show the POs assigned to this table as context (weekly, since Passaic
-        // doesn't commit POs to specific days — just overall pacing).
+        // Passaic: prefer explicit daily target (sched_daily_ops.planned_yards).
+        // If not set, derive from weekly PO total ÷ 5 so Live Ops has a target
+        // to verify against even when Wendy hasn't opened PLAN.
         const onTable = assignments.filter(a => a.table_code === t.code)
         plannedDetails = onTable.map(a => a.line_description || a.po_number)
+        if (op?.planned_yards != null) {
+          plannedYards = Number(op.planned_yards)
+          plannedSource = 'explicit'
+        } else if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          const weekly = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+          if (weekly > 0) {
+            plannedYards = Math.round(weekly / 5)
+            plannedSource = 'derived'
+          }
+        }
       } else {
         // BNY: day-specific
         const onCell = assignments.filter(a =>
@@ -151,7 +160,7 @@ export default function LiveOpsTab() {
         plannedDetails = onCell.map(a => a.line_description || a.po_number)
       }
 
-      m[t.code] = { op, plannedYards, plannedDetails }
+      m[t.code] = { op, plannedYards, plannedSource, plannedDetails }
     }
     return m
   }, [tables, dailyOps, assignments, dayOfWeek, site])
@@ -278,10 +287,10 @@ export default function LiveOpsTab() {
         </div>
       </div>
 
-      {/* No-plan-data warning */}
-      {!loading && !dailyOps.some(r => r.planned_yards != null) && (
+      {/* No-plan-data warning — only if neither explicit targets nor PO assignments exist */}
+      {!loading && !dailyOps.some(r => r.planned_yards != null) && assignments.length === 0 && (
         <div style={{ background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.inkMid }}>
-          <strong style={{ color: C.ink }}>No plan data for this week.</strong> Wendy hasn't set daily targets yet for week of {weekLabel(weekStart)}. You can still enter actuals here, but there'll be no target to verify against. If you expected to see a plan, check whether the Scheduler tab is pointing to a different week.
+          <strong style={{ color: C.ink }}>No plan or assignments for this week.</strong> Nothing's been scheduled yet for week of {weekLabel(weekStart)}. You can still enter actuals, but there'll be no target to verify against. If you expected data here, check the Scheduler tab for a different week.
         </div>
       )}
 
@@ -314,6 +323,7 @@ export default function LiveOpsTab() {
                   table={t}
                   site={site}
                   plannedYards={row?.plannedYards || 0}
+                  plannedSource={row?.plannedSource || 'none'}
                   plannedDetails={row?.plannedDetails || []}
                   op={row?.op}
                   canEnterActuals={!isFuture}
@@ -337,7 +347,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, plannedYards, plannedDetails, op, canEnterActuals, onSave }) {
+function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, onSave }) {
   const [yards, setYards]   = useState(op?.actual_yards ?? '')
   const [waste, setWaste]   = useState(op?.waste_yards ?? '')
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
@@ -396,9 +406,18 @@ function OpsRow({ table, site, plannedYards, plannedDetails, op, canEnterActuals
       {/* Planned summary */}
       <div style={{ fontSize: 11, color: C.inkMid }}>
         <div style={{ fontWeight: 600, color: C.ink, marginBottom: 2 }}>
-          {plannedYards > 0
-            ? `${fmt(plannedYards)} yd target`
-            : <span style={{ color: C.inkLight, fontStyle: 'italic' }}>no target set</span>}
+          {plannedYards > 0 ? (
+            <>
+              {fmt(plannedYards)} yd target
+              {plannedSource === 'derived' && (
+                <span style={{ fontSize: 9, color: C.inkLight, fontWeight: 400, marginLeft: 4, fontStyle: 'italic' }}>
+                  · auto (weekly ÷ 5)
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ color: C.inkLight, fontStyle: 'italic' }}>no target set</span>
+          )}
         </div>
         {plannedDetails.length > 0 && (
           <div style={{ fontSize: 10, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -551,7 +551,8 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
                 </div>
               )}
               <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4 }}>{fmt(cyUsed)} / {fmt(t.capacity_cy)} CY</div>
-              <CrewStrip tableCode={t.code} dailyOps={dailyOps} />
+              <CrewStrip tableCode={t.code} dailyOps={dailyOps}
+                weeklyYards={asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)} />
             </div>
           )
         })}
@@ -564,13 +565,16 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 // and surfaces Mon-Fri performance at a glance — plan yards, actual yards,
 // variance, and crew. As Sami enters actuals in Live Ops, they flow up here
 // so the scheduler card doubles as a monitoring view for Wendy's 3pm check.
-function CrewStrip({ tableCode, dailyOps }) {
+function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
   const byDay = {}
   for (const r of forTable) byDay[r.day_of_week] = r
   const days = [1, 2, 3, 4, 5]
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  // First name + last initial ("Angel A.") — unique across the 42-person roster
+  // Auto-derived daily plan (weekly PO yards ÷ 5) used when no explicit
+  // planned_yards set — so just scheduling POs gives Wendy a target to track
+  // against without requiring her to open PLAN for every table.
+  const derivedDaily = weeklyYards > 0 ? Math.round(weeklyYards / 5) : null
   const shortName = (n) => {
     if (!n) return null
     const parts = n.trim().split(/\s+/)
@@ -580,14 +584,13 @@ function CrewStrip({ tableCode, dailyOps }) {
   const varianceColor = (delta, plan) => {
     if (delta == null || plan == null || plan === 0) return C.inkLight
     const pct = delta / plan
-    if (Math.abs(pct) < 0.05) return C.sage    // on plan
-    if (pct > 0) return C.gold                  // over
-    if (pct > -0.15) return C.gold              // slightly under
-    return C.rose                                // significantly under
+    if (Math.abs(pct) < 0.05) return C.sage
+    if (pct > 0) return C.gold
+    if (pct > -0.15) return C.gold
+    return C.rose
   }
   return (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
-      {/* Header row */}
       <div style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 8, color: C.inkLight, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 3, paddingBottom: 3, borderBottom: `1px dashed ${C.border}` }}>
         <span>Day</span>
         <span style={{ textAlign: 'right' }}>Plan</span>
@@ -600,14 +603,18 @@ function CrewStrip({ tableCode, dailyOps }) {
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
         const crew = [op1, op2].filter(Boolean).join(' / ')
-        const plan = row?.planned_yards
+        // Explicit plan wins; otherwise fall back to derived weekly-÷-5
+        const explicitPlan = row?.planned_yards
+        const plan = explicitPlan != null ? explicitPlan : derivedDaily
+        const planIsDerived = explicitPlan == null && derivedDaily != null
         const actual = row?.actual_yards
         const delta = (plan != null && actual != null) ? actual - plan : null
         const deltaColor = varianceColor(delta, plan)
         return (
           <div key={d} style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
             <span style={{ color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
-            <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
+            <span style={{ textAlign: 'right', color: plan != null ? (planIsDerived ? C.inkMid : C.ink) : C.inkLight, fontWeight: plan != null ? 600 : 400, fontStyle: planIsDerived ? 'italic' : 'normal' }}
+              title={planIsDerived ? 'Auto-derived (weekly total ÷ 5). Set explicit target in PLAN modal.' : undefined}>
               {plan != null ? fmt(plan) : '—'}
             </span>
             <span style={{ textAlign: 'right', color: actual != null ? C.ink : C.inkLight, fontWeight: actual != null ? 600 : 400 }}>
