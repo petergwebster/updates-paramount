@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
-import { loadWeekDailyOps, buildRecentActualsSummary } from '../lib/dailyOps'
+import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
 const BNY_TARGETS = {
@@ -269,11 +269,32 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       .update({ operator: operator || null })
       .in('id', ids)
     if (error) { alert('Operator update failed: ' + error.message); return }
+    // Also write to sched_daily_ops so Live Ops and the operator scorecard
+    // see the same operator. Without this, operators only live on the
+    // assignment rows and the downstream views would show empty operators.
+    try {
+      await upsertDailyOp({
+        site: 'bny',
+        week_start: isoDate(weekStart),
+        table_code: machine,
+        day_of_week: dayOfWeek,
+        operator_1: operator || null,
+      })
+    } catch (e) {
+      console.error('sched_daily_ops dual-write failed (non-fatal):', e)
+    }
     await onAssignmentsChange()
   }
 
   return (
-    <div>
+    <div style={{
+      // Break out of any parent max-width cap so the 7-day grid has room.
+      // On narrow screens this has no effect (the parent is already 100vw).
+      // On wide screens this lets the board span up to ~1600px instead of
+      // the app's default ~980px container width.
+      width: 'max(100%, min(1600px, 100vw - 40px))',
+      marginLeft: 'calc((100% - max(100%, min(1600px, 100vw - 40px))) / 2)',
+    }}>
       {/* Week navigator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
@@ -316,8 +337,8 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '340px 1fr',
-        gap: 16, marginTop: 16,
+        gridTemplateColumns: '260px 1fr',
+        gap: 14, marginTop: 16,
       }}>
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 230 }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
@@ -631,7 +652,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
         <h3 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</h3>
         <span style={{ fontSize: 11, color: C.inkLight }}>— {machines.length} machines · {sublabel}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `90px 55px repeat(7, minmax(0, 1fr)) 70px`, gap: 3, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `85px 48px repeat(7, minmax(0, 1fr)) 65px`, gap: 2, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
         <span>Machine</span>
         <span style={{ textAlign: 'right' }}>Budget/d</span>
         {DAY_LABELS.map(d => <span key={d} style={{ textAlign: 'center' }}>{d}</span>)}
@@ -663,7 +684,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
   const weekCap = machine.capacity * NUM_DAYS
   const weekPct = Math.round((weekTotal / weekCap) * 100)
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `90px 55px repeat(7, minmax(0, 1fr)) 70px`, gap: 3, marginBottom: 4, alignItems: 'stretch' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `85px 48px repeat(7, minmax(0, 1fr)) 65px`, gap: 2, marginBottom: 4, alignItems: 'stretch' }}>
       <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 8px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{machine.name}</div>
         {machine.model && <div style={{ fontSize: 9, color: C.inkLight }}>HP {machine.model}</div>}
