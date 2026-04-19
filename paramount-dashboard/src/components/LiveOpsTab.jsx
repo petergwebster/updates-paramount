@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import {
   C, fmt, fmtD, isoDate, mondayOf, addDays, addWeeks,
@@ -63,6 +63,38 @@ export default function LiveOpsTab() {
   // Week that contains the selected date (Monday-anchored, per existing convention)
   const weekStart = useMemo(() => mondayOf(selectedDate), [selectedDate])
   const dayOfWeek = useMemo(() => dayOfWeekFiscal(weekStart, selectedDate), [weekStart, selectedDate])
+
+  // Auto-jump to the most recent week that has plan data for this site on mount
+  // or when the site toggles. Prevents "no target set" confusion when Wendy
+  // planned one week but Live Ops defaulted to today's (different) week.
+  const initializedFor = useRef(null)
+  useEffect(() => {
+    if (initializedFor.current === site) return
+    let cancelled = false
+    async function autoJump() {
+      const { data } = await supabase
+        .from('sched_daily_ops')
+        .select('week_start')
+        .eq('site', site)
+        .not('planned_yards', 'is', null)
+        .order('week_start', { ascending: false })
+        .limit(1)
+      if (cancelled) return
+      initializedFor.current = site
+      if (!data || data.length === 0) return  // no plan data anywhere — stay on today
+      const latestWeekStr = data[0].week_start
+      const latestWeekStart = new Date(latestWeekStr + 'T00:00:00')
+      const today = new Date(); today.setHours(0,0,0,0)
+      const todayWeekStart = mondayOf(today)
+      // If today is already in the latest-planned week, stay on today. Otherwise
+      // jump to Monday of that week so Wendy/Sami sees her planning immediately.
+      if (mondayOf(latestWeekStart).getTime() !== todayWeekStart.getTime()) {
+        setSelectedDate(mondayOf(latestWeekStart))
+      }
+    }
+    autoJump()
+    return () => { cancelled = true }
+  }, [site])
 
   useEffect(() => {
     let cancelled = false
@@ -130,6 +162,12 @@ export default function LiveOpsTab() {
     setSelectedDate(d)
   }
 
+  function navigateWeek(deltaWeeks) {
+    const d = new Date(selectedDate)
+    d.setDate(d.getDate() + deltaWeeks * 7)
+    setSelectedDate(d)
+  }
+
   async function saveRow(tableCode, patch) {
     const existing = rowsForTable[tableCode]?.op || {}
     const row = {
@@ -184,36 +222,68 @@ export default function LiveOpsTab() {
         </div>
       </div>
 
-      {/* Site toggle + date navigator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10 }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <SiteChip active={site === 'passaic'} onClick={() => setSite('passaic')} color={C.navy}>
-            Passaic · Screen Print
-          </SiteChip>
-          <SiteChip active={site === 'bny'} onClick={() => setSite('bny')} color={C.amber}>
-            BNY · Digital
-          </SiteChip>
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => navigateDay(-1)}
-          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>
-          ← Prev day
-        </button>
-        <div style={{ textAlign: 'center', minWidth: 180 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{dayLabel}</div>
-          <div style={{ fontSize: 11, color: C.inkLight }}>
-            {dateLabel}{isToday ? ' · today' : isFuture ? ' · future' : ''}
+      {/* Site toggle + week + day navigators */}
+      <div style={{ marginBottom: 20, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10 }}>
+        {/* Row 1: site toggle + Today */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <SiteChip active={site === 'passaic'} onClick={() => setSite('passaic')} color={C.navy}>
+              Passaic · Screen Print
+            </SiteChip>
+            <SiteChip active={site === 'bny'} onClick={() => setSite('bny')} color={C.amber}>
+              BNY · Digital
+            </SiteChip>
           </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setSelectedDate(today)}
+            style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid, fontWeight: 600 }}>
+            Jump to today
+          </button>
         </div>
-        <button onClick={() => setSelectedDate(today)}
-          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
-          Today
-        </button>
-        <button onClick={() => navigateDay(1)}
-          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>
-          Next day →
-        </button>
+
+        {/* Row 2: week navigator */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: `1px dashed ${C.border}` }}>
+          <button onClick={() => navigateWeek(-1)}
+            style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+            ← Prev week
+          </button>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Week</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{weekLabel(weekStart)}</div>
+          </div>
+          <button onClick={() => navigateWeek(1)}
+            style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+            Next week →
+          </button>
+        </div>
+
+        {/* Row 3: day navigator (within the week above) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => navigateDay(-1)}
+            style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+            ← Prev day
+          </button>
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Day</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>
+              {dayLabel} <span style={{ fontWeight: 400, color: C.inkMid }}>· {dateLabel}</span>
+              {isToday && <span style={{ fontSize: 10, color: C.sage, fontWeight: 600, marginLeft: 6 }}>TODAY</span>}
+              {isFuture && <span style={{ fontSize: 10, color: C.gold, fontWeight: 600, marginLeft: 6 }}>FUTURE</span>}
+            </div>
+          </div>
+          <button onClick={() => navigateDay(1)}
+            style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+            Next day →
+          </button>
+        </div>
       </div>
+
+      {/* No-plan-data warning */}
+      {!loading && !dailyOps.some(r => r.planned_yards != null) && (
+        <div style={{ background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.inkMid }}>
+          <strong style={{ color: C.ink }}>No plan data for this week.</strong> Wendy hasn't set daily targets yet for week of {weekLabel(weekStart)}. You can still enter actuals here, but there'll be no target to verify against. If you expected to see a plan, check whether the Scheduler tab is pointing to a different week.
+        </div>
+      )}
 
       {isFuture && (
         <div style={{ background: C.amberBg, border: `1px solid ${C.amber}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.amber, fontWeight: 600 }}>
