@@ -412,24 +412,61 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           assignments={enrichedAssignments}
           mixTotals={mixTotals}
           onApplyAssignments={async (proposals) => {
-            const rows = proposals.map(p => ({
-              site: 'bny',
-              po_number: p.po_number,
-              line_description: p.line_description || null,
-              product_type: p.product_type || null,
-              table_code: p.machine,
-              week_start: isoDate(weekStart),
-              day_of_week: p.day_of_week,
-              planned_yards: p.planned_yards,
-              planned_cy: null,
-              operator: null,  // Claude does not staff — Chandler picks the operator
-              assigned_by: 'claude',
-              notes: p.rationale || null,
-              status: 'planned',
-            }))
-            const { error } = await supabase.from('sched_assignments').insert(rows)
-            if (error) throw error
-            await onAssignmentsChange()
+            // Seed per-cell running totals with what's already on the board
+            // so we don't push existing cells over capacity either.
+            const cellTotals = {}
+            for (const a of enrichedAssignments) {
+              const key = `${a.table_code}|${a.day_of_week}`
+              cellTotals[key] = (cellTotals[key] || 0) + Number(a.planned_yards || 0)
+            }
+
+            const accepted = []
+            const skipped = []
+            for (const p of proposals) {
+              const key = `${p.machine}|${p.day_of_week}`
+              const loc = brooklynMachineNames.has(p.machine)
+                ? 'brooklyn'
+                : passaicMachineNames.has(p.machine) ? 'passaic' : null
+              if (!loc) {
+                skipped.push({ p, reason: `unknown machine "${p.machine}"` })
+                continue
+              }
+              const cap = capacityFor(p.machine, loc)
+              const current = cellTotals[key] || 0
+              const yd = Number(p.planned_yards || 0)
+              if (current + yd > cap) {
+                skipped.push({
+                  p,
+                  reason: `${p.machine} ${DAY_LABELS[p.day_of_week] || `d${p.day_of_week}`} would be ${current + yd}/${cap}`,
+                })
+                continue
+              }
+              accepted.push(p)
+              cellTotals[key] = current + yd
+            }
+
+            if (accepted.length > 0) {
+              const rows = accepted.map(p => ({
+                site: 'bny',
+                po_number: p.po_number,
+                line_description: p.line_description || null,
+                product_type: p.product_type || null,
+                table_code: p.machine,
+                week_start: isoDate(weekStart),
+                day_of_week: p.day_of_week,
+                planned_yards: p.planned_yards,
+                planned_cy: null,
+                operator: null,
+                assigned_by: 'claude',
+                notes: p.rationale || null,
+                status: 'planned',
+              }))
+              const { error } = await supabase.from('sched_assignments').insert(rows)
+              if (error) throw error
+              await onAssignmentsChange()
+            }
+
+            return { accepted: accepted.length, skipped: skipped.length, skippedDetails: skipped }
           }}
         />
       )}
@@ -747,7 +784,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
   const remainingCap = Math.max(0, dailyCapacity - alreadyOnCell)
   const maxY = Math.min(po.remaining_yards, remainingCap)
   const overCap = yards > remainingCap
-  const invalid = yards < 1 || yards > po.remaining_yards
+  const invalid = yards < 1 || yards > po.remaining_yards || overCap
   const operatorList = BNY_OPERATORS[location] || []
 
   return (
@@ -908,10 +945,25 @@ When ready to commit to a draft, include a narrative explanation AND a JSON code
 Field rules:
 - day_of_week: integer 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Must be a NUMBER, not a string. The fiscal week starts Sunday and ends Saturday — you can schedule any day.
 - machine: exact name as listed above (case-sensitive).
-- planned_yards: integer. Respect daily capacity (600 on 3600s, 500 elsewhere).
+- planned_yards: integer.
 - DO NOT include an "operator" field. Staffing is Chandler's decision, not yours.
-- Split POs across multiple machine-days when they exceed a single day's capacity.
-- Top-level object must be {"proposals": [...]}. Do not emit bare objects or arrays.`
+- Top-level object must be {"proposals": [...]}. Do not emit bare objects or arrays.
+
+DAILY CAPACITY (hard rule — read carefully):
+Daily capacity is a SUM across ALL proposals for a single (machine, day_of_week) pair, not a per-proposal limit.
+- Glow / Sasha / Trish (HP 3600): 600 yd TOTAL per day.
+- All other machines (HP 570s + every Passaic digital): 500 yd TOTAL per day.
+
+Worked example — Glow is 600/day:
+- You may propose ONE 600 yd assignment on Glow Mon. ✓
+- You may propose two 300 yd assignments on Glow Mon (sum = 600). ✓
+- You may propose 400 + 200 on Glow Mon (sum = 600). ✓
+- You may NOT propose 400 + 300 on Glow Mon (sum = 700). ✗ Move the 300 to Glow Tue, or to another machine's Monday.
+- You may NOT propose 600 + anything else on Glow Mon. ✗ That day is already full.
+
+Before writing each proposal, mentally sum all previous proposals for the same (machine, day_of_week). If adding the new one would push the sum past 600 (3600s) or 500 (others), put it on another day or another machine instead.
+
+Split POs whose yards exceed a single day's capacity across multiple machine-days. A 1,500 yd Replen on Glow takes three days: Mon 600 + Tue 600 + Wed 300.`
 
   async function generateOpening() {
     setStreaming(true); setError(null)
@@ -984,7 +1036,7 @@ ${poolLines}
 CRITICAL REMINDERS when proposing assignments:
 - Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Ka / Dementia / EMBER / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
 - day_of_week MUST be a number 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Not a string.
-- Respect daily capacity: 600 yd on 3600s (Glow/Sasha/Trish), 500 yd on everything else.
+- DAILY CAPACITY IS A HARD SUM, NOT A PER-PROPOSAL LIMIT. Total yards across ALL proposals for a single (machine, day_of_week) cannot exceed 600 on 3600s (Glow/Sasha/Trish) or 500 on all other machines. If Glow Mon already has 400 proposed, you can add at most 200 more to Glow Mon — not another 400. Track this as you write each proposal.
 - DO NOT include an operator field. Chandler staffs machines himself.
 
 MACHINE-FAMILY PRIORITY (this is how Chandler actually runs BNY):
@@ -1120,11 +1172,17 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
     if (!confirm(`Apply Claude's ${proposals.length} proposed assignments to the board?`)) return
     setApplying(true)
     try {
-      await onApplyAssignments(proposals)
-      setMessages(prev => [...prev, {
-        role: 'system',
-        content: `✓ Applied ${proposals.length} assignment${proposals.length !== 1 ? 's' : ''} to the board. You can edit, remove, or ask Claude to adjust.`,
-      }])
+      const result = await onApplyAssignments(proposals)
+      const acc = result?.accepted ?? proposals.length
+      const skp = result?.skipped ?? 0
+      let msg = `✓ Applied ${acc} assignment${acc !== 1 ? 's' : ''} to the board.`
+      if (skp > 0) {
+        const firstFew = (result.skippedDetails || []).slice(0, 3)
+          .map(s => `${s.p.po_number} → ${s.reason}`)
+          .join('; ')
+        msg += ` Skipped ${skp} that would exceed daily capacity${firstFew ? ` (${firstFew}${result.skippedDetails.length > 3 ? '…' : ''})` : ''}.`
+      }
+      setMessages(prev => [...prev, { role: 'system', content: msg }])
     } catch (e) {
       alert('Failed to apply: ' + (e.message || e))
     } finally {
