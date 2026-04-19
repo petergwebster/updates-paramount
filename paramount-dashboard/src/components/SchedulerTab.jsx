@@ -1207,7 +1207,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
 
   // Call the streaming Claude endpoint and buffer until complete
   async function streamClaude(messages, onComplete) {
-    const response = await fetch('/api/claude', {
+    const response = await fetch('/api/claude-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
