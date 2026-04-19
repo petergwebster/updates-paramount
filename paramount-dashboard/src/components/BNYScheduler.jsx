@@ -939,15 +939,17 @@ PROPOSAL FORMAT (critical — read carefully):
 When ready to commit to a draft, include a narrative explanation AND a JSON code block. The JSON MUST be wrapped in triple-backtick json fences exactly like this:
 
 \`\`\`json
-{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"rationale":"FIFO — 145 days old, Replen bucket, 3600 is the right machine"}]}
+{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"rationale":"FIFO 145d"}]}
 \`\`\`
 
 Field rules:
 - day_of_week: integer 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Must be a NUMBER, not a string. The fiscal week starts Sunday and ends Saturday — you can schedule any day.
 - machine: exact name as listed above (case-sensitive).
 - planned_yards: integer.
+- rationale: OPTIONAL and MUST be 6 words or fewer (e.g. "FIFO 145d", "Memo 32d — Quansoo", "aged MTO"). Put detailed reasoning in your prose narrative ABOVE the JSON block, never inside the JSON itself. Long rationales waste output tokens and can truncate the draft mid-proposal.
 - DO NOT include an "operator" field. Staffing is Chandler's decision, not yours.
 - Top-level object must be {"proposals": [...]}. Do not emit bare objects or arrays.
+- ALWAYS wrap the JSON in \`\`\`json fences. Without fences the frontend cannot extract your proposals — emit the fences even if your reply is long.
 
 DAILY CAPACITY (hard rule — read carefully):
 Daily capacity is a SUM across ALL proposals for a single (machine, day_of_week) pair, not a per-proposal limit.
@@ -1081,7 +1083,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-opus-4-7',
-        max_tokens: 8000,
+        max_tokens: 16000,
         system: SYSTEM_PROMPT,
         messages: msgs,
         stream: true,
@@ -1295,7 +1297,14 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     )
   }
   const text = message.content || ''
-  const displayText = text.replace(/```json[\s\S]*?```/gi, '').trim()
+  // Strip JSON from displayed text so it doesn't render into the message bubble.
+  // We strip all three shapes Opus emits: fenced with json tag, fenced without,
+  // and bare — even mid-stream (open but not yet closed).
+  const displayText = text
+    .replace(/```json\s*[\s\S]*?```/gi, '')   // fenced ```json ... ```
+    .replace(/```[\s\S]*?```/g, '')            // any other fenced code block
+    .replace(/\{\s*"proposals"\s*:[\s\S]*$/i, '')  // bare {"proposals":...} open to end
+    .trim()
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
