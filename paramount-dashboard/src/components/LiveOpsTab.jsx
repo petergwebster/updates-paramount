@@ -103,9 +103,12 @@ export default function LiveOpsTab() {
       let plannedYards = 0
       let plannedDetails = []
       if (site === 'passaic') {
-        // Passaic: sum all assignments on this table (weekly total), no daily split
+        // Passaic: daily target comes from sched_daily_ops.planned_yards
+        // (Wendy's per-day target set in the Daily Plan modal).
+        plannedYards = Number(op?.planned_yards || 0)
+        // Show the POs assigned to this table as context (weekly, since Passaic
+        // doesn't commit POs to specific days — just overall pacing).
         const onTable = assignments.filter(a => a.table_code === t.code)
-        plannedYards = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
         plannedDetails = onTable.map(a => a.line_description || a.po_number)
       } else {
         // BNY: day-specific
@@ -316,14 +319,16 @@ function OpsRow({ table, site, plannedYards, plannedDetails, op, canEnterActuals
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
         <div style={{ fontSize: 10, color: C.inkLight }}>
-          {site === 'passaic' ? 'weekly plan' : `${table.capacity} yd/day cap`}
+          {site === 'passaic' ? "day's target" : `${table.capacity} yd/day cap`}
         </div>
       </div>
 
       {/* Planned summary */}
       <div style={{ fontSize: 11, color: C.inkMid }}>
         <div style={{ fontWeight: 600, color: C.ink, marginBottom: 2 }}>
-          {plannedYards > 0 ? `${fmt(plannedYards)} yd planned` : <span style={{ color: C.inkLight, fontStyle: 'italic' }}>nothing planned</span>}
+          {plannedYards > 0
+            ? `${fmt(plannedYards)} yd target`
+            : <span style={{ color: C.inkLight, fontStyle: 'italic' }}>no target set</span>}
         </div>
         {plannedDetails.length > 0 && (
           <div style={{ fontSize: 10, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

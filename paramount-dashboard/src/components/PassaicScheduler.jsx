@@ -369,6 +369,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         <CrewModal
           tableCode={crewModalTable}
           weekStart={weekStart}
+          weeklyYards={enrichedAssignments.filter(a => a.table_code === crewModalTable).reduce((s, a) => s + Number(a.planned_yards || 0), 0)}
           onClose={() => { setCrewModalTable(null); reloadDailyOps() }}
         />
       )}
@@ -519,9 +520,9 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
                   {onOpenCrew && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onOpenCrew(t.code) }}
-                      title="Assign crew for this table (per day, up to 2 operators)"
+                      title="Set daily yards targets and assign crew for each day"
                       style={{ padding: '1px 6px', fontSize: 9, fontWeight: 600, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 3, cursor: 'pointer', color: C.inkMid, letterSpacing: '0.04em' }}>
-                      CREW
+                      PLAN
                     </button>
                   )}
                   <span style={{ fontSize: 9, color: overCap ? C.rose : cyPct > 80 ? C.gold : C.inkLight, fontWeight: 600 }}>{cyPct}%</span>
@@ -546,29 +547,24 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   )
 }
 
-// Compact Mon-Fri strip showing assigned operators for this table.
-// Sits at the bottom of each table card and updates when crew is saved.
+// Compact Mon-Fri strip showing daily yards target + assigned operators.
+// Sits at the bottom of each table card and updates when Daily Plan is saved.
 function CrewStrip({ tableCode, dailyOps }) {
   if (!dailyOps) return null
   const forTable = dailyOps.filter(r => r.table_code === tableCode)
   if (forTable.length === 0) return null
-  // Map day_of_week -> row
   const byDay = {}
   for (const r of forTable) byDay[r.day_of_week] = r
-  const days = [1, 2, 3, 4, 5]  // Mon..Fri
+  const days = [1, 2, 3, 4, 5]
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  const hasAny = days.some(d => byDay[d] && (byDay[d].operator_1 || byDay[d].operator_2))
+  const hasAny = days.some(d => byDay[d] && (byDay[d].operator_1 || byDay[d].operator_2 || byDay[d].planned_yards != null))
   if (!hasAny) return null
-  // Display format: first name + last initial ("Angel A.")
-  // First-name-only collides (Miguel × 3); last-name-only collides (Acevedo × 4).
-  // First name + last initial is unique across the 42-person Passaic roster.
+  // First name + last initial ("Angel A.") — unique across the 42-person roster
   const shortName = (n) => {
     if (!n) return null
     const parts = n.trim().split(/\s+/)
     if (parts.length === 1) return parts[0]
-    const first = parts[0]
-    const lastInitial = parts[parts.length - 1][0]
-    return `${first} ${lastInitial}.`
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`
   }
   return (
     <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${C.border}` }}>
@@ -576,12 +572,16 @@ function CrewStrip({ tableCode, dailyOps }) {
         const row = byDay[d]
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
-        const crew = [op1, op2].filter(Boolean).join('/')
+        const crew = [op1, op2].filter(Boolean).join(' / ')
+        const yd = row?.planned_yards
         return (
           <div key={d} style={{ display: 'flex', fontSize: 8, color: C.inkMid, lineHeight: 1.4 }}>
-            <span style={{ width: 26, color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
+            <span style={{ width: 22, color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
+            <span style={{ width: 32, color: yd != null ? C.ink : C.inkLight, fontWeight: 600 }}>
+              {yd != null ? `${fmt(yd)}yd` : '—'}
+            </span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>—</span>}
+              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>no crew</span>}
             </span>
           </div>
         )
@@ -666,7 +666,7 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CrewModal — assign 2 operators per day for a given Passaic table
 // ═══════════════════════════════════════════════════════════════════════════
-function CrewModal({ tableCode, weekStart, onClose }) {
+function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
   const [rows, setRows] = useState([])  // one row per day_of_week 1..5 (Mon..Fri)
   const [loading, setLoading] = useState(true)
   const [savingDay, setSavingDay] = useState(null)
@@ -685,6 +685,7 @@ function CrewModal({ tableCode, weekStart, onClose }) {
         day_of_week: d,
         operator_1: existingByDay[d]?.operator_1 || '',
         operator_2: existingByDay[d]?.operator_2 || '',
+        planned_yards: existingByDay[d]?.planned_yards ?? '',
         _savedAt: null,
       }))
       setRows(seeded)
@@ -696,6 +697,12 @@ function CrewModal({ tableCode, weekStart, onClose }) {
 
   function updateRow(d, patch) {
     setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, ...patch, _savedAt: null } : r))
+  }
+
+  function applyEvenSplit() {
+    if (!weeklyYards || weeklyYards <= 0) return
+    const perDay = Math.round(weeklyYards / 5)
+    setRows(prev => prev.map(r => ({ ...r, planned_yards: perDay, _savedAt: null })))
   }
 
   async function saveRow(d) {
@@ -710,6 +717,7 @@ function CrewModal({ tableCode, weekStart, onClose }) {
         day_of_week: d,
         operator_1: row.operator_1 || null,
         operator_2: row.operator_2 || null,
+        planned_yards: row.planned_yards === '' ? null : Number(row.planned_yards),
       })
       setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, _savedAt: Date.now() } : r))
     } catch (e) {
@@ -721,31 +729,55 @@ function CrewModal({ tableCode, weekStart, onClose }) {
 
   async function saveAll() {
     for (const r of rows) {
-      if (r.operator_1 || r.operator_2) await saveRow(r.day_of_week)
+      if (r.operator_1 || r.operator_2 || r.planned_yards !== '') await saveRow(r.day_of_week)
     }
   }
+
+  const totalPlanned = rows.reduce((s, r) => s + (Number(r.planned_yards) || 0), 0)
+  const allocationDelta = weeklyYards != null ? totalPlanned - weeklyYards : null
 
   return (
     <div
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 92vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(720px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Crew · {tableCode}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · assign up to 2 operators per day</div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Daily Plan · {tableCode}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · set target yards and crew for each day</div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 22, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ padding: 18 }}>
+          {/* Weekly context + even-split helper */}
+          {!loading && weeklyYards != null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 12px', background: C.parchment, borderRadius: 6, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, color: C.inkMid, flex: 1 }}>
+                <strong style={{ color: C.ink }}>{fmt(weeklyYards)} yd</strong> of work assigned this week · <strong style={{ color: allocationDelta === 0 ? C.sage : Math.abs(allocationDelta) < 100 ? C.inkMid : C.gold }}>{fmt(totalPlanned)} yd</strong> allocated across days
+                {allocationDelta !== 0 && weeklyYards > 0 && (
+                  <span style={{ color: C.inkLight, fontStyle: 'italic' }}>
+                    {' · '}{allocationDelta > 0 ? `+${fmt(allocationDelta)} over` : `${fmt(-allocationDelta)} under`}
+                  </span>
+                )}
+              </div>
+              <button onClick={applyEvenSplit} disabled={!weeklyYards}
+                style={{ padding: '6px 12px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: weeklyYards ? 'pointer' : 'not-allowed' }}>
+                Even split ({weeklyYards ? Math.round(weeklyYards/5) : 0}/day)
+              </button>
+            </div>
+          )}
+
           {loading && <div style={{ textAlign: 'center', padding: 40, color: C.inkLight, fontSize: 13 }}>Loading…</div>}
           {!loading && rows.map(r => {
             const dayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][r.day_of_week]
             const isSaving = savingDay === r.day_of_week
             return (
-              <div key={r.day_of_week} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr 90px', gap: 10, alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+              <div key={r.day_of_week} style={{ display: 'grid', gridTemplateColumns: '60px 100px 1fr 1fr 90px', gap: 10, alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{dayLabel}</div>
+                <input type="number" value={r.planned_yards} onChange={e => updateRow(r.day_of_week, { planned_yards: e.target.value })}
+                  placeholder="yds"
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff', boxSizing: 'border-box' }} />
                 <select value={r.operator_1} onChange={e => updateRow(r.day_of_week, { operator_1: e.target.value })}
                   style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
                   <option value="">— Operator 1 —</option>
@@ -758,7 +790,7 @@ function CrewModal({ tableCode, weekStart, onClose }) {
                 </select>
                 <button onClick={() => saveRow(r.day_of_week)} disabled={isSaving}
                   style={{ padding: '7px 10px', background: isSaving ? C.warm : C.ink, color: isSaving ? C.inkLight : '#fff', border: 'none', borderRadius: 5, fontSize: 12, fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
-                  {isSaving ? '…' : r._savedAt ? '✓ Saved' : 'Save'}
+                  {isSaving ? '…' : r._savedAt ? '✓' : 'Save'}
                 </button>
               </div>
             )
@@ -767,7 +799,7 @@ function CrewModal({ tableCode, weekStart, onClose }) {
           {!loading && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
               <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
-                Tip: Sami enters actual yards and waste in the Live Ops tab at end of each shift.
+                Sami verifies actuals against these targets in Live Ops at end of each shift.
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={saveAll}
