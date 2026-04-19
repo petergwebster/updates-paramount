@@ -15,6 +15,7 @@ import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
 import SchedulerTab from './components/SchedulerTab'
+import LiveOpsTab from './components/LiveOpsTab'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -1618,8 +1619,8 @@ export default function App() {
             {activeTab==='scheduler' && (
               <SchedulerTab />
             )}
-            {activeTab==='liveops' && adminAuthenticated && (
-              <LiveOpsPage weekStart={currentWeek}/>
+            {activeTab==='liveops' && (
+              <LiveOpsTab />
             )}
             {activeTab==='admin' && adminAuthenticated && (
               <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} onRefresh={()=>loadWeek(currentWeek)} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
