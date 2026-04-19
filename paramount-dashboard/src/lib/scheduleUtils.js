@@ -41,7 +41,16 @@ export function isoDate(d) { return d.toISOString().slice(0,10) }
 export function weekLabel(d) {
   const end = addDays(d, 4)
   const m = { 0:'Jan',1:'Feb',2:'Mar',3:'Apr',4:'May',5:'Jun',6:'Jul',7:'Aug',8:'Sep',9:'Oct',10:'Nov',11:'Dec' }
-  return `${m[d.getMonth()]} ${d.getDate()}–${end.getDate()}, ${d.getFullYear()}`
+  const sameMonth = d.getMonth() === end.getMonth()
+  const sameYear  = d.getFullYear() === end.getFullYear()
+  if (sameMonth && sameYear) {
+    return `${m[d.getMonth()]} ${d.getDate()}–${end.getDate()}, ${d.getFullYear()}`
+  }
+  if (sameYear) {
+    return `${m[d.getMonth()]} ${d.getDate()}–${m[end.getMonth()]} ${end.getDate()}, ${d.getFullYear()}`
+  }
+  // rare: Dec → Jan year rollover
+  return `${m[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}–${m[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`
 }
 
 // Default starting week: April 27, 2026 (Week 4 of April per agreement with Peter)

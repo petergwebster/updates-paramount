@@ -108,6 +108,9 @@ export default function SchedulerTab() {
       const rowsToInsert = parsed.rows.map(r => ({
         snapshot_id: snapshotId, site: r.site,
         division_raw: r.division_raw, customer_type: r.customer_type,
+        category_customer_mto: r.category_customer_mto,
+        customer_name_clean: r.customer_name_clean,
+        bny_bucket: r.bny_bucket,
         product_type: r.product_type, is_new_goods: r.is_new_goods,
         order_number: r.order_number, po_number: r.po_number,
         line_description: r.line_description, item_sku: r.item_sku,
