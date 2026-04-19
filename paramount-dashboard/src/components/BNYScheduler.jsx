@@ -1100,6 +1100,23 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
 
     setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
 
+    // Throttle state updates during streaming to reduce React re-render pressure.
+    // At ~80 tokens/sec streaming rate, per-token setState ran the browser into the
+    // ground on long drafts. Limit flushes to ~12/sec while streaming; a final
+    // flush after the stream closes catches anything buffered.
+    const FLUSH_INTERVAL_MS = 80
+    let lastFlush = 0
+    const flushIfDue = () => {
+      const now = Date.now()
+      if (now - lastFlush < FLUSH_INTERVAL_MS) return
+      lastFlush = now
+      setMessages(prev => {
+        const copy = [...prev]
+        copy[copy.length - 1] = { role: 'assistant', content: fullText, streaming: true }
+        return copy
+      })
+    }
+
     while (true) {
       const { value, done } = await reader.read()
       if (done) break
@@ -1116,11 +1133,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
             const obj = JSON.parse(payload)
             if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
               fullText += obj.delta.text
-              setMessages(prev => {
-                const copy = [...prev]
-                copy[copy.length - 1] = { role: 'assistant', content: fullText, streaming: true }
-                return copy
-              })
+              flushIfDue()
             }
           } catch { /* partial JSON, ignore */ }
         }
