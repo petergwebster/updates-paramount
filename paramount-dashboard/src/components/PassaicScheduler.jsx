@@ -52,6 +52,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [filterHighColor, setFilterHighColor] = useState(false)
   const [filterWasteHist, setFilterWasteHist] = useState(false)
   const [filterHighValueLowColor, setFilterHighValueLowColor] = useState(false)
+  const [filterCategory, setFilterCategory] = useState(null)  // null | 'grass' | 'fabric' | 'wallpaper'
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
   const [weekDailyOps, setWeekDailyOps] = useState([])
@@ -107,8 +108,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         return colors <= 4 && perYd >= 15
       })
     }
+    if (filterCategory) {
+      list = list.filter(r => {
+        const pt = (r.product_type || '').toLowerCase()
+        if (filterCategory === 'grass')     return pt.includes('grass')
+        if (filterCategory === 'fabric')    return pt.includes('fabric') || pt.includes('strike-off')
+        if (filterCategory === 'wallpaper') return pt.includes('paper') || pt.includes('panel')
+        return true
+      })
+    }
     return list.sort((a,b) => (b.age_days || 0) - (a.age_days || 0))
-  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist, filterHighValueLowColor])
+  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist, filterHighValueLowColor, filterCategory])
 
   const wipByPO = useMemo(() => {
     const m = {}
@@ -273,6 +283,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               <FilterChip active={filterSch === 'sch'} onClick={() => setFilterSch(filterSch === 'sch' ? null : 'sch')} color={C.navy}>Schumacher</FilterChip>
               <FilterChip active={filterSch === '3p'} onClick={() => setFilterSch(filterSch === '3p' ? null : '3p')} color={C.gold}>3rd Party</FilterChip>
+              <FilterChip active={filterCategory === 'grass'} onClick={() => setFilterCategory(filterCategory === 'grass' ? null : 'grass')} color={C.sage}>Grasscloth</FilterChip>
+              <FilterChip active={filterCategory === 'fabric'} onClick={() => setFilterCategory(filterCategory === 'fabric' ? null : 'fabric')} color={C.sage}>Fabric</FilterChip>
+              <FilterChip active={filterCategory === 'wallpaper'} onClick={() => setFilterCategory(filterCategory === 'wallpaper' ? null : 'wallpaper')} color={C.sage}>Wallpaper</FilterChip>
               <FilterChip active={filterHighColor} onClick={() => setFilterHighColor(!filterHighColor)} color={C.rose}>High-color 6+</FilterChip>
               <FilterChip active={filterWasteHist} onClick={() => setFilterWasteHist(!filterWasteHist)} color={C.amber}>Waste history</FilterChip>
               <FilterChip active={filterHighValueLowColor} onClick={() => setFilterHighValueLowColor(!filterHighValueLowColor)} color={C.sage}>$$ low-color</FilterChip>
