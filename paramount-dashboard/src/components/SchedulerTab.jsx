@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { parseLiftWorkbook } from '../liftParser'
 
-// ─── Palette (matches WIPTab) ───────────────────────────────────────────────
+// ─── Palette ───────────────────────────────────────────────────────────────
 const C = {
   cream:'#FAF7F2', parchment:'#F2EDE4', warm:'#E8DDD0', border:'#DDD4C8',
   ink:'#2C2420', inkMid:'#5C4F47', inkLight:'#9C8F87',
@@ -22,14 +22,12 @@ const fmtK = n => {
   return fmtD(v)
 }
 
-// ─── Site config ────────────────────────────────────────────────────────────
 const SITES = [
   { key: 'passaic',     label: 'Passaic',     sub: 'Screen Print',  color: C.navy },
   { key: 'bny',         label: 'Brooklyn',    sub: 'Digital',       color: C.amber },
   { key: 'procurement', label: 'Procurement', sub: 'Pass-through',  color: C.slate },
 ]
 
-// ─── Passaic weekly targets (from Feb results deck, slide 25) ──────────────
 const PASSAIC_TARGETS = {
   total:     { yards: 8500,  cy: 33797, revenue: 116450 },
   grass:     { yards: 3785,  cy: 11355, tables: 2 },
@@ -37,10 +35,9 @@ const PASSAIC_TARGETS = {
   wallpaper: { yards: 3830,  cy: 15319, tables: 6 },
 }
 
-const MIX_TARGET_SCH = 0.60  // 60% Schumacher / 40% 3rd Party
+const MIX_TARGET_SCH = 0.60
 const HIGH_COLOR_THRESHOLD = 6
 
-// Patterns with a history of waste (from Feb deck slide 23)
 const WASTE_HISTORY_PATTERNS = [
   'CLOUD TOILE', 'BANANA LEAF', 'ACANTHUS STRIPE',
   'PYNE HOLLYHOCK', 'BOTANICO METALLIC',
@@ -51,7 +48,6 @@ const hasWasteHistory = (lineDesc) => {
   return WASTE_HISTORY_PATTERNS.some(p => up.includes(p))
 }
 
-// ─── Passaic table layout ──────────────────────────────────────────────────
 const PASSAIC_TABLES = [
   ...['GC-1','GC-2'].map(code => ({
     code, category: 'grass', label: code,
@@ -67,7 +63,7 @@ const PASSAIC_TABLES = [
   })),
 ]
 
-// ─── Date helpers: Monday-start weeks ──────────────────────────────────────
+// ─── Date helpers ──────────────────────────────────────────────────────────
 function mondayOf(d) {
   const x = new Date(d)
   x.setHours(0,0,0,0)
@@ -85,14 +81,24 @@ function weekLabel(d) {
   return `${m[d.getMonth()]} ${d.getDate()}–${end.getDate()}, ${d.getFullYear()}`
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────
+// Default starting week: April 27, 2026 (Week 4 of April per agreement with Peter)
+// If today is past that, default to the next upcoming Monday.
+function defaultSchedulerWeek() {
+  const target = new Date(2026, 3, 27)  // April 27, 2026
+  const today = new Date()
+  today.setHours(0,0,0,0)
+  if (today > target) return mondayOf(addWeeks(today, 1))  // else: next upcoming Monday
+  return target
+}
+
+// ─── Main component ────────────────────────────────────────────────────────
 export default function SchedulerTab() {
   const [site, setSite] = useState('passaic')
   const [view, setView] = useState('wip')
   const [snapshot, setSnapshot] = useState(null)
   const [wipRows, setWipRows] = useState([])
   const [assignments, setAssignments] = useState([])
-  const [weekStart, setWeekStart] = useState(mondayOf(new Date()))
+  const [weekStart, setWeekStart] = useState(defaultSchedulerWeek())
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -179,27 +185,16 @@ export default function SchedulerTab() {
       const snapshotId = snapRow.id
       const batchSize = 500
       const rowsToInsert = parsed.rows.map(r => ({
-        snapshot_id: snapshotId,
-        site: r.site,
-        division_raw: r.division_raw,
-        customer_type: r.customer_type,
-        product_type: r.product_type,
-        is_new_goods: r.is_new_goods,
-        order_number: r.order_number,
-        po_number: r.po_number,
-        line_description: r.line_description,
-        item_sku: r.item_sku,
-        color: r.color,
-        material: r.material,
-        order_status: r.order_status,
-        colors_count: r.colors_count,
-        color_yards: r.color_yards,
-        order_created: r.order_created,
-        yards_written: r.yards_written,
-        qty_invoiced: r.qty_invoiced,
-        income_written: r.income_written,
-        age_days: r.age_days,
-        age_bucket: r.age_bucket,
+        snapshot_id: snapshotId, site: r.site,
+        division_raw: r.division_raw, customer_type: r.customer_type,
+        product_type: r.product_type, is_new_goods: r.is_new_goods,
+        order_number: r.order_number, po_number: r.po_number,
+        line_description: r.line_description, item_sku: r.item_sku,
+        color: r.color, material: r.material,
+        order_status: r.order_status, colors_count: r.colors_count,
+        color_yards: r.color_yards, order_created: r.order_created,
+        yards_written: r.yards_written, qty_invoiced: r.qty_invoiced,
+        income_written: r.income_written, age_days: r.age_days, age_bucket: r.age_bucket,
       }))
 
       for (let i = 0; i < rowsToInsert.length; i += batchSize) {
@@ -261,7 +256,6 @@ export default function SchedulerTab() {
 
   return (
     <div style={{ background: C.cream, minHeight: '100vh', padding: '0 0 48px', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
-      {/* Page header */}
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
@@ -290,7 +284,6 @@ export default function SchedulerTab() {
         )}
       </div>
 
-      {/* Site selector */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {SITES.map(s => {
           const active = site === s.key
@@ -304,7 +297,6 @@ export default function SchedulerTab() {
         })}
       </div>
 
-      {/* View toggle — Passaic only */}
       {site === 'passaic' && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
           {[{ v:'wip', l:'WIP List' },{ v:'schedule', l:'Weekly Schedule' }].map(({ v, l }) => (
@@ -328,7 +320,6 @@ export default function SchedulerTab() {
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.inkLight, fontSize: 14 }}>Loading…</div>
       )}
 
-      {/* WIP LIST VIEW */}
       {snapshot && !loading && (view === 'wip' || site !== 'passaic') && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
@@ -347,7 +338,6 @@ export default function SchedulerTab() {
         </>
       )}
 
-      {/* WEEKLY SCHEDULE VIEW (Phase 2 mix composer) */}
       {snapshot && !loading && view === 'schedule' && site === 'passaic' && (
         <ScheduleComposer
           wipRows={wipRows}
@@ -368,7 +358,6 @@ export default function SchedulerTab() {
   )
 }
 
-// ─── Subcomponents: WIP list (Phase 1) ──────────────────────────────────────
 function SummaryCard({ label, value, highlight }) {
   return (
     <div style={{ flex: 1, minWidth: 160, padding: '14px 18px', background: highlight ? C.navy : '#fff', color: highlight ? '#fff' : C.ink, border: `1px solid ${highlight ? C.navy : C.border}`, borderRadius: 8 }}>
@@ -533,7 +522,7 @@ function RowList({ rows, showCY, showYards }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE 2: SCHEDULE COMPOSER
+// SCHEDULE COMPOSER — with Ask Claude conversational AI (Phase 2.5)
 // ═══════════════════════════════════════════════════════════════════════════
 function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAssignmentsChange }) {
   const [selectedPO, setSelectedPO] = useState(null)
@@ -543,6 +532,8 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
   const [filterSch, setFilterSch] = useState(null)
   const [filterHighColor, setFilterHighColor] = useState(false)
   const [filterWasteHist, setFilterWasteHist] = useState(false)
+  const [filterHighValueLowColor, setFilterHighValueLowColor] = useState(false)  // new
+  const [askClaudeOpen, setAskClaudeOpen] = useState(false)
 
   const assignedByPO = useMemo(() => {
     const m = {}
@@ -578,8 +569,18 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
     if (filterSch === '3p')  list = list.filter(r => (r.customer_type||'').toLowerCase().includes('3rd'))
     if (filterHighColor)     list = list.filter(r => (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD)
     if (filterWasteHist)     list = list.filter(r => hasWasteHistory(r.line_description))
+    if (filterHighValueLowColor) {
+      // "Low-hanging fruit": low color count + high $/yd
+      list = list.filter(r => {
+        const yd = Number(r.yards_written || 0)
+        const rev = Number(r.income_written || 0)
+        const perYd = yd > 0 ? rev / yd : 0
+        const colors = r.colors_count || 0
+        return colors <= 4 && perYd >= 15  // < 5 colors AND >= $15/yd
+      })
+    }
     return list.sort((a,b) => (b.age_days || 0) - (a.age_days || 0))
-  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist])
+  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist, filterHighValueLowColor])
 
   const wipByPO = useMemo(() => {
     const m = {}
@@ -647,18 +648,11 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
       const colors = po.colors_count || null
       const cy = colors ? colors * yards : null
       const { error: ie } = await supabase.from('sched_assignments').insert({
-        site: 'passaic',
-        po_number: po.po_number,
-        line_description: po.line_description,
-        product_type: po.product_type,
-        table_code: tableCode,
-        week_start: isoDate(weekStart),
-        day_of_week: null,
-        planned_yards: yards,
-        planned_cy: cy,
-        assigned_by: null,
-        notes: null,
-        status: 'planned',
+        site: 'passaic', po_number: po.po_number,
+        line_description: po.line_description, product_type: po.product_type,
+        table_code: tableCode, week_start: isoDate(weekStart),
+        day_of_week: null, planned_yards: yards, planned_cy: cy,
+        assigned_by: null, notes: null, status: 'planned',
       })
       if (ie) throw ie
       await onAssignmentsChange()
@@ -666,17 +660,21 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
       else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - yards, assigned_already: (po.assigned_already||0) + yards })
       setAssignModal(null)
     } catch (e) {
-      console.error(e)
-      alert('Assignment failed: ' + (e.message || e))
-    } finally {
-      setAssigning(false)
-    }
+      console.error(e); alert('Assignment failed: ' + (e.message || e))
+    } finally { setAssigning(false) }
   }
 
   async function removeAssignment(id) {
     if (!confirm('Remove this assignment?')) return
     const { error: de } = await supabase.from('sched_assignments').delete().eq('id', id)
     if (de) { alert('Delete failed: ' + de.message); return }
+    await onAssignmentsChange()
+  }
+
+  async function clearAllAssignments() {
+    if (!confirm(`Remove all ${enrichedAssignments.length} assignments for this week?`)) return
+    const { error } = await supabase.from('sched_assignments').delete().eq('site','passaic').eq('week_start', isoDate(weekStart))
+    if (error) { alert('Clear failed: ' + error.message); return }
     await onAssignmentsChange()
   }
 
@@ -689,14 +687,44 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
           <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabel(weekStart)}</div>
           <div style={{ fontSize: 11, color: C.inkLight }}>{enrichedAssignments.length} assignment{enrichedAssignments.length !== 1 ? 's' : ''}</div>
         </div>
-        <button onClick={() => onWeekChange(mondayOf(new Date()))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>This week</button>
+        <button onClick={() => onWeekChange(defaultSchedulerWeek())} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Default week</button>
         <button onClick={() => onWeekChange(addWeeks(weekStart, 1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>Next week →</button>
+      </div>
+
+      {/* Big Ask Claude button + admin actions row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button
+          onClick={() => setAskClaudeOpen(true)}
+          style={{
+            padding: '12px 22px', background: C.navy, color: '#fff', border: 'none',
+            borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 2px 8px rgba(30,58,95,0.25)',
+          }}>
+          <span style={{ fontSize: 18 }}>✦</span> Ask Claude
+        </button>
+        <span style={{ fontSize: 12, color: C.inkLight, fontStyle: 'italic' }}>
+          Let Claude propose a schedule for this week, or ask questions about what's in the pool.
+        </span>
+        <div style={{ flex: 1 }} />
+        {enrichedAssignments.length > 0 && (
+          <button onClick={clearAllAssignments}
+            style={{ padding: '8px 14px', background: 'transparent', color: C.rose, border: `1px solid ${C.rose}`, borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
+            Clear all
+          </button>
+        )}
       </div>
 
       <MixGauges totals={mixTotals} />
       <CategoryStrip totals={mixTotals} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, marginTop: 16 }}>
+      {/* Main layout — shrinks width when Ask Claude is open */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: askClaudeOpen ? '300px 1fr 420px' : '340px 1fr',
+        gap: 16, marginTop: 16,
+        transition: 'grid-template-columns 0.2s',
+      }}>
         {/* POOL */}
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 16 }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
@@ -711,6 +739,7 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
               <FilterChip active={filterSch === '3p'} onClick={() => setFilterSch(filterSch === '3p' ? null : '3p')} color={C.gold}>3rd Party</FilterChip>
               <FilterChip active={filterHighColor} onClick={() => setFilterHighColor(!filterHighColor)} color={C.rose}>High-color 6+</FilterChip>
               <FilterChip active={filterWasteHist} onClick={() => setFilterWasteHist(!filterWasteHist)} color={C.amber}>Waste history</FilterChip>
+              <FilterChip active={filterHighValueLowColor} onClick={() => setFilterHighValueLowColor(!filterHighValueLowColor)} color={C.sage}>$$ low-color</FilterChip>
             </div>
           </div>
           <div style={{ maxHeight: 520, overflowY: 'auto' }}>
@@ -755,10 +784,41 @@ function ScheduleComposer({ wipRows, assignments, weekStart, onWeekChange, onAss
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} compact={askClaudeOpen} />
         </div>
+
+        {/* ASK CLAUDE PANEL */}
+        {askClaudeOpen && (
+          <AskClaudePanel
+            onClose={() => setAskClaudeOpen(false)}
+            weekStart={weekStart}
+            pool={pool}
+            assignments={enrichedAssignments}
+            mixTotals={mixTotals}
+            onApplyAssignments={async (proposals) => {
+              // Apply Claude's proposed assignments to Supabase
+              const rows = proposals.map(p => ({
+                site: 'passaic',
+                po_number: p.po_number,
+                line_description: p.line_description || null,
+                product_type: p.product_type || null,
+                table_code: p.table_code,
+                week_start: isoDate(weekStart),
+                day_of_week: null,
+                planned_yards: p.planned_yards,
+                planned_cy: p.planned_cy || null,
+                assigned_by: 'claude',
+                notes: p.rationale || null,
+                status: 'planned',
+              }))
+              const { error } = await supabase.from('sched_assignments').insert(rows)
+              if (error) throw error
+              await onAssignmentsChange()
+            }}
+          />
+        )}
       </div>
 
       {assignModal && (
@@ -874,7 +934,7 @@ function CategoryStrip({ totals }) {
   )
 }
 
-function TableCategoryRow({ category, label, tables, assignments, selectedPO, onTableClick, onRemove }) {
+function TableCategoryRow({ category, label, tables, assignments, selectedPO, onTableClick, onRemove, compact }) {
   const byTable = useMemo(() => {
     const m = {}
     for (const a of assignments) {
@@ -885,13 +945,14 @@ function TableCategoryRow({ category, label, tables, assignments, selectedPO, on
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
+  const cols = compact ? Math.min(tables.length, 3) : Math.min(tables.length, 6)
 
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMid, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
         {label} <span style={{ color: C.inkLight, fontWeight: 400 }}>— {tables.length} table{tables.length !== 1 ? 's' : ''}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(tables.length, 6)}, 1fr)`, gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
         {tables.map(t => {
           const asgs = byTable[t.code] || []
           const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
@@ -947,6 +1008,7 @@ function AssignmentCard({ a, onRemove }) {
         {isSch && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.navy, color: '#fff', fontWeight: 700 }}>SCH</span>}
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
         {highColor && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.rose, color: '#fff', fontWeight: 700 }}>{a.colors_count}c</span>}
+        {a.assigned_by === 'claude' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>✦</span>}
         <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={onRemove} title="Remove assignment">×</span>
       </div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.line_description}</div>
@@ -997,6 +1059,383 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ASK CLAUDE PANEL — conversational AI scheduler with streaming
+// ═══════════════════════════════════════════════════════════════════════════
+function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onApplyAssignments }) {
+  const [messages, setMessages] = useState([])   // { role, content, proposals? }
+  const [input, setInput] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const [phase, setPhase] = useState('intro')    // 'intro' | 'conversing'
+  const [error, setError] = useState(null)
+  const [applying, setApplying] = useState(false)
+  const scrollRef = useRef(null)
+
+  // Initial opening message from Claude on first open
+  useEffect(() => {
+    if (messages.length === 0) {
+      generateOpening()
+    }
+  }, [])
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages, streaming])
+
+  function buildContextSummary() {
+    // Condensed view of state for Claude
+    const poolSummary = {
+      total: pool.length,
+      by_customer: {
+        schumacher: pool.filter(p => (p.customer_type||'').toLowerCase() === 'schumacher').length,
+        third_party: pool.filter(p => (p.customer_type||'').toLowerCase().includes('3rd')).length,
+      },
+      by_category: {
+        grass: pool.filter(p => (p.product_type||'').toLowerCase().includes('grass')).length,
+        fabric: pool.filter(p => (p.product_type||'').toLowerCase().includes('fabric') || (p.product_type||'').toLowerCase().includes('strike-off')).length,
+        wallpaper: pool.filter(p => (p.product_type||'').toLowerCase().includes('paper') || (p.product_type||'').toLowerCase().includes('panel')).length,
+      },
+      high_color: pool.filter(p => (p.colors_count || 0) >= HIGH_COLOR_THRESHOLD).length,
+      aged_90plus: pool.filter(p => (p.age_days || 0) > 90).length,
+      aged_180plus: pool.filter(p => (p.age_days || 0) > 180).length,
+      waste_history: pool.filter(p => hasWasteHistory(p.line_description)).length,
+      total_yards_available: pool.reduce((s, p) => s + Number(p.remaining_yards || 0), 0),
+      total_revenue_available: pool.reduce((s, p) => s + Number(p.income_written || 0), 0),
+    }
+    return {
+      week_of: isoDate(weekStart),
+      targets: PASSAIC_TARGETS.total,
+      mix_target: { schumacher_pct: 60, third_party_pct: 40 },
+      current_assignments: assignments.length,
+      current_totals: {
+        yards: Math.round(mixTotals.yards),
+        cy: Math.round(mixTotals.cy),
+        revenue: Math.round(mixTotals.revenue),
+        schumacher_pct: mixTotals.revenue > 0 ? Math.round((mixTotals.schumacher_revenue / mixTotals.revenue) * 100) : 0,
+      },
+      pool_summary: poolSummary,
+    }
+  }
+
+  const SYSTEM_PROMPT = `You are Claude, acting as a production scheduling advisor for Peter Webster at Paramount Prints — the specialty screen-printing division of F. Schumacher & Co. You're working with Wendy, the production manager at the Passaic NJ plant.
+
+PASSAIC PLANT STRUCTURE:
+- 17 tables total: 2 Grasscloth (GC-1, GC-2), 9 Fabric (FAB-3 through FAB-11), 6 Wallpaper (WP-12 through WP-17)
+- Weekly capacity targets: 8,500 yards, 33,797 color-yards, $116K revenue
+- Category split: Grass 3,785yd/11,355CY, Fabric 834yd/3,337CY, Wallpaper 3,830yd/15,319CY
+
+THE MIX IS THE SCHEDULE. This is the core thesis:
+- Revenue must hit target — non-negotiable
+- Yards must hit target — operational baseline  
+- Color-yards measure labor utilization — are tables working hard enough
+- Customer mix: 60% Schumacher / 40% 3rd Party is healthy. 3rd Party pays 10% more margin — it's the profit engine
+- Peter's quote: "The mix is the schedule. The rest is people management."
+
+SCHEDULING LOGIC:
+- Aged POs (90+ days) should be prioritized FIFO to clear backlog
+- Everything else optimizes for mix/revenue
+- Angel's color complexity rule: each additional color adds ~20% production time (1.2^x). 6+ colors is "high-risk" — flag these
+- Patterns with waste history: Cloud Toile, Banana Leaf, Acanthus Stripe, Pyne Hollyhock, Botanico Metallic. Either defer, or flag the risk when scheduling
+- Leave headroom — don't fill tables past 95% CY capacity
+- Category routing: Grass POs → GC tables; Fabric/Strike-off → FAB tables; Paper/Panel → WP tables
+
+YOUR ROLE:
+You are a thinking partner, not a commander. Wendy owns the decisions. Your job is to break her out of the blank-slate freeze by proposing a starting draft she can react to, and to keep advising as she adjusts.
+
+Speak warmly, directly, with the tone of a colleague who's been in the plant. Use her name. Reference specific patterns, specific POs, specific tables when relevant — this isn't generic.`
+
+  async function generateOpening() {
+    setStreaming(true); setError(null)
+    const context = buildContextSummary()
+    const userMsg = `It's Monday morning. Wendy is opening the scheduler to plan the week of ${isoDate(weekStart)}. The board is currently ${context.current_assignments === 0 ? 'empty' : `partially filled with ${context.current_assignments} assignments`}.
+
+CURRENT STATE:
+${JSON.stringify(context, null, 2)}
+
+Your task right now: write an opening message to Wendy (max ~180 words). Include:
+1. A warm greeting by name
+2. A quick read of the state — how much WIP is schedulable, how aged, where the concentration is
+3. Your initial read on this week's strategy in 2-3 sentences (what you'd focus on if you were sitting next to her)
+4. End by asking if there's anything you should know before you draft — rush orders, crew changes, patterns to avoid, Schumacher priorities, anything that's not in the data
+
+Don't draft a schedule yet. Just open the conversation.
+
+Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers, no bullet points — prose paragraph(s).`
+
+    try {
+      await streamClaude([{ role: 'user', content: userMsg }], (finalText) => {
+        setMessages([{ role: 'assistant', content: finalText }])
+      })
+    } catch (e) {
+      console.error(e); setError(e.message || String(e))
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  async function sendMessage(userText) {
+    if (!userText.trim() || streaming) return
+    const newMessages = [...messages, { role: 'user', content: userText }]
+    setMessages(newMessages); setInput(''); setStreaming(true); setError(null); setPhase('conversing')
+
+    const context = buildContextSummary()
+
+    // Build full message history for Claude
+    const convo = newMessages.map(m => ({ role: m.role, content: m.content }))
+
+    // Add a state update note to the latest user message so Claude sees fresh state
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Wendy can accept/edit/reject.]`
+    convo[convo.length - 1].content += contextNote
+
+    try {
+      await streamClaude(convo, (finalText, proposals) => {
+        setMessages(prev => [...prev, { role: 'assistant', content: finalText, proposals }])
+      })
+    } catch (e) {
+      console.error(e); setError(e.message || String(e))
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  // Call the streaming Claude endpoint and buffer until complete
+  async function streamClaude(messages, onComplete) {
+    const response = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        max_tokens: 8000,
+        system: SYSTEM_PROMPT,
+        messages,
+        stream: true,
+      }),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      throw new Error(`API ${response.status}: ${errText.slice(0, 200)}`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let fullText = ''
+
+    // Live-update the "streaming" message as chunks arrive
+    const streamMsgIndex = messages.length  // position where the new assistant msg will land
+    setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+
+      // Parse SSE chunks — each event is separated by \n\n
+      const events = buf.split('\n\n')
+      buf = events.pop() || ''
+      for (const evt of events) {
+        const lines = evt.split('\n').filter(Boolean)
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (!payload || payload === '[DONE]') continue
+          try {
+            const obj = JSON.parse(payload)
+            if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
+              fullText += obj.delta.text
+              // update in-place
+              setMessages(prev => {
+                const copy = [...prev]
+                copy[copy.length - 1] = { role: 'assistant', content: fullText, streaming: true }
+                return copy
+              })
+            }
+          } catch { /* partial JSON, ignore */ }
+        }
+      }
+    }
+
+    // Parse proposals JSON if present
+    const proposals = extractProposals(fullText)
+
+    // Finalize message
+    setMessages(prev => {
+      const copy = [...prev]
+      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false }
+      return copy
+    })
+
+    if (onComplete) onComplete(fullText, proposals)
+  }
+
+  function extractProposals(text) {
+    // Look for ```json ... ``` block with a "proposals" array
+    const match = text.match(/```json\s*([\s\S]*?)\s*```/i)
+    if (!match) return null
+    try {
+      const obj = JSON.parse(match[1])
+      if (Array.isArray(obj.proposals) && obj.proposals.length > 0) {
+        // Validate each proposal has required fields
+        const valid = obj.proposals.filter(p => p.po_number && p.table_code && p.planned_yards)
+        return valid.length > 0 ? valid : null
+      }
+    } catch { /* not parseable */ }
+    return null
+  }
+
+  async function applyProposals(proposals) {
+    if (!proposals || proposals.length === 0) return
+    if (!confirm(`Apply Claude's ${proposals.length} proposed assignments to the board?`)) return
+    setApplying(true)
+    try {
+      await onApplyAssignments(proposals)
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: `✓ Applied ${proposals.length} assignment${proposals.length !== 1 ? 's' : ''} to the board. You can edit, remove, or ask Claude to adjust.`,
+      }])
+    } catch (e) {
+      alert('Failed to apply: ' + (e.message || e))
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const quickChips = [
+    { label: 'Draft a full schedule', text: "Go ahead and draft a full schedule for this week. Nothing special to flag — work with what's in the pool." },
+    { label: 'Rush orders', text: "We have a rush order I need to fit in this week:" },
+    { label: 'Crew changes', text: "Heads up on crew this week:" },
+    { label: 'Patterns to defer', text: "Let's defer these patterns this week:" },
+  ]
+
+  return (
+    <div style={{
+      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
+      height: 'calc(100vh - 220px)', minHeight: 600, maxHeight: 900,
+      position: 'sticky', top: 16,
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '12px 16px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 18 }}>✦</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Ask Claude · Scheduling</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>Opus 4.7 · Week of {weekLabel(weekStart)}</div>
+        </div>
+        <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', background: C.cream }}>
+        {messages.length === 0 && !streaming && (
+          <div style={{ textAlign: 'center', color: C.inkLight, fontSize: 12, padding: 40 }}>Loading…</div>
+        )}
+        {messages.map((m, i) => (
+          <MessageBubble key={i} message={m} onApplyProposals={applyProposals} applying={applying} />
+        ))}
+        {error && (
+          <div style={{ background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
+            Error: {error}. Try again.
+          </div>
+        )}
+      </div>
+
+      {/* Quick chips */}
+      {!streaming && messages.length > 0 && (
+        <div style={{ padding: '8px 12px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 4, flexWrap: 'wrap', background: C.parchment }}>
+          {quickChips.map(chip => (
+            <button key={chip.label} onClick={() => setInput(chip.text)}
+              style={{ padding: '4px 10px', fontSize: 10, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', color: C.inkMid }}>
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ padding: 12, borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input) }
+            }}
+            placeholder={streaming ? 'Claude is thinking…' : 'Message Claude…'}
+            disabled={streaming}
+            rows={2}
+            style={{
+              flex: 1, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6,
+              fontSize: 12, fontFamily: 'inherit', resize: 'none', background: streaming ? C.cream : '#fff',
+              boxSizing: 'border-box',
+            }}
+          />
+          <button onClick={() => sendMessage(input)} disabled={streaming || !input.trim()}
+            style={{
+              padding: '0 16px', background: (streaming || !input.trim()) ? C.warm : C.ink,
+              color: (streaming || !input.trim()) ? C.inkLight : '#fff',
+              border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
+              cursor: (streaming || !input.trim()) ? 'not-allowed' : 'pointer',
+            }}>
+            {streaming ? '⏳' : 'Send'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MessageBubble({ message, onApplyProposals, applying }) {
+  if (message.role === 'system') {
+    return (
+      <div style={{ padding: '8px 12px', background: C.sageBg, border: `1px solid ${C.sage}`, borderRadius: 6, fontSize: 11, color: C.sage, marginBottom: 10, fontWeight: 600 }}>
+        {message.content}
+      </div>
+    )
+  }
+  if (message.role === 'user') {
+    return (
+      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ background: C.navy, color: '#fff', borderRadius: '10px 10px 2px 10px', padding: '8px 12px', maxWidth: '85%', fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+          {message.content}
+        </div>
+      </div>
+    )
+  }
+  // assistant
+  const text = message.content || ''
+  // Strip JSON code blocks from displayed text — they're noise for the user
+  const displayText = text.replace(/```json[\s\S]*?```/gi, '').trim()
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
+        {displayText}
+        {message.streaming && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
+      </div>
+      {message.proposals && message.proposals.length > 0 && !message.streaming && (
+        <div style={{ marginTop: 8, padding: '10px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
+            ✦ Claude proposed {message.proposals.length} assignment{message.proposals.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8, maxHeight: 100, overflowY: 'auto' }}>
+            {message.proposals.slice(0, 8).map((p, i) => (
+              <div key={i}>→ {p.table_code}: {p.po_number} · {fmt(p.planned_yards)}yd</div>
+            ))}
+            {message.proposals.length > 8 && <div>+ {message.proposals.length - 8} more</div>}
+          </div>
+          <button onClick={() => onApplyProposals(message.proposals)} disabled={applying}
+            style={{ padding: '6px 14px', background: applying ? C.warm : C.ink, color: applying ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: applying ? 'not-allowed' : 'pointer' }}>
+            {applying ? 'Applying…' : 'Apply all to board'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

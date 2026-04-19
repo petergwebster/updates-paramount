@@ -20,6 +20,9 @@ export default async (request) => {
       })
     }
 
+    // Detect streaming requests (Scheduler uses this for Opus calls)
+    const isStreaming = body.stream === true
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -30,6 +33,21 @@ export default async (request) => {
       body: JSON.stringify(body)
     })
 
+    if (isStreaming) {
+      // Pass the SSE stream straight through to the browser.
+      // Bypasses function timeout because we keep the connection open streaming bytes.
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+        }
+      })
+    }
+
+    // Non-streaming (existing Consolidated tab behavior — unchanged)
     const data = await response.json()
 
     return new Response(JSON.stringify(data), {
