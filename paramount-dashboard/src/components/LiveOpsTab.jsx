@@ -52,6 +52,7 @@ const BNY_PASSAIC_DIGITAL = [
 // LiveOpsTab — daily actuals entry for Passaic (Sami) and BNY (Chandler)
 // ═══════════════════════════════════════════════════════════════════════════
 export default function LiveOpsTab() {
+  const [viewMode, setViewMode] = useState('entry')  // 'entry' | 'summary'
   const [site, setSite] = useState('passaic')
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date(); d.setHours(0,0,0,0); return d
@@ -222,14 +223,37 @@ export default function LiveOpsTab() {
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', margin: 0, marginBottom: 4 }}>
-          Live Ops — Daily Actuals
-        </h2>
-        <div style={{ fontSize: 13, color: C.inkMid }}>
-          End-of-shift entry for what actually happened. Yards produced, waste, who was on the table, and any notes worth remembering.
+      <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', margin: 0, marginBottom: 4 }}>
+            Live Ops — {viewMode === 'summary' ? 'Weekly Summary' : 'Daily Actuals'}
+          </h2>
+          <div style={{ fontSize: 13, color: C.inkMid }}>
+            {viewMode === 'summary'
+              ? 'Weekly roll-up across both sites. Schedule, day-by-day tracking, and operator scorecards.'
+              : 'End-of-shift entry for what actually happened. Yards produced, waste, who was on the table, and any notes worth remembering.'}
+          </div>
+        </div>
+        {/* View mode toggle */}
+        <div style={{ display: 'flex', gap: 0, border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+          <button onClick={() => setViewMode('entry')}
+            style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, border: 'none', background: viewMode === 'entry' ? C.ink : 'transparent', color: viewMode === 'entry' ? '#fff' : C.inkMid, cursor: 'pointer' }}>
+            Entry
+          </button>
+          <button onClick={() => setViewMode('summary')}
+            style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, border: 'none', background: viewMode === 'summary' ? C.ink : 'transparent', color: viewMode === 'summary' ? '#fff' : C.inkMid, cursor: 'pointer' }}>
+            Summary
+          </button>
         </div>
       </div>
+
+      {viewMode === 'summary' ? (
+        <SummaryView weekStart={weekStart} setSelectedDate={setSelectedDate} />
+      ) : (<></>)}
+
+      {viewMode === 'entry' && (<></>)}
+
+      {viewMode === 'entry' && (<>
 
       {/* Site toggle + week + day navigators */}
       <div style={{ marginBottom: 20, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10 }}>
@@ -334,6 +358,7 @@ export default function LiveOpsTab() {
           })}
         </div>
       )}
+      </>)}
     </div>
   )
 }
@@ -484,3 +509,335 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     </div>
   )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SummaryView — weekly management roll-up across both sites
+// ═══════════════════════════════════════════════════════════════════════════
+// Three sections:
+// 1. Weekly totals (both sites side-by-side with planned/actual/variance/waste)
+// 2. Day-by-day grid per site (table/machine × Mon-Fri with plan/actual cells)
+// 3. Operator scorecards (medal-ranked yards per operator, split by site)
+//
+// Pulls sched_daily_ops (actuals + operators + planned_yards) and
+// sched_assignments (POs) for both sites in parallel.
+// ═══════════════════════════════════════════════════════════════════════════
+function SummaryView({ weekStart, setSelectedDate }) {
+  const [data, setData] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const [pOps, bOps, pAsn, bAsn] = await Promise.all([
+        loadWeekDailyOps('passaic', weekStart),
+        loadWeekDailyOps('bny', weekStart),
+        supabase.from('sched_assignments').select('*').eq('site', 'passaic').eq('week_start', isoDate(weekStart)),
+        supabase.from('sched_assignments').select('*').eq('site', 'bny').eq('week_start', isoDate(weekStart)),
+      ])
+      if (cancelled) return
+      setData({
+        passaicOps: pOps || [],
+        bnyOps: bOps || [],
+        passaicAsn: pAsn.data || [],
+        bnyAsn: bAsn.data || [],
+      })
+    }
+    setData(null)
+    load()
+    return () => { cancelled = true }
+  }, [weekStart])
+
+  function navigateWeek(deltaWeeks) {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + deltaWeeks * 7)
+    setSelectedDate(d)
+  }
+
+  return (
+    <div>
+      {/* Week nav */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8 }}>
+        <button onClick={() => navigateWeek(-1)}
+          style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+          ← Prev week
+        </button>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Summary for week</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{weekLabel(weekStart)}</div>
+        </div>
+        <button onClick={() => navigateWeek(1)}
+          style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
+          Next week →
+        </button>
+      </div>
+
+      {!data && <div style={{ padding: 40, textAlign: 'center', color: C.inkLight, fontSize: 13 }}>Loading…</div>}
+
+      {data && (
+        <>
+          {/* Section 1: Weekly totals per site */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+            <SiteTotals label="Passaic · Screen Print" color={C.navy}
+              ops={data.passaicOps} assignments={data.passaicAsn} />
+            <SiteTotals label="BNY · Digital" color={C.amber}
+              ops={data.bnyOps} assignments={data.bnyAsn} />
+          </div>
+
+          {/* Section 2: Day-by-day grid per site */}
+          <DayGrid label="Passaic — Day-by-Day" tables={SUMMARY_PASSAIC_TABLES}
+            ops={data.passaicOps} assignments={data.passaicAsn} site="passaic" />
+          <DayGrid label="BNY — Day-by-Day" tables={SUMMARY_BNY_MACHINES}
+            ops={data.bnyOps} assignments={data.bnyAsn} site="bny" />
+
+          {/* Section 3: Operator scorecards */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 24 }}>
+            <OperatorScorecard label="Screen Print Operators · Passaic"
+              color={C.navy} ops={data.passaicOps} site="passaic" />
+            <OperatorScorecard label="Digital Operators · BNY"
+              color={C.amber} ops={data.bnyOps} site="bny" />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Site totals card: planned, actual, variance, waste for selected week
+function SiteTotals({ label, color, ops, assignments }) {
+  const totalPlanned = ops.reduce((s, r) => s + Number(r.planned_yards || 0), 0)
+  const totalActual = ops.reduce((s, r) => s + Number(r.actual_yards || 0), 0)
+  const totalWaste = ops.reduce((s, r) => s + Number(r.waste_yards || 0), 0)
+  // If no explicit planned_yards, fall back to weekly PO yards
+  const assignedYards = assignments.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+  const effectivePlan = totalPlanned > 0 ? totalPlanned : assignedYards
+  const variance = totalActual - effectivePlan
+  const varianceColor = effectivePlan === 0 ? C.inkLight
+    : Math.abs(variance) / effectivePlan < 0.05 ? C.sage
+    : variance > 0 ? C.gold
+    : Math.abs(variance) / effectivePlan < 0.15 ? C.gold : C.rose
+  const wastePct = totalActual > 0 ? (totalWaste / totalActual * 100) : null
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', background: color, color: '#fff', fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+        {label}
+      </div>
+      <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+        <Stat label="Planned" value={fmt(effectivePlan)} unit="yd" />
+        <Stat label="Actual" value={fmt(totalActual)} unit="yd" />
+        <Stat label="Variance" value={variance >= 0 ? `+${fmt(variance)}` : fmt(variance)} unit="yd" color={varianceColor} />
+        <Stat label="Waste" value={fmt(totalWaste)} unit="yd"
+          sub={wastePct != null ? `${wastePct.toFixed(1)}%` : null}
+          color={wastePct != null && wastePct > 10 ? C.rose : wastePct != null && wastePct > 4 ? C.gold : C.inkMid} />
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, unit, color, sub }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: color || C.ink, fontFamily: 'Georgia,serif', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 10, color: C.inkLight }}>{sub || unit}</div>
+    </div>
+  )
+}
+
+// Day-by-day grid: rows = tables/machines, columns = Mon-Fri + Week total
+function DayGrid({ label, tables, ops, assignments, site }) {
+  const days = site === 'bny' ? [0,1,2,3,4,5,6] : [1,2,3,4,5]
+  const dayLabels = site === 'bny' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri']
+  const colCount = days.length
+
+  // Helper: get plan + actual for a (table, day)
+  function cellData(tableCode, d) {
+    const op = ops.find(r => r.table_code === tableCode && r.day_of_week === d)
+    let plan = op?.planned_yards
+    if (plan == null && site === 'passaic') {
+      // Fall back to derived daily from weekly PO assignment
+      const weekly = assignments.filter(a => a.table_code === tableCode).reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+      if (weekly > 0 && d >= 1 && d <= 5) plan = Math.round(weekly / 5)
+    }
+    if (plan == null && site === 'bny') {
+      // BNY: assignments have day_of_week; plan is per-cell
+      const daily = assignments.filter(a => a.table_code === tableCode && a.day_of_week === d)
+        .reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+      if (daily > 0) plan = daily
+    }
+    const actual = op?.actual_yards
+    return { plan, actual }
+  }
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '10px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>
+        {label}
+      </div>
+      {/* Header */}
+      <div style={{ display: 'grid', gridTemplateColumns: `130px repeat(${colCount}, 1fr) 90px`, gap: 1, background: C.border, padding: 1 }}>
+        <div style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Table</div>
+        {dayLabels.map(d => (
+          <div key={d} style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', textAlign: 'center', letterSpacing: '0.06em' }}>{d}</div>
+        ))}
+        <div style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', textAlign: 'right', letterSpacing: '0.06em' }}>Week</div>
+      </div>
+      {/* Rows */}
+      {tables.map((t, i) => {
+        let weekPlan = 0, weekActual = 0
+        const cells = days.map(d => {
+          const c = cellData(t.code, d)
+          if (c.plan != null) weekPlan += c.plan
+          if (c.actual != null) weekActual += c.actual
+          return c
+        })
+        const weekDelta = weekPlan > 0 ? weekActual - weekPlan : null
+        const weekColor = weekDelta == null ? C.inkLight
+          : Math.abs(weekDelta) / weekPlan < 0.05 ? C.sage
+          : Math.abs(weekDelta) / weekPlan < 0.15 ? C.gold : C.rose
+        return (
+          <div key={t.code} style={{ display: 'grid', gridTemplateColumns: `130px repeat(${colCount}, 1fr) 90px`, gap: 1, background: C.border, padding: '0 1px', borderTop: i === 0 ? 'none' : undefined }}>
+            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: C.ink }}>{t.label || t.code}</div>
+            {cells.map((c, idx) => {
+              const delta = (c.plan != null && c.actual != null) ? c.actual - c.plan : null
+              const color = delta == null ? C.inkLight
+                : c.plan > 0 && Math.abs(delta) / c.plan < 0.05 ? C.sage
+                : c.plan > 0 && Math.abs(delta) / c.plan < 0.15 ? C.gold
+                : delta < 0 ? C.rose : C.gold
+              return (
+                <div key={idx} style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>
+                  <div style={{ color: C.inkMid }}>
+                    {c.plan != null ? fmt(c.plan) : '—'}
+                    <span style={{ color: C.inkLight }}> / </span>
+                    <span style={{ color: c.actual != null ? C.ink : C.inkLight, fontWeight: c.actual != null ? 700 : 400 }}>
+                      {c.actual != null ? fmt(c.actual) : '—'}
+                    </span>
+                  </div>
+                  {delta != null && (
+                    <div style={{ fontSize: 9, color, fontWeight: 600 }}>
+                      {delta >= 0 ? `+${fmt(delta)}` : fmt(delta)}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'right' }}>
+              <div style={{ color: C.inkMid }}>
+                {fmt(weekPlan)} <span style={{ color: C.inkLight }}>/</span> <span style={{ color: C.ink, fontWeight: 700 }}>{fmt(weekActual)}</span>
+              </div>
+              {weekDelta != null && (
+                <div style={{ fontSize: 9, color: weekColor, fontWeight: 600 }}>
+                  {weekDelta >= 0 ? `+${fmt(weekDelta)}` : fmt(weekDelta)}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Operator scorecard: ranked list by yards produced this week
+function OperatorScorecard({ label, color, ops, site }) {
+  // Aggregate: for each op row with actuals, credit operators (split if 2)
+  const byOp = {}
+  for (const r of ops) {
+    const actual = Number(r.actual_yards || 0)
+    if (actual <= 0) continue
+    const operators = [r.operator_1, r.operator_2].filter(Boolean)
+    if (operators.length === 0) continue
+    const share = actual / operators.length
+    for (const name of operators) {
+      if (!byOp[name]) byOp[name] = { yards: 0, days: new Set(), waste: 0 }
+      byOp[name].yards += share
+      byOp[name].days.add(r.day_of_week)
+      byOp[name].waste += Number(r.waste_yards || 0) / operators.length
+    }
+  }
+  const ranked = Object.entries(byOp)
+    .map(([name, d]) => ({ name, yards: Math.round(d.yards), days: d.days.size, avg: d.days.size > 0 ? Math.round(d.yards / d.days.size) : 0 }))
+    .sort((a, b) => b.yards - a.yards)
+
+  const topYards = ranked[0]?.yards || 0
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', background: color, color: '#fff', fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+        {label}
+      </div>
+      {ranked.length === 0 ? (
+        <div style={{ padding: 30, textAlign: 'center', color: C.inkLight, fontSize: 12, fontStyle: 'italic' }}>
+          No actuals entered yet for this week.
+        </div>
+      ) : (
+        <div>
+          {/* Header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 70px 50px 70px 80px', gap: 8, padding: '6px 14px', background: C.parchment, fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            <span>#</span>
+            <span>Operator</span>
+            <span style={{ textAlign: 'right' }}>Yds</span>
+            <span style={{ textAlign: 'right' }}>Days</span>
+            <span style={{ textAlign: 'right' }}>Avg/Day</span>
+            <span style={{ textAlign: 'right' }}>vs Top</span>
+          </div>
+          {ranked.map((op, i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+            const pct = topYards > 0 ? (op.yards / topYards * 100) : 0
+            return (
+              <div key={op.name} style={{ display: 'grid', gridTemplateColumns: '32px 1fr 70px 50px 70px 80px', gap: 8, padding: '8px 14px', fontSize: 12, borderTop: `1px solid ${C.border}`, alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, color: C.inkMid }}>{medal || (i + 1)}</span>
+                <span style={{ fontWeight: i < 3 ? 700 : 500, color: C.ink }}>{op.name}</span>
+                <span style={{ textAlign: 'right', fontWeight: 700, color: C.ink }}>{fmt(op.yards)}</span>
+                <span style={{ textAlign: 'right', color: C.inkMid }}>{op.days}</span>
+                <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(op.avg)}</span>
+                <span style={{ textAlign: 'right', color: C.inkLight, fontSize: 11 }}>{Math.round(pct)}%</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Table list compatible with DayGrid (subset of info)
+const SUMMARY_PASSAIC_TABLES = [
+  { code: 'GC-1', label: 'GC-1', category: 'grass' },
+  { code: 'GC-2', label: 'GC-2', category: 'grass' },
+  { code: 'FAB-3', label: 'FAB-3', category: 'fabric' },
+  { code: 'FAB-4', label: 'FAB-4', category: 'fabric' },
+  { code: 'FAB-5', label: 'FAB-5', category: 'fabric' },
+  { code: 'FAB-6', label: 'FAB-6', category: 'fabric' },
+  { code: 'FAB-7', label: 'FAB-7', category: 'fabric' },
+  { code: 'FAB-8', label: 'FAB-8', category: 'fabric' },
+  { code: 'FAB-9', label: 'FAB-9', category: 'fabric' },
+  { code: 'FAB-10', label: 'FAB-10', category: 'fabric' },
+  { code: 'FAB-11', label: 'FAB-11', category: 'fabric' },
+  { code: 'WP-12', label: 'WP-12', category: 'wallpaper' },
+  { code: 'WP-13', label: 'WP-13', category: 'wallpaper' },
+  { code: 'WP-14', label: 'WP-14', category: 'wallpaper' },
+  { code: 'WP-15', label: 'WP-15', category: 'wallpaper' },
+  { code: 'WP-16', label: 'WP-16', category: 'wallpaper' },
+  { code: 'WP-17', label: 'WP-17', category: 'wallpaper' },
+]
+const SUMMARY_BNY_MACHINES = [
+  { code: 'Glow', label: 'Glow (3600)' },
+  { code: 'Sasha', label: 'Sasha (3600)' },
+  { code: 'Trish', label: 'Trish (3600)' },
+  { code: 'Bianca', label: 'Bianca (570)' },
+  { code: 'LASH', label: 'LASH (570)' },
+  { code: 'Chyna', label: 'Chyna (570)' },
+  { code: 'Rhonda', label: 'Rhonda (570)' },
+  { code: 'Dakota Ka', label: 'Dakota Ka' },
+  { code: 'Dementia', label: 'Dementia' },
+  { code: 'EMBER', label: 'EMBER' },
+  { code: 'Ivy Nile', label: 'Ivy Nile' },
+  { code: 'Jacy Jayne', label: 'Jacy Jayne' },
+  { code: 'Ruby', label: 'Ruby' },
+  { code: 'Valhalla', label: 'Valhalla' },
+  { code: 'XIA', label: 'XIA' },
+  { code: 'Apollo', label: 'Apollo' },
+  { code: 'Nemesis', label: 'Nemesis' },
+  { code: 'Poseidon', label: 'Poseidon' },
+  { code: 'Zoey', label: 'Zoey' },
+]
