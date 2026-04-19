@@ -950,14 +950,35 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
     const context = buildContextSummary()
     const convo = newMessages.map(m => ({ role: m.role, content: m.content }))
 
-    const poolLines = pool.slice(0, 100).map(p =>
+    // Bucket-balanced pool sampling. Top N per bucket by age, then concatenated
+    // in PRIORITY order (MTO first) so Opus sees urgent work before aged backlog.
+    // Prevents MTO/Memo from being crowded out of the context when aged Replen dominates.
+    const BUCKET_CAPS = { 'MTO': 60, 'Memo': 40, 'HOS': 20, '3P': 20, 'NEW GOODS': 40, 'Replen': 80 }
+    const BUCKET_PRIORITY = ['MTO', 'Memo', 'HOS', '3P', 'NEW GOODS', 'Replen']
+    const byBucket = Object.fromEntries(BNY_BUCKETS.map(b => [b, []]))
+    for (const p of pool) {
+      if (p.bny_bucket && byBucket[p.bny_bucket]) byBucket[p.bny_bucket].push(p)
+    }
+    for (const b of BNY_BUCKETS) {
+      byBucket[b].sort((x, y) => (y.age_days || 0) - (x.age_days || 0))
+    }
+    const sampledPool = []
+    for (const b of BUCKET_PRIORITY) {
+      const cap = BUCKET_CAPS[b] || 30
+      sampledPool.push(...byBucket[b].slice(0, cap))
+    }
+    const poolLines = sampledPool.map(p =>
       `  ${p.po_number} | ${p.line_description} | ${p.bny_bucket} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`
     ).join('\n')
+    const poolCountsLine = BUCKET_PRIORITY.map(b =>
+      `${b}: ${byBucket[b].length} total${byBucket[b].length > (BUCKET_CAPS[b]||30) ? ` (showing top ${BUCKET_CAPS[b]||30} by age)` : ''}`
+    ).join(' · ')
 
     const contextNote = `\n\n[CURRENT STATE — not from user, for your context:
 ${JSON.stringify(context, null, 2)}
 
-POOL (top 100 POs sorted by age):
+POOL (ordered by bucket priority — MTO first, then Memo, HOS, 3P, NEW GOODS, Replen; within each bucket sorted by age descending)
+Pool counts by bucket: ${poolCountsLine}
 ${poolLines}
 
 CRITICAL REMINDERS when proposing assignments:
@@ -968,6 +989,14 @@ CRITICAL REMINDERS when proposing assignments:
 
 MACHINE-FAMILY PRIORITY (this is how Chandler actually runs BNY):
 - Passaic digitals (Dakota Ka, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey) = the MTO lane. Bucket order: MTO → Memo → Replen. NEVER load Replen onto a Passaic digital while MTO remains unscheduled in the pool (MTOs are out-of-stock at the HUB and need 48-hour turns). Backfill with Memo, then Replen only if MTO and Memo don't fill the 5,000 yd/week target.
+
+MANDATORY CHECKLIST before writing ANY proposal for a Passaic machine:
+1. Look at the Pool counts above. How many MTO POs are there?
+2. If MTO count > 0: your Passaic proposal MUST be an MTO PO. Not Memo. Not Replen. MTO.
+3. If MTO count = 0 (all MTO already scheduled this draft): then Memo is next.
+4. If MTO = 0 and Memo = 0: then and only then, Replen.
+5. Work through MTO POs in age-descending order (oldest first).
+If you catch yourself proposing a Replen or NEW GOODS assignment on a Passaic machine while MTO is non-zero, stop, reconsider, and replace it with MTO.
 - Brooklyn 3600s (Glow, Sasha, Trish) = workhorses for big aged Replen and NEW GOODS runs. Don't load MTO here unless Passaic is already full.
 - Brooklyn 570s (Bianca, LASH, Chyna, Rhonda) = medium Replen, NEW GOODS, HOS. Also the overflow lane if MTO/Memo exceeds Passaic capacity.
 - Weekends (day_of_week = 0 Sun or 6 Sat): Brooklyn 3600s ONLY by default. Do NOT propose Sat/Sun assignments on 570s or any Passaic digital. The UI allows manual weekend overrides, but your draft stays on the 3600s.
