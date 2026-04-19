@@ -200,10 +200,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   }
 
   async function clearAllAssignments() {
-    if (!confirm(`Remove all ${enrichedAssignments.length} assignments for this week?`)) return
-    const { error } = await supabase.from('sched_assignments').delete().eq('site','passaic').eq('week_start', isoDate(weekStart))
-    if (error) { alert('Clear failed: ' + error.message); return }
+    const hasCrew = weekDailyOps.some(r => r.operator_1 || r.operator_2)
+    const msg = hasCrew
+      ? `Remove all ${enrichedAssignments.length} assignments AND clear crew staffing for this week?`
+      : `Remove all ${enrichedAssignments.length} assignments for this week?`
+    if (!confirm(msg)) return
+    const { error: e1 } = await supabase.from('sched_assignments').delete().eq('site','passaic').eq('week_start', isoDate(weekStart))
+    if (e1) { alert('Clear assignments failed: ' + e1.message); return }
+    const { error: e2 } = await supabase.from('sched_daily_ops').delete().eq('site','passaic').eq('week_start', isoDate(weekStart))
+    if (e2) { alert('Clear crew failed: ' + e2.message); return }
     await onAssignmentsChange()
+    await reloadDailyOps()
   }
 
   return (
@@ -552,11 +559,16 @@ function CrewStrip({ tableCode, dailyOps }) {
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
   const hasAny = days.some(d => byDay[d] && (byDay[d].operator_1 || byDay[d].operator_2))
   if (!hasAny) return null
-  // Compress name: last name only if both names present, else first word
+  // Display format: first name + last initial ("Angel A.")
+  // First-name-only collides (Miguel × 3); last-name-only collides (Acevedo × 4).
+  // First name + last initial is unique across the 42-person Passaic roster.
   const shortName = (n) => {
     if (!n) return null
     const parts = n.trim().split(/\s+/)
-    return parts.length >= 2 ? parts[parts.length - 1] : parts[0]
+    if (parts.length === 1) return parts[0]
+    const first = parts[0]
+    const lastInitial = parts[parts.length - 1][0]
+    return `${first} ${lastInitial}.`
   }
   return (
     <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${C.border}` }}>
