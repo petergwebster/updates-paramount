@@ -54,6 +54,15 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [filterHighValueLowColor, setFilterHighValueLowColor] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
+  const [weekDailyOps, setWeekDailyOps] = useState([])
+
+  // Load this week's daily_ops (crew + actuals) so the table cards can show
+  // a compact staffing strip. Refreshes when the week changes or after a save.
+  async function reloadDailyOps() {
+    const rows = await loadWeekDailyOps('passaic', weekStart)
+    setWeekDailyOps(rows || [])
+  }
+  useEffect(() => { reloadDailyOps() }, [weekStart])
 
   const assignedByPO = useMemo(() => {
     const m = {}
@@ -304,9 +313,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
         </div>
       </div>
 
@@ -353,7 +362,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         <CrewModal
           tableCode={crewModalTable}
           weekStart={weekStart}
-          onClose={() => setCrewModalTable(null)}
+          onClose={() => { setCrewModalTable(null); reloadDailyOps() }}
         />
       )}
     </div>
@@ -463,7 +472,7 @@ function CategoryStrip({ totals }) {
   )
 }
 
-function TableCategoryRow({ category, label, tables, assignments, selectedPO, onTableClick, onRemove, onOpenCrew, compact }) {
+function TableCategoryRow({ category, label, tables, assignments, dailyOps, selectedPO, onTableClick, onRemove, onOpenCrew, compact }) {
   const byTable = useMemo(() => {
     const m = {}
     for (const a of assignments) {
@@ -521,10 +530,50 @@ function TableCategoryRow({ category, label, tables, assignments, selectedPO, on
                 </div>
               )}
               <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4 }}>{fmt(cyUsed)} / {fmt(t.capacity_cy)} CY</div>
+              <CrewStrip tableCode={t.code} dailyOps={dailyOps} />
             </div>
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// Compact Mon-Fri strip showing assigned operators for this table.
+// Sits at the bottom of each table card and updates when crew is saved.
+function CrewStrip({ tableCode, dailyOps }) {
+  if (!dailyOps) return null
+  const forTable = dailyOps.filter(r => r.table_code === tableCode)
+  if (forTable.length === 0) return null
+  // Map day_of_week -> row
+  const byDay = {}
+  for (const r of forTable) byDay[r.day_of_week] = r
+  const days = [1, 2, 3, 4, 5]  // Mon..Fri
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+  const hasAny = days.some(d => byDay[d] && (byDay[d].operator_1 || byDay[d].operator_2))
+  if (!hasAny) return null
+  // Compress name: last name only if both names present, else first word
+  const shortName = (n) => {
+    if (!n) return null
+    const parts = n.trim().split(/\s+/)
+    return parts.length >= 2 ? parts[parts.length - 1] : parts[0]
+  }
+  return (
+    <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${C.border}` }}>
+      {days.map((d, i) => {
+        const row = byDay[d]
+        const op1 = shortName(row?.operator_1)
+        const op2 = shortName(row?.operator_2)
+        const crew = [op1, op2].filter(Boolean).join('/')
+        return (
+          <div key={d} style={{ display: 'flex', fontSize: 8, color: C.inkMid, lineHeight: 1.4 }}>
+            <span style={{ width: 26, color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {crew || <span style={{ color: C.inkLight, fontStyle: 'italic' }}>—</span>}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -830,9 +879,7 @@ Don't draft a schedule yet. Just open the conversation.
 Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers, no bullet points — prose paragraph(s).`
 
     try {
-      await streamClaude([{ role: 'user', content: userMsg }], (finalText) => {
-        setMessages([{ role: 'assistant', content: finalText }])
-      })
+      await streamClaude([{ role: 'user', content: userMsg }], () => {})
     } catch (e) {
       console.error(e); setError(e.message || String(e))
     } finally {
@@ -856,9 +903,8 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     convo[convo.length - 1].content += contextNote
 
     try {
-      await streamClaude(convo, (finalText, proposals) => {
-        setMessages(prev => [...prev, { role: 'assistant', content: finalText, proposals }])
-      })
+      // streamClaude pushes + finalizes the assistant message itself; no-op callback
+      await streamClaude(convo, () => {})
     } catch (e) {
       console.error(e); setError(e.message || String(e))
     } finally {

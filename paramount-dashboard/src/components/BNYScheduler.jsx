@@ -987,9 +987,7 @@ Don't draft a schedule yet. Just open the conversation.
 Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose paragraph(s).`
 
     try {
-      await streamClaude([{ role: 'user', content: userMsg }], (finalText) => {
-        setMessages([{ role: 'assistant', content: finalText }])
-      })
+      await streamClaude([{ role: 'user', content: userMsg }], () => {})
     } catch (e) {
       console.error(e); setError(e.message || String(e))
     } finally {
@@ -1073,9 +1071,8 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
     convo[convo.length - 1].content += contextNote
 
     try {
-      await streamClaude(convo, (finalText, proposals) => {
-        setMessages(prev => [...prev, { role: 'assistant', content: finalText, proposals }])
-      })
+      // streamClaude finalizes the message itself; no-op callback
+      await streamClaude(convo, () => {})
     } catch (e) {
       console.error(e); setError(e.message || String(e))
     } finally {
