@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT } from '../lib/scheduleUtils'
+import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
 const PASSAIC_TARGETS = {
@@ -52,6 +53,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [filterWasteHist, setFilterWasteHist] = useState(false)
   const [filterHighValueLowColor, setFilterHighValueLowColor] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
+  const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
 
   const assignedByPO = useMemo(() => {
     const m = {}
@@ -302,9 +304,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
         </div>
       </div>
 
@@ -344,6 +346,14 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           onCancel={() => setAssignModal(null)}
           onConfirm={yards => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards })}
           busy={assigning}
+        />
+      )}
+
+      {crewModalTable && (
+        <CrewModal
+          tableCode={crewModalTable}
+          weekStart={weekStart}
+          onClose={() => setCrewModalTable(null)}
         />
       )}
     </div>
@@ -453,7 +463,7 @@ function CategoryStrip({ totals }) {
   )
 }
 
-function TableCategoryRow({ category, label, tables, assignments, selectedPO, onTableClick, onRemove, compact }) {
+function TableCategoryRow({ category, label, tables, assignments, selectedPO, onTableClick, onRemove, onOpenCrew, compact }) {
   const byTable = useMemo(() => {
     const m = {}
     for (const a of assignments) {
@@ -489,7 +499,17 @@ function TableCategoryRow({ category, label, tables, assignments, selectedPO, on
               }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>{t.code}</span>
-                <span style={{ fontSize: 9, color: overCap ? C.rose : cyPct > 80 ? C.gold : C.inkLight, fontWeight: 600 }}>{cyPct}%</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {onOpenCrew && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onOpenCrew(t.code) }}
+                      title="Assign crew for this table (per day, up to 2 operators)"
+                      style={{ padding: '1px 6px', fontSize: 9, fontWeight: 600, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 3, cursor: 'pointer', color: C.inkMid, letterSpacing: '0.04em' }}>
+                      CREW
+                    </button>
+                  )}
+                  <span style={{ fontSize: 9, color: overCap ? C.rose : cyPct > 80 ? C.gold : C.inkLight, fontWeight: 600 }}>{cyPct}%</span>
+                </div>
               </div>
               <div style={{ height: 4, background: C.warm, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
                 <div style={{ width: Math.min(100, cyPct) + '%', height: '100%', background: overCap ? C.rose : cyPct > 80 ? C.gold : C.sage }} />
@@ -576,6 +596,130 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
             style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
             {busy ? 'Assigning…' : 'Confirm assignment'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CrewModal — assign 2 operators per day for a given Passaic table
+// ═══════════════════════════════════════════════════════════════════════════
+function CrewModal({ tableCode, weekStart, onClose }) {
+  const [rows, setRows] = useState([])  // one row per day_of_week 1..5 (Mon..Fri)
+  const [loading, setLoading] = useState(true)
+  const [savingDay, setSavingDay] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      const data = await loadWeekDailyOps('passaic', weekStart)
+      if (cancelled) return
+      const existingByDay = {}
+      for (const r of (data || [])) {
+        if (r.table_code === tableCode) existingByDay[r.day_of_week] = r
+      }
+      const seeded = [1, 2, 3, 4, 5].map(d => ({
+        day_of_week: d,
+        operator_1: existingByDay[d]?.operator_1 || '',
+        operator_2: existingByDay[d]?.operator_2 || '',
+        _savedAt: null,
+      }))
+      setRows(seeded)
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [tableCode, weekStart])
+
+  function updateRow(d, patch) {
+    setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, ...patch, _savedAt: null } : r))
+  }
+
+  async function saveRow(d) {
+    const row = rows.find(r => r.day_of_week === d)
+    if (!row) return
+    setSavingDay(d)
+    try {
+      await upsertDailyOp({
+        site: 'passaic',
+        week_start: isoDate(weekStart),
+        table_code: tableCode,
+        day_of_week: d,
+        operator_1: row.operator_1 || null,
+        operator_2: row.operator_2 || null,
+      })
+      setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, _savedAt: Date.now() } : r))
+    } catch (e) {
+      alert('Save failed: ' + (e.message || e))
+    } finally {
+      setSavingDay(null)
+    }
+  }
+
+  async function saveAll() {
+    for (const r of rows) {
+      if (r.operator_1 || r.operator_2) await saveRow(r.day_of_week)
+    }
+  }
+
+  return (
+    <div
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 92vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Crew · {tableCode}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · assign up to 2 operators per day</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 22, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: 18 }}>
+          {loading && <div style={{ textAlign: 'center', padding: 40, color: C.inkLight, fontSize: 13 }}>Loading…</div>}
+          {!loading && rows.map(r => {
+            const dayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][r.day_of_week]
+            const isSaving = savingDay === r.day_of_week
+            return (
+              <div key={r.day_of_week} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr 90px', gap: 10, alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{dayLabel}</div>
+                <select value={r.operator_1} onChange={e => updateRow(r.day_of_week, { operator_1: e.target.value })}
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  <option value="">— Operator 1 —</option>
+                  {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <select value={r.operator_2} onChange={e => updateRow(r.day_of_week, { operator_2: e.target.value })}
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  <option value="">— Operator 2 —</option>
+                  {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <button onClick={() => saveRow(r.day_of_week)} disabled={isSaving}
+                  style={{ padding: '7px 10px', background: isSaving ? C.warm : C.ink, color: isSaving ? C.inkLight : '#fff', border: 'none', borderRadius: 5, fontSize: 12, fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
+                  {isSaving ? '…' : r._savedAt ? '✓ Saved' : 'Save'}
+                </button>
+              </div>
+            )
+          })}
+
+          {!loading && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+              <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
+                Tip: Sami enters actual yards and waste in the Live Ops tab at end of each shift.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={saveAll}
+                  style={{ padding: '8px 14px', background: C.navy, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  Save all rows
+                </button>
+                <button onClick={onClose}
+                  style={{ padding: '8px 14px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -704,7 +848,11 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     const context = buildContextSummary()
     const convo = newMessages.map(m => ({ role: m.role, content: m.content }))
 
-    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Wendy can accept/edit/reject.]`
+    // Fetch this week's daily actuals so Opus can pivot based on Sami's entries
+    const dailyOps = await loadWeekDailyOps('passaic', weekStart)
+    const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
+
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Wendy can accept/edit/reject.]`
     convo[convo.length - 1].content += contextNote
 
     try {

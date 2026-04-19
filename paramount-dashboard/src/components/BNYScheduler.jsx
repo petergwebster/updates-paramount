@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { loadWeekDailyOps, buildRecentActualsSummary } from '../lib/dailyOps'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
 const BNY_TARGETS = {
@@ -630,7 +631,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
         <h3 style={{ fontSize: 13, fontWeight: 700, color: C.ink, margin: 0, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</h3>
         <span style={{ fontSize: 11, color: C.inkLight }}>— {machines.length} machines · {sublabel}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, 1fr) 80px`, gap: 4, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, minmax(0, 1fr)) 80px`, gap: 4, fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0 8px', marginBottom: 6 }}>
         <span>Machine</span>
         <span style={{ textAlign: 'right' }}>Budget/d</span>
         {DAY_LABELS.map(d => <span key={d} style={{ textAlign: 'center' }}>{d}</span>)}
@@ -662,7 +663,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
   const weekCap = machine.capacity * NUM_DAYS
   const weekPct = Math.round((weekTotal / weekCap) * 100)
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, 1fr) 80px`, gap: 4, marginBottom: 4, alignItems: 'stretch' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `110px 70px repeat(7, minmax(0, 1fr)) 80px`, gap: 4, marginBottom: 4, alignItems: 'stretch' }}>
       <div style={{ background: C.parchment, borderRadius: 6, padding: '8px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.ink }}>{machine.name}</div>
         {machine.model && <div style={{ fontSize: 9, color: C.inkLight }}>HP {machine.model}</div>}
@@ -1004,6 +1005,11 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
     const context = buildContextSummary()
     const convo = newMessages.map(m => ({ role: m.role, content: m.content }))
 
+    // Fetch this week's daily actuals so Opus can see what actually happened
+    // on already-run days and pivot the remaining days accordingly.
+    const dailyOps = await loadWeekDailyOps('bny', weekStart)
+    const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
+
     // Bucket-balanced pool sampling. Top N per bucket by age, then concatenated
     // in PRIORITY order (MTO first) so Opus sees urgent work before aged backlog.
     // Prevents MTO/Memo from being crowded out of the context when aged Replen dominates.
@@ -1030,7 +1036,7 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
 
     const contextNote = `\n\n[CURRENT STATE — not from user, for your context:
 ${JSON.stringify(context, null, 2)}
-
+${actualsBlock ? `\nRECENT DAILY ACTUALS (from Chandler — use these to pivot the remaining week. If actuals show a machine fell short, consider adding catch-up yards on the remaining days; if a machine ran over or a PO's done, don't re-propose it):\n${actualsBlock}\n` : ''}
 POOL (ordered by bucket priority — MTO first, then Memo, HOS, 3P, NEW GOODS, Replen; within each bucket sorted by age descending)
 Pool counts by bucket: ${poolCountsLine}
 ${poolLines}

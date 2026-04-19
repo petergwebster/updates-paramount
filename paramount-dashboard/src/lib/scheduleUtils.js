@@ -80,3 +80,61 @@ export const SITES = [
   { key: 'bny',         label: 'Brooklyn',    sub: 'Digital',       color: C.amber },
   { key: 'procurement', label: 'Procurement', sub: 'Pass-through',  color: C.slate },
 ]
+
+// ─── Passaic operator roster (42 screen-print operators from Employees sheet) ─
+export const PASSAIC_OPERATORS = [
+  'Angel Acevedo', 'Armando Acevedo', 'Christian Acevedo', 'Jesus Acevedo',
+  'Heriberto Arroyo', 'Juan Arteaga', 'Rodney Bermudez', 'Samuel Brito',
+  'Yvanna Cabrera', 'Miguel Carpio', 'Salomon Cruz JR', 'Alberto De Leon',
+  'Jeremy Dominguez', 'Elizabeth Doyle', 'Patrizia Galati', 'Humberto Gonzalez',
+  'Edward Hanratty III', 'Yensi Henriquez', 'Miguel Hijuitl', 'Louis Hillen',
+  'Jerome Jeter Jr.', 'Alejandro Leal', 'Felix Maihuay', 'Freddy Martinez',
+  'Emilio Medina', 'Lesly Mendoza', 'Jose Molina', 'Abiodun Obagbemi',
+  'Roberto Ortiz', 'Romer Osorto', 'Heriberto Perez', 'Miguel Picon',
+  'Wendy Reger-Hare', 'Steven Sanguino', 'Marcos Shehata', 'Sergio Solis',
+  'Estephanie Soto Martinez', 'Genaro Tobias', 'Daniel Velez', 'Kevin Vinas',
+  'Ariel Williams', 'Santos Zambrano',
+]
+
+// ─── BNY operator rosters (from previous commits; duplicated here for Live Ops) ─
+export const BNY_OPERATORS_BROOKLYN = [
+  'Shelby Adams', 'Ramon Bermudez', 'Blake Devine-Rosser',
+  'Sara Howard', 'Susan Jean-Baptiste', 'Philip Keefer',
+  'Brynn Lawlor', 'Adam McClellan', "John O'Connor",
+  'Sydney Remson', 'Denzell Silvia', 'Xiachen Zhou',
+]
+export const BNY_OPERATORS_PASSAIC_DIGITAL = [
+  'Joseph Horton', 'Luis Mendoza Capecchi', 'Jeanne Villeneuve',
+]
+
+// ─── Day labels (0=Sun..6=Sat fiscal week) ─────────────────────────────────
+export const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+export const DAY_NAMES_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+// Return day_of_week (0=Sun..6=Sat) given a Monday-based week_start and an
+// absolute Date, or null if the date is outside the fiscal week containing
+// that week_start (Sun before → Sat after).
+export function dayOfWeekFiscal(weekStartMonday, d) {
+  const sun = addDays(weekStartMonday, -1)
+  const sat = addDays(weekStartMonday, 5)
+  const x = new Date(d); x.setHours(0,0,0,0)
+  if (x < sun || x > sat) return null
+  const diffMs = x.getTime() - sun.getTime()
+  return Math.round(diffMs / 86400000)
+}
+
+// Reverse: given a Monday-based week_start and a day_of_week (0..6, Sun=0),
+// return the actual Date of that day.
+export function dateForDayOfWeek(weekStartMonday, dayOfWeek) {
+  // day 0 = Sunday before Monday week_start = weekStart - 1
+  // day 1 = Monday = weekStart
+  return addDays(weekStartMonday, dayOfWeek - 1)
+}
+
+// "Yesterday" relative to today, returned as a Date at 00:00.
+export function yesterday() {
+  const d = new Date()
+  d.setHours(0,0,0,0)
+  d.setDate(d.getDate() - 1)
+  return d
+}
