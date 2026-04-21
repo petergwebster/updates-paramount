@@ -616,6 +616,20 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
     try {
       const monthKey   = format(weekStart, 'yyyy-MM')
 
+      // Use fiscal calendar to find correct week_start dates for this month
+      const { FISCAL_CALENDAR } = await import('./fiscalCalendar')
+      const currentKey = format(weekStart, 'yyyy-MM-dd')
+      const currentInfo = FISCAL_CALENDAR[currentKey]
+      let fiscalWeekStarts = []
+      if (currentInfo) {
+        fiscalWeekStarts = Object.entries(FISCAL_CALENDAR)
+          .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
+          .map(([k]) => k)
+          .sort()
+      }
+      // Fallback: if no fiscal calendar match, use date range (shouldn't happen)
+      const useFiscalWeeks = fiscalWeekStarts.length > 0
+
       // Check if a saved report already exists for this month/type
       const { data: existingReport } = await supabase
         .from('monthly_reports')
@@ -629,18 +643,26 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
         setIsSavedReport(true)
         setOnePagerDraft(existingReport.narrative)
         const monthLabel = format(weekStart, 'MMMM yyyy')
-        const monthStart = monthKey + '-01'
-        const monthEnd   = monthKey + '-31'
         const isMid = type === 'mid'
+
+        const prodQuery = useFiscalWeeks
+          ? supabase.from('production').select('*').in('week_start', fiscalWeekStarts).order('week_start')
+          : supabase.from('production').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
+        const peopleQuery = useFiscalWeeks
+          ? supabase.from('people_weekly').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
+          : supabase.from('people_weekly').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
+        const wipQuery = useFiscalWeeks
+          ? supabase.from('wip_snapshots').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
+          : supabase.from('wip_snapshots').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
 
         const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
                { data: peopleRows }, { data: wipSnap }] = await Promise.all([
-          supabase.from('production').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
+          prodQuery,
           supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
           supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
           supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
-          supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
-          supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
+          peopleQuery,
+          wipQuery,
         ])
 
         const n = v => parseFloat(v)||0
@@ -712,18 +734,29 @@ Under 260 words. First person as Peter. No bullets. No headers. No title. Start 
         return
       }
       const monthLabel = format(weekStart, 'MMMM yyyy')
-      const monthStart = monthKey + '-01'
-      const monthEnd   = monthKey + '-31'
+
+      const prodQuery2 = useFiscalWeeks
+        ? supabase.from('production').select('*').in('week_start', fiscalWeekStarts).order('week_start')
+        : supabase.from('production').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
+      const peopleQuery2 = useFiscalWeeks
+        ? supabase.from('people_weekly').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
+        : supabase.from('people_weekly').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
+      const weekQuery2 = useFiscalWeeks
+        ? supabase.from('weeks').select('*').in('week_start', fiscalWeekStarts).order('week_start')
+        : supabase.from('weeks').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
+      const wipQuery2 = useFiscalWeeks
+        ? supabase.from('wip_snapshots').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
+        : supabase.from('wip_snapshots').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
 
       const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
              { data: peopleRows }, { data: weekRows }, { data: wipSnap }] = await Promise.all([
-        supabase.from('production').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
+        prodQuery2,
         supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
         supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
         supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
-        supabase.from('people_weekly').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
-        supabase.from('weeks').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start'),
-        supabase.from('wip_snapshots').select('*').gte('week_start', monthStart).lte('week_start', monthEnd).order('week_start',{ascending:false}).limit(1),
+        peopleQuery2,
+        weekQuery2,
+        wipQuery2,
       ])
 
       const n = v => parseFloat(v)||0
