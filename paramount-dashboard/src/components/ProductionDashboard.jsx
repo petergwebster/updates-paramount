@@ -375,11 +375,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
   const mtdNJWastePct = mtdNJ.total > 0 ? ((mtdNJ.waste / mtdNJ.total) * 100).toFixed(1) : null
 
-  // MTD Revenue — use actual invoiceRev (dollars) not schInvoiced/tpInvoiced (yards)
-  const mtdNJRevTotal = Object.values(mtdNJInvoiceRev).reduce((a,b) => a+b, 0) + mtdNJMiscFees
-  const mtdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * mtdFiscalWeeks
-  const mtdBNYRevTotal = Object.values(mtdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + mtdBNYMiscFees
-  const mtdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * mtdFiscalWeeks
+  // MTD Revenue — totals computed below after per-category breakdowns are defined
 
   // MTD — new invoiced yds by category (NJ)
   const mtdNJInvoiceYds = {
@@ -430,6 +426,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     total:    BNY_TARGETS.totalIncomeInvoiced * mtdFiscalWeeks,
   }
 
+  // MTD Revenue totals — using actual dollar fields
+  const mtdNJRevTotal = Object.values(mtdNJInvoiceRev).reduce((a,b) => a+b, 0) + mtdNJMiscFees
+  const mtdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * mtdFiscalWeeks
+  const mtdBNYRevTotal = Object.values(mtdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + mtdBNYMiscFees
+  const mtdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * mtdFiscalWeeks
+
   // Procurement MTD
   const mtdProcurement = mtdData.reduce((s, h) => s + n(h.bny_data?.procurement), 0)
   const procurementMTDTarget = PROCUREMENT_WEEKLY_TARGET * mtdWeeksWithData
@@ -465,11 +467,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const ytdNJWastePct = ytdNJ.total > 0 ? ((ytdNJ.waste / ytdNJ.total) * 100).toFixed(1) : null
   const ytdProcurement = ytdData.reduce((s,h) => s + n(h.bny_data?.procurement), 0)
 
-  // YTD Revenue — use actual invoiceRev (dollars) not schInvoiced/tpInvoiced (yards)
-  const ytdNJRevTotal = Object.values(ytdNJInvoiceRev).reduce((a,b) => a+b, 0) + ytdNJMiscFees
-  const ytdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * ytdWeeksWithData
-  const ytdBNYRevTotal = Object.values(ytdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + ytdBNYMiscFees
-  const ytdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * ytdWeeksWithData
+  // YTD Revenue — totals computed below after per-category breakdowns are defined
   const ytdProcurementTarget = PROCUREMENT_WEEKLY_TARGET * ytdWeeksWithData
 
   // YTD — invoiced yds and revenue by category (NJ)
@@ -519,6 +517,12 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     contract: BNY_TARGETS.incomeContract * ytdWeeksWithData,
     total:    BNY_TARGETS.totalIncomeInvoiced * ytdWeeksWithData,
   }
+
+  // YTD Revenue totals — using actual dollar fields
+  const ytdNJRevTotal = Object.values(ytdNJInvoiceRev).reduce((a,b) => a+b, 0) + ytdNJMiscFees
+  const ytdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * ytdWeeksWithData
+  const ytdBNYRevTotal = Object.values(ytdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + ytdBNYMiscFees
+  const ytdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * ytdWeeksWithData
 
   return (
     <div className={styles.container}>
