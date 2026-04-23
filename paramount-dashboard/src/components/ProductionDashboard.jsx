@@ -375,15 +375,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
   const mtdNJWastePct = mtdNJ.total > 0 ? ((mtdNJ.waste / mtdNJ.total) * 100).toFixed(1) : null
 
-  // MTD Revenue
-  const mtdNJSchInvoiced = mtdData.reduce((s,h) => s + n(h.nj_data?.schInvoiced), 0)
-  const mtdNJTpInvoiced = mtdData.reduce((s,h) => s + n(h.nj_data?.tpInvoiced), 0)
-  const mtdBNYSchInvoiced = mtdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0)
-  const mtdBNYTpInvoiced = mtdData.reduce((s,h) => s + n(h.bny_data?.tpInvoiced), 0)
-  const mtdNJSchRevTarget = WEEKLY_TARGETS.schRevenue * mtdFiscalWeeks
-  const mtdNJTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
-  const mtdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * mtdFiscalWeeks
-  const mtdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * mtdFiscalWeeks
+  // MTD Revenue — use actual invoiceRev (dollars) not schInvoiced/tpInvoiced (yards)
+  const mtdNJRevTotal = Object.values(mtdNJInvoiceRev).reduce((a,b) => a+b, 0) + mtdNJMiscFees
+  const mtdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * mtdFiscalWeeks
+  const mtdBNYRevTotal = Object.values(mtdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + mtdBNYMiscFees
+  const mtdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * mtdFiscalWeeks
 
   // MTD — new invoiced yds by category (NJ)
   const mtdNJInvoiceYds = {
@@ -469,15 +465,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   const ytdNJWastePct = ytdNJ.total > 0 ? ((ytdNJ.waste / ytdNJ.total) * 100).toFixed(1) : null
   const ytdProcurement = ytdData.reduce((s,h) => s + n(h.bny_data?.procurement), 0)
 
-  // YTD Revenue
-  const ytdNJSchInvoiced = ytdData.reduce((s,h) => s + n(h.nj_data?.schInvoiced), 0)
-  const ytdNJTpInvoiced = ytdData.reduce((s,h) => s + n(h.nj_data?.tpInvoiced), 0)
-  const ytdBNYSchInvoiced = ytdData.reduce((s,h) => s + n(h.bny_data?.schInvoiced), 0)
-  const ytdBNYTpInvoiced = ytdData.reduce((s,h) => s + n(h.bny_data?.tpInvoiced), 0)
-  const ytdNJSchRevTarget = WEEKLY_TARGETS.schRevenue * ytdWeeksWithData
-  const ytdNJTpRevTarget = WEEKLY_TARGETS.tpRevenue * ytdWeeksWithData
-  const ytdBNYSchRevTarget = WEEKLY_TARGETS.schRevenue * ytdWeeksWithData
-  const ytdBNYTpRevTarget = WEEKLY_TARGETS.tpRevenue * ytdWeeksWithData
+  // YTD Revenue — use actual invoiceRev (dollars) not schInvoiced/tpInvoiced (yards)
+  const ytdNJRevTotal = Object.values(ytdNJInvoiceRev).reduce((a,b) => a+b, 0) + ytdNJMiscFees
+  const ytdNJRevTargetTotal = NJ_TARGETS.weeklyRevenue * ytdWeeksWithData
+  const ytdBNYRevTotal = Object.values(ytdBNYIncomeInvoiced).reduce((a,b) => a+b, 0) + ytdBNYMiscFees
+  const ytdBNYRevTargetTotal = BNY_TARGETS.totalIncomeInvoiced * ytdWeeksWithData
   const ytdProcurementTarget = PROCUREMENT_WEEKLY_TARGET * ytdWeeksWithData
 
   // YTD — invoiced yds and revenue by category (NJ)
@@ -1000,7 +992,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
 
           {/* MTD Revenue Section */}
           <div style={{marginTop:8}}>
-            <div style={{fontSize:11,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--ink-40)',marginBottom:8}}>Revenue — Invoiced vs Target (yards × rate)</div>
+            <div style={{fontSize:11,fontWeight:500,textTransform:'uppercase',letterSpacing:'0.06em',color:'var(--ink-40)',marginBottom:8}}>Revenue — Invoiced vs Target (MTD)</div>
             <div className={styles.mtdGrid}>
               <div className={styles.mtdCard}>
                 <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic MTD Revenue</div>
@@ -1009,21 +1001,25 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
                   </thead>
                   <tbody>
-                    {[
-                      { label: 'Schumacher', invoiced: mtdNJSchInvoiced, target: mtdNJSchRevTarget },
-                      { label: '3rd Party', invoiced: mtdNJTpInvoiced, target: mtdNJTpRevTarget },
-                    ].map(row => {
-                      const diff = row.invoiced - row.target
-                      const status = statusColor(row.invoiced, row.target)
+                    {(() => {
+                      const diff = mtdNJRevTotal - mtdNJRevTargetTotal
+                      const status = statusColor(mtdNJRevTotal, mtdNJRevTargetTotal)
                       return (
-                        <tr key={row.label}>
-                          <td className={styles.mtdLabel}>{row.label}</td>
-                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
-                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                        <tr>
+                          <td className={styles.mtdLabel}>Total Revenue</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(mtdNJRevTotal)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(mtdNJRevTargetTotal)}</td>
                           <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
                         </tr>
                       )
-                    })}
+                    })()}
+                    {mtdNJMiscFees > 0 && (
+                      <tr className={styles.mtdProcurementRow}>
+                        <td className={styles.mtdLabel} colSpan={4}>
+                          Includes {fmtDollar(mtdNJMiscFees)} misc fees
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1034,21 +1030,18 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
                   </thead>
                   <tbody>
-                    {[
-                      { label: 'Schumacher', invoiced: mtdBNYSchInvoiced, target: mtdBNYSchRevTarget },
-                      { label: '3rd Party', invoiced: mtdBNYTpInvoiced, target: mtdBNYTpRevTarget },
-                    ].map(row => {
-                      const diff = row.invoiced - row.target
-                      const status = statusColor(row.invoiced, row.target)
+                    {(() => {
+                      const diff = mtdBNYRevTotal - mtdBNYRevTargetTotal
+                      const status = statusColor(mtdBNYRevTotal, mtdBNYRevTargetTotal)
                       return (
-                        <tr key={row.label}>
-                          <td className={styles.mtdLabel}>{row.label}</td>
-                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
-                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                        <tr>
+                          <td className={styles.mtdLabel}>Total Revenue</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(mtdBNYRevTotal)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(mtdBNYRevTargetTotal)}</td>
                           <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
                         </tr>
                       )
-                    })}
+                    })()}
                     <tr className={styles.mtdProcurementRow}>
                       <td className={styles.mtdLabel} colSpan={4}>
                         Procurement: {fmtDollar(mtdProcurement)} collected · {fmtDollar(procurementMTDTarget)} target
@@ -1187,7 +1180,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
 
           {/* YTD Revenue Section */}
           <div className={styles.mtdRevenueSection}>
-            <div className={styles.mtdRevenueSectionTitle}>Revenue — Invoiced vs Target (yards × rate)</div>
+            <div className={styles.mtdRevenueSectionTitle}>Revenue — Invoiced vs Target (YTD)</div>
             <div className={styles.mtdGrid}>
               <div className={styles.mtdCard}>
                 <div className={styles.mtdCardTitle}><span className={styles.facilityBadge}>NJ</span> Passaic YTD Revenue</div>
@@ -1196,21 +1189,25 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
                   </thead>
                   <tbody>
-                    {[
-                      { label: 'Schumacher', invoiced: ytdNJSchInvoiced, target: ytdNJSchRevTarget },
-                      { label: '3rd Party', invoiced: ytdNJTpInvoiced, target: ytdNJTpRevTarget },
-                    ].map(row => {
-                      const diff = row.invoiced - row.target
-                      const status = statusColor(row.invoiced, row.target)
+                    {(() => {
+                      const diff = ytdNJRevTotal - ytdNJRevTargetTotal
+                      const status = statusColor(ytdNJRevTotal, ytdNJRevTargetTotal)
                       return (
-                        <tr key={row.label}>
-                          <td className={styles.mtdLabel}>{row.label}</td>
-                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
-                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                        <tr>
+                          <td className={styles.mtdLabel}>Total Revenue</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(ytdNJRevTotal)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(ytdNJRevTargetTotal)}</td>
                           <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
                         </tr>
                       )
-                    })}
+                    })()}
+                    {ytdNJMiscFees > 0 && (
+                      <tr className={styles.mtdProcurementRow}>
+                        <td className={styles.mtdLabel} colSpan={4}>
+                          Includes {fmtDollar(ytdNJMiscFees)} misc fees
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1221,21 +1218,18 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     <tr><th></th><th>Invoiced $</th><th>Target $</th><th>+/−</th></tr>
                   </thead>
                   <tbody>
-                    {[
-                      { label: 'Schumacher', invoiced: ytdBNYSchInvoiced, target: ytdBNYSchRevTarget },
-                      { label: '3rd Party', invoiced: ytdBNYTpInvoiced, target: ytdBNYTpRevTarget },
-                    ].map(row => {
-                      const diff = row.invoiced - row.target
-                      const status = statusColor(row.invoiced, row.target)
+                    {(() => {
+                      const diff = ytdBNYRevTotal - ytdBNYRevTargetTotal
+                      const status = statusColor(ytdBNYRevTotal, ytdBNYRevTargetTotal)
                       return (
-                        <tr key={row.label}>
-                          <td className={styles.mtdLabel}>{row.label}</td>
-                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(row.invoiced)}</td>
-                          <td className={styles.mtdTarget}>{fmtDollar(row.target)}</td>
+                        <tr>
+                          <td className={styles.mtdLabel}>Total Revenue</td>
+                          <td className={styles.mtdActual}><Dot status={status} />{fmtDollar(ytdBNYRevTotal)}</td>
+                          <td className={styles.mtdTarget}>{fmtDollar(ytdBNYRevTargetTotal)}</td>
                           <td className={diff >= 0 ? styles.mtdOver : styles.mtdUnder}>{diff >= 0 ? '+' : ''}{fmtDollar(Math.abs(diff))}</td>
                         </tr>
                       )
-                    })}
+                    })()}
                     <tr className={styles.mtdProcurementRow}>
                       <td className={styles.mtdLabel} colSpan={4}>
                         Procurement: {fmtDollar(ytdProcurement)} collected · {fmtDollar(ytdProcurementTarget)} target
