@@ -574,10 +574,10 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   for (const r of forTable) byDay[r.day_of_week] = r
   const days = [1, 2, 3, 4, 5]
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  // Auto-derived daily plan (weekly PO yards ÷ 5) used when no explicit
-  // planned_yards set — so just scheduling POs gives Wendy a target to track
-  // against without requiring her to open PLAN for every table.
-  const derivedDaily = weeklyYards > 0 ? Math.round(weeklyYards / 5) : null
+  // Plan reads only from sched_daily_ops. No auto-derived fallback — assigning
+  // a PO no longer phantom-splits the yards across the week. Wendy plans
+  // explicitly via the Daily Plan modal (Even split button is opt-in there).
+  // 0 and null both render as "—" on the dashboard — operationally identical.
   const shortName = (n) => {
     if (!n) return null
     const parts = n.trim().split(/\s+/)
@@ -606,18 +606,16 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
         const crew = [op1, op2].filter(Boolean).join(' / ')
-        // Explicit plan wins; otherwise fall back to derived weekly-÷-5
-        const explicitPlan = row?.planned_yards
-        const plan = explicitPlan != null ? explicitPlan : derivedDaily
-        const planIsDerived = explicitPlan == null && derivedDaily != null
+        // Treat 0 and null identically — "no plan set" for display purposes.
+        const rawPlan = row?.planned_yards
+        const plan = (rawPlan != null && rawPlan !== 0) ? rawPlan : null
         const actual = row?.actual_yards
         const delta = (plan != null && actual != null) ? actual - plan : null
         const deltaColor = varianceColor(delta, plan)
         return (
           <div key={d} style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
             <span style={{ color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
-            <span style={{ textAlign: 'right', color: plan != null ? (planIsDerived ? C.inkMid : C.ink) : C.inkLight, fontWeight: plan != null ? 600 : 400, fontStyle: planIsDerived ? 'italic' : 'normal' }}
-              title={planIsDerived ? 'Auto-derived (weekly total ÷ 5). Set explicit target in PLAN modal.' : undefined}>
+            <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
               {plan != null ? fmt(plan) : '—'}
             </span>
             <span style={{ textAlign: 'right', color: actual != null ? C.ink : C.inkLight, fontWeight: actual != null ? 600 : 400 }}>
@@ -731,7 +729,10 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
         day_of_week: d,
         operator_1: existingByDay[d]?.operator_1 || '',
         operator_2: existingByDay[d]?.operator_2 || '',
-        planned_yards: existingByDay[d]?.planned_yards ?? '',
+        // Use || not ?? so a saved 0 (legacy artifact of the old workaround
+        // where Wendy typed 0 to clear phantom plans) loads as blank input,
+        // matching the "—" the dashboard now shows for it.
+        planned_yards: existingByDay[d]?.planned_yards || '',
         _savedAt: null,
       }))
       setRows(seeded)
