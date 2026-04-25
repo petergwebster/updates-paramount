@@ -8,16 +8,17 @@
 // posts the note there.
 //
 // Required env: SLACK_BOT_TOKEN  (already set, shared with slack-upload)
-//
-// Best-effort: returns 200 even on Slack errors so the client save flow isn't
-// blocked when notifications fail. Errors are surfaced in the response body
-// for diagnostics. Console errors land in Netlify function logs.
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { Context } from "@netlify/edge-functions"
 
-// Role → Slack user ID map (Wendy 4/2026)
-// Update IDs here when org changes; no code edits needed elsewhere.
+// API endpoints hoisted to constants so dotted strings in code never look like
+// links to auto-formatters (OneDrive / Outlook / Word will helpfully turn
+// "thing.method" into a hyperlink and break the file).
+const SLACK_API_OPEN_DM = "https://slack.com/api/conversations" + ".open"
+const SLACK_API_POST    = "https://slack.com/api/chat" + ".postMessage"
+
+// Role to Slack user ID map (Wendy 4/2026)
 const ROLE_TO_USER: Record<string, string> = {
   'QA Lead':             'U08NYSWFT88',  // Samuel Brito
   'Production Manager':  'U08NYSYR4FJ',  // Wendy Reger-Hare
@@ -42,43 +43,47 @@ export default async (request: Request, _context: Context) => {
 
   try {
     const BOT_TOKEN = Deno.env.get("SLACK_BOT_TOKEN") || ""
-    if (!BOT_TOKEN) {
-      return jsonResp({ ok: false, reason: "config" }, 200)
-    }
+    if (!BOT_TOKEN) return jsonResp({ ok: false, reason: "config" }, 200)
 
     const payload = await request.json().catch(() => null)
     if (!payload) return jsonResp({ ok: false, reason: "bad_json" }, 200)
 
-    const { assignedTo, site, tableLabel, dateLabel, noteText } = payload
+    const assignedTo = payload.assignedTo
+    const site       = payload.site
+    const tableLabel = payload.tableLabel
+    const dateLabel  = payload.dateLabel
+    const noteText   = payload.noteText
+
     if (!assignedTo || !noteText) {
       return jsonResp({ ok: false, reason: "missing_fields" }, 200)
     }
 
     const userId = ROLE_TO_USER[assignedTo]
     if (!userId) {
-      console.error(`slack-note-notify: no Slack user ID for role "${assignedTo}"`)
+      console.error("slack-note-notify v2: no Slack user ID for role " + assignedTo)
       return jsonResp({ ok: false, reason: "unknown_role", role: assignedTo }, 200)
     }
 
-    // Open DM channel with the assignee
-    const dmRes = await fetch("https://slack.com/api/conversations.open", {
+    // Step 1: open a DM with the assignee
+    const dmRes = await fetch(SLACK_API_OPEN_DM, {
       method:  "POST",
-      headers: { Authorization: `Bearer ${BOT_TOKEN}`, "Content-Type": "application/json" },
+      headers: { Authorization: "Bearer " + BOT_TOKEN, "Content-Type": "application/json" },
       body:    JSON.stringify({ users: userId }),
     })
     const dmData = await dmRes.json()
     if (!dmData.ok) {
-      console.error(`slack-note-notify: conversations.open failed: ${dmData.error}`)
-      return jsonResp({ ok: false, reason: dmData.error || "dm_open_failed" }, 200)
+      console.error("slack-note-notify v2: open_dm failed: " + dmData.error)
+      return jsonResp({ ok: false, reason: dmData.error || "dm_open_failed", step: "open_dm" }, 200)
     }
-    const channelId = dmData.channel?.id
+    const dmChannel = dmData.channel
+    const channelId = dmChannel ? dmChannel.id : null
     if (!channelId) {
-      return jsonResp({ ok: false, reason: "no_channel_id" }, 200)
+      return jsonResp({ ok: false, reason: "no_channel_id", step: "open_dm" }, 200)
     }
 
-    // Build the message — preview truncated, full note lives in the tool
-    const preview = String(noteText).replace(/\s+/g, " ").trim()
-    const previewShort = preview.length > 280 ? preview.slice(0, 277) + "…" : preview
+    // Step 2: build message blocks
+    const rawNote = String(noteText).replace(/\s+/g, " ").trim()
+    const previewShort = rawNote.length > 280 ? rawNote.slice(0, 277) + "…" : rawNote
 
     const siteLabel = site === "bny"     ? "Brooklyn"
                     : site === "passaic" ? "Passaic"
@@ -86,12 +91,11 @@ export default async (request: Request, _context: Context) => {
 
     const contextLine = [siteLabel, tableLabel, dateLabel].filter(Boolean).join(" · ")
 
-    const blocks: any[] = [
-      {
-        type: "section",
-        text: { type: "mrkdwn", text: `📌 *You have a new note from Paramount production*` },
-      },
-    ]
+    const blocks: any[] = []
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "📌 *You have a new note from Paramount production*" },
+    })
     if (contextLine) {
       blocks.push({
         type: "context",
@@ -100,7 +104,7 @@ export default async (request: Request, _context: Context) => {
     }
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: `> ${previewShort}` },
+      text: { type: "mrkdwn", text: "> " + previewShort },
     })
     blocks.push({
       type: "context",
@@ -110,22 +114,23 @@ export default async (request: Request, _context: Context) => {
       }],
     })
 
-    const text = `📌 New note for you${contextLine ? ` — ${contextLine}` : ""}: ${previewShort}`
+    const fallbackText = "📌 New note for you" + (contextLine ? " — " + contextLine : "") + ": " + previewShort
 
-    const postRes = await fetch("https://slack.com/api/chat.postMessage", {
+    // Step 3: post the message
+    const postRes = await fetch(SLACK_API_POST, {
       method:  "POST",
-      headers: { Authorization: `Bearer ${BOT_TOKEN}`, "Content-Type": "application/json; charset=utf-8" },
-      body:    JSON.stringify({ channel: channelId, text, blocks }),
+      headers: { Authorization: "Bearer " + BOT_TOKEN, "Content-Type": "application/json; charset=utf-8" },
+      body:    JSON.stringify({ channel: channelId, text: fallbackText, blocks }),
     })
     const postData = await postRes.json()
     if (!postData.ok) {
-      console.error(`slack-note-notify: chat.postMessage failed: ${postData.error}`)
-      return jsonResp({ ok: false, reason: postData.error || "post_failed" }, 200)
+      console.error("slack-note-notify v2: post_message failed: " + postData.error)
+      return jsonResp({ ok: false, reason: postData.error || "post_failed", step: "post_message" }, 200)
     }
 
     return jsonResp({ ok: true, ts: postData.ts, channel: channelId }, 200)
   } catch (err) {
-    console.error("slack-note-notify exception:", err)
+    console.error("slack-note-notify v2 exception: " + String(err))
     return jsonResp({ ok: false, reason: "exception", message: String(err) }, 200)
   }
 }
