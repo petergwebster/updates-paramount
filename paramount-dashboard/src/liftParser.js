@@ -27,6 +27,20 @@ const DIVISION_TO_SITE = {
   'Procurement':  'procurement',
 }
 
+// Fallback site classifier: when LIFT hasn't filled in Division yet (early-stage
+// New Goods orders, ground-only POs awaiting print component), the MATERIAL
+// code's prefix usually tells us where the order will produce. "BNY..." codes
+// route to BNY/Brooklyn; "PAR..." codes route to Paramount/Passaic. Anything
+// else stays unknown — those POs need LIFT-side classification before they
+// can be routed to a scheduler.
+function inferSiteFromMaterial(material) {
+  const m = String(material || '').trim().toUpperCase()
+  if (!m || m === '(BLANK)') return null
+  if (m.startsWith('BNY')) return 'bny'
+  if (m.startsWith('PAR')) return 'passaic'
+  return null
+}
+
 // ─── Pivot structure constants ──────────────────────────────────────────────
 // Header row is at Excel row 7 (0-indexed 6). Data starts at row 8 (0-indexed 7).
 // 0-indexed column positions after Peter's Col B and Col C additions:
@@ -224,6 +238,30 @@ export async function parseLiftWorkbook(file) {
   const unclassified = []
   const asOf = new Date()
 
+  // Pass 1 — Shadow detection. The LIFT pivot sometimes produces "shadow" rows:
+  // a row with a real PRODUCT_TYPE (e.g. Fabric) plus a sibling row with the
+  // same PO+Order# but PRODUCT_TYPE blank. The blank row is a pivot artifact
+  // (LIFT showing the order at a higher grouping) and would double-count if
+  // we kept both. Identify which (PO, Order#) keys have at least one real-PT
+  // row; later we drop blank-PT rows whose key is in that set. Blank-PT rows
+  // whose key is NOT in the set are real "orphans" — early-stage POs that
+  // haven't been linked to a print component yet (ground orders awaiting
+  // production assignment) — and we keep those.
+  const realKeys = new Set()
+  for (let i = DATA_START_INDEX; i < aoa.length; i++) {
+    const r = aoa[i]
+    if (!r || r.length === 0) continue
+    if (isSubtotalRow(r)) continue
+    if (!isDataRow(r)) continue
+    const pt = cleanString(r[COL.PRODUCT_TYPE])
+    if (!pt) continue
+    const po = cleanString(r[COL.PO_NUMBER])
+    const ord = cleanString(r[COL.ORDER_NUMBER])
+    if (po && ord) realKeys.add(`${po}::${ord}`)
+  }
+
+  let shadowsSkipped = 0
+
   for (let i = DATA_START_INDEX; i < aoa.length; i++) {
     const r = aoa[i]
     if (!r || r.length === 0) continue
@@ -249,9 +287,23 @@ export async function parseLiftWorkbook(file) {
     const qtyInvoiced        = toNumber(r[COL.QTY_INV])
     const incomeWritten      = toNumber(r[COL.INCOME])
 
-    const site = DIVISION_TO_SITE[divisionRaw] || 'unknown'
+    // Drop shadow rows: blank PRODUCT_TYPE AND a sibling row with real PT exists.
+    if (!productType && realKeys.has(`${poNumber}::${orderNumber}`)) {
+      shadowsSkipped++
+      continue
+    }
+
+    // Site: Division is the primary signal. Fall back to MATERIAL prefix when
+    // Division is blank (typical of early-stage orphans). If neither yields a
+    // production site, we leave it 'unknown' so it surfaces in the
+    // pre-classification view rather than disappearing.
+    let site = DIVISION_TO_SITE[divisionRaw] || 'unknown'
     if (site === 'unknown') {
-      unclassified.push({ row_index: i + 1, division: divisionRaw, po: poNumber })
+      const fromMaterial = inferSiteFromMaterial(material)
+      if (fromMaterial) site = fromMaterial
+    }
+    if (site === 'unknown') {
+      unclassified.push({ row_index: i + 1, division: divisionRaw, po: poNumber, material })
     }
 
     // Color-yards: only for Passaic (Screen Print). Digital one-passes colors;
@@ -321,8 +373,15 @@ export async function parseLiftWorkbook(file) {
 
   if (unclassified.length > 0) {
     warnings.push(
-      `${unclassified.length} row(s) had an unrecognized Division value. ` +
-      `They are stored with site='unknown' and excluded from schedulers.`
+      `${unclassified.length} row(s) had no Division and no recognizable site prefix in MATERIAL. ` +
+      `They are stored with site='unknown' and surfaced in the New Goods pre-classification view. ` +
+      `LIFT-side classification (assign Division, or fix MATERIAL code) will route them properly.`
+    )
+  }
+  if (shadowsSkipped > 0) {
+    warnings.push(
+      `Skipped ${shadowsSkipped} pivot shadow row(s) (blank PRODUCT_TYPE rows that duplicate ` +
+      `a sibling row with the same PO+Order#).`
     )
   }
 

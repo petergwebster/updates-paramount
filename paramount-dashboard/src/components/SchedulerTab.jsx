@@ -4,6 +4,7 @@ import { parseLiftWorkbook } from '../liftParser'
 import { C, fmt, fmtD, SITES, isoDate, defaultSchedulerWeek } from '../lib/scheduleUtils'
 import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
+import NewGoodsView from './NewGoodsView'
 
 // ─── Shared across sites: high-color threshold used in WIP list highlighting ─
 const HIGH_COLOR_THRESHOLD = 6
@@ -18,6 +19,7 @@ export default function SchedulerTab() {
   const [view, setView] = useState('wip')
   const [snapshot, setSnapshot] = useState(null)
   const [wipRows, setWipRows] = useState([])
+  const [unknownWipRows, setUnknownWipRows] = useState([])
   const [assignments, setAssignments] = useState([])
   const [weekStart, setWeekStart] = useState(defaultSchedulerWeek())
   const [loading, setLoading] = useState(false)
@@ -38,7 +40,7 @@ export default function SchedulerTab() {
       const snap = snaps?.[0] || null
       setSnapshot(snap)
 
-      if (!snap) { setWipRows([]); setAssignments([]); return }
+      if (!snap) { setWipRows([]); setUnknownWipRows([]); setAssignments([]); return }
 
       const all = []
       const pageSize = 1000
@@ -57,6 +59,17 @@ export default function SchedulerTab() {
         from += pageSize
       }
       setWipRows(all)
+
+      // Also load any site='unknown' rows so the New Goods view can surface
+      // orphan POs (no Division yet, no recognizable MATERIAL prefix) in its
+      // pre-classification section. Small set in practice (~30 rows typical).
+      const { data: unknownData, error: unknownErr } = await supabase
+        .from('sched_wip_rows')
+        .select('*')
+        .eq('snapshot_id', snap.id)
+        .eq('site', 'unknown')
+      if (unknownErr) throw unknownErr
+      setUnknownWipRows(unknownData || [])
 
       const { data: asg, error: ae } = await supabase
         .from('sched_assignments')
@@ -232,7 +245,7 @@ export default function SchedulerTab() {
 
       {(site === 'passaic' || site === 'bny') && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-          {[{ v:'wip', l:'WIP List' },{ v:'schedule', l:'Weekly Schedule' }].map(({ v, l }) => (
+          {[{ v:'wip', l:'WIP List' },{ v:'newgoods', l:'New Goods' },{ v:'schedule', l:'Weekly Schedule' }].map(({ v, l }) => (
             <button key={v} onClick={() => setView(v)}
               style={{ padding: '8px 20px', fontSize: 13, fontWeight: view === v ? 700 : 400, borderRadius: 8, cursor: 'pointer', border: `1.5px solid ${view === v ? C.ink : C.border}`, background: view === v ? C.ink : 'transparent', color: view === v ? '#fff' : C.inkMid }}>
               {l}
@@ -288,6 +301,15 @@ export default function SchedulerTab() {
           weekStart={weekStart}
           onWeekChange={setWeekStart}
           onAssignmentsChange={reloadAssignments}
+        />
+      )}
+
+      {snapshot && !loading && view === 'newgoods' && (site === 'passaic' || site === 'bny') && (
+        <NewGoodsView
+          wipRows={wipRows}
+          unknownRows={unknownWipRows}
+          site={site}
+          siteLabel={site === 'passaic' ? 'Passaic' : 'Brooklyn'}
         />
       )}
     </div>
