@@ -1567,15 +1567,21 @@ export default function App() {
             </p>
           </div>
 
-          <div className={styles.weekNav}>
-            <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
-            <div className={styles.weekLabelStack}>
-              <span className={styles.weekLabel}>{weekLabel}</span>
-              {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
+          {/* Header week-nav is for results-oriented tabs (Consolidated, Financials,
+              People, WIP, Live Ops, Admin). Hidden when on the Scheduler tab —
+              scheduling is forward-looking and the Scheduler manages its own
+              week internally. Two week selectors confused Wendy. */}
+          {activeTab !== 'scheduler' && (
+            <div className={styles.weekNav}>
+              <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
+              <div className={styles.weekLabelStack}>
+                <span className={styles.weekLabel}>{weekLabel}</span>
+                {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
+              </div>
+              <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
+              <button onClick={()=>setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>Last week</button>
             </div>
-            <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
-            <button onClick={()=>setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>Last week</button>
-          </div>
+          )}
 
           <div className={styles.headerRight}>
             <div className={styles.sendUpdateArea}>
