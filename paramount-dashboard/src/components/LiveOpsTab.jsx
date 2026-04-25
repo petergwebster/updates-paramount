@@ -422,7 +422,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr) 110px 110px 160px 160px 140px 90px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '160px minmax(160px, 1fr) 90px 90px 140px 140px 120px 80px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
@@ -432,8 +432,8 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
       </div>
 
       {/* Planned summary */}
-      <div style={{ fontSize: 11, color: C.inkMid }}>
-        <div style={{ fontWeight: 600, color: C.ink, marginBottom: 2 }}>
+      <div style={{ fontSize: 11, color: C.inkMid, overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ fontWeight: 600, color: C.ink, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {plannedYards > 0 ? (
             <>
               {fmt(plannedYards)} yd target
