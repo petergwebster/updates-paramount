@@ -119,6 +119,22 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
     return m
   }, [newGoods])
 
+  // Age distribution — same buckets as the regular WIP aging chart so Wendy
+  // can read both views consistently. For New Goods, "old" usually means
+  // stuck in dev (a 90+ day Strike Off is a problem worth chasing).
+  const byAge = useMemo(() => {
+    const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0, 'no-date': 0 }
+    const yardsByBucket = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0, 'no-date': 0 }
+    for (const r of newGoods) {
+      const b = r.age_bucket || 'no-date'
+      if (b in buckets) {
+        buckets[b] += 1
+        yardsByBucket[b] += Number(r.yards_written || 0)
+      }
+    }
+    return { buckets, yards: yardsByBucket }
+  }, [newGoods])
+
   function toggleSort(field) {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(field); setSortDir(field === 'age' || field === 'yards' ? 'desc' : 'asc') }
@@ -154,6 +170,11 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
         <SummaryCard label="Yards committed" value={fmt(totalYards)} />
         <SummaryCard label="Revenue value" value={fmtD(totalRevenue)} />
       </div>
+
+      {/* Aging chart — mirrors the regular WIP aging visual so the two reads
+          consistently. For New Goods, an aged bucket usually means a PO
+          stuck in strike-off or approval — worth chasing. */}
+      {newGoods.length > 0 && <NewGoodsAgingBar byAge={byAge} />}
 
       {/* Status breakdown chips */}
       {newGoods.length > 0 && (
@@ -270,6 +291,42 @@ function SummaryCard({ label, value }) {
     <div style={{ flex: 1, minWidth: 160, padding: '14px 18px', background: '#fff', color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8 }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Georgia,serif' }}>{value}</div>
+    </div>
+  )
+}
+
+function NewGoodsAgingBar({ byAge }) {
+  const order = ['0-30','31-60','61-90','90+','no-date']
+  const colors = {
+    '0-30':    { bg: C.sageBg,  text: C.sage },
+    '31-60':   { bg: C.goldBg,  text: C.gold },
+    '61-90':   { bg: C.amberBg, text: C.amber },
+    '90+':     { bg: C.roseBg,  text: C.rose },
+    'no-date': { bg: C.warm,    text: C.inkLight },
+  }
+  const labels = { '0-30':'0–30 days','31-60':'31–60 days','61-90':'61–90 days','90+':'90+ days','no-date':'No date' }
+  const max = Math.max(1, ...order.map(b => byAge.yards[b] || 0))
+  const total = order.reduce((s, b) => s + (byAge.buckets[b] || 0), 0)
+  if (total === 0) return null
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: '14px 18px', marginBottom: 20 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.inkLight, marginBottom: 12 }}>New Goods aging by order date</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 110 }}>
+        {order.filter(b => (byAge.buckets[b] || 0) > 0).map(b => {
+          const c = colors[b]
+          const y = byAge.yards[b] || 0
+          const pct = Math.max((y / max) * 100, 4)
+          return (
+            <div key={b} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: c.text }}>{fmt(y)}</span>
+              <div style={{ width: '100%', height: pct * 0.6 + 'px', background: c.text, borderRadius: '3px 3px 0 0', opacity: 0.85 }} />
+              <span style={{ fontSize: 9, color: C.inkLight, textAlign: 'center' }}>{labels[b]}</span>
+              <span style={{ fontSize: 9, fontWeight: 600, color: c.text }}>{byAge.buckets[b]}</span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

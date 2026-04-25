@@ -151,21 +151,35 @@ export default function SchedulerTab() {
     }
   }
 
+  // Option C — pre-production New Goods (Waiting for Approval, Strike Off,
+  // Waiting for Sample/Screen/Material) excluded from the regular WIP view.
+  // Their 6-month dev lead times distort aging metrics and aren't comparable
+  // to ready-to-print stock. They remain in the New Goods view (full pipeline).
+  // Once a New Goods PO graduates to "Approved to Print" or beyond, it
+  // re-enters this regular WIP automatically — no special action needed.
+  const displayWipRows = useMemo(() => {
+    const ngPreprodStatuses = new Set([
+      'Waiting for Approval','Strike Off','Waiting for Sample',
+      'Waiting for Screen','Waiting for Material',
+    ])
+    return wipRows.filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
+  }, [wipRows])
+
   const totals = useMemo(() => {
     const t = { orders: 0, yards: 0, revenue: 0, color_yards: 0 }
-    for (const r of wipRows) {
+    for (const r of displayWipRows) {
       t.orders += 1
       t.yards += Number(r.yards_written || 0)
       t.revenue += Number(r.income_written || 0)
       t.color_yards += Number(r.color_yards || 0)
     }
     return t
-  }, [wipRows])
+  }, [displayWipRows])
 
   const byAge = useMemo(() => {
     const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0, 'no-date': 0 }
     const yardsByBucket = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0, 'no-date': 0 }
-    for (const r of wipRows) {
+    for (const r of displayWipRows) {
       const b = r.age_bucket || 'no-date'
       if (b in buckets) {
         buckets[b] += 1
@@ -173,11 +187,11 @@ export default function SchedulerTab() {
       }
     }
     return { buckets, yards: yardsByBucket }
-  }, [wipRows])
+  }, [displayWipRows])
 
   const byCategory = useMemo(() => {
     const m = {}
-    for (const r of wipRows) {
+    for (const r of displayWipRows) {
       const k = r.product_type || 'Other'
       if (!m[k]) m[k] = { orders: 0, yards: 0, revenue: 0, color_yards: 0 }
       m[k].orders += 1
@@ -186,7 +200,7 @@ export default function SchedulerTab() {
       m[k].color_yards += Number(r.color_yards || 0)
     }
     return m
-  }, [wipRows])
+  }, [displayWipRows])
 
   const showCY = site === 'passaic'
   const showYards = site !== 'procurement'
@@ -280,7 +294,7 @@ export default function SchedulerTab() {
             <span style={{ fontSize: 12, color: C.inkLight }}>— {Object.keys(byCategory).length} categor{Object.keys(byCategory).length === 1 ? 'y' : 'ies'}</span>
           </div>
           <CategoryTable byCategory={byCategory} showCY={showCY} showYards={showYards} />
-          <RowList rows={wipRows} showCY={showCY} showYards={showYards} />
+          <RowList rows={displayWipRows} showCY={showCY} showYards={showYards} />
         </>
       )}
 
@@ -344,7 +358,11 @@ function AgingBar({ byAge }) {
   return (
     <div style={{ background: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: '14px 18px', marginBottom: 20 }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.inkLight, marginBottom: 12 }}>WIP Aging by Order Date</div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 80 }}>
+      {/* Container height accommodates: value label (~14px) + bar (max 60px) +
+          bucket label (~12px) + count (~12px) + 3 gaps (9px) = ~107px. Set
+          to 110 to avoid overflow when the tallest bucket's label would
+          otherwise push above the container into the title row. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 110 }}>
         {order.filter(b => (byAge.buckets[b] || 0) > 0).map(b => {
           const c = colors[b]
           const y = byAge.yards[b] || 0

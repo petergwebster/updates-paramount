@@ -117,8 +117,16 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       'Waiting for Material','Waiting for Screen','Waiting for Approval','Waiting for Sample',
       'Strike Off','Orders Unallocated',
     ])
+    // Pre-production New Goods (strike-off / approval / waiting-for-material)
+    // live in the New Goods view only. They return here automatically once
+    // their status reaches "Approved to Print" or beyond.
+    const ngPreprodStatuses = new Set([
+      'Waiting for Approval','Strike Off','Waiting for Sample',
+      'Waiting for Screen','Waiting for Material',
+    ])
     return schedulableWip
       .filter(r => schedulableStatuses.has(r.order_status || ''))
+      .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = assignedByPO[r.po_number] || 0
         const remaining = Math.max(0, Number(r.yards_written || 0) - already)

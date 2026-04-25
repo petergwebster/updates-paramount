@@ -1568,10 +1568,10 @@ export default function App() {
           </div>
 
           {/* Header week-nav is for results-oriented tabs (Consolidated, Financials,
-              People, WIP, Live Ops, Admin). Hidden when on the Scheduler tab —
-              scheduling is forward-looking and the Scheduler manages its own
-              week internally. Two week selectors confused Wendy. */}
-          {activeTab !== 'scheduler' && (
+              People, WIP, Admin). Hidden on Scheduler and Live Ops — those tabs
+              are forward-looking / live-state and manage their own week internally.
+              Two week selectors confused Wendy. */}
+          {activeTab !== 'scheduler' && activeTab !== 'liveops' && (
             <div className={styles.weekNav}>
               <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
               <div className={styles.weekLabelStack}>

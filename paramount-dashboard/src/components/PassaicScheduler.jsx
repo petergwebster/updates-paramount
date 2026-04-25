@@ -82,8 +82,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       'Waiting for Material','Waiting for Screen','Waiting for Approval','Waiting for Sample',
       'Strike Off','Orders Unallocated',
     ])
+    // Pre-production New Goods (in strike-off / approval / waiting-for-material
+    // stages) live in the New Goods view only — they're tracked as a dev
+    // pipeline, not as schedulable production. Once a New Goods PO reaches
+    // "Approved to Print" or beyond, it returns to the pool automatically.
+    const ngPreprodStatuses = new Set([
+      'Waiting for Approval','Strike Off','Waiting for Sample',
+      'Waiting for Screen','Waiting for Material',
+    ])
     return wipRows
       .filter(r => schedulableStatuses.has(r.order_status || ''))
+      .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = assignedByPO[r.po_number] || 0
         const remaining = Math.max(0, Number(r.yards_written || 0) - already)
