@@ -11,17 +11,27 @@ const BNY_TARGETS = {
   buckets: {
     'Replen':    7885,
     'NEW GOODS': null,
-    'MTO':       1280,
+    // Wendy 4/2026: "Custom" = Schumacher Custom Team orders (Sarah's lane on
+    // BNY 3600s/570s). "MTO" = regular Made-to-Order (prints on Passaic digital
+    // fleet). LIFT category is "MTO" for both; customer name disambiguates.
+    // Combined target was 1,280/wk under the legacy single MTO bucket — split
+    // proportionally below pending Wendy's confirmation of per-lane target.
+    'Custom':     430,   // ~34% of 1,280 (43 of 127 current MTO POs are Custom)
+    'MTO':        850,   // ~66% of 1,280 (84 of 127 current MTO POs are regular)
     'HOS':        210,
     'Memo':      1535,
     '3P':        1090,
   },
 }
 
-const BNY_BUCKETS = ['Replen', 'NEW GOODS', 'MTO', 'HOS', 'Memo', '3P']
+const BNY_BUCKETS = ['Replen', 'NEW GOODS', 'Custom', 'MTO', 'HOS', 'Memo', '3P']
+// Aubergine inline for Custom — palette `C` has 6 named accent colors, we need 7
+const CUSTOM_COLOR = '#7B5675'
+const CUSTOM_BG    = '#F2EAF1'
 const BUCKET_COLOR = {
   'Replen':    C.navy,
   'NEW GOODS': C.gold,
+  'Custom':    CUSTOM_COLOR,
   'MTO':       C.sage,
   'HOS':       C.amber,
   'Memo':      C.slate,
@@ -30,6 +40,7 @@ const BUCKET_COLOR = {
 const BUCKET_BG = {
   'Replen':    C.navyLight,
   'NEW GOODS': C.goldBg,
+  'Custom':    CUSTOM_BG,
   'MTO':       C.sageBg,
   'HOS':       C.amberBg,
   'Memo':      C.slateBg,
@@ -951,7 +962,8 @@ OPERATORS:
 THE MIX IS THE SCHEDULE — BNY framework (different from Passaic's Schumacher/3P view):
 - Replen (target 7,885 yd/wk): F. Schumacher HUB warehouse replenishment — the main production flow, biggest bucket.
 - NEW GOODS (no target set yet, track it separately): F. Schumacher NEW GOODS customer — first-time production of new patterns.
-- MTO (target 1,280 yd/wk): F. Schumacher custom Made-to-Order.
+- Custom (target ~430 yd/wk, TBD): Schumacher Custom Team orders. Customer = "F. Schumacher & Co. Custom MTO". Sarah manages these. Prints at BROOKLYN (3600s/570s), NOT on Passaic digitals.
+- MTO (target ~850 yd/wk, TBD): Regular Made-to-Order. Customer = "F. Schumacher & Co - MTO". Prints on PASSAIC DIGITAL FLEET, NOT at Brooklyn. Out-of-stock at HUB, 48hr turn required.
 - HOS (target 210 yd/wk): Hospitality — F. SCHUMACHER & CO - HOSPITALITY customer.
 - Memo (target 1,535 yd/wk): Small sample orders for Schumacher Memos.
 - 3P (target 1,090 yd/wk): Third-party customers (Carleton V, E.W. Bredemeier, etc.). Higher margin — profit engine.
@@ -965,13 +977,13 @@ KEY DIFFERENCES FROM PASSAIC:
 SCHEDULING LOGIC (machine-by-machine defaults — follow these unless Chandler tells you otherwise):
 
 Brooklyn 3600s — Glow, Sasha, Trish (600 yd/day):
-These are the workhorses. Prioritize big aged Replen and NEW GOODS runs here. Large run sizes benefit from the 3600's speed. Do NOT load MTO on 3600s unless Passaic is already full.
+These are the workhorses. Prioritize Custom (Sarah's lane), big aged Replen, and NEW GOODS runs here. Large run sizes benefit from the 3600's speed. Do NOT load regular MTO on 3600s unless Passaic is already full — MTO is the Passaic digital lane.
 
 Brooklyn 570s — Bianca, LASH, Chyna, Rhonda (500 yd/day):
-Medium Replen, NEW GOODS, and HOS fit well. Also a good overflow lane if MTO/Memo exceeds Passaic capacity. Weekdays only — do NOT propose weekend work here.
+Custom (Sarah's lane), medium Replen, NEW GOODS, and HOS fit well. Also a good overflow lane if regular MTO/Memo exceeds Passaic capacity. Weekdays only — do NOT propose weekend work here.
 
-Passaic digital fleet (12 machines, 500 yd/day each): THIS IS THE MTO LANE.
-Strict bucket priority: MTO first → Memo second → Replen last. MTO orders are out of stock at the F. Schumacher HUB warehouse and need to ship within 48 hours. NEVER schedule Replen on Passaic while there is unfilled MTO in the pool. If MTO + Memo doesn't fill Passaic's 5,000 yd/week, THEN backfill with Replen. Weekdays only — do NOT propose weekend work on any Passaic machine.
+Passaic digital fleet (12 machines, 500 yd/day each): THIS IS THE REGULAR MTO LANE.
+Strict bucket priority: MTO first → Memo second → Replen last. MTO orders are out of stock at the F. Schumacher HUB warehouse and need to ship within 48 hours. NEVER schedule Replen on Passaic while there is unfilled MTO in the pool. If MTO + Memo doesn't fill Passaic's 5,000 yd/week, THEN backfill with Replen. Do NOT load Custom orders on Passaic — those belong to Sarah's Brooklyn lane. Weekdays only — do NOT propose weekend work on any Passaic machine.
 
 Weekend shifts (day_of_week 0 = Sun, day_of_week 6 = Sat):
 Brooklyn 3600s ONLY by default. Do not propose weekend assignments on 570s or on any Passaic digital. The UI allows manual weekend assignment on other machines, but that's Chandler's call — your draft uses 3600s only for Sat/Sun. Use weekend 3600 capacity for the biggest aged Replen/NEW GOODS runs.
@@ -1057,10 +1069,11 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
     const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
 
     // Bucket-balanced pool sampling. Top N per bucket by age, then concatenated
-    // in PRIORITY order (MTO first) so Opus sees urgent work before aged backlog.
-    // Prevents MTO/Memo from being crowded out of the context when aged Replen dominates.
-    const BUCKET_CAPS = { 'MTO': 60, 'Memo': 40, 'HOS': 20, '3P': 20, 'NEW GOODS': 40, 'Replen': 80 }
-    const BUCKET_PRIORITY = ['MTO', 'Memo', 'HOS', '3P', 'NEW GOODS', 'Replen']
+    // in PRIORITY order (Custom and MTO first — both are 48hr-critical) so Opus sees
+    // urgent work before aged backlog. Prevents urgent buckets from being crowded
+    // out of the context when aged Replen dominates.
+    const BUCKET_CAPS = { 'Custom': 30, 'MTO': 60, 'Memo': 40, 'HOS': 20, '3P': 20, 'NEW GOODS': 40, 'Replen': 80 }
+    const BUCKET_PRIORITY = ['Custom', 'MTO', 'Memo', 'HOS', '3P', 'NEW GOODS', 'Replen']
     const byBucket = Object.fromEntries(BNY_BUCKETS.map(b => [b, []]))
     for (const p of pool) {
       if (p.bny_bucket && byBucket[p.bny_bucket]) byBucket[p.bny_bucket].push(p)
@@ -1094,17 +1107,17 @@ CRITICAL REMINDERS when proposing assignments:
 - DO NOT include an operator field. Chandler staffs machines himself.
 
 MACHINE-FAMILY PRIORITY (this is how Chandler actually runs BNY):
-- Passaic digitals (Dakota Ka, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey) = the MTO lane. Bucket order: MTO → Memo → Replen. NEVER load Replen onto a Passaic digital while MTO remains unscheduled in the pool (MTOs are out-of-stock at the HUB and need 48-hour turns). Backfill with Memo, then Replen only if MTO and Memo don't fill the 5,000 yd/week target.
+- Passaic digitals (Dakota Ka, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey) = the regular MTO lane. Bucket order: MTO → Memo → Replen. NEVER load Replen onto a Passaic digital while MTO remains unscheduled in the pool (MTOs are out-of-stock at the HUB and need 48-hour turns). Backfill with Memo, then Replen only if MTO and Memo don't fill the 5,000 yd/week target. NEVER load Custom on Passaic.
 
 MANDATORY CHECKLIST before writing ANY proposal for a Passaic machine:
-1. Look at the Pool counts above. How many MTO POs are there?
-2. If MTO count > 0: your Passaic proposal MUST be an MTO PO. Not Memo. Not Replen. MTO.
+1. Look at the Pool counts above. How many MTO POs are there? (MTO bucket only — NOT Custom.)
+2. If MTO count > 0: your Passaic proposal MUST be an MTO PO. Not Custom, not Memo, not Replen. MTO.
 3. If MTO count = 0 (all MTO already scheduled this draft): then Memo is next.
 4. If MTO = 0 and Memo = 0: then and only then, Replen.
 5. Work through MTO POs in age-descending order (oldest first).
-If you catch yourself proposing a Replen or NEW GOODS assignment on a Passaic machine while MTO is non-zero, stop, reconsider, and replace it with MTO.
-- Brooklyn 3600s (Glow, Sasha, Trish) = workhorses for big aged Replen and NEW GOODS runs. Don't load MTO here unless Passaic is already full.
-- Brooklyn 570s (Bianca, LASH, Chyna, Rhonda) = medium Replen, NEW GOODS, HOS. Also the overflow lane if MTO/Memo exceeds Passaic capacity.
+If you catch yourself proposing a Replen or NEW GOODS assignment on a Passaic machine while MTO is non-zero, stop, reconsider, and replace it with MTO. Same for Custom on Passaic — Custom belongs at Brooklyn.
+- Brooklyn 3600s (Glow, Sasha, Trish) = workhorses for Custom (Sarah's lane), big aged Replen, and NEW GOODS runs. Don't load regular MTO here unless Passaic is already full.
+- Brooklyn 570s (Bianca, LASH, Chyna, Rhonda) = Custom, medium Replen, NEW GOODS, HOS. Also the overflow lane if regular MTO/Memo exceeds Passaic capacity.
 - Weekends (day_of_week = 0 Sun or 6 Sat): Brooklyn 3600s ONLY by default. Do NOT propose Sat/Sun assignments on 570s or any Passaic digital. The UI allows manual weekend overrides, but your draft stays on the 3600s.
 
 When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences exactly like this:

@@ -182,7 +182,15 @@ function deriveBnyBucket({ site, customer_type, category_customer_mto, customer_
   if (is3P) return '3P'
 
   // Rules 3-5: Schumacher category-specific buckets
-  if (category === 'MTO')         return 'MTO'
+  // MTO splits into two lanes per Wendy 4/2026: Custom (Sarah's BNY 3600s/570s)
+  // vs regular MTO (Passaic digital fleet). Both have category="MTO" in LIFT;
+  // the customer-name field is the discriminator. If LIFT later exposes the
+  // "Order Title" field in the WIP export, switch to that — Order Title =
+  // "Custom MTO" is Wendy's preferred discriminator.
+  if (category === 'MTO') {
+    if (customer.toUpperCase().includes('CUSTOM MTO')) return 'Custom'
+    return 'MTO'
+  }
   if (category === 'Memo')        return 'Memo'
   if (category === 'Hospitality') return 'HOS'
 
