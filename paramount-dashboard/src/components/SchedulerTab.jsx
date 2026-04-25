@@ -17,6 +17,7 @@ const HIGH_COLOR_THRESHOLD = 6
 export default function SchedulerTab() {
   const [site, setSite] = useState('passaic')
   const [view, setView] = useState('wip')
+  const [procFilter, setProcFilter] = useState('all') // all | spo — only used when site='procurement'
   const [snapshot, setSnapshot] = useState(null)
   const [wipRows, setWipRows] = useState([])
   const [unknownWipRows, setUnknownWipRows] = useState([])
@@ -268,6 +269,21 @@ export default function SchedulerTab() {
         </div>
       )}
 
+      {site === 'procurement' && (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+          {[{ v:'wip', l:'WIP List' },{ v:'newgoods', l:'New Goods' }].map(({ v, l }) => {
+            // Procurement doesn't get a Weekly Schedule view (pass-through, no scheduling)
+            const procView = view === 'schedule' ? 'wip' : view
+            return (
+              <button key={v} onClick={() => setView(v)}
+                style={{ padding: '8px 20px', fontSize: 13, fontWeight: procView === v ? 700 : 400, borderRadius: 8, cursor: 'pointer', border: `1.5px solid ${procView === v ? C.ink : C.border}`, background: procView === v ? C.ink : 'transparent', color: procView === v ? '#fff' : C.inkMid }}>
+                {l}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {!snapshot && !loading && (
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>⌘</div>
@@ -280,7 +296,7 @@ export default function SchedulerTab() {
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.inkLight, fontSize: 14 }}>Loading…</div>
       )}
 
-      {snapshot && !loading && (view === 'wip' || site === 'procurement') && (
+      {snapshot && !loading && (view === 'wip' || (site === 'procurement' && view === 'schedule')) && (
         <>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
             <SummaryCard label="Active orders" value={fmt(totals.orders)} />
@@ -294,7 +310,26 @@ export default function SchedulerTab() {
             <span style={{ fontSize: 12, color: C.inkLight }}>— {Object.keys(byCategory).length} categor{Object.keys(byCategory).length === 1 ? 'y' : 'ies'}</span>
           </div>
           <CategoryTable byCategory={byCategory} showCY={showCY} showYards={showYards} />
-          <RowList rows={displayWipRows} showCY={showCY} showYards={showYards} />
+          {site === 'procurement' && (
+            <div style={{ marginTop: 16, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginRight: 4 }}>Filter:</span>
+              <button onClick={() => setProcFilter('all')}
+                style={{ padding: '5px 12px', fontSize: 11, fontWeight: procFilter === 'all' ? 700 : 500, borderRadius: 14, border: `1px solid ${procFilter === 'all' ? C.ink : C.border}`, background: procFilter === 'all' ? C.ink : 'transparent', color: procFilter === 'all' ? '#fff' : C.inkMid, cursor: 'pointer' }}>
+                All ({displayWipRows.length})
+              </button>
+              <button onClick={() => setProcFilter('spo')}
+                style={{ padding: '5px 12px', fontSize: 11, fontWeight: procFilter === 'spo' ? 700 : 500, borderRadius: 14, border: `1px solid ${procFilter === 'spo' ? '#C75D2F' : C.border}`, background: procFilter === 'spo' ? '#C75D2F' : 'transparent', color: procFilter === 'spo' ? '#fff' : C.inkMid, cursor: 'pointer' }}>
+                SPO ship-direct ({displayWipRows.filter(r => (r.po_number || '').toUpperCase().startsWith('SOP')).length})
+              </button>
+            </div>
+          )}
+          <RowList
+            rows={site === 'procurement' && procFilter === 'spo'
+              ? displayWipRows.filter(r => (r.po_number || '').toUpperCase().startsWith('SOP'))
+              : displayWipRows}
+            showCY={showCY}
+            showYards={showYards}
+          />
         </>
       )}
 
@@ -318,12 +353,12 @@ export default function SchedulerTab() {
         />
       )}
 
-      {snapshot && !loading && view === 'newgoods' && (site === 'passaic' || site === 'bny') && (
+      {snapshot && !loading && view === 'newgoods' && (site === 'passaic' || site === 'bny' || site === 'procurement') && (
         <NewGoodsView
           wipRows={wipRows}
           unknownRows={unknownWipRows}
           site={site}
-          siteLabel={site === 'passaic' ? 'Passaic' : 'Brooklyn'}
+          siteLabel={site === 'passaic' ? 'Passaic' : site === 'bny' ? 'Brooklyn' : 'Procurement'}
         />
       )}
     </div>
@@ -473,9 +508,16 @@ function RowList({ rows, showCY, showYards }) {
         </div>
         {shown.map(r => {
           const ageColor = (r.age_days || 0) > 90 ? C.rose : (r.age_days || 0) > 60 ? C.amber : C.inkMid
+          // SPO ship-direct ground orders identified by PO prefix per Wendy 4/2026.
+          // Visible badge so Wendy/Chandler can spot them at a glance — these
+          // ship direct to Schumacher customers, not pass-through to HUB.
+          const isSpo = (r.po_number || '').toUpperCase().startsWith('SOP')
           return (
             <div key={r.id} style={{ display: 'grid', gridTemplateColumns: `110px 1fr 120px 120px 60px ${showYards ? '70px' : ''} ${showCY ? '80px' : ''} 90px 60px`.trim(), gap: 0, padding: '8px 14px', borderTop: `1px solid ${C.border}`, fontSize: 12 }}>
-              <span style={{ color: C.inkLight, fontFamily: 'monospace', fontSize: 11 }}>{r.po_number}</span>
+              <span style={{ color: C.inkLight, fontFamily: 'monospace', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.po_number}</span>
+                {isSpo && <span title="Ship-direct (not HUB)" style={{ background: '#C75D2F', color: '#fff', fontSize: 8, padding: '1px 4px', borderRadius: 3, fontWeight: 700, letterSpacing: '0.04em', flexShrink: 0 }}>SPO</span>}
+              </span>
               <span style={{ color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</span>
               <span style={{ color: C.inkMid, fontSize: 11 }}>{r.order_status}</span>
               <span style={{ color: C.inkMid, fontSize: 11 }}>{r.product_type}</span>
