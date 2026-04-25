@@ -378,16 +378,19 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
   const [notes, setNotes]   = useState(op?.notes ?? '')
+  const [notesModalOpen, setNotesModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
 
-  // Reset fields when the underlying row changes (user navigates day/site)
+  // Reset fields when the underlying row changes (user navigates day/site).
+  // Also close the notes modal so it doesn't hover with stale state.
   useEffect(() => {
     setYards(op?.actual_yards ?? '')
     setWaste(op?.waste_yards ?? '')
     setOp1(op?.operator_1 ?? '')
     setOp2(op?.operator_2 ?? '')
     setNotes(op?.notes ?? '')
+    setNotesModalOpen(false)
     setSavedAt(null)
   }, [op?.id, op?.actual_yards, op?.waste_yards, op?.operator_1, op?.operator_2, op?.notes])
 
@@ -419,7 +422,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px 1fr 110px 110px 160px 160px 1.6fr 90px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px 1fr 110px 110px 160px 160px 140px 90px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
@@ -488,12 +491,23 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
         </select>
       </div>
 
-      {/* Notes */}
+      {/* Notes — pop-out editor. The button shows a preview when populated;
+          clicking opens a full-size modal. The note is staged on this row's
+          local state and saves with the row's main Save button (consistent
+          with how operators / yards already work — one save path). */}
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</label>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-          placeholder="Registration issues, color mix problems, anything worth remembering…"
-          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
+        {notes ? (
+          <button onClick={() => setNotesModalOpen(true)} title={notes}
+            style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.ink, background: C.warm, cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'inherit', display: 'block' }}>
+            ✏️ {notes.split('\n')[0]}
+          </button>
+        ) : (
+          <button onClick={() => setNotesModalOpen(true)}
+            style={{ width: '100%', padding: '6px 8px', border: `1px dashed ${C.border}`, borderRadius: 4, fontSize: 11, color: C.inkLight, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'block' }}>
+            + Add note
+          </button>
+        )}
       </div>
 
       {/* Save */}
@@ -506,6 +520,37 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
           <div style={{ fontSize: 9, color: C.sage, textAlign: 'center', fontWeight: 600 }}>✓ saved</div>
         )}
       </div>
+
+      {/* Notes pop-out modal — backdrop click closes; same pattern as the
+          CrewModal in PassaicScheduler. Note edits live on the row's local
+          state; the row's Save button commits them with the rest of the row. */}
+      {notesModalOpen && (
+        <div onClick={(e) => e.target === e.currentTarget && setNotesModalOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '14px 18px', background: C.navy, color: '#fff' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Notes · {table.label || table.code}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
+                Registration issues, color mix problems, crew changes — anything worth remembering.
+              </div>
+            </div>
+            <div style={{ padding: 18 }}>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} autoFocus
+                rows={10} placeholder="Type here…"
+                style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 200, lineHeight: 1.5 }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12 }}>
+                <span style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
+                  Saves with the row's Save button.
+                </span>
+                <button onClick={() => setNotesModalOpen(false)}
+                  style={{ padding: '8px 18px', background: C.ink, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
