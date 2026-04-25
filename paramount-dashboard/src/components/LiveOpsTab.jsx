@@ -622,10 +622,18 @@ function SummaryView({ weekStart, setSelectedDate }) {
           {/* Section 1: Weekly totals per site */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
             <SiteTotals label="Passaic · Screen Print" color={C.navy}
-              ops={data.passaicOps} assignments={data.passaicAsn} />
+              ops={data.passaicOps} assignments={data.passaicAsn}
+              tables={SUMMARY_PASSAIC_TABLES} site="passaic" />
             <SiteTotals label="BNY · Digital" color={C.amber}
-              ops={data.bnyOps} assignments={data.bnyAsn} />
+              ops={data.bnyOps} assignments={data.bnyAsn}
+              tables={SUMMARY_BNY_MACHINES} site="bny" />
           </div>
+
+          {/* Section 1b: Notes from this week — surfaces operator commentary
+              to the exec view so it doesn't stay buried in per-cell notes. */}
+          <WeeklyNotesPanel
+            passaicOps={data.passaicOps}
+            bnyOps={data.bnyOps} />
 
           {/* Section 2: Day-by-day grid per site */}
           <DayGrid label="Passaic — Day-by-Day" tables={SUMMARY_PASSAIC_TABLES}
@@ -646,20 +654,62 @@ function SummaryView({ weekStart, setSelectedDate }) {
   )
 }
 
+// Single source of truth for "what's the planned yards for table T on day D?".
+// Used by both SiteTotals (the cards) and DayGrid (the grid below). Before
+// this existed, the card summed only sched_daily_ops.planned_yards while the
+// grid additionally fell back to Math.round(weekly / 5) for empty cells —
+// resulting in a card that said 50 while the grid showed 70 for the same
+// week. Now both call this helper and agree.
+//
+// For Passaic, plan comes ONLY from sched_daily_ops. No "weekly / 5" fallback,
+// matching the Phase 2 PassaicScheduler fix that killed phantom derived
+// values. For BNY, plan can also come from sched_assignments because BNY
+// stores assignments with day_of_week (this is reading actual scheduled
+// data, not deriving). Returns null for cells with no plan; null contributes
+// nothing to totals and renders as "—" in the grid.
+function plannedForCell(site, tableCode, d, ops, assignments) {
+  const op = ops.find(r => r.table_code === tableCode && r.day_of_week === d)
+  if (op?.planned_yards != null) return Number(op.planned_yards)
+  if (site === 'bny') {
+    const daily = assignments
+      .filter(a => a.table_code === tableCode && a.day_of_week === d)
+      .reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+    return daily > 0 ? daily : null
+  }
+  return null
+}
+
 // Site totals card: planned, actual, variance, waste for selected week
-function SiteTotals({ label, color, ops, assignments }) {
-  const totalPlanned = ops.reduce((s, r) => s + Number(r.planned_yards || 0), 0)
-  const totalActual = ops.reduce((s, r) => s + Number(r.actual_yards || 0), 0)
-  const totalWaste = ops.reduce((s, r) => s + Number(r.waste_yards || 0), 0)
-  // If no explicit planned_yards, fall back to weekly PO yards
-  const assignedYards = assignments.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
-  const effectivePlan = totalPlanned > 0 ? totalPlanned : assignedYards
-  const variance = totalActual - effectivePlan
-  const varianceColor = effectivePlan === 0 ? C.inkLight
-    : Math.abs(variance) / effectivePlan < 0.05 ? C.sage
+function SiteTotals({ label, color, ops, assignments, tables, site }) {
+  const days = site === 'bny' ? [0,1,2,3,4,5,6] : [1,2,3,4,5]
+
+  // Planned: sum across every (table, day) cell using the shared helper.
+  // Guarantees this card and the day-by-day grid agree.
+  let totalPlanned = 0
+  for (const t of tables) {
+    for (const d of days) {
+      const p = plannedForCell(site, t.code, d, ops, assignments)
+      if (p != null) totalPlanned += p
+    }
+  }
+
+  // Actuals: only sum rows that have explicit entries. If nothing has been
+  // entered yet, show "—" rather than a phantom 0 / negative variance —
+  // otherwise a future week reads as "we underran by 50 yards" when nothing
+  // has happened yet.
+  const opsWithActuals = ops.filter(r => r.actual_yards != null)
+  const hasAnyActuals = opsWithActuals.length > 0
+  const totalActual = opsWithActuals.reduce((s, r) => s + Number(r.actual_yards || 0), 0)
+  const totalWaste = ops
+    .filter(r => r.waste_yards != null)
+    .reduce((s, r) => s + Number(r.waste_yards || 0), 0)
+
+  const variance = hasAnyActuals ? totalActual - totalPlanned : null
+  const varianceColor = !hasAnyActuals || totalPlanned === 0 ? C.inkLight
+    : Math.abs(variance) / totalPlanned < 0.05 ? C.sage
     : variance > 0 ? C.gold
-    : Math.abs(variance) / effectivePlan < 0.15 ? C.gold : C.rose
-  const wastePct = totalActual > 0 ? (totalWaste / totalActual * 100) : null
+    : Math.abs(variance) / totalPlanned < 0.15 ? C.gold : C.rose
+  const wastePct = hasAnyActuals && totalActual > 0 ? (totalWaste / totalActual * 100) : null
 
   return (
     <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -667,10 +717,17 @@ function SiteTotals({ label, color, ops, assignments }) {
         {label}
       </div>
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
-        <Stat label="Planned" value={fmt(effectivePlan)} unit="yd" />
-        <Stat label="Actual" value={fmt(totalActual)} unit="yd" />
-        <Stat label="Variance" value={variance >= 0 ? `+${fmt(variance)}` : fmt(variance)} unit="yd" color={varianceColor} />
-        <Stat label="Waste" value={fmt(totalWaste)} unit="yd"
+        <Stat label="Planned" value={fmt(totalPlanned)} unit="yd" />
+        <Stat label="Actual"
+          value={hasAnyActuals ? fmt(totalActual) : '—'}
+          unit={hasAnyActuals ? 'yd' : 'no entries yet'} />
+        <Stat label="Variance"
+          value={hasAnyActuals ? (variance >= 0 ? `+${fmt(variance)}` : fmt(variance)) : '—'}
+          unit="yd"
+          color={hasAnyActuals ? varianceColor : C.inkLight} />
+        <Stat label="Waste"
+          value={hasAnyActuals ? fmt(totalWaste) : '—'}
+          unit="yd"
           sub={wastePct != null ? `${wastePct.toFixed(1)}%` : null}
           color={wastePct != null && wastePct > 10 ? C.rose : wastePct != null && wastePct > 4 ? C.gold : C.inkMid} />
       </div>
@@ -688,27 +745,65 @@ function Stat({ label, value, unit, color, sub }) {
   )
 }
 
+// Weekly notes roll-up — pulls every non-empty note from the week's daily-ops
+// rows on both sites and lists them chronologically. High-signal panel for
+// the exec view: scan the week's operational events without paging through
+// each table-day cell.
+function WeeklyNotesPanel({ passaicOps, bnyOps }) {
+  const collect = (ops, site) => ops
+    .filter(r => r.notes && r.notes.trim().length > 0)
+    .map(r => ({
+      site,
+      day: r.day_of_week ?? 99,
+      table: r.table_code,
+      operators: [r.operator_1, r.operator_2].filter(Boolean).join(' & ') || 'unattributed',
+      text: r.notes.trim(),
+    }))
+  const all = [...collect(passaicOps, 'passaic'), ...collect(bnyOps, 'bny')]
+    .sort((a, b) => a.day - b.day || a.table.localeCompare(b.table))
+
+  if (all.length === 0) return null
+
+  const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const siteColor = { passaic: C.navy, bny: C.amber }
+  const siteShort = { passaic: 'Passaic', bny: 'BNY' }
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 24 }}>
+      <div style={{ padding: '10px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>Notes from this week</span>
+        <span style={{ fontSize: 10, color: C.inkLight, fontWeight: 600, fontFamily: 'inherit', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {all.length} {all.length === 1 ? 'note' : 'notes'}
+        </span>
+      </div>
+      {all.map((n, i) => (
+        <div key={i} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${C.border}` : 'none' }}>
+          <div style={{ fontSize: 10, color: C.inkLight, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-block', padding: '1px 6px', background: siteColor[n.site], color: '#fff', borderRadius: 3, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em' }}>{siteShort[n.site]}</span>
+            <span style={{ fontWeight: 600, color: C.inkMid }}>{dayLabels[n.day] || '—'}</span>
+            <span>·</span>
+            <span style={{ fontWeight: 600, color: C.ink }}>{n.table}</span>
+            <span>·</span>
+            <span>{n.operators}</span>
+          </div>
+          <div style={{ fontSize: 12, color: C.ink, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{n.text}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Day-by-day grid: rows = tables/machines, columns = Mon-Fri + Week total
 function DayGrid({ label, tables, ops, assignments, site }) {
   const days = site === 'bny' ? [0,1,2,3,4,5,6] : [1,2,3,4,5]
   const dayLabels = site === 'bny' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri']
   const colCount = days.length
 
-  // Helper: get plan + actual for a (table, day)
+  // Plan + actual for a (table, day). Plan computation uses the shared
+  // plannedForCell helper so this grid agrees with the SiteTotals card above.
   function cellData(tableCode, d) {
     const op = ops.find(r => r.table_code === tableCode && r.day_of_week === d)
-    let plan = op?.planned_yards
-    if (plan == null && site === 'passaic') {
-      // Fall back to derived daily from weekly PO assignment
-      const weekly = assignments.filter(a => a.table_code === tableCode).reduce((s, a) => s + Number(a.planned_yards || 0), 0)
-      if (weekly > 0 && d >= 1 && d <= 5) plan = Math.round(weekly / 5)
-    }
-    if (plan == null && site === 'bny') {
-      // BNY: assignments have day_of_week; plan is per-cell
-      const daily = assignments.filter(a => a.table_code === tableCode && a.day_of_week === d)
-        .reduce((s, a) => s + Number(a.planned_yards || 0), 0)
-      if (daily > 0) plan = daily
-    }
+    const plan = plannedForCell(site, tableCode, d, ops, assignments)
     const actual = op?.actual_yards
     return { plan, actual }
   }
