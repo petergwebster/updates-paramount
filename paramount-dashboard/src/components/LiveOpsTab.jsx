@@ -8,6 +8,16 @@ import {
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
 
+// Note assignees per Wendy 4/2026. Roles rather than names so the list stays
+// stable when people change positions. Edit this list when org changes.
+// "Peter Webster" stays as a name since PW is uniquely you in this context.
+const NOTE_ASSIGNEES = [
+  'QA Lead',
+  'Production Manager',
+  'Operations Manager',
+  'Peter Webster',
+]
+
 // Passaic table list (mirrors PassaicScheduler — kept here to avoid circular import)
 const PASSAIC_TABLES = [
   { code: 'GC-1',   category: 'grass',     label: 'Grasscloth 1' },
@@ -378,6 +388,11 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
   const [notes, setNotes]   = useState(op?.notes ?? '')
+  // Note delegation v1 (Wendy 4/2026): assign a note to one of four roles.
+  // Status auto-flips to 'open' when assigned and a note exists; stays null
+  // for unassigned notes; flips to 'resolved' via the Mark Resolved button.
+  const [assignedTo, setAssignedTo] = useState(op?.note_assigned_to ?? '')
+  const [noteStatus, setNoteStatus] = useState(op?.note_status ?? null)
   const [notesModalOpen, setNotesModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
@@ -390,20 +405,53 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     setOp1(op?.operator_1 ?? '')
     setOp2(op?.operator_2 ?? '')
     setNotes(op?.notes ?? '')
+    setAssignedTo(op?.note_assigned_to ?? '')
+    setNoteStatus(op?.note_status ?? null)
     setNotesModalOpen(false)
     setSavedAt(null)
-  }, [op?.id, op?.actual_yards, op?.waste_yards, op?.operator_1, op?.operator_2, op?.notes])
+  }, [op?.id, op?.actual_yards, op?.waste_yards, op?.operator_1, op?.operator_2, op?.notes, op?.note_assigned_to, op?.note_status])
 
   async function handleSave() {
     setSaving(true)
+    // Status logic: assignment + note text → 'open' (unless already 'resolved')
+    // No assignment → null. Resolved status sticks until user clears assignment.
+    let nextStatus = noteStatus
+    if (assignedTo && notes) {
+      if (nextStatus !== 'resolved') nextStatus = 'open'
+    } else {
+      nextStatus = null
+    }
     const patch = {
       operator_1: op1 || null,
       operator_2: op2 || null,
       actual_yards: yards === '' ? null : Number(yards),
       waste_yards: waste === '' ? null : Number(waste),
       notes: notes || null,
+      note_assigned_to: assignedTo || null,
+      note_status: nextStatus,
     }
     await onSave(patch)
+    // Fire Slack notification only when the assignment is NEW or CHANGED, and
+    // status is 'open'. Silent on every other save (yards updates, edits to
+    // note text without reassignment, marking resolved, etc.) to avoid spam.
+    const wasAssignedToSomeone = !!op?.note_assigned_to
+    const assigneeChanged = (op?.note_assigned_to || '') !== (assignedTo || '')
+    const becomingOpen = nextStatus === 'open'
+    if (assignedTo && becomingOpen && (assigneeChanged || !wasAssignedToSomeone)) {
+      // Best-effort — failures don't block the save flow.
+      fetch('/api/slack-note-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignedTo,
+          site,
+          tableLabel: table.label || table.code,
+          dateLabel: op?.date_label || '',
+          noteText: notes,
+        }),
+      }).catch(() => {})
+    }
+    setNoteStatus(nextStatus)
     setSaving(false)
     setSavedAt(Date.now())
   }
@@ -506,6 +554,14 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
           <button onClick={() => setNotesModalOpen(true)} title={notes}
             style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.ink, background: C.warm, cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'inherit', display: 'block' }}>
             ✏️ {notes.split('\n')[0]}
+            {assignedTo && (
+              <span style={{ marginLeft: 6, fontSize: 9, padding: '0 4px', borderRadius: 2, fontWeight: 700, letterSpacing: '0.04em',
+                background: noteStatus === 'resolved' ? C.sageBg : C.goldBg,
+                color: noteStatus === 'resolved' ? C.sage : C.gold,
+              }}>
+                {noteStatus === 'resolved' ? '✓' : '→'} {assignedTo.split(' ').map(w => w[0]).join('')}
+              </span>
+            )}
           </button>
         ) : (
           <button onClick={() => setNotesModalOpen(true)}
@@ -534,17 +590,63 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
         <div onClick={(e) => e.target === e.currentTarget && setNotesModalOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-            <div style={{ padding: '14px 18px', background: C.navy, color: '#fff' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Notes · {table.label || table.code}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
-                Registration issues, color mix problems, crew changes — anything worth remembering.
+            <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Notes · {table.label || table.code}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
+                  Registration issues, color mix problems, crew changes — anything worth remembering.
+                </div>
               </div>
+              {assignedTo && noteStatus && (
+                <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0,
+                  background: noteStatus === 'resolved' ? '#2D5A3D' : '#8B6914',
+                  color: '#fff',
+                }}>
+                  {noteStatus === 'resolved' ? '✓ Resolved' : '○ Open'}
+                </span>
+              )}
             </div>
             <div style={{ padding: 18 }}>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} autoFocus
-                rows={10} placeholder="Type here…"
-                style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 200, lineHeight: 1.5 }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12 }}>
+                rows={9} placeholder="Type here…"
+                style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 180, lineHeight: 1.5 }} />
+
+              {/* Assignee + status row */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
+                    Assign to (optional)
+                  </label>
+                  <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: C.ink, cursor: 'pointer' }}>
+                    <option value="">— No assignment —</option>
+                    {NOTE_ASSIGNEES.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                {assignedTo && noteStatus === 'open' && (
+                  <button onClick={() => setNoteStatus('resolved')}
+                    style={{ padding: '8px 14px', background: C.sage, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    ✓ Mark resolved
+                  </button>
+                )}
+                {assignedTo && noteStatus === 'resolved' && (
+                  <button onClick={() => setNoteStatus('open')}
+                    style={{ padding: '8px 14px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    Reopen
+                  </button>
+                )}
+              </div>
+              {assignedTo && (
+                <div style={{ fontSize: 11, color: C.inkLight, marginTop: 8, fontStyle: 'italic' }}>
+                  {op?.note_assigned_to !== assignedTo
+                    ? `${assignedTo} will be notified in Slack when you save.`
+                    : `${assignedTo} was already notified. Saving again won't ping them.`}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, gap: 12 }}>
                 <span style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
                   {saving ? 'Saving…' : 'Save & close commits this row to the database.'}
                 </span>
