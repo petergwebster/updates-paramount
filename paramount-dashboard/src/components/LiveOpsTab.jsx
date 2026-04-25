@@ -422,7 +422,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px 1fr 110px 110px 160px 160px 140px 90px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr) 110px 110px 160px 160px 140px 90px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
