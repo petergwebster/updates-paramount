@@ -447,8 +447,6 @@ function RowList({ rows, showCY, showYards }) {
   const [sortBy, setSortBy] = useState('age_days')
   const [sortDir, setSortDir] = useState('desc')
 
-  if (rows.length === 0) return null
-
   function toggleSort(field) {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortBy(field); setSortDir('desc') }
@@ -506,6 +504,18 @@ function RowList({ rows, showCY, showYards }) {
           <SortHdr field="income_written" align="right">Revenue</SortHdr>
           <SortHdr field="age_days" align="right">Age</SortHdr>
         </div>
+        {shown.length === 0 && (
+          <div style={{ padding: '32px 14px', textAlign: 'center', borderTop: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, color: C.inkMid, fontWeight: 500, marginBottom: 4 }}>
+              {rows.length === 0 ? 'No orders to display' : 'No orders match the current filter'}
+            </div>
+            {rows.length === 0 && (
+              <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
+                If you expected results here, try clearing the filter chips above or re-uploading the latest LIFT WIP.
+              </div>
+            )}
+          </div>
+        )}
         {shown.map(r => {
           const ageColor = (r.age_days || 0) > 90 ? C.rose : (r.age_days || 0) > 60 ? C.amber : C.inkMid
           // SPO ship-direct ground orders identified by PO prefix per Wendy 4/2026.
