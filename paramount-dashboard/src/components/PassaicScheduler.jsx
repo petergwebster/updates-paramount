@@ -53,6 +53,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [filterWasteHist, setFilterWasteHist] = useState(false)
   const [filterHighValueLowColor, setFilterHighValueLowColor] = useState(false)
   const [filterCategory, setFilterCategory] = useState(null)  // null | 'grass' | 'fabric' | 'wallpaper'
+  const [filterNewGoods, setFilterNewGoods] = useState(false)
+  const [filterApprovedToPrint, setFilterApprovedToPrint] = useState(false)
+  const [filterReadyToPrint, setFilterReadyToPrint] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
   const [weekDailyOps, setWeekDailyOps] = useState([])
@@ -117,8 +120,18 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         return true
       })
     }
+    if (filterNewGoods) list = list.filter(r => r.is_new_goods)
+    // Status chips are multi-select OR — both off = no status filter,
+    // one on = that status, both on = either status. Matches Wendy's
+    // "scheduling what's available to print" framing.
+    const activeStatusFilters = []
+    if (filterApprovedToPrint) activeStatusFilters.push('Approved to Print')
+    if (filterReadyToPrint)    activeStatusFilters.push('Ready to Print')
+    if (activeStatusFilters.length > 0) {
+      list = list.filter(r => activeStatusFilters.includes(r.order_status))
+    }
     return list.sort((a,b) => (b.age_days || 0) - (a.age_days || 0))
-  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist, filterHighValueLowColor, filterCategory])
+  }, [pool, poolFilter, filterSch, filterHighColor, filterWasteHist, filterHighValueLowColor, filterCategory, filterNewGoods, filterApprovedToPrint, filterReadyToPrint])
 
   const wipByPO = useMemo(() => {
     const m = {}
@@ -286,6 +299,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
               <FilterChip active={filterCategory === 'grass'} onClick={() => setFilterCategory(filterCategory === 'grass' ? null : 'grass')} color={C.sage}>Grasscloth</FilterChip>
               <FilterChip active={filterCategory === 'fabric'} onClick={() => setFilterCategory(filterCategory === 'fabric' ? null : 'fabric')} color={C.sage}>Fabric</FilterChip>
               <FilterChip active={filterCategory === 'wallpaper'} onClick={() => setFilterCategory(filterCategory === 'wallpaper' ? null : 'wallpaper')} color={C.sage}>Wallpaper</FilterChip>
+              <FilterChip active={filterNewGoods} onClick={() => setFilterNewGoods(!filterNewGoods)} color={C.gold}>New Goods</FilterChip>
+              <FilterChip active={filterApprovedToPrint} onClick={() => setFilterApprovedToPrint(!filterApprovedToPrint)} color={C.sage}>Approved to Print</FilterChip>
+              <FilterChip active={filterReadyToPrint} onClick={() => setFilterReadyToPrint(!filterReadyToPrint)} color={C.sage}>Ready to Print</FilterChip>
               <FilterChip active={filterHighColor} onClick={() => setFilterHighColor(!filterHighColor)} color={C.rose}>High-color 6+</FilterChip>
               <FilterChip active={filterWasteHist} onClick={() => setFilterWasteHist(!filterWasteHist)} color={C.amber}>Waste history</FilterChip>
               <FilterChip active={filterHighValueLowColor} onClick={() => setFilterHighValueLowColor(!filterHighValueLowColor)} color={C.sage}>$$ low-color</FilterChip>
@@ -306,12 +322,21 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
                   style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: sel ? C.goldBg : 'transparent' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+                    {r.order_number && r.order_number !== r.po_number && (
+                      <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
+                    )}
                     {isSch && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.navyLight, color: C.navy, fontWeight: 700 }}>SCH</span>}
                     {is3P && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>3P</span>}
+                    {r.is_new_goods && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>NEW</span>}
                     {highColor && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.roseBg, color: C.rose, fontWeight: 700 }}>{r.colors_count}c</span>}
                     {wasteP && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>⚠ WASTE</span>}
                   </div>
                   <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
+                  {(r.item_sku || r.color) && (
+                    <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+                      {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
+                    </div>
+                  )}
                   <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
                     <span>{r.product_type}</span>
                     <span>·</span>

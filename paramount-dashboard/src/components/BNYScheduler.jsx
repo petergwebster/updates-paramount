@@ -91,6 +91,8 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const [filterBucket, setFilterBucket] = useState(null)
   const [filterHighColor, setFilterHighColor] = useState(false)
   const [filterAged90, setFilterAged90] = useState(false)
+  const [filterApprovedToPrint, setFilterApprovedToPrint] = useState(false)
+  const [filterReadyToPrint, setFilterReadyToPrint] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
 
   const brooklynMachineNames = useMemo(() => new Set(BNY_MACHINES.brooklyn.map(m => m.name)), [])
@@ -137,8 +139,15 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     if (filterBucket)    list = list.filter(r => r.bny_bucket === filterBucket)
     if (filterHighColor) list = list.filter(r => (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD)
     if (filterAged90)    list = list.filter(r => (r.age_days || 0) > 90)
+    // Status chips multi-select OR — Wendy's "what's available to print" filter.
+    const activeStatusFilters = []
+    if (filterApprovedToPrint) activeStatusFilters.push('Approved to Print')
+    if (filterReadyToPrint)    activeStatusFilters.push('Ready to Print')
+    if (activeStatusFilters.length > 0) {
+      list = list.filter(r => activeStatusFilters.includes(r.order_status))
+    }
     return list.sort((a, b) => (b.age_days || 0) - (a.age_days || 0))
-  }, [pool, poolFilter, filterBucket, filterHighColor, filterAged90])
+  }, [pool, poolFilter, filterBucket, filterHighColor, filterAged90, filterApprovedToPrint, filterReadyToPrint])
 
   const wipByPO = useMemo(() => {
     const m = {}
@@ -358,6 +367,8 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               ))}
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <FilterChip active={filterApprovedToPrint} onClick={() => setFilterApprovedToPrint(!filterApprovedToPrint)} color={C.sage}>Approved to Print</FilterChip>
+              <FilterChip active={filterReadyToPrint} onClick={() => setFilterReadyToPrint(!filterReadyToPrint)} color={C.sage}>Ready to Print</FilterChip>
               <FilterChip active={filterHighColor} onClick={() => setFilterHighColor(!filterHighColor)} color={C.rose}>High-color 6+</FilterChip>
               <FilterChip active={filterAged90} onClick={() => setFilterAged90(!filterAged90)} color={C.amber}>Aged 90+</FilterChip>
             </div>
@@ -375,6 +386,9 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                   style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: sel ? C.goldBg : 'transparent' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+                    {r.order_number && r.order_number !== r.po_number && (
+                      <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
+                    )}
                     {r.bny_bucket && (
                       <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: BUCKET_BG[r.bny_bucket], color: BUCKET_COLOR[r.bny_bucket], fontWeight: 700 }}>{r.bny_bucket}</span>
                     )}
@@ -382,6 +396,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                     {aged && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>{r.age_days}d</span>}
                   </div>
                   <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
+                  {(r.item_sku || r.color) && (
+                    <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+                      {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
+                    </div>
+                  )}
                   <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
                     <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
                     <span>·</span>
