@@ -521,9 +521,10 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
         )}
       </div>
 
-      {/* Notes pop-out modal — backdrop click closes; same pattern as the
-          CrewModal in PassaicScheduler. Note edits live on the row's local
-          state; the row's Save button commits them with the rest of the row. */}
+      {/* Notes pop-out modal — backdrop click closes without saving (escape
+          hatch). The "Save & close" button persists the entire row, then
+          closes — which means the modal alone is sufficient to commit notes
+          without needing the row's main Save button. */}
       {notesModalOpen && (
         <div onClick={(e) => e.target === e.currentTarget && setNotesModalOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -540,12 +541,18 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
                 style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 200, lineHeight: 1.5 }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 12 }}>
                 <span style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>
-                  Saves with the row's Save button.
+                  {saving ? 'Saving…' : 'Save & close commits this row to the database.'}
                 </span>
-                <button onClick={() => setNotesModalOpen(false)}
-                  style={{ padding: '8px 18px', background: C.ink, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  Done
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setNotesModalOpen(false)} disabled={saving}
+                    style={{ padding: '8px 14px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    Cancel
+                  </button>
+                  <button onClick={async () => { await handleSave(); setNotesModalOpen(false) }} disabled={saving}
+                    style={{ padding: '8px 18px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    {saving ? 'Saving…' : 'Save & close'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
