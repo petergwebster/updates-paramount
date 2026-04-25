@@ -414,15 +414,18 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
 
   const actual = yards === '' ? null : Number(yards)
   const variance = actual != null ? actual - plannedYards : null
+  // Hide the variance line entirely when no actual is entered. A bare "—"
+  // sitting under the input read as an errant dash without context. Only
+  // show the line once there's a real number to compare against.
   const varianceColor = variance == null ? C.inkLight
     : Math.abs(variance) < 50 ? C.sage
     : variance > 0 ? C.gold : C.rose
-  const varianceLabel = variance == null ? '—'
+  const varianceLabel = variance == null ? null
     : variance === 0 ? 'on plan'
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '160px minmax(160px, 1fr) 90px 90px 140px 140px 120px 80px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '140px minmax(140px, 1fr) 80px 80px 130px 130px 100px 80px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
@@ -460,7 +463,9 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
         <input type="number" value={yards} onChange={e => setYards(e.target.value)} disabled={!canEnterActuals}
           placeholder="—"
           style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, boxSizing: 'border-box', background: canEnterActuals ? '#fff' : C.warm }} />
-        <div style={{ fontSize: 9, color: varianceColor, fontWeight: 600, marginTop: 3 }}>{varianceLabel}</div>
+        {varianceLabel && (
+          <div style={{ fontSize: 9, color: varianceColor, fontWeight: 600, marginTop: 3 }}>{varianceLabel}</div>
+        )}
       </div>
 
       {/* Waste */}
@@ -513,7 +518,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
       {/* Save */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
         <button onClick={handleSave} disabled={saving}
-          style={{ padding: '8px 12px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+          style={{ padding: '8px 10px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: saving ? 'none' : '0 1px 3px rgba(0,0,0,0.2)' }}>
           {saving ? 'Saving…' : 'Save'}
         </button>
         {savedAt && (
