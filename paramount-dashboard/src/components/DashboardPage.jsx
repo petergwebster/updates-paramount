@@ -277,6 +277,14 @@ export default function DashboardPage({ currentUser, userId, weekStart }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeWindow, productionRows, format(today, 'yyyy-MM-dd')])
 
+  // Detect "no data has been entered" — distinct from "production was zero"
+  // For Today/Week: empty if current week's row missing or all actuals zero
+  // For Month: empty if no production rows at all in current month
+  const hasData = useMemo(() => {
+    const a = metrics.actuals || {}
+    return (a.produced || 0) > 0 || (a.written || 0) > 0 || (a.revenue || 0) > 0
+  }, [metrics])
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -326,6 +334,7 @@ export default function DashboardPage({ currentUser, userId, weekStart }) {
               actuals: metrics.actuals,
               expected: metrics.expected,
               gaps: gapAnalysis(metrics.actuals, metrics.expected),
+              hasData,
             }}
             currentUser={currentUser}
             userId={userId}

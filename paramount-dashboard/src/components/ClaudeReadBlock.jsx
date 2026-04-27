@@ -57,6 +57,12 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
 
     let cancelled = false
     async function loadOrGenerate() {
+      // Clear stale narrative state from prior window FIRST so user sees a
+      // clean loading state instead of last window's text
+      setNarrative(null)
+      setGeneratedAt(null)
+      setEditedBy(null)
+      setEditedAt(null)
       setLoading(true)
       setError(null)
       setIsEditing(false)
@@ -118,7 +124,11 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
       })
 
       // Build prompt
-      const prompt = buildDashboardNarrativePrompt({ contextString, timeWindow })
+      const prompt = buildDashboardNarrativePrompt({
+        contextString,
+        timeWindow,
+        hasData: currentData?.hasData ?? true,
+      })
 
       // Call Claude (matching the existing /api/claude pattern in admin)
       const response = await fetch('/api/claude', {
