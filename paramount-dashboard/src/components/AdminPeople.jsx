@@ -340,47 +340,80 @@ async function extractPptxText(file) {
 }
 
 /* ── Payroll parser ── */
-/* New format (April 2026+): single sheet, location split via column F "Org Level 2"
- *   idx 0: Company            idx 1: Employee Name
- *   idx 2: Period Control Date idx 3: Employee Number
- *   idx 4: Org Level 1        idx 5: Org Level 2  ← "Paramount" | "Brooklyn Navy Yards" | "Paramount Prints - HQ"
- *   idx 6: GTL Amt   idx 7: GTL Hrs    idx 8: MEDL Amt   idx 9: MEDL Hrs
- *   idx 10: OT Amt   idx 11: OT Hrs    idx 12: PTO Amt   idx 13: PTO Hrs
- *   idx 14: REG Amt  idx 15: REG Hrs   idx 16: Total Amt  idx 17: Total Hrs
+/* Finds columns by header name (rows 2-4) so it won't break when columns are added/removed.
+ * Location split uses column "Org Level 2": "Brooklyn Navy Yards" → BNY, everything else → NJ.
  */
 function parsePayrollRows(rows) {
   const employees = []
 
-  for (const row of rows) {
+  // Find header rows — scan rows 0-5 for known headers
+  // Row with "Employee Name" or "Org Level 2" is the header row for employee data
+  // Row with earning type names (OT, PTO, REG, BONUS, GTL, MEDL) is 1-2 rows above
+  let hdrRow = -1
+  let earningTypeRow = -1
+  for (let i = 0; i < Math.min(rows.length, 8); i++) {
+    const r = rows[i] || []
+    const joined = r.map(v => String(v || '').trim().toLowerCase()).join('|')
+    if (joined.includes('employee name') || joined.includes('org level 2')) hdrRow = i
+    if (joined.includes('total amount') || joined.includes('total hours')) earningTypeRow = i
+  }
+
+  // Build column map from header row
+  const hdr = (rows[hdrRow] || []).map(v => String(v || '').trim().toLowerCase())
+  const ci = (name) => hdr.findIndex(h => h.includes(name))
+  const nameCol = ci('employee name') >= 0 ? ci('employee name') : 1
+  const orgCol  = ci('org level 2')   >= 0 ? ci('org level 2')   : 5
+
+  // Build earning type column map from the earning type row (OT, PTO, REG, BONUS, etc.)
+  // Each earning type has two columns: Amount (first) and Hours (second)
+  const earRow = rows[earningTypeRow] || rows[hdrRow] || []
+  const earHdr = earRow.map(v => String(v || '').trim().toUpperCase())
+
+  // Find columns by earning type label
+  const findEarning = (label) => {
+    const idx = earHdr.findIndex(h => h.startsWith(label))
+    return idx >= 0 ? { amt: idx, hrs: idx + 1 } : null
+  }
+  const otCols    = findEarning('OT')
+  const ptoCols   = findEarning('PTO ')  // space to avoid matching PTOP
+  const ptopCols  = findEarning('PTOP')
+  const regCols   = findEarning('REG')
+  const bonusCols = findEarning('BONUS')
+  const totalAmtCol = earHdr.findIndex(h => h.includes('TOTAL AMOUNT'))
+  const totalHrsCol = earHdr.findIndex(h => h.includes('TOTAL HOURS'))
+
+  // Data rows start after the last header row
+  const dataStart = Math.max(hdrRow, earningTypeRow) + 1
+
+  for (let i = dataStart; i < rows.length; i++) {
+    const row = rows[i]
     if (!row || row.every(v => v == null)) continue
 
-    const name = row[1]
+    const name = row[nameCol]
     if (!name || typeof name !== 'string') continue
     const trimName = name.trim()
-    if (!trimName || trimName === 'Total' || trimName === 'Employee Name') continue
+    if (!trimName || trimName === 'Total' || trimName.toLowerCase() === 'employee name') continue
 
-    const orgLevel2 = row[5] ? String(row[5]).trim().toLowerCase() : ''
-    // Skip header rows and total rows
+    const orgLevel2 = row[orgCol] ? String(row[orgCol]).trim().toLowerCase() : ''
     if (orgLevel2 === 'org level 2' || orgLevel2 === '') continue
 
     const isBny = orgLevel2.includes('brooklyn') || orgLevel2.includes('bny')
-    // "Paramount Prints - HQ" goes to NJ bucket (admin/HQ staff)
-    // "Paramount" goes to NJ bucket
 
     const num = v => (v == null || v === '' ? 0 : parseFloat(v) || 0)
-    const otAmt    = num(row[10])
-    const otHrs    = num(row[11])
-    const ptoAmt   = num(row[12])
-    const ptoHrs   = num(row[13])
-    const regAmt   = num(row[14])
-    const regHrs   = num(row[15])
-    const totalPay = num(row[16])
-    const totalHrs = num(row[17])
-    const gtlAmt   = num(row[6])
+    const otAmt    = otCols    ? num(row[otCols.amt])    : 0
+    const otHrs    = otCols    ? num(row[otCols.hrs])    : 0
+    const ptoAmt   = ptoCols   ? num(row[ptoCols.amt])   : 0
+    const ptoHrs   = ptoCols   ? num(row[ptoCols.hrs])   : 0
+    const regAmt   = regCols   ? num(row[regCols.amt])   : 0
+    const regHrs   = regCols   ? num(row[regCols.hrs])   : 0
+    const bonusAmt = bonusCols ? num(row[bonusCols.amt]) : 0
+    const totalPay = totalAmtCol >= 0 ? num(row[totalAmtCol]) : 0
+    const totalHrs = totalHrsCol >= 0 ? num(row[totalHrsCol]) : 0
 
     const flags = []
     if (otHrs > 0)                     flags.push('OT')
     if (ptoHrs > 0)                    flags.push('PTO')
+    if (bonusAmt > 0)                  flags.push('bonus')
     if (totalHrs < 40 && ptoHrs === 0) flags.push('under40')
 
     employees.push({
@@ -389,7 +422,7 @@ function parsePayrollRows(rows) {
       location:    isBny ? 'BNY' : 'NJ',
       salary:      0,
       is_salaried: totalHrs === 80,
-      bonus_amt:   0,
+      bonus_amt:   bonusAmt,
       ot_amt:      otAmt,
       ot_hrs:      otHrs,
       pto_amt:     ptoAmt,
