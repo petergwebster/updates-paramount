@@ -109,24 +109,28 @@ function guessGPPeriod(rows) {
 // Parse a single AP sheet tab — col headers: Vendor Name[1], HOLD[8], Balance[9], Current[10], 1-7[11], 8-14[12], 15-30[13], 31-45[14], 45+[15]
 function parseAPTab(XLSX, sheet, facility) {
   const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null })
+  return parseAPRows(rows, facility)
+}
+
+function parseAPRows(rows, facility) {
   if (rows.length < 2) return null
   const hdr = (rows[0]||[]).map(v => String(v||'').toLowerCase())
   // Find columns by header name
   const ci = name => hdr.findIndex(h => h.includes(name))
-  const nameCol = ci('vendor name') >= 0 ? ci('vendor name') : 1
+  const nameCol = ci('vendor_name') >= 0 ? ci('vendor_name') : (ci('vendor name') >= 0 ? ci('vendor name') : 1)
   const holdCol = ci('hold')        >= 0 ? ci('hold')        : 8
   const balCol  = ci('balance')     >= 0 ? ci('balance')     : 9
   const curCol  = ci('current')     >= 0 ? ci('current')     : 10
-  const d1Col   = hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) >= 0
-                    ? hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) : 11
-  const d8Col   = hdr.findIndex(h => h.includes('8 to 14') || h.includes('8-14')) >= 0
-                    ? hdr.findIndex(h => h.includes('8 to 14') || h.includes('8-14')) : 12
-  const d15Col  = hdr.findIndex(h => h.includes('15 to 30') || h.includes('15-30')) >= 0
-                    ? hdr.findIndex(h => h.includes('15 to 30') || h.includes('15-30')) : 13
-  const d31Col  = hdr.findIndex(h => h.includes('31 to 45') || h.includes('31-45')) >= 0
-                    ? hdr.findIndex(h => h.includes('31 to 45') || h.includes('31-45')) : 14
-  const d45Col  = hdr.findIndex(h => h.includes('45 and') || h.includes('45+') || h.includes('over')) >= 0
-                    ? hdr.findIndex(h => h.includes('45 and') || h.includes('45+') || h.includes('over')) : 15
+  const d1Col   = hdr.findIndex(h => h.includes('1_to_7') || h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) >= 0
+                    ? hdr.findIndex(h => h.includes('1_to_7') || h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) : 11
+  const d8Col   = hdr.findIndex(h => h.includes('8_to_14') || h.includes('8 to 14') || h.includes('8-14')) >= 0
+                    ? hdr.findIndex(h => h.includes('8_to_14') || h.includes('8 to 14') || h.includes('8-14')) : 12
+  const d15Col  = hdr.findIndex(h => h.includes('15_to_30') || h.includes('15 to 30') || h.includes('15-30')) >= 0
+                    ? hdr.findIndex(h => h.includes('15_to_30') || h.includes('15 to 30') || h.includes('15-30')) : 13
+  const d31Col  = hdr.findIndex(h => h.includes('31_to_45') || h.includes('31 to 45') || h.includes('31-45')) >= 0
+                    ? hdr.findIndex(h => h.includes('31_to_45') || h.includes('31 to 45') || h.includes('31-45')) : 14
+  const d45Col  = hdr.findIndex(h => h.includes('45_and') || h.includes('45 and') || h.includes('45+') || h.includes('over')) >= 0
+                    ? hdr.findIndex(h => h.includes('45_and') || h.includes('45 and') || h.includes('45+') || h.includes('over')) : 15
 
   const vendors = []
   let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0
@@ -153,36 +157,23 @@ function parseAPCombinedFile(XLSX, workbook) {
 
   // Check if the first (or only) sheet has a "Division" column → single-sheet format
   const firstSheet = workbook.Sheets[names[0]]
-  const firstRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: null })
-  const hdr = (firstRows[0] || []).map(v => String(v || '').toLowerCase())
+  const allRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: null })
+  const hdr = (allRows[0] || []).map(v => String(v || '').toLowerCase())
   const divCol = hdr.findIndex(h => h.includes('division'))
 
   if (divCol >= 0) {
     // Single-sheet format: split rows by Division column (PH vs BNY)
-    const paraRows = [firstRows[0]]  // keep header
-    const bnyRows  = [firstRows[0]]
-    for (let i = 1; i < firstRows.length; i++) {
-      const row = firstRows[i]
+    const paraRows = [allRows[0]]  // keep header
+    const bnyRows  = [allRows[0]]
+    for (let i = 1; i < allRows.length; i++) {
+      const row = allRows[i]
       if (!row) continue
       const div = String(row[divCol] || '').trim().toUpperCase()
       if (div === 'PH' || div.includes('PARA')) paraRows.push(row)
       else if (div === 'BNY' || div.includes('BROOKLYN')) bnyRows.push(row)
-      // skip empty-division rows (they have no data)
     }
-    // Build temporary sheets from filtered rows and parse each
-    const buildSheet = (rows) => {
-      const ws = {}
-      rows.forEach((row, r) => {
-        (row || []).forEach((val, c) => {
-          const cellRef = XLSX.utils.encode_cell({ r, c })
-          ws[cellRef] = { v: val }
-        })
-      })
-      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: (rows[0] || []).length - 1 } })
-      return ws
-    }
-    const para = paraRows.length > 1 ? parseAPTab(XLSX, buildSheet(paraRows), 'Paramount') : null
-    const bny  = bnyRows.length > 1  ? parseAPTab(XLSX, buildSheet(bnyRows),  'BNY')       : null
+    const para = paraRows.length > 1 ? parseAPRows(paraRows, 'Paramount') : null
+    const bny  = bnyRows.length > 1  ? parseAPRows(bnyRows,  'BNY')       : null
     return { para, bny }
   }
 
