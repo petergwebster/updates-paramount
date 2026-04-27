@@ -16,6 +16,7 @@ import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPD
 import WIPTab from './components/WIPTab'
 import SchedulerTab from './components/SchedulerTab'
 import LiveOpsTab from './components/LiveOpsTab'
+import StubPage from './components/StubPage'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -34,17 +35,69 @@ const NJ_DAYS = [
   { label:'Fri', sched:22, actual:23, waste:24, op1:25, op2:26 },
 ]
 
-// ── Nav: Consolidated | Financials | People | (Live Ops — admin only) | ⚙ ────
-const PUBLIC_TABS = [
-  { id: 'consolidated', label: 'Consolidated' },
-  { id: 'financials',   label: 'Financials'   },
-  { id: 'people',       label: 'People'        },
-  { id: 'wip',          label: 'WIP'           },
-  { id: 'scheduler',    label: 'Scheduler'     },
+// ─────────────────────────────────────────────────────────────────────────────
+// MODE / ROLE / TAB DEFINITIONS
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Roles:
+//   admin   — Peter, Brynn. Lands in Operations. Can flip to Executive.
+//             Sees gear/admin. Full access.
+//   manager — Wendy, Chandler, future Production Planning Director, future
+//             CX & Ops Associate. Lands in Operations → Live Ops.
+//             Can flip to Executive for context.
+//   qa      — Sami. Lands in Operations → Live Ops. Scheduler is read-only.
+//             No Inventory/WIP. No gear. No Executive view.
+//   exec    — Timur, Antonella, Emily, Abigail, Kim. Lands in Executive →
+//             Dashboard. Can flip to Operations to peek (read-only feel).
+//             No gear.
+//
+// Mode determines which tabs render in the nav.
+// Tab definition includes which roles see it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EXEC_TABS = [
+  { id: 'dashboard',  label: 'Dashboard'  },
+  { id: 'financials', label: 'Financials' },
+  { id: 'people',     label: 'People'     },
+  { id: 'inventory',  label: 'Inventory'  },
 ]
-const ADMIN_TABS = [
-  { id: 'liveops', label: '📊 Live Ops' },
+
+const OPS_TABS = [
+  { id: 'liveops',   label: 'Live Ops'  },
+  { id: 'scheduler', label: 'Scheduler' },
+  { id: 'wip',       label: 'WIP'       },
+  { id: 'inventory', label: 'Inventory' },
+  { id: 'dashboard', label: 'Dashboard' },
 ]
+
+// QA gets a stripped-down Operations tab list — no WIP, no Inventory, no Dashboard.
+const QA_OPS_TABS = [
+  { id: 'liveops',   label: 'Live Ops'  },
+  { id: 'scheduler', label: 'Scheduler' },
+]
+
+function landingFor(role) {
+  if (role === 'exec')                        return { mode: 'executive',  tab: 'dashboard' }
+  if (role === 'manager' || role === 'qa')    return { mode: 'operations', tab: 'liveops'   }
+  if (role === 'admin')                       return { mode: 'operations', tab: 'liveops'   }
+  // unknown / null role: safest is Executive Dashboard
+  return { mode: 'executive', tab: 'dashboard' }
+}
+
+function tabsFor(mode, role) {
+  if (mode === 'executive') return EXEC_TABS
+  if (role === 'qa')        return QA_OPS_TABS
+  return OPS_TABS
+}
+
+function canAccessGear(role) {
+  return role === 'admin'
+}
+
+function canSwitchMode(role) {
+  // Everyone except qa can flip modes. QA stays in Ops.
+  return role !== 'qa'
+}
 
 function SlackIcon({ size = 14 }) {
   return (
@@ -75,8 +128,13 @@ function SectionLabel({ children }) {
   )
 }
 
-// ── Consolidated tab ──────────────────────────────────────────────────────────
-function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// EXECUTIVE DASHBOARD
+// Phase 1 keeps the existing ConsolidatedPage layout untouched for the
+// Dashboard tab. Phase 2 will replace this with the Today/This Week/MTD
+// time-window toggle and Claude's read.
+// ─────────────────────────────────────────────────────────────────────────────
+function ExecutiveDashboardPage({ weekStart, weekData, dbReady, commentProps }) {
   const fiscalLabel = getFiscalLabel(weekStart)
   const narrative   = weekData?.executive_narrative || null
   const kpis        = weekData?.kpis || {}
@@ -91,8 +149,6 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
 
   return (
     <div style={{ maxWidth:980, margin:'0 auto', padding:'36px 24px 80px', fontFamily:'Georgia, serif' }}>
-
-      {/* Report header */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
         <div>
           <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:8 }}>
@@ -108,7 +164,6 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
         </div>
       </div>
 
-      {/* KPI status strip */}
       {hasKPIs && (
         <div style={{ display:'flex', gap:20, margin:'20px 0 32px', padding:'12px 16px', background:'var(--cream-dark,#F5F0EA)', borderRadius:8, flexWrap:'wrap' }}>
           {[{color:'#22c55e',count:onTrack,label:'On Track'},{color:'#f59e0b',count:watch,label:'Watch'},{color:'#ef4444',count:concern,label:'Concern'}].map(({color,count,label})=>(
@@ -124,7 +179,6 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
 
       {!hasKPIs && <div style={{ height:32 }}/>}
 
-      {/* 1. Executive Summary */}
       <div style={{ marginBottom:48 }}>
         <SectionLabel>Executive Summary</SectionLabel>
         {narrative ? (
@@ -140,7 +194,6 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
         )}
       </div>
 
-      {/* 2. Areas of Concern */}
       {flags && (
         <div style={{ marginBottom:48 }}>
           <SectionLabel>Areas of Concern</SectionLabel>
@@ -150,1294 +203,73 @@ function ConsolidatedPage({ weekStart, weekData, dbReady, commentProps }) {
         </div>
       )}
 
-      {/* 3. Production — from Supabase (works for all historical weeks) */}
       <div style={{ marginBottom:48 }}>
-        <SectionLabel>Production — NJ &amp; Brooklyn</SectionLabel>
+        <SectionLabel>Production — Brooklyn (BNY) &amp; Passaic</SectionLabel>
         <ProductionDashboard weekStart={weekStart} dbReady={dbReady} readOnly {...commentProps} />
       </div>
 
-      {/* 4. KPI Scorecard detail */}
       {hasKPIs && (
         <div style={{ marginBottom:48 }}>
           <SectionLabel>KPI Scorecard Detail</SectionLabel>
           <KPIScorecard weekData={weekData} weekStart={weekStart} onSave={null} dbReady={dbReady} readOnly {...commentProps}/>
         </div>
       )}
-
-      {/* Nav hints for C-suite */}
-      <div style={{ borderTop:'1px solid var(--ink-10)', paddingTop:24, display:'flex', gap:16, flexWrap:'wrap' }}>
-        <div style={{ fontSize:12, color:'var(--ink-30)' }}>
-          See also:
-        </div>
-        {[
-          { label:'Financials →', hint:'OpEx, COGS, inventory purchases' },
-          { label:'People →',     hint:'Headcount, payroll summary'       },
-        ].map(({label, hint}) => (
-          <div key={label} style={{ fontSize:12, color:'var(--ink-40)' }}>
-            <span style={{ fontWeight:600, color:'var(--ink-30)' }}>{label}</span> {hint}
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
 
-// ── Admin page ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PAGE — wraps AdminPanel. AdminPanel manages its own section state
+// internally and accepts { weekStart, weekData, onSave, dbReady }.
+// Phase 4 will add the redesigned admin sidebar (LIFT Refresh, AI Monitoring,
+// User Management, etc.) — for now this is a passthrough.
+// ─────────────────────────────────────────────────────────────────────────────
 function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps }) {
-  const [section, setSection] = useState('production')
-  const [generating,     setGenerating]     = useState(false)
-  const [genError,       setGenError]       = useState(null)
-  const [genSuccess,     setGenSuccess]     = useState(false)
-  const [draftNarrative, setDraftNarrative] = useState('')
-  const [publishing,     setPublishing]     = useState(false)
-
-  // Load saved reports for current month on weekStart change
-  useEffect(() => {
-    async function loadSavedReports() {
-      const monthKey = format(weekStart, 'yyyy-MM')
-      const { data } = await supabase
-        .from('monthly_reports')
-        .select('type, report_title, generated_at, narrative')
-        .eq('month', monthKey)
-      if (data) {
-        const map = {}
-        data.forEach(r => { map[r.type] = r })
-        setSavedReports(map)
-      } else {
-        setSavedReports({})
-      }
-    }
-    loadSavedReports()
-  }, [weekStart])
-
-  // One-pager state
-  const [onePagerType,    setOnePagerType]    = useState(null)
-  const [onePagerDraft,   setOnePagerDraft]   = useState('')
-  const [onePagerLoading, setOnePagerLoading] = useState(false)
-  const [onePagerError,   setOnePagerError]   = useState(null)
-  const [onePagerCopied,  setOnePagerCopied]  = useState(false)
-  const [onePagerPayload, setOnePagerPayload] = useState(null)
-  const [pdfGenerating,   setPdfGenerating]   = useState(false)
-  const [onePagerSaved,   setOnePagerSaved]   = useState(false)
-  const [isSavedReport,   setIsSavedReport]   = useState(false)
-  const [savedReports,    setSavedReports]    = useState({}) // { mid: {...}, end: {...} }
-
-  // Live saved-state checks — query existing tables, no schema changes needed
-  const [hasProd,    setHasProd]    = useState(false)
-  const [hasFinance, setHasFinance] = useState(false)
-  const [hasPeople,  setHasPeople]  = useState(false)
-
-  const wk = format(weekStart, 'yyyy-MM-dd')
-
-  useEffect(() => {
-    async function checkSavedState() {
-      const [{ data: prod }, { data: fin }, { data: ppl }] = await Promise.all([
-        supabase.from('production').select('week_start').eq('week_start', wk).maybeSingle(),
-        supabase.from('financials_monthly').select('period').ilike('period', wk.slice(0,7)+'%').limit(1),
-        supabase.from('people_weekly').select('week_start').eq('week_start', wk).maybeSingle(),
-      ])
-      setHasProd(!!prod)
-      setHasFinance(!!(fin && fin.length > 0))
-      setHasPeople(!!ppl)
-    }
-    checkSavedState()
-  }, [wk, section]) // re-check when tab changes so chips update after saving
-
-  const tabs = [
-    { id:'production', label:'🏭 Production'   },
-    { id:'kpis',       label:'🎯 KPI Scorecard' },
-    { id:'log',        label:'📝 Daily Log'     },
-    { id:'financials', label:'💰 Financials'    },
-    { id:'people',     label:'👥 People'        },
-    { id:'files',      label:'📁 Files'         },
-    { id:'history',    label:'🕘 History'       },
-  ]
-
-  // Status chip logic — production/financials/people from DB, KPIs/log from weekData
-  const kpis   = weekData?.kpis || {}
-  const days   = weekData?.days || {}
-  const hasKPIs = Object.values(kpis).some(k => k?.status && k.status !== 'gray')
-  const hasLog  = Object.values(days).some(d => d?.text?.trim())
-
-  const chips = [
-    { label:'Production', done: hasProd    },
-    { label:'KPIs',       done: hasKPIs    },
-    { label:'Daily Log',  done: hasLog     },
-    { label:'Financials', done: hasFinance },
-    { label:'People',     done: hasPeople  },
-  ]
-  const allDone = chips.every(c => c.done)
-
-  async function handleGenerateSummary() {
-    setGenerating(true); setGenError(null); setGenSuccess(false)
-    try {
-      const wk = format(weekStart, 'yyyy-MM-dd')
-      const [{ data: allWeeks }, { data: prodHistory }, { data: finHistory }] = await Promise.all([
-        supabase.from('weeks').select('week_start,kpis,days,concerns').order('week_start',{ascending:false}).limit(13),
-        supabase.from('production').select('week_start,nj_data,bny_data').order('week_start',{ascending:false}).limit(13),
-        supabase.from('financial_uploads').select('period,bu,cogs,opex,inv_purchases').order('period',{ascending:false}).limit(8),
-      ])
-
-      const thisProd = prodHistory?.find(p => p.week_start === wk)
-      const njD = thisProd?.nj_data || {}, bnyD = thisProd?.bny_data || {}
-
-      // Produced yds
-      const njYds  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.yards)||0),0)
-      const bnyYds = ['replen','mto','hos','memo','contract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
-      const totalYds = njYds + bnyYds
-      const njPct  = Math.round(njYds/8610*100)
-      const bnyPct = Math.round(bnyYds/12000*100)
-      const totalPct = Math.round(totalYds/20610*100)
-
-      // Invoiced yds
-      const njInvYds  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.invoiceYds)||0),0)
-      const njInvRev  = ['fabric','grass','paper'].reduce((s,c)=>s+(parseFloat(njD[c]?.invoiceRev)||0),0)
-      const bnyInvYds = ['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
-      const bnyInvRev = ['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((s,c)=>s+(parseFloat(bnyD[c])||0),0)
-
-      // MTD
-      const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
-      const monthKey = wk.slice(0,7)
-      const mtdWeeks = prodHistory?.filter(p=>p.week_start?.startsWith(monthKey))||[]
-      const mtdTotal = mtdWeeks.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+(parseFloat(p.nj_data?.[c]?.yards)||0),0)+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+(parseFloat(p.bny_data?.[c])||0),0),0)
-      const mtdPct = mtdWeeks.length>0 ? Math.round(mtdTotal/(20610*mtdWeeks.length)*100) : 0
-
-      // Detect if this is the last week of the month (week 4 or 5)
-      const fiscalInfo = weekData ? null : null
-      const isMonthEnd = mtdWeeks.length >= 4
-
-      const kpiLines = Object.entries(kpis).filter(([,v])=>v?.status&&v.status!=='gray').map(([id,v])=>`  ${id}: ${SL[v.status]}${v.notes?' — '+v.notes:''}`).join('\n')
-      const logLines = Object.entries(days).filter(([,v])=>v?.text?.trim()).map(([day,v])=>`  ${day}: ${v.text.slice(0,200)}`).join('\n')
-      const finLines = finHistory?.slice(0,4).map(f=>`  ${f.period} ${f.bu}: COGS $${(f.cogs||0).toLocaleString()} · OpEx $${(f.opex||0).toLocaleString()} · Inv $${(f.inv_purchases||0).toLocaleString()}`).join('\n')||'  No financial data'
-
-      const monthRecapInstruction = isMonthEnd ? `
-IMPORTANT: This is Week ${mtdWeeks.length} of the month — the final weekly report before month close. Paragraph 1 should be a MONTHLY RECAP covering the full month's performance, not just this week. Reference MTD totals prominently and assess whether we hit the monthly budget. The tone should be conclusive — how did the month go overall?` : ''
-
-      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a weekly executive summary for CEO Timur and Chief of Staff Emily.
-
-Two facilities: Brooklyn BNY (digital printing) and Passaic NJ (screen print: fabric, grass cloth, wallpaper). ~$10M/year revenue.
-${monthRecapInstruction}
-WEEK OF: ${format(weekStart,'MMMM d, yyyy')} (Week ${mtdWeeks.length} of month)
-
-PRODUCTION THIS WEEK:
-  BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced of 12,000 target (${bnyPct}%)${bnyInvYds>0?' · '+bnyInvYds.toLocaleString()+' yds invoiced'+(bnyInvRev>0?' · $'+Math.round(bnyInvRev).toLocaleString()+' revenue':''):''}
-  NJ Passaic: ${njYds.toLocaleString()} yds produced of 8,610 target (${njPct}%)${njInvYds>0?' · '+njInvYds.toLocaleString()+' yds invoiced'+(njInvRev>0?' · $'+Math.round(njInvRev).toLocaleString()+' revenue':''):''}
-  Combined: ${totalYds.toLocaleString()} yds produced of 20,610 target (${totalPct}%)
-
-MTD PRODUCTION (${mtdWeeks.length} weeks this month): ${mtdTotal.toLocaleString()} yds · ${mtdPct}% of budget
-
-KPI SCORECARD:
-${kpiLines||'  No KPI data entered this week'}
-
-DAILY LOG:
-${logLines||'  No log entries'}
-
-RECENT FINANCIALS:
-${finLines}
-
-${weekData?.concerns?'AREAS OF CONCERN:\n  '+weekData.concerns:''}
-
-Write exactly 4 paragraphs in Peter's voice — direct, factual, candid. Follow this structure:
-
-Paragraph 1 — ${isMonthEnd?'MONTHLY RECAP: Assess the full month vs budget. How did we finish? Key themes.':'OVERALL: Combined week result vs target and MTD tracking in 1-2 sentences.'}
-
-Paragraph 2 — BNY BROOKLYN: Performance vs 12,000 yd target. Reference produced vs invoiced if available. Key KPI highlights for BNY. What's working and what to watch.
-
-Paragraph 3 — PASSAIC NJ: Performance vs 8,610 yd target. Reference produced vs invoiced if available. Key KPI highlights for Passaic. What's working and what to watch.
-
-Paragraph 4 — NEXT WEEK / ACTION PLAN: Specific actions Peter is taking. What Timur and Emily should watch for next week. Concrete and forward-looking.
-
-Under 260 words. First person as Peter. No bullets. No headers. No title. Start directly with the first sentence.`
-
-      // Set draft for review — don't save yet
-      setDraftNarrative(prompt ? await generateText(prompt) : '')
-    } catch(e) { setGenError('Generation failed. Check connection.') }
-    setGenerating(false)
-  }
-
-  async function generateText(prompt) {
-    const resp = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1200,messages:[{role:'user',content:prompt}]})})
-    const data = await resp.json()
-    return data.content?.find(c=>c.type==='text')?.text?.trim() || ''
-  }
-
-  async function generatePDFClientSide(data) {
-    // Load jsPDF dynamically from CDN
-    if (!window.jspdf) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script')
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
-        script.onload = resolve
-        script.onerror = reject
-        document.head.appendChild(script)
-      })
-    }
-
-    const { jsPDF } = window.jspdf
-    const doc = new jsPDF({ unit: 'pt', format: 'letter' })
-    const PW = 612 - 86, L = 43, MID = L + PW / 2
-    const PAGE_H = 792, BOTTOM_MARGIN = 50
-    const checkPage = (currentY, needed = 60) => {
-      if (currentY + needed > PAGE_H - BOTTOM_MARGIN) {
-        doc.addPage()
-        return 50
-      }
-      return currentY
-    }
-
-    const INK = '#2C2420', GOLD = '#D4A843', BORDER = '#DDD4C8'
-    const INK_LIGHT = '#9C8F87', CREAM_DK = '#F2EDE4'
-    const GREEN = '#15803d', AMBER = '#b45309', RED = '#b91c1c'
-
-    const pctColor = p => p == null ? INK_LIGHT : p >= 95 ? GREEN : p >= 80 ? AMBER : RED
-
-    const setFont = (size, color, bold = false) => {
-      doc.setFontSize(size)
-      doc.setTextColor(color)
-      doc.setFont('helvetica', bold ? 'bold' : 'normal')
-    }
-
-    const hline = (y, color, w = 0.5) => {
-      doc.setDrawColor(color)
-      doc.setLineWidth(w)
-      doc.line(L, y, L + PW, y)
-    }
-
-    // ── HEADER ──────────────────────────────────────────────────────────────
-    // Split title into month label + report type
-    const titleParts = data.report_title.split(' — ')
-    const titleMonth = titleParts[0] || data.report_title
-    const titleType  = titleParts[1] || ''
-
-    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PARAMOUNT PRINTS', L, 44); doc.setCharSpace(0)
-    setFont(11, INK_LIGHT, false); doc.text(titleMonth.toUpperCase(), L, 56)
-    setFont(20, INK, true); doc.text(titleType || titleMonth, L, 72)
-    setFont(9, INK_LIGHT)
-    doc.text(data.period_label, L, 84)
-    doc.text(data.date_generated, L + PW, 84, { align: 'right' })
-    doc.setDrawColor(GOLD); doc.setLineWidth(2); doc.line(L, 92, L + PW, 92)
-
-    // ── NARRATIVE ────────────────────────────────────────────────────────────
-    let y = 100
-    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('EXECUTIVE SUMMARY', L, y); doc.setCharSpace(0)
-    y += 10
-
-    const paras = data.narrative.split('\n\n').filter(p => p.trim())
-    paras.forEach(para => {
-      setFont(9, INK)
-      const lines = doc.splitTextToSize(para.trim(), PW)
-      doc.text(lines, L, y)
-      y += lines.length * 12 + 3
-    })
-
-    y += 4
-    hline(y, BORDER); y += 7
-
-    // ── PRODUCTION ───────────────────────────────────────────────────────────
-    const bny = data.bny, nj = data.nj
-    const colW = PW / 2 - 16
-    const INK_DARK = '#3D3530'
-    const ROW_H = 44
-
-    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PRODUCTION — MONTH-TO-DATE', L, y); doc.setCharSpace(0)
-    y += 12
-
-    setFont(9, INK, true)
-    doc.text('BNY — BROOKLYN DIGITAL', L, y)
-    doc.text('NJ — PASSAIC SCREEN PRINT', MID + 8, y)
-    y += 14
-
-    const metricRows = [
-      { bny: { label:'PRODUCED',     val:bny.prod_yds, sub:`${bny.prod_pct != null ? bny.prod_pct+'%' : '—'} of ${bny.prod_tgt} target`, subColor:pctColor(bny.prod_pct) },
-        nj:  { label:'PRODUCED',     val:nj.prod_yds,  sub:`${nj.prod_pct  != null ? nj.prod_pct+'%'  : '—'} of ${nj.prod_tgt} target`,  subColor:pctColor(nj.prod_pct)  } },
-      { bny: { label:'INVOICED YDS', val:bny.inv_yds,  sub:`Revenue: ${bny.inv_rev||'—'}`, subColor:INK_LIGHT },
-        nj:  { label:'INVOICED YDS', val:nj.inv_yds,   sub:`Revenue: ${nj.inv_rev||'—'}${nj.misc_fees?' · Misc: '+nj.misc_fees:''}`, subColor:INK_LIGHT } },
-      { bny: { label:'OPEX MTD',     val:bny.opex,     sub:`Inv Purchases: ${bny.inv_purch||'—'}`, subColor:INK_LIGHT },
-        nj:  { label:'OPEX MTD',     val:nj.opex,      sub:`Waste: ${nj.waste_pct||'—'} · Inv: ${nj.inv_purch||'—'}`, subColor:INK_LIGHT } },
-    ]
-
-    const ROW_PAD = 8  // top padding inside each row before the label
-    metricRows.forEach((row, i) => {
-      const rowY = y + ROW_PAD
-      ;[{d:row.bny, x:L}, {d:row.nj, x:MID+8}].forEach(({d, x}) => {
-        setFont(6.5, INK_LIGHT); doc.setCharSpace(0.8); doc.text(d.label, x, rowY); doc.setCharSpace(0)
-        setFont(12, INK_DARK, false); doc.text(d.val||'—', x, rowY+13)
-        setFont(7.5, d.subColor||INK_LIGHT)
-        doc.text(doc.splitTextToSize(d.sub, colW), x, rowY+25)
-      })
-      doc.setDrawColor(BORDER); doc.setLineWidth(0.4)
-      doc.line(MID, y, MID, y+ROW_H)
-      if (i < metricRows.length - 1) {
-        doc.setDrawColor(CREAM_DK); doc.setLineWidth(0.3)
-        doc.line(L, y+ROW_H, L+PW, y+ROW_H)
-      }
-      y += ROW_H
-    })
-
-    // ── PRODUCTION SUMMARY TABLE ─────────────────────────────────────────────
-    y += 4
-    hline(y, BORDER); y += 8
-    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PRODUCTION SUMMARY — MTD TRACKING', L, y); doc.setCharSpace(0)
-    y += 11
-
-    const fin = data.financials
-    const cw = PW / 4
-    const FIN_ROW_H = 16
-
-    const pctColorStr = p => p == null ? INK_LIGHT : p >= 95 ? GREEN : p >= 80 ? AMBER : RED
-
-    const summaryHeaders = ['METRIC', 'PARAMOUNT NJ', 'BNY BROOKLYN', 'COMBINED']
-    const summaryRows = [
-      { cells: ['Produced MTD',  nj.prod_yds,  bny.prod_yds,  fin.combined_prod_yds] },
-      { cells: ['vs Target',
-          `${nj.prod_pct}% of ${nj.prod_tgt}`,
-          `${bny.prod_pct}% of ${bny.prod_tgt}`,
-          `${fin.combined_prod_pct}% of ${fin.combined_prod_tgt}`],
-        pcts: [nj.prod_pct, bny.prod_pct, fin.combined_prod_pct] },
-      { cells: ['Invoiced YDS',  nj.inv_yds,   bny.inv_yds,   fin.combined_inv_yds] },
-      { cells: ['Revenue MTD',   fin.rev_nj,   fin.rev_bny,   fin.rev_combined], bold: true },
-      { cells: ['OpEx MTD',      nj.opex,      bny.opex,      fin.opex_combined] },
-      { cells: ['NJ Waste %',    nj.waste_pct, '—',           '—'] },
-    ]
-
-    doc.setFillColor(INK); doc.rect(L, y, PW, FIN_ROW_H, 'F')
-    setFont(7, '#ffffff', true)
-    summaryHeaders.forEach((h, i) => doc.text(h, L + i*cw + 6, y + 11))
-    y += FIN_ROW_H
-
-    summaryRows.forEach((row, ri) => {
-      if (ri%2===1) { doc.setFillColor(CREAM_DK); doc.rect(L, y, PW, FIN_ROW_H, 'F') }
-      row.cells.forEach((cell, ci) => {
-        let color = ci === 0 ? INK_LIGHT : INK
-        if (row.pcts && ci > 0) color = pctColorStr(row.pcts[ci-1])
-        setFont(7.5, color, ci === 3 || row.bold)
-        doc.text(cell||'—', L + ci*cw + 6, y + 11)
-      })
-      hline(y + FIN_ROW_H, BORDER, 0.3)
-      y += FIN_ROW_H
-    })
-
-    // ── PEOPLE + WIP ─────────────────────────────────────────────────────────
-    y += 6
-    hline(y, BORDER); y += 7
-    const ppl = data.people, wip = data.wip
-    setFont(7, INK_LIGHT); doc.setCharSpace(1.5)
-    doc.text('PEOPLE', L, y)
-    doc.text('WIP SNAPSHOT', MID+6, y); doc.setCharSpace(0)
-    y += 10
-
-    setFont(8, INK)
-    doc.text(`Headcount: ${ppl.headcount||'—'}`, L, y)
-
-    doc.setDrawColor(BORDER); doc.setLineWidth(0.5); doc.line(MID, y-8, MID, y+26)
-
-    setFont(8, INK)
-    doc.text(`Active: ${wip.orders||'—'} orders · ${wip.yards||'—'} yds`, MID+6, y)
-    setFont(7.5, INK_LIGHT)
-    doc.text(`Age: 0-30d ${wip.age_0_30||'—'} · 31-60d ${wip.age_31_60||'—'} · 61-90d ${wip.age_61_90||'—'} · 90d+ ${wip.age_90plus||'—'}`, MID+6, y+12)
-    doc.text(`Wallpaper ${wip.wallpaper||'—'} · Grasscloth ${wip.grasscloth||'—'} · Fabric ${wip.fabric||'—'}`, MID+6, y+22)
-
-    // ── FOOTER ───────────────────────────────────────────────────────────────
-    const footerY = PAGE_H - 28
-    hline(footerY, BORDER, 0.5)
-    setFont(7.5, INK_LIGHT)
-    doc.text(`Paramount Prints · F. Schumacher & Co. · ${data.report_title} · Confidential`, L + PW/2, footerY + 10, { align: 'center' })
-
-    doc.save(data.filename || 'paramount-report.pdf')
-  }
-
-  async function saveOnePager() {
-    if (!onePagerDraft || !onePagerType) return
-    try {
-      const monthKey = format(weekStart, 'yyyy-MM')
-      await supabase.from('monthly_reports').upsert({
-        month: monthKey,
-        type: onePagerType,
-        report_title: onePagerPayload?.report_title || `${format(weekStart,'MMMM yyyy')} — ${onePagerType==='mid'?'Mid-Month Brief':'Month-End Report'}`,
-        narrative: onePagerDraft,
-        generated_at: new Date().toISOString(),
-        generated_by: 'peter',
-      }, { onConflict: 'month,type' })
-      setOnePagerSaved(true)
-      setTimeout(() => setOnePagerSaved(false), 3000)
-      // Refresh saved reports indicator
-      setSavedReports(prev => ({ ...prev, [onePagerType]: { type: onePagerType, generated_at: new Date().toISOString(), narrative: onePagerDraft } }))
-    } catch(e) { setOnePagerError('Save failed: '+e.message) }
-  }
-
-  async function downloadPDF() {
-    if (!onePagerDraft) return
-    setPdfGenerating(true)
-    try {
-      // Build payload — use stored one or create minimal version from current state
-      const monthLabel = format(weekStart, 'MMMM yyyy')
-      const isMid = onePagerType === 'mid'
-      const basePayload = onePagerPayload || {
-        report_title: `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
-        period_label: `${monthLabel} · Fiscal Q${Math.ceil(parseInt(format(weekStart,'MM'))/3)}`,
-        date_generated: format(new Date(), 'MMMM d, yyyy'),
-        filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
-        bny: { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', prod_yds_raw:0, prod_tgt_raw:0 },
-        nj:  { prod_yds:'—', prod_tgt:'—', prod_pct:null, inv_yds:'—', inv_rev:'—', opex:'—', inv_purch:'—', waste_pct:'—', prod_yds_raw:0, prod_tgt_raw:0 },
-        financials: { opex_combined:'—', inv_combined:'—', rev_nj:'—', rev_bny:'—', rev_combined:'—', combined_prod_yds:'—', combined_prod_tgt:'—', combined_prod_pct:null, combined_inv_yds:'—' },
-        people: { headcount:'—', payroll:'—', ot:'—', hr_notes:'' },
-        wip: { orders:'—', yards:'—', age_0_30:'—', age_31_60:'—', age_61_90:'—', age_90plus:'—', wallpaper:'—', grasscloth:'—', fabric:'—' },
-      }
-      const payload = { ...basePayload, narrative: onePagerDraft }
-      await generatePDFClientSide(payload)
-      // Save to Supabase
-      await supabase.from('monthly_reports').upsert({
-        month: format(weekStart, 'yyyy-MM'),
-        type: onePagerType,
-        report_title: payload.report_title,
-        narrative: onePagerDraft,
-        generated_at: new Date().toISOString(),
-        generated_by: 'peter',
-      }, { onConflict: 'month,type' })
-    } catch(e) { setOnePagerError('PDF failed: '+e.message) }
-    setPdfGenerating(false)
-  }
-
-  async function regenerateOnePager() {
-    if (!onePagerType) return
-    const monthKey = format(weekStart, 'yyyy-MM')
-    await supabase.from('monthly_reports').delete().eq('month', monthKey).eq('type', onePagerType)
-    setSavedReports(prev => { const n = {...prev}; delete n[onePagerType]; return n })
-    setIsSavedReport(false)
-    generateOnePager(onePagerType)
-  }
-
-  async function generateOnePager(type) {
-    setOnePagerLoading(true); setOnePagerError(null); setOnePagerDraft(''); setOnePagerType(type); setOnePagerSaved(false); setIsSavedReport(false)
-    try {
-      const monthKey   = format(weekStart, 'yyyy-MM')
-
-      // Use fiscal calendar to find correct week_start dates for this month
-      const { FISCAL_CALENDAR } = await import('./fiscalCalendar')
-      const currentKey = format(weekStart, 'yyyy-MM-dd')
-      const currentInfo = FISCAL_CALENDAR[currentKey]
-      let fiscalWeekStarts = []
-      if (currentInfo) {
-        fiscalWeekStarts = Object.entries(FISCAL_CALENDAR)
-          .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
-          .map(([k]) => k)
-          .sort()
-      }
-      // Fallback: if no fiscal calendar match, use date range (shouldn't happen)
-      const useFiscalWeeks = fiscalWeekStarts.length > 0
-
-      // Check if a saved report already exists for this month/type
-      const { data: existingReport } = await supabase
-        .from('monthly_reports')
-        .select('narrative, report_title')
-        .eq('month', monthKey)
-        .eq('type', type)
-        .single()
-
-      if (existingReport?.narrative) {
-        // Load saved narrative — but still fetch real data for PDF numbers
-        setIsSavedReport(true)
-        setOnePagerDraft(existingReport.narrative)
-        const monthLabel = format(weekStart, 'MMMM yyyy')
-        const isMid = type === 'mid'
-
-        const prodQuery = useFiscalWeeks
-          ? supabase.from('production').select('*').in('week_start', fiscalWeekStarts).order('week_start')
-          : supabase.from('production').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
-        const peopleQuery = useFiscalWeeks
-          ? supabase.from('people_weekly').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
-          : supabase.from('people_weekly').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
-        const wipQuery = useFiscalWeeks
-          ? supabase.from('wip_snapshots').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
-          : supabase.from('wip_snapshots').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
-
-        const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
-               { data: peopleRows }, { data: wipSnap }] = await Promise.all([
-          prodQuery,
-          supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
-          supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
-          supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
-          peopleQuery,
-          wipQuery,
-        ])
-
-        const n = v => parseFloat(v)||0
-        const fmtD = v => v ? '$'+Math.round(v).toLocaleString() : '—'
-        const fmtY = v => v ? v.toLocaleString()+' yds' : '—'
-        const pct  = (a,b) => b>0 ? Math.round(a/b*100) : null
-        const weeks = prodRows?.length || 0
-
-        const njYds     = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.yards),0),0)||0
-        const bnyYds    = prodRows?.reduce((s,p)=>s+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-        const njTgt=8610*weeks, bnyTgt=12000*weeks
-        const njInvYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
-        const njInvRev  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
-        const njMisc    = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
-        const bnyInvYds = prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-        const bnyInvRev = prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-        const bnyMisc   = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
-        const njWaste   = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
-        const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1)+'%' : '—'
-        const opexNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.opex_total),0)||0
-        const opexBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.opex_total),0)||0
-        const invNJ   = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
-        const invBNY  = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
-        const apPara  = apRows?.find(r=>r.facility==='Paramount')
-        const apBNY   = apRows?.find(r=>r.facility==='BNY')
-        const arData  = arRows?.[0]
-        const ppl     = peopleRows?.[0]
-        const wip     = wipSnap?.[0]
-
-        setOnePagerPayload({
-          report_title: existingReport.report_title || `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
-          period_label: `${monthLabel} · ${weeks} week${weeks!==1?'s':''} · Fiscal Q${Math.ceil(parseInt(monthKey.split('-')[1])/3)}`,
-          date_generated: format(new Date(), 'MMMM d, yyyy'),
-          filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
-          bny: {
-            prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
-            inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
-            opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
-            prod_yds_raw: bnyYds, prod_tgt_raw: bnyTgt,
-          },
-          nj: {
-            prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
-            inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev+njMisc), misc_fees: njMisc>0?fmtD(njMisc):null,
-            opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
-            prod_yds_raw: njYds, prod_tgt_raw: njTgt,
-          },
-          financials: {
-            opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
-            rev_nj: fmtD(njInvRev+njMisc), rev_bny: fmtD(bnyInvRev+bnyMisc),
-            rev_combined: fmtD(njInvRev+njMisc+bnyInvRev+bnyMisc),
-            combined_prod_yds: fmtY(njYds+bnyYds), combined_prod_tgt: (njTgt+bnyTgt).toLocaleString(),
-            combined_prod_pct: pct(njYds+bnyYds, njTgt+bnyTgt),
-            combined_inv_yds: fmtY(njInvYds+bnyInvYds),
-          },
-          people: {
-            headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
-            payroll: ppl ? fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)) : '—',
-            ot: ppl ? (n(ppl.bny_ot_hrs)+n(ppl.nj_ot_hrs)).toFixed(1)+' hrs' : '—',
-            hr_notes: ppl?.hr_notes || '',
-          },
-          wip: wip ? {
-            orders: wip.wip_orders, yards: Math.round(wip.wip_yards).toLocaleString(),
-            age_0_30: wip.age_0_30_orders, age_31_60: wip.age_31_60_orders,
-            age_61_90: wip.age_61_90_orders, age_90plus: wip.age_90plus_orders,
-            wallpaper: wip.wallpaper_orders, grasscloth: wip.grasscloth_orders, fabric: wip.fabric_orders,
-          } : {},
-        })
-        setOnePagerLoading(false)
-        return
-      }
-      const monthLabel = format(weekStart, 'MMMM yyyy')
-
-      const prodQuery2 = useFiscalWeeks
-        ? supabase.from('production').select('*').in('week_start', fiscalWeekStarts).order('week_start')
-        : supabase.from('production').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
-      const peopleQuery2 = useFiscalWeeks
-        ? supabase.from('people_weekly').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
-        : supabase.from('people_weekly').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
-      const weekQuery2 = useFiscalWeeks
-        ? supabase.from('weeks').select('*').in('week_start', fiscalWeekStarts).order('week_start')
-        : supabase.from('weeks').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start')
-      const wipQuery2 = useFiscalWeeks
-        ? supabase.from('wip_snapshots').select('*').in('week_start', fiscalWeekStarts).order('week_start',{ascending:false}).limit(1)
-        : supabase.from('wip_snapshots').select('*').gte('week_start', monthKey+'-01').lte('week_start', monthKey+'-31').order('week_start',{ascending:false}).limit(1)
-
-      const [{ data: prodRows }, { data: finRows }, { data: apRows }, { data: arRows },
-             { data: peopleRows }, { data: weekRows }, { data: wipSnap }] = await Promise.all([
-        prodQuery2,
-        supabase.from('financials_monthly').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
-        supabase.from('financial_ap').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5'),
-        supabase.from('financial_ar').select('*').gte('period', monthKey+'-W1').lte('period', monthKey+'-W5').order('uploaded_at',{ascending:false}).limit(1),
-        peopleQuery2,
-        weekQuery2,
-        wipQuery2,
-      ])
-
-      const n = v => parseFloat(v)||0
-      const fmtD = v => v ? '$'+Math.round(v).toLocaleString() : '—'
-      const fmtY = v => v ? v.toLocaleString()+' yds' : '—'
-      const pct  = (a,b) => b>0 ? Math.round(a/b*100) : null
-
-      const weeks = prodRows?.length || 0
-      const njYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.yards),0),0)||0
-      const bnyYds = prodRows?.reduce((s,p)=>s+['replen','mto','hos','memo','contract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const njTgt=8610*weeks, bnyTgt=12000*weeks
-      const njInvYds  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceYds),0),0)||0
-      const njInvRev  = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.invoiceRev),0),0)||0
-      const njMisc    = prodRows?.reduce((s,p)=>s+n(p.nj_data?.miscFees),0)||0
-      const bnyInvYds = prodRows?.reduce((s,p)=>s+['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const bnyInvRev = prodRows?.reduce((s,p)=>s+['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract'].reduce((ss,c)=>ss+n(p.bny_data?.[c]),0),0)||0
-      const bnyMisc   = prodRows?.reduce((s,p)=>s+n(p.bny_data?.miscFees),0)||0
-      const njWaste   = prodRows?.reduce((s,p)=>s+['fabric','grass','paper'].reduce((ss,c)=>ss+n(p.nj_data?.[c]?.waste),0),0)||0
-      const njWastePct = njYds>0 ? (njWaste/njYds*100).toFixed(1)+'%' : '—'
-
-      const opexNJ  = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.opex_total),0)||0
-      const opexBNY = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.opex_total),0)||0
-      const invNJ   = finRows?.filter(r=>r.business_unit==='610').reduce((s,r)=>s+n(r.inv_purchases),0)||0
-      const invBNY  = finRows?.filter(r=>r.business_unit==='609').reduce((s,r)=>s+n(r.inv_purchases),0)||0
-      const apPara  = apRows?.find(r=>r.facility==='Paramount')
-      const apBNY   = apRows?.find(r=>r.facility==='BNY')
-      const arData  = arRows?.[0]
-      const ppl     = peopleRows?.[0]
-      const wip     = wipSnap?.[0]
-
-      const SL = {green:'On Track',amber:'Watch',red:'Concern',gray:'Pending'}
-      const allKpis = {}
-      weekRows?.forEach(w=>Object.entries(w.kpis||{}).forEach(([k,v])=>{ if(v?.status&&v.status!=='gray') allKpis[k]=v }))
-      const kpiLines = Object.entries(allKpis).map(([k,v])=>`${k}: ${SL[v.status]}${v.notes?' ('+v.notes+')':''}`).join(', ')
-      const concerns = weekRows?.map(w=>w.concerns).filter(Boolean).join(' | ')
-
-      const isMid = type === 'mid'
-
-      // Generate narrative via Claude
-      const prompt = `You are helping Peter Webster, President of Paramount Prints (specialty printing division of F. Schumacher & Co), write a ${isMid?'mid-month':'month-end'} update for fellow BU leaders and the executive team. Tone: direct, candid, peer-to-peer — like a sharp Slack message from a BU head. First person as Peter. No headers. No bullets.
-
-PERIOD: ${monthLabel} — ${weeks} weeks${isMid?' MTD':' (full month close)'}
-
-PRODUCTION:
-BNY Brooklyn: ${bnyYds.toLocaleString()} yds produced / ${bnyTgt.toLocaleString()} target (${pct(bnyYds,bnyTgt)}%) · Invoiced ${fmtY(bnyInvYds)} · ${fmtD(bnyInvRev+bnyMisc)} revenue
-NJ Passaic: ${njYds.toLocaleString()} yds produced / ${njTgt.toLocaleString()} target (${pct(njYds,njTgt)}%) · Invoiced ${fmtY(njInvYds)} · ${fmtD(njInvRev+njMisc)} revenue · Waste ${njWastePct}
-Combined: ${(njYds+bnyYds).toLocaleString()} yds / ${(njTgt+bnyTgt).toLocaleString()} target (${pct(njYds+bnyYds,njTgt+bnyTgt)}%)
-
-FINANCIALS: OpEx NJ ${fmtD(opexNJ)} · BNY ${fmtD(opexBNY)} · Combined ${fmtD(opexNJ+opexBNY)}
-Inv purchases NJ ${fmtD(invNJ)} · BNY ${fmtD(invBNY)}
-AP past due: Paramount ${fmtD(n(apPara?.past_due))} · BNY ${fmtD(n(apBNY?.past_due))}
-AR outstanding ${fmtD(n(arData?.total_outstanding))} · past due ${fmtD(n(arData?.total_past_due))}
-
-PEOPLE: ${ppl?(n(ppl.bny_headcount)+n(ppl.nj_headcount))+' total headcount · payroll '+fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)):'No people data'}
-WIP: ${wip?wip.wip_orders+' active orders · '+Math.round(wip.wip_yards).toLocaleString()+' yds · 90d+ '+wip.age_90plus_orders+' orders':'No WIP snapshot'}
-${kpiLines?'KPIs: '+kpiLines:''}
-${concerns?'Concerns: '+concerns:''}
-
-Write exactly 4 paragraphs:
-1. ONE sentence — combined ${isMid?'MTD tracking':'month close'} headline
-2. BNY Brooklyn — 3-4 sentences: production vs target, invoiced revenue, what drove it, anything to flag
-3. Passaic NJ — 3-4 sentences: production vs target, invoiced, waste, what's working/not
-4. ${isMid?'Forward look — what to watch for close of month':'Close — AP/AR/OpEx callout, Q2 outlook, momentum'}`
-
-      const resp = await fetch('/api/claude', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:900, messages:[{role:'user',content:prompt}] })
-      })
-      const aiData = await resp.json()
-      const narrative = aiData.content?.find(c=>c.type==='text')?.text?.trim() || ''
-
-      if (!narrative) { setOnePagerError('Could not generate narrative — try again.'); setOnePagerLoading(false); return }
-      setOnePagerDraft(narrative)
-
-      // Build PDF payload
-      const pdfPayload = {
-        report_title: `${monthLabel} — ${isMid?'Mid-Month Brief':'Month-End Report'}`,
-        period_label: `${monthLabel} · ${weeks} week${weeks!==1?'s':''} · Fiscal Q${Math.ceil(parseInt(monthKey.split('-')[1])/3)}`,
-        date_generated: format(new Date(), 'MMMM d, yyyy'),
-        filename: `Paramount_${monthLabel.replace(' ','_')}_${isMid?'MidMonth':'MonthEnd'}.pdf`,
-        narrative,
-        bny: {
-          prod_yds: fmtY(bnyYds), prod_tgt: bnyTgt.toLocaleString(), prod_pct: pct(bnyYds,bnyTgt),
-          inv_yds: fmtY(bnyInvYds), inv_rev: fmtD(bnyInvRev+bnyMisc),
-          opex: fmtD(opexBNY), inv_purch: fmtD(invBNY),
-          prod_yds_raw: bnyYds, prod_tgt_raw: bnyTgt,
-        },
-        nj: {
-          prod_yds: fmtY(njYds), prod_tgt: njTgt.toLocaleString(), prod_pct: pct(njYds,njTgt),
-          inv_yds: fmtY(njInvYds), inv_rev: fmtD(njInvRev+njMisc), misc_fees: njMisc>0?fmtD(njMisc):null,
-          opex: fmtD(opexNJ), inv_purch: fmtD(invNJ), waste_pct: njWastePct,
-          prod_yds_raw: njYds, prod_tgt_raw: njTgt,
-        },
-        financials: {
-          opex_combined: fmtD(opexNJ+opexBNY), inv_combined: fmtD(invNJ+invBNY),
-          rev_nj: fmtD(njInvRev+njMisc), rev_bny: fmtD(bnyInvRev+bnyMisc),
-          rev_combined: fmtD(njInvRev+njMisc+bnyInvRev+bnyMisc),
-          combined_prod_yds: fmtY(njYds+bnyYds), combined_prod_tgt: (njTgt+bnyTgt).toLocaleString(),
-          combined_prod_pct: pct(njYds+bnyYds, njTgt+bnyTgt),
-          combined_inv_yds: fmtY(njInvYds+bnyInvYds),
-        },
-        people: {
-          headcount: ppl ? `${n(ppl.bny_headcount)+n(ppl.nj_headcount)} total (${n(ppl.bny_headcount)} BNY · ${n(ppl.nj_headcount)} NJ)` : '—',
-          payroll: ppl ? fmtD(n(ppl.bny_total_pay)+n(ppl.nj_total_pay)) : '—',
-          ot: ppl ? (n(ppl.bny_ot_hrs)+n(ppl.nj_ot_hrs)).toFixed(1)+' hrs' : '—',
-          hr_notes: ppl?.hr_notes || '',
-        },
-        wip: wip ? {
-          orders: wip.wip_orders, yards: Math.round(wip.wip_yards).toLocaleString(),
-          age_0_30: wip.age_0_30_orders, age_31_60: wip.age_31_60_orders,
-          age_61_90: wip.age_61_90_orders, age_90plus: wip.age_90plus_orders,
-          wallpaper: wip.wallpaper_orders, grasscloth: wip.grasscloth_orders, fabric: wip.fabric_orders,
-        } : {},
-      }
-
-      // Store payload for PDF generation after editing
-      setOnePagerPayload(pdfPayload)
-
-    } catch(e) { setOnePagerError('Failed: '+e.message) }
-    setOnePagerLoading(false)
-  }
-
-    async function handlePublishSummary() {
-    if (!draftNarrative) return
-    setPublishing(true)
-    try {
-      await onSave({executive_narrative: draftNarrative})
-      onRefresh && onRefresh()
-      setGenSuccess(true)
-      setTimeout(()=>setGenSuccess(false),5000)
-    } catch(e) { setGenError('Publish failed.') }
-    setPublishing(false)
-  }
-
   return (
-    <div style={{ maxWidth:980, margin:'0 auto', padding:'28px 24px 64px' }}>
-
-      {/* Header */}
-      <div style={{ marginBottom:24 }}>
-        <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:6 }}>Admin · Data Entry</div>
-        <h2 style={{ margin:0, fontFamily:'Georgia, serif', fontSize:24, color:'var(--ink)', fontWeight:700 }}>Week of {format(weekStart,'MMMM d, yyyy')}</h2>
-      </div>
-
-      {/* Generate Summary card */}
-      <div style={{ background:'#FAFAF8', border:'2px solid var(--ink-10)', borderRadius:12, padding:'20px 24px', marginBottom:24, transition:'all 0.2s' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:20, flexWrap:'wrap', marginBottom: draftNarrative ? 16 : 0 }}>
-          <div>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--ink)', marginBottom:4, fontFamily:'Georgia, serif' }}>✦ Executive Summary</div>
-            <div style={{ fontSize:12, color:'var(--ink-40)' }}>
-              {draftNarrative ? 'Review and edit below, then publish to Consolidated.' : allDone ? 'All data entered — ready to generate.' : 'Fill in sections below, then generate the summary for Timur & Emily.'}
-            </div>
-            {genError  && <div style={{ fontSize:12, color:'#E65100', marginTop:6 }}>⚠ {genError}</div>}
-            {genSuccess && <div style={{ fontSize:12, color:'#2E7D32', marginTop:6 }}>✓ Published to Consolidated</div>}
-          </div>
-          <div style={{ display:'flex', gap:8, flexShrink:0 }}>
-            <button onClick={handleGenerateSummary} disabled={generating} style={{ background:'var(--ink)', color:'#fff', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:600, cursor:generating?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif', opacity:generating?0.6:1 }}>
-              {generating ? '⏳ Generating…' : draftNarrative ? '↻ Regenerate' : '✦ Generate'}
-            </button>
-            {draftNarrative && (
-              <button onClick={handlePublishSummary} disabled={publishing} style={{ background:'#D4A843', color:'#2C2420', border:'none', borderRadius:8, padding:'10px 20px', fontSize:13, fontWeight:700, cursor:publishing?'not-allowed':'pointer', whiteSpace:'nowrap', fontFamily:'Georgia, serif' }}>
-                {publishing ? 'Publishing…' : '✓ Publish to Dashboard'}
-              </button>
-            )}
-          </div>
-        </div>
-        {draftNarrative && (
-          <div>
-            <div style={{ fontSize:11, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:8 }}>Draft — edit freely before publishing</div>
-            <textarea
-              value={draftNarrative}
-              onChange={e => setDraftNarrative(e.target.value)}
-              rows={10}
-              style={{ width:'100%', fontFamily:'Georgia, serif', fontSize:14, lineHeight:1.8, padding:'16px', border:'1px solid var(--ink-20)', borderRadius:8, background:'#fff', resize:'vertical', boxSizing:'border-box', color:'var(--ink)' }}
-            />
-          </div>
-        )}
-        {weekData?.executive_narrative && !draftNarrative && (
-          <div style={{ marginTop:12, padding:'12px 16px', background:'var(--cream-dark,#F5F0EA)', borderRadius:8, borderLeft:'3px solid var(--ink-20)' }}>
-            <div style={{ fontSize:10, fontWeight:600, letterSpacing:'0.06em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:6 }}>Currently published</div>
-            <div style={{ fontSize:13, color:'var(--ink-60)', lineHeight:1.7, whiteSpace:'pre-wrap' }}>{weekData.executive_narrative.slice(0,300)}{weekData.executive_narrative.length>300?'…':''}</div>
-            <button onClick={()=>setDraftNarrative(weekData.executive_narrative)} style={{ marginTop:8, fontSize:12, color:'var(--ink-40)', background:'none', border:'none', cursor:'pointer', padding:0 }}>Edit current version →</button>
-          </div>
-        )}
-      </div>
-
-      {/* Status chips */}
-      <div style={{ display:'flex', gap:8, marginBottom:28, flexWrap:'wrap' }}>
-        {chips.map(c=>(
-          <div key={c.label} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 12px', borderRadius:20, background:c.done?'#F0FAF4':'#F5F5F5', border:`1px solid ${c.done?'#BBE0C8':'#E0E0E0'}`, fontSize:12, fontWeight:500, color:c.done?'#2E7D32':'var(--ink-40)' }}>
-            <span style={{ fontSize:11 }}>{c.done?'✓':'○'}</span>{c.label}
-          </div>
-        ))}
-      </div>
-
-      {/* ── One-Pager Buttons ── */}
-      <div style={{ display:'flex', gap:12, marginBottom:28, flexWrap:'wrap' }}>
-        {[
-          { type:'mid', label:'📄 Mid-Month Brief', desc:'MTD snapshot — where we are tracking' },
-          { type:'end', label:'📋 Month-End Report', desc:'Full month close — how did we finish' },
-        ].map(btn => {
-          const saved = savedReports[btn.type]
-          const isActive = onePagerType===btn.type && onePagerDraft
-          return (
-            <div key={btn.type} style={{ display:'flex', flexDirection:'column', gap:0, minWidth:220 }}>
-              <button onClick={()=>generateOnePager(btn.type)} disabled={onePagerLoading}
-                style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
-                  background: isActive ? '#1f2937' : saved ? '#1f2937' : '#F5F5F5',
-                  color: isActive||saved ? '#fff' : 'var(--ink)',
-                  border:`1.5px solid ${isActive||saved?'#1f2937':'var(--ink-10)'}`,
-                  borderRadius: saved ? '10px 10px 0 0' : 10,
-                  padding:'12px 18px', cursor:onePagerLoading?'not-allowed':'pointer',
-                  opacity:onePagerLoading&&onePagerType!==btn.type?0.6:1, textAlign:'left', width:'100%' }}>
-                <span style={{ fontSize:14, fontWeight:700, fontFamily:'Georgia,serif' }}>
-                  {onePagerLoading&&onePagerType===btn.type ? '⏳ Generating…' : btn.label}
-                </span>
-                <span style={{ fontSize:11, opacity:0.6 }}>{saved ? (isActive?'Editing…':'Saved — click to load/edit') : btn.desc}</span>
-              </button>
-              {saved && !isActive && (
-                <div style={{ background:'#F0F4F0', border:'1.5px solid #1f2937', borderTop:'none', borderRadius:'0 0 10px 10px', padding:'8px 18px' }}>
-                  <div style={{ fontSize:10, fontWeight:700, color:'#4a7c59', letterSpacing:'0.06em', marginBottom:3 }}>
-                    ✓ SAVED · {new Date(saved.generated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-                  </div>
-                  <div style={{ fontSize:11, color:'#555', lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
-                    {saved.narrative?.slice(0,120)}…
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* One-pager draft */}
-      {(onePagerDraft||onePagerError) && (
-        <div style={{ marginBottom:28, border:'1px solid var(--ink-10)', borderRadius:12, overflow:'hidden' }}>
-          <div style={{ background:'#1f2937', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>
-              {onePagerType==='mid' ? '📄 Mid-Month Brief' : '📋 Month-End Report'} — {format(weekStart,'MMMM yyyy')}
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              {isSavedReport && (
-                <button onClick={regenerateOnePager}
-                  style={{ background:'rgba(255,255,255,0.1)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                  ↺ Regenerate
-                </button>
-              )}
-              <button onClick={()=>{navigator.clipboard.writeText(onePagerDraft);setOnePagerCopied(true);setTimeout(()=>setOnePagerCopied(false),3000)}}
-                style={{ background:'rgba(255,255,255,0.15)', color:'#fff', border:'1px solid rgba(255,255,255,0.3)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                {onePagerCopied ? '✓ Copied!' : '📋 Copy'}
-              </button>
-              <button onClick={downloadPDF} disabled={pdfGenerating}
-                style={{ background:'#D4A843', color:'#1f2937', border:'none', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:700, cursor:pdfGenerating?'not-allowed':'pointer', opacity:pdfGenerating?0.7:1 }}>
-                {pdfGenerating ? '⏳ Building…' : '⬇ Download PDF'}
-              </button>
-              <button onClick={saveOnePager}
-                style={{ background:'none', color:'rgba(255,255,255,0.7)', border:'1px solid rgba(255,255,255,0.25)', borderRadius:6, padding:'5px 14px', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                {onePagerSaved ? '✓ Saved' : '💾 Save'}
-              </button>
-              <button onClick={()=>{setOnePagerDraft('');setOnePagerType(null)}}
-                style={{ background:'none', color:'rgba(255,255,255,0.5)', border:'1px solid rgba(255,255,255,0.2)', borderRadius:6, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>
-                ✕
-              </button>
-            </div>
-          </div>
-          {onePagerError && <div style={{ padding:'12px 16px', color:'#b91c1c', fontSize:13 }}>⚠ {onePagerError}</div>}
-          {onePagerDraft && (
-            <textarea value={onePagerDraft} onChange={e=>setOnePagerDraft(e.target.value)}
-              rows={14} style={{ width:'100%', padding:'16px', fontFamily:'Georgia, serif', fontSize:14,
-                lineHeight:1.8, border:'none', outline:'none', resize:'vertical', boxSizing:'border-box',
-                background:'#FAFAFA', color:'var(--ink)' }}/>
-          )}
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:0, marginBottom:32, borderBottom:'1px solid var(--ink-10)', overflowX:'auto' }}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setSection(t.id)} style={{ padding:'9px 16px', fontSize:13, fontWeight:section===t.id?600:400, background:'none', border:'none', borderBottom:section===t.id?'2px solid var(--ink)':'2px solid transparent', color:section===t.id?'var(--ink)':'var(--ink-40)', cursor:'pointer', marginBottom:-1, whiteSpace:'nowrap', fontFamily:'inherit' }}>{t.label}</button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      {section==='production' && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="production"/>}
-      {section==='kpis'       && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="kpis"/>}
-      {section==='log'        && <WeeklyLog     weekData={weekData} weekStart={weekStart} onSave={onSave} dbReady={dbReady}/>}
-      {section==='financials' && <AdminPanel    weekStart={weekStart} weekData={weekData} onSave={onSave} dbReady={dbReady} defaultSection="financials"/>}
-      {section==='people'     && <AdminPeople   weekStart={weekKey(weekStart)} currentUser={userProfile} onSaved={()=>setSection('production')}/>}
-      {section==='files'      && <Correspondence weekStart={weekStart} dbReady={dbReady} {...commentProps}/>}
-      {section==='history'    && <HistoryPanel  onSelectWeek={()=>{}}/>}
+    <div style={{ minHeight:'calc(100vh - 200px)' }}>
+      <AdminPanel
+        weekStart={weekStart}
+        weekData={weekData}
+        onSave={onSave}
+        dbReady={dbReady}
+      />
     </div>
   )
 }
 
-
-// ── Live Ops page — unified single-row KPI bar + both facility tables ─────────
-function LiveOpsPage({ weekStart }) {
-  const {
-    bny, nj, digital, hs, loading, error, weekNum, weekInfo, lastRefresh,
-    todayIdx, daysIn, bnyT, njT, digitalT, hsT, reload
-  } = useProductionData(weekStart)
-
-  const todayLabel = todayIdx>=0 ? ['Mon','Tue','Wed','Thu','Fri'][todayIdx] : null
-  const fmt  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'
-  const pct  = (a,b) => a!==null&&b&&b>0 ? Math.round(a/b*100) : null
-  const pctColor   = p => p===null ? 'rgba(250,247,242,0.5)' : p>=95 ? '#6FCF97' : p>=80 ? '#F2C94C' : '#EB5757'
-  const wasteColor = p => p===null ? 'rgba(250,247,242,0.5)' : p<=10  ? '#6FCF97' : '#EB5757'
-  const ouFmt = ou => ou===null ? null : `${ou>=0?'+':''}${Number(ou).toLocaleString()}`
-
-  const [pdfFacility, setPdfFacility] = useState(null)
-  const [slackModal,  setSlackModal]  = useState(null)
-  const [slackTo,     setSlackTo]     = useState('')
-  const [slackToId,   setSlackToId]   = useState(null) // resolved Slack user ID
-  const [slackSending,setSlackSending]= useState(false)
-  const [slackResult, setSlackResult] = useState(null)
-  const [slackSuggestions, setSlackSuggestions] = useState([])
-  const [slackShowDrop,    setSlackShowDrop]    = useState(false)
-  const slackSearchRef = useRef(null)
-
-  async function searchSlackUsers(q) {
-    if (!q || q.length < 1) { setSlackSuggestions([]); setSlackShowDrop(false); return }
-    try {
-      const res = await fetch(`/api/slack-users?q=${encodeURIComponent(q)}`)
-      const data = await res.json()
-      setSlackSuggestions(data.members || [])
-      setSlackShowDrop(true)
-    } catch { setSlackSuggestions([]) }
-  }
-
-  // Debounce search
-  const slackSearchTimer = useRef(null)
-  function onSlackInputChange(val) {
-    setSlackTo(val); setSlackToId(null); setSlackResult(null)
-    clearTimeout(slackSearchTimer.current)
-    slackSearchTimer.current = setTimeout(() => searchSlackUsers(val), 250)
-  }
-
-  function selectSlackUser(member) {
-    setSlackTo(member.name)
-    setSlackToId(member.id)
-    setSlackSuggestions([])
-    setSlackShowDrop(false)
-  }
-
-  async function handlePrintPDF(facility) {
-    if (pdfFacility) return
-    setPdfFacility(facility)
-    try {
-      const isDigital = facility === 'digital'
-      await generateLiveOpsPDF({
-        data:          isDigital ? digital : hs,
-        dayCols:       isDigital ? BNY_DAYS : NJ_DAYS,
-        totals:        isDigital ? digitalT : hsT,
-        budget:        isDigital ? 12000 : 8610,
-        facilityLabel: isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic',
-        weekNum, weekInfo, todayIdx,
-      })
-    } catch(e) {
-      console.error('PDF generation failed:', e)
-      alert('PDF failed: ' + e.message)
-    } finally { setPdfFacility(null) }
-  }
-
-  async function handleSlackPDF(facility) {
-    if (pdfFacility) return
-    setPdfFacility(facility)
-    try {
-      const isDigital = facility === 'digital'
-      const facilityLabel = isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic'
-      const filename = `${facilityLabel.replace(/[^a-zA-Z0-9]/g,'_')}_WK${weekNum||''}_${format(new Date(),'yyyyMMdd')}.pdf`
-      const pdfBase64 = await generateLiveOpsPDF({
-        data:          isDigital ? digital : hs,
-        dayCols:       isDigital ? BNY_DAYS : NJ_DAYS,
-        totals:        isDigital ? digitalT : hsT,
-        budget:        isDigital ? 12000 : 8610,
-        facilityLabel, weekNum, weekInfo, todayIdx,
-        returnBase64:  true,  // signal to return base64 instead of saving
-      })
-      setSlackModal({ facility, filename, pdfBase64 })
-      setSlackTo(''); setSlackResult(null)
-    } catch(e) {
-      alert('PDF failed: ' + e.message)
-    } finally { setPdfFacility(null) }
-  }
-
-  async function sendToSlack() {
-    if (!slackTo.trim() || !slackModal) return
-    setSlackSending(true); setSlackResult(null)
-    try {
-      const isDigital = slackModal.facility === 'digital'
-      const facilityLabel = isDigital ? 'Digital — Brooklyn + Passaic' : 'Hand Screen — Passaic'
-      // Use resolved ID if available, otherwise pass the typed name
-      const recipient = slackToId || slackTo.trim()
-      const res = await fetch('/api/slack-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pdfBase64: slackModal.pdfBase64,
-          filename:  slackModal.filename,
-          recipient,
-          isUserId:  !!slackToId,
-          message:   `${facilityLabel} · FY WK ${weekNum||''} Production Report`,
-        })
-      })
-      const data = await res.json()
-      if (data.ok) { setSlackResult('ok') }
-      else { setSlackResult(data.error || 'Send failed') }
-    } catch(e) { setSlackResult(e.message) }
-    finally { setSlackSending(false) }
-  }
-
-  // Combined totals
-  const combSched  = (bnyT?.wkSched||0)+(njT?.wkSched||0)
-  const combActual = bnyT?.wkActual!==null||njT?.wkActual!==null ? (bnyT?.wkActual||0)+(njT?.wkActual||0) : null
-  const combWaste  = bnyT?.wkWaste!==null||njT?.wkWaste!==null   ? (bnyT?.wkWaste||0)+(njT?.wkWaste||0)   : null
-  const combSchedP = pct(combActual, combSched)
-  const combBudgetP= pct(combActual, 12000+8610)
-  const combWasteP = pct(combWaste, combActual)
-
-  const hasData = bnyT !== null || njT !== null
-
-  // ── Sub-components scoped to this bar ──
-  function Bubble({ label, value, sub, color }) {
-    return (
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-        background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'5px 10px',
-        minWidth:64, gap:1, flexShrink:1 }}>
-        <div style={{ fontSize:8, color:'rgba(212,168,67,0.65)', fontWeight:'bold',
-          letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
-        <div style={{ fontSize:14, fontWeight:'bold', color:color||'#FAF7F2',
-          fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
-        {sub && <div style={{ fontSize:8, color:'rgba(250,247,242,0.4)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
-      </div>
-    )
-  }
-
-  function VDiv() {
-    return <div style={{ width:1, alignSelf:'stretch', background:'rgba(212,168,67,0.2)', flexShrink:0, margin:'0 4px' }}/>
-  }
-
-  function GroupLabel({ text }) {
-    return (
-      <div style={{ fontSize:9, color:'rgba(212,168,67,0.7)', fontWeight:'bold',
-        letterSpacing:'0.08em', background:'rgba(212,168,67,0.1)', borderRadius:3,
-        padding:'2px 6px', whiteSpace:'nowrap', flexShrink:0, alignSelf:'center',
-        userSelect:'none' }}>{text}</div>
-    )
-  }
-
+// ─────────────────────────────────────────────────────────────────────────────
+// MODE TOGGLE — pill toggle in header for switching between Exec / Ops
+// ─────────────────────────────────────────────────────────────────────────────
+function ModeToggle({ mode, onChange, allowSwitch }) {
+  if (!allowSwitch) return null
   return (
-    <div style={{ fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh' }}>
-
-      {/* ── Sticky KPI bar — two clean rows, no wrapping ── */}
-      <div style={{
-        position:'sticky', top:0, zIndex:100,
-        background:'#2C2420',
-        borderBottom:'2px solid rgba(212,168,67,0.2)',
-        boxShadow:'0 3px 16px rgba(0,0,0,0.35)',
-        padding:'8px 16px',
-        overflowX:'hidden',
-      }}>
-
-        {/* ROW 1: identity + Combined + BNY + Refresh */}
-        <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap', marginBottom: hasData ? 6 : 0 }}>
-
-          {/* Identity */}
-          <div style={{ flexShrink:0, marginRight:4 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <span style={{ background:'#D4A843', color:'#2C2420', borderRadius:4,
-                padding:'2px 7px', fontSize:11, fontWeight:'bold', whiteSpace:'nowrap' }}>Live Ops</span>
-              {weekNum && (
-                <span style={{ background:'rgba(212,168,67,0.15)', color:'#D4A843',
-                  borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>
-              )}
-              {weekInfo && (
-                <span style={{ fontSize:10, color:'rgba(212,168,67,0.6)', whiteSpace:'nowrap' }}>
-                  {weekInfo.month} · {weekInfo.quarter}
-                </span>
-              )}
-            </div>
-            {lastRefresh && (
-              <div style={{ fontSize:8, color:'rgba(250,247,242,0.3)', marginTop:2 }}>
-                {lastRefresh.toLocaleTimeString()}
-              </div>
-            )}
-          </div>
-
-          {hasData && <>
-            <VDiv/>
-            <GroupLabel text="COMBINED"/>
-            <Bubble label="Total Yds"   value={combActual!==null?fmt(combActual):'—'} sub={`of ${fmt(combSched)} sched`} color={pctColor(combSchedP)}/>
-            <Bubble label="vs Schedule" value={combSchedP!==null?`${combSchedP}%`:'—'} sub="combined"                   color={pctColor(combSchedP)}/>
-            <Bubble label="vs Budget"   value={combBudgetP!==null?`${combBudgetP}%`:'—'} sub="20,610 yd tgt"            color={pctColor(combBudgetP)}/>
-            <Bubble label="Waste"       value={combWasteP!==null?`${combWasteP}%`:'—'} sub={`${fmt(combWaste)} yds`}   color={wasteColor(combWasteP)}/>
-            <VDiv/>
-            <GroupLabel text="BNY"/>
-            <Bubble label="Actual"    value={bnyT?.wkActual!==null?fmt(bnyT?.wkActual):'—'} sub={`sched ${fmt(bnyT?.wkSched)}`}   color={pctColor(bnyT?.schedPct)}/>
-            <Bubble label="% Sched"   value={bnyT?.schedPct!==null?`${bnyT.schedPct}%`:'—'} sub={ouFmt(bnyT?.overUnder)??'vs exp'} color={pctColor(bnyT?.schedPct)}/>
-            <Bubble label="vs Budget" value={bnyT?.budgetPct!==null?`${bnyT.budgetPct}%`:'—'} sub="12,000 yd tgt"                 color={pctColor(bnyT?.budgetPct)}/>
-            <Bubble label="Waste"     value={bnyT?.wastePct!==null?`${bnyT.wastePct}%`:'—'} sub={`${fmt(bnyT?.wkWaste)} yds`}    color={wasteColor(bnyT?.wastePct)}/>
-          </>}
-
-          <div style={{ flex:1, minWidth:12 }}/>
-          <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-            <button onClick={()=>handlePrintPDF('digital')} disabled={!!pdfFacility||loading} style={{
-              background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
-              padding:'4px 11px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              whiteSpace:'nowrap', opacity:pdfFacility==='digital'?0.6:1,
-            }}>
-              {pdfFacility==='digital' ? '⏳ Building…' : '⬇ Digital PDF'}
-            </button>
-            <button onClick={()=>handleSlackPDF('digital')} disabled={!!pdfFacility||loading} title="Send to Slack" style={{
-              background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-              padding:'4px 7px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center',
-            }}>
-              <SlackIcon size={13}/>
-            </button>
-            <button onClick={()=>handlePrintPDF('hs')} disabled={!!pdfFacility||loading} style={{
-              background:'rgba(212,168,67,0.15)', border:'1px solid rgba(212,168,67,0.35)', borderRadius:4,
-              padding:'4px 11px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              whiteSpace:'nowrap', opacity:pdfFacility==='hs'?0.6:1,
-            }}>
-              {pdfFacility==='hs' ? '⏳ Building…' : '⬇ Hand Screen PDF'}
-            </button>
-            <button onClick={()=>handleSlackPDF('hs')} disabled={!!pdfFacility||loading} title="Send to Slack" style={{
-              background:'rgba(212,168,67,0.1)', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-              padding:'4px 7px', fontSize:11, color:'#D4A843', cursor:pdfFacility?'not-allowed':'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center',
-            }}>
-              <SlackIcon size={13}/>
-            </button>
-            <button onClick={reload} disabled={loading} style={{
-              background:'none', border:'1px solid rgba(212,168,67,0.25)', borderRadius:4,
-              padding:'4px 11px', fontSize:11, color:'rgba(212,168,67,0.6)',
-              cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
-            }}>
-              {loading ? 'Loading…' : '↻ Refresh'}
-            </button>
-          </div>
-
-          {/* ── Slack modal ── */}
-          {slackModal && (
-            <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}
-              onClick={e=>{ if(e.target===e.currentTarget) setSlackModal(null) }}>
-              <div style={{ background:'#2C2420', borderRadius:12, padding:28, width:360, boxShadow:'0 20px 60px rgba(0,0,0,0.5)' }}>
-                <div style={{ fontSize:15, fontWeight:'bold', color:'#FAF7F2', marginBottom:6, display:'flex', alignItems:'center', gap:8 }}>
-                  <SlackIcon size={16}/> Send to Slack
-                </div>
-                <div style={{ fontSize:12, color:'rgba(250,247,242,0.5)', marginBottom:20 }}>{slackModal.filename}</div>
-                <div style={{ position:'relative' }}>
-                  <input
-                    autoFocus
-                    ref={slackSearchRef}
-                    value={slackTo}
-                    onChange={e=>onSlackInputChange(e.target.value)}
-                    onKeyDown={e=>{
-                      if (e.key==='Enter' && !slackShowDrop) sendToSlack()
-                      if (e.key==='Escape') { setSlackShowDrop(false) }
-                    }}
-                    onBlur={()=>setTimeout(()=>setSlackShowDrop(false), 150)}
-                    placeholder="Search by name..."
-                    style={{ width:'100%', background:'rgba(255,255,255,0.08)', border:`1px solid ${slackToId?'#6FCF97':'rgba(212,168,67,0.3)'}`,
-                      borderRadius:6, padding:'9px 12px', fontSize:13, color:'#FAF7F2',
-                      outline:'none', boxSizing:'border-box' }}
-                  />
-                  {slackToId && (
-                    <div style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#6FCF97' }}>✓</div>
-                  )}
-                  {slackShowDrop && slackSuggestions.length > 0 && (
-                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'#3A2E28', border:'1px solid rgba(212,168,67,0.25)',
-                      borderRadius:6, marginTop:4, maxHeight:200, overflowY:'auto', zIndex:10000, boxShadow:'0 8px 24px rgba(0,0,0,0.4)' }}>
-                      {slackSuggestions.map(m=>(
-                        <div key={m.id} onMouseDown={()=>selectSlackUser(m)}
-                          style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', cursor:'pointer',
-                            borderBottom:'1px solid rgba(255,255,255,0.05)' }}
-                          onMouseEnter={e=>e.currentTarget.style.background='rgba(212,168,67,0.1)'}
-                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                          {m.avatar && <img src={m.avatar} style={{ width:28, height:28, borderRadius:'50%' }} alt=""/>}
-                          <div>
-                            <div style={{ fontSize:13, color:'#FAF7F2', fontWeight:500 }}>{m.name}</div>
-                            {m.title && <div style={{ fontSize:11, color:'rgba(250,247,242,0.4)' }}>{m.title}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {slackResult && slackResult !== 'ok' && (
-                  <div style={{ fontSize:12, color:'#EB5757', marginTop:10 }}>⚠ {slackResult}</div>
-                )}
-                {slackResult === 'ok' && (
-                  <div style={{ fontSize:12, color:'#6FCF97', marginTop:10 }}>✓ Sent successfully!</div>
-                )}
-                <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-                  <button onClick={()=>setSlackModal(null)} style={{
-                    background:'none', border:'1px solid rgba(255,255,255,0.15)', borderRadius:6,
-                    padding:'7px 16px', fontSize:12, color:'rgba(250,247,242,0.6)', cursor:'pointer' }}>
-                    Cancel
-                  </button>
-                  <button onClick={sendToSlack} disabled={slackSending||!slackTo.trim()} style={{
-                    background:'#D4A843', border:'none', borderRadius:6,
-                    padding:'7px 18px', fontSize:12, fontWeight:'bold', color:'#2C2420',
-                    cursor:slackSending||!slackTo.trim()?'not-allowed':'pointer',
-                    opacity:slackSending||!slackTo.trim()?0.6:1 }}>
-                    {slackSending ? 'Sending…' : 'Send'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ROW 2: NJ — indented to align with BNY bubbles above */}
-        {hasData && (
-          <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
-            {/* Invisible spacer — matches identity block width exactly */}
-            <div style={{ flexShrink:0, visibility:'hidden', marginRight:4 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-                <span style={{ borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>Live Ops</span>
-                {weekNum && <span style={{ borderRadius:4, padding:'2px 7px', fontSize:11, fontWeight:'bold' }}>FY WK {weekNum}</span>}
-                {weekInfo && <span style={{ fontSize:10 }}>{weekInfo.month} · {weekInfo.quarter}</span>}
-              </div>
-              <div style={{ fontSize:8, marginTop:2 }}>00:00:00 AM</div>
-            </div>
-
-            {/* Combined spacer — matches COMBINED group width */}
-            <div style={{ display:'flex', alignItems:'center', gap:5, visibility:'hidden', pointerEvents:'none' }}>
-              <VDiv/>
-              <GroupLabel text="COMBINED"/>
-              <Bubble label="Total Yds"   value="—" sub="placeholder"/>
-              <Bubble label="vs Schedule" value="—" sub="placeholder"/>
-              <Bubble label="vs Budget"   value="—" sub="placeholder"/>
-              <Bubble label="Waste"       value="—" sub="placeholder"/>
-            </div>
-
-            <VDiv/>
-            <GroupLabel text="NJ"/>
-            <Bubble label="Actual"    value={njT?.wkActual!==null?fmt(njT?.wkActual):'—'} sub={`sched ${fmt(njT?.wkSched)}`}    color={pctColor(njT?.schedPct)}/>
-            <Bubble label="% Sched"   value={njT?.schedPct!==null?`${njT.schedPct}%`:'—'} sub={ouFmt(njT?.overUnder)??'vs exp'} color={pctColor(njT?.schedPct)}/>
-            <Bubble label="vs Budget" value={njT?.budgetPct!==null?`${njT.budgetPct}%`:'—'} sub="8,610 yd tgt"                  color={pctColor(njT?.budgetPct)}/>
-            <Bubble label="Waste"     value={njT?.wastePct!==null?`${njT.wastePct}%`:'—'} sub={`${fmt(njT?.wkWaste)} yds`}     color={wasteColor(njT?.wastePct)}/>
-          </div>
-        )}
-      </div>
-
-      {/* ── Facility tables ── */}
-      <div style={{ padding:'24px' }}>
-        <div style={{ fontSize:13, color:'#9C8F87', marginBottom:24 }}>
-          Source: Google Sheets (live) · Each cell: Sched / Actual / +− · Waste · Operator · Waste target &lt;10%
-        </div>
-        {error   && <div style={{ background:'#FFF3E0', border:'1px solid #FFB74D', borderRadius:8, padding:16, color:'#E65100', marginBottom:16 }}>⚠ {error}</div>}
-        {loading && <div style={{ color:'#9C8F87', padding:40, textAlign:'center', fontSize:14 }}>Loading from Google Sheets...</div>}
-        {!loading && !error && (
-          <>
-            <div style={{marginBottom:40}}>
-              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>BNY — Digital Production</div>
-              <FacilityDetail data={bny} dayCols={BNY_DAYS} todayIdx={todayIdx} budget={12000} title="BNY"/>
-              <OperatorScorecard ops={bny?.ops} facility="BNY"/>
-            </div>
-            <div style={{marginBottom:40}}>
-              <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:12,fontFamily:'Georgia, serif'}}>Passaic — Screen Print</div>
-              <FacilityDetail data={nj} dayCols={NJ_DAYS} todayIdx={todayIdx} budget={8610} title="Passaic"/>
-              <OperatorScorecard ops={nj?.ops} facility="Passaic"/>
-            </div>
-          </>
-        )}
-      </div>
+    <div className={styles.modeToggle}>
+      <button
+        className={`${styles.modeToggleBtn} ${mode==='executive' ? styles.modeToggleBtnActive : ''}`}
+        onClick={()=>onChange('executive')}
+      >Executive</button>
+      <button
+        className={`${styles.modeToggleBtn} ${mode==='operations' ? styles.modeToggleBtnActive : ''}`}
+        onClick={()=>onChange('operations')}
+      >Operations</button>
     </div>
   )
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN APP
+// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeTab,   setActiveTab]   = useState('consolidated')
-  const [currentWeek, setCurrentWeek] = useState(getDefaultWeek())
-  const [weekData,    setWeekData]    = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [dbReady,     setDbReady]     = useState(true)
+  const [mode,         setMode]         = useState('executive')
+  const [activeTab,    setActiveTab]    = useState('dashboard')
+  const [currentWeek,  setCurrentWeek]  = useState(getDefaultWeek())
+  const [weekData,     setWeekData]     = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [dbReady,      setDbReady]      = useState(true)
+  const [inAdmin,      setInAdmin]      = useState(false)
 
-  const [notifying,     setNotifying]     = useState(false)
-  const [notifySuccess, setNotifySuccess] = useState(false)
+  const [notifying,           setNotifying]           = useState(false)
+  const [notifySuccess,       setNotifySuccess]       = useState(false)
   const [sessionCommentCount, setSessionCommentCount] = useState(0)
   const sessionCommentsRef = useRef([])
   const sessionStartRef    = useRef(null)
@@ -1446,8 +278,14 @@ export default function App() {
   const [userProfile,        setUserProfile]        = useState(null)
   const [authLoading,        setAuthLoading]        = useState(true)
   const [adminAuthenticated, setAdminAuthenticated] = useState(false)
-  const isAdmin = userProfile?.role === 'admin'
 
+  const role           = userProfile?.role || null
+  const isAdmin        = role === 'admin'
+  const showGear       = canAccessGear(role)
+  const allowModeSwitch = canSwitchMode(role)
+  const tabsForCurrentMode = tabsFor(mode, role)
+
+  // ── Auth bootstrap + role-based landing ─────────────────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
@@ -1457,6 +295,25 @@ export default function App() {
             setUserProfile(profile)
             if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
             if (profile?.role === 'admin') setAdminAuthenticated(true)
+
+            // Land them in the right place based on role
+            const landing = landingFor(profile?.role)
+
+            // Respect saved preference if it's compatible with their role
+            const savedMode = localStorage.getItem('pp_mode')
+            const savedTab  = localStorage.getItem('pp_active_tab')
+            if (savedMode && (savedMode === 'executive' || savedMode === 'operations') && canSwitchMode(profile?.role)) {
+              setMode(savedMode)
+              const validTabs = tabsFor(savedMode, profile?.role).map(t=>t.id)
+              setActiveTab(validTabs.includes(savedTab) ? savedTab : tabsFor(savedMode, profile?.role)[0].id)
+            } else if (profile?.role === 'qa') {
+              // QA always lands in Ops, ignores any saved exec preference
+              setMode('operations')
+              setActiveTab('liveops')
+            } else {
+              setMode(landing.mode)
+              setActiveTab(landing.tab)
+            }
           })
       }
       setAuthLoading(false)
@@ -1474,6 +331,14 @@ export default function App() {
     sessionStartRef.current    = null
     setSessionCommentCount(0)
   }, [currentWeek])
+
+  // Persist mode + tab so reload returns to where you were
+  useEffect(() => {
+    if (userProfile && !inAdmin) {
+      localStorage.setItem('pp_mode', mode)
+      localStorage.setItem('pp_active_tab', activeTab)
+    }
+  }, [mode, activeTab, userProfile, inAdmin])
 
   async function loadWeek(weekDate) {
     setLoading(true)
@@ -1531,18 +396,47 @@ export default function App() {
   async function handleSignOut() {
     await supabase.auth.signOut()
     localStorage.removeItem('pp_commenter')
+    localStorage.removeItem('pp_mode')
+    localStorage.removeItem('pp_active_tab')
     setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false)
-    setActiveTab('consolidated')
+    setMode('executive'); setActiveTab('dashboard'); setInAdmin(false)
   }
 
   function handleLogin(user, profile) {
     setAuthUser(user); setUserProfile(profile)
     if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
     if (profile?.role === 'admin') setAdminAuthenticated(true)
+    const landing = landingFor(profile?.role)
+    setMode(landing.mode)
+    setActiveTab(landing.tab)
+    setInAdmin(false)
   }
 
+  function handleModeChange(newMode) {
+    if (!allowModeSwitch) return
+    setMode(newMode)
+    setInAdmin(false)
+    // Set default tab for new mode if current tab is not in that mode's list
+    const validTabs = tabsFor(newMode, role).map(t=>t.id)
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab(tabsFor(newMode, role)[0].id)
+    }
+  }
+
+  function handleTabChange(tabId) {
+    setActiveTab(tabId)
+    setInAdmin(false)
+  }
+
+  function handleGearClick() {
+    setInAdmin(true)
+  }
+
+  // Week-nav visibility: only in Executive mode, not on Admin
+  const showWeekNav = mode === 'executive' && !inAdmin
+
   const fiscalLabel = getFiscalLabel(currentWeek)
-  const weekLabel   = `Results: Week of ${format(currentWeek, 'MMMM d, yyyy')}`
+  const weekLabel   = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
 
   if (authLoading) return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--cream)' }}>
@@ -1552,7 +446,7 @@ export default function App() {
     </div>
   )
 
-  if (!authUser) return <LoginScreen onLogin={handleLogin} />
+  if (!authUser) return <LoginScreen onLogin={handleLogin}/>
 
   const commentProps = { currentUser: userProfile?.full_name, onCommentPosted }
 
@@ -1563,15 +457,11 @@ export default function App() {
           <div className={styles.brand}>
             <img src="/ParamountLogo.png" alt="Paramount Prints" style={{ height:64, width:'auto', display:'block' }}/>
             <p style={{ margin:0, marginTop:4, fontSize:15, fontWeight:700, fontFamily:'Georgia, serif', color:'var(--ink)' }}>
-              Executive Operations Dashboard
+              Operations Dashboard
             </p>
           </div>
 
-          {/* Header week-nav is for results-oriented tabs (Consolidated, Financials,
-              People, WIP, Admin). Hidden on Scheduler and Live Ops — those tabs
-              are forward-looking / live-state and manage their own week internally.
-              Two week selectors confused Wendy. */}
-          {activeTab !== 'scheduler' && activeTab !== 'liveops' && (
+          {showWeekNav && (
             <div className={styles.weekNav}>
               <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
               <div className={styles.weekLabelStack}>
@@ -1598,15 +488,22 @@ export default function App() {
                 </button>
               )}
             </div>
-            {isAdmin && (
+            {showGear && (
               <button
-                className={`${styles.gearBtn} ${activeTab==='admin'?styles.gearBtnActive:''}`}
-                onClick={()=>setActiveTab('admin')}
-                title="Admin panel"
+                className={`${styles.gearBtn} ${inAdmin ? styles.gearBtnActive : ''}`}
+                onClick={handleGearClick}
+                title="Admin"
               >⚙</button>
             )}
           </div>
         </div>
+
+        {/* Mode toggle row — only shown for users who can switch */}
+        {allowModeSwitch && !inAdmin && (
+          <div className={styles.modeToggleRow}>
+            <ModeToggle mode={mode} onChange={handleModeChange} allowSwitch={allowModeSwitch}/>
+          </div>
+        )}
 
         {!dbReady && (
           <div className={styles.setupBanner}>
@@ -1614,28 +511,21 @@ export default function App() {
           </div>
         )}
 
-        <nav className={styles.nav}>
-          {PUBLIC_TABS.map(t=>(
-            <button
-              key={t.id}
-              className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
-              onClick={()=>setActiveTab(t.id)}
-            >{t.label}</button>
-          ))}
-          {isAdmin && ADMIN_TABS.map(t=>(
-            <button
-              key={t.id}
-              className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
-              onClick={()=>setActiveTab(t.id)}
-              style={{ color: activeTab===t.id ? undefined : 'var(--ink-30)', fontSize: 13 }}
-              title="Your daily ops view — not visible to C-suite"
-            >{t.label}</button>
-          ))}
-          <div className={styles.navUserArea}>
-            <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
-            <button className={styles.signOutBtn} onClick={handleSignOut}>Sign out</button>
-          </div>
-        </nav>
+        {!inAdmin && (
+          <nav className={styles.nav}>
+            {tabsForCurrentMode.map(t=>(
+              <button
+                key={t.id}
+                className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
+                onClick={()=>handleTabChange(t.id)}
+              >{t.label}</button>
+            ))}
+            <div className={styles.navUserArea}>
+              <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
+              <button className={styles.signOutBtn} onClick={handleSignOut}>Sign out</button>
+            </div>
+          </nav>
+        )}
       </header>
 
       <main className={styles.main}>
@@ -1643,33 +533,68 @@ export default function App() {
           <div className={styles.loading}><div className={styles.loadingDots}><span/><span/><span/></div></div>
         ) : (
           <>
-            {activeTab==='consolidated' && (
-              <ConsolidatedPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
+            {/* Admin (gear) takes precedence over tab routing */}
+            {inAdmin && adminAuthenticated && (
+              <AdminPage
+                weekStart={currentWeek}
+                weekData={weekData}
+                onSave={saveWeekData}
+                onRefresh={()=>loadWeek(currentWeek)}
+                dbReady={dbReady}
+                userProfile={userProfile}
+                commentProps={commentProps}
+              />
             )}
-            {activeTab==='financials' && (
-              <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
-            )}
-            {activeTab==='people' && (
-              <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
-            )}
-            {activeTab==='wip' && (
-              <WIPTab weekStart={currentWeek} />
-            )}
-            {activeTab==='scheduler' && (
-              <SchedulerTab />
-            )}
-            {activeTab==='liveops' && (
-              <LiveOpsTab />
-            )}
-            {activeTab==='admin' && adminAuthenticated && (
-              <AdminPage weekStart={currentWeek} weekData={weekData} onSave={saveWeekData} onRefresh={()=>loadWeek(currentWeek)} dbReady={dbReady} userProfile={userProfile} commentProps={commentProps}/>
+
+            {!inAdmin && (
+              <>
+                {/* Dashboard — both modes */}
+                {activeTab==='dashboard' && (
+                  <ExecutiveDashboardPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
+                )}
+
+                {/* Executive-mode tabs */}
+                {activeTab==='financials' && (
+                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+                )}
+                {activeTab==='people' && (
+                  <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
+                )}
+
+                {/* Inventory — both modes, different views (Phase 3 splits these) */}
+                {activeTab==='inventory' && (
+                  <StubPage
+                    title="Inventory"
+                    eyebrow={mode === 'executive' ? 'Executive View' : 'Operations View'}
+                    description={
+                      mode === 'executive'
+                        ? "Exec overview — WIP exposure headline, FSCO Watchlist with audit log, KPI rollup."
+                        : "Three-zone working surface — Paramount Buy, Pass-Through, FSCO Watchlist with reorder cart."
+                    }
+                    note="Pending Brynn's review of the v5 mockup. Coming in Phase 3."
+                  />
+                )}
+
+                {/* Ops-mode tabs */}
+                {/* Phase 2 TODO: add `readOnly` prop to SchedulerTab so QA users
+                    (Sami) get a read-only Scheduler. Requires component support. */}
+                {activeTab==='liveops' && (
+                  <LiveOpsTab/>
+                )}
+                {activeTab==='scheduler' && (
+                  <SchedulerTab/>
+                )}
+                {activeTab==='wip' && (
+                  <WIPTab weekStart={currentWeek} />
+                )}
+              </>
             )}
           </>
         )}
       </main>
 
       <footer className={styles.footer}>
-        <span>Paramount Prints · F. Schumacher & Co.</span>
+        <span>Paramount Prints · F. Schumacher &amp; Co.</span>
         <span>Peter Webster, President</span>
       </footer>
     </div>

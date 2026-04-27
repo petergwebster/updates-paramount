@@ -25,7 +25,7 @@ export default function LoginScreen({ onLogin }) {
       return
     }
 
-    // Fetch profile
+    // Fetch profile (full_name + role drive landing logic in App.jsx)
     const { data: profile } = await supabase
       .from('profiles')
       .select('full_name, role')
@@ -43,7 +43,7 @@ export default function LoginScreen({ onLogin }) {
           <span className={styles.brandMark}>PP</span>
           <div>
             <h1 className={styles.brandName}>Paramount Prints</h1>
-            <p className={styles.brandSub}>Executive Operations Dashboard</p>
+            <p className={styles.brandSub}>Operations Dashboard</p>
           </div>
         </div>
 
@@ -81,7 +81,7 @@ export default function LoginScreen({ onLogin }) {
           </button>
         </form>
 
-        <p className={styles.footer}>F. Schumacher & Co. · Internal use only</p>
+        <p className={styles.footer}>F. Schumacher &amp; Co. · Internal use only</p>
       </div>
     </div>
   )
