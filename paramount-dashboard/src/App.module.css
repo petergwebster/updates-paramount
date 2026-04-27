@@ -13,93 +13,255 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* ── Header top: 3-column grid (brand | center | right) ─────────────────── */
 .headerTop {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 32px;
-  gap: 16px;
-  flex-wrap: wrap;
+  padding: 18px 32px 14px;
+  gap: 24px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 
-.brandMark {
-  width: 42px;
-  height: 42px;
-  background: var(--ink);
-  color: var(--cream);
-  font-family: var(--font-display);
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
+.brandLogo {
+  height: 56px;
+  width: auto;
+  display: block;
   flex-shrink: 0;
-  letter-spacing: 0.05em;
+}
+
+.brandText {
+  line-height: 1.2;
+  min-width: 0;
 }
 
 .brandName {
-  font-family: var(--font-display);
-  font-size: 20px;
-  line-height: 1.2;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 18px;
   color: var(--ink);
+  line-height: 1.15;
+  white-space: nowrap;
 }
 
 .brandSub {
   font-size: 12px;
-  color: var(--ink-60);
-  letter-spacing: 0.04em;
-  margin-top: 1px;
+  color: var(--ink-40);
+  margin-top: 3px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  white-space: nowrap;
 }
 
+/* Empty placeholder when week-nav is hidden — keeps grid layout stable */
+.headerCenter {
+  min-height: 1px;
+}
+
+/* ── Week nav (Executive mode only) ─────────────────────────────────────── */
 .weekNav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  background: var(--cream-dark, #F5F0EA);
+  border: 1px solid var(--ink-10);
+  border-radius: 8px;
+  padding: 4px;
 }
 
 .weekBtn {
-  padding: 6px 10px;
-  font-size: 16px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
   color: var(--ink-60);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
 }
+.weekBtn:hover { background: var(--ink-10); }
 
 .weekLabelStack {
+  text-align: center;
+  padding: 0 12px;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 220px;
 }
 
 .weekLabel {
+  display: block;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--ink);
-  letter-spacing: 0.01em;
 }
 
 .fiscalLabel {
-  font-size: 11px;
-  color: var(--ink-60);
-  letter-spacing: 0.02em;
+  display: block;
+  font-size: 10px;
+  color: var(--ink-40);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   margin-top: 1px;
 }
 
 .weekTodayBtn {
-  font-size: 12px;
-  color: var(--accent);
-  border-color: var(--accent-light);
-  background: var(--accent-light);
-  padding: 5px 12px;
+  background: var(--ink);
+  color: var(--cream);
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 4px;
+  font-weight: 600;
 }
-.weekTodayBtn:hover { background: #edddd0; }
+.weekTodayBtn:hover { background: #333; }
 
+/* ── Header right cluster ───────────────────────────────────────────────── */
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.userPill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cream-dark, #F5F0EA);
+  padding: 5px 12px 5px 5px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-60);
+}
+
+.userAvatar {
+  width: 24px;
+  height: 24px;
+  background: var(--ink);
+  color: var(--cream);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.userName {
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.gearBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  border-radius: 6px;
+  border: 1px solid var(--ink-10);
+  background: white;
+  color: var(--ink-60);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.gearBtn:hover { background: var(--cream-dark, #F5F0EA); color: var(--ink); }
+.gearBtnActive { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+.gearBtnActive:hover { background: #333; color: var(--cream); }
+
+.signOutLink {
+  background: transparent;
+  border: none;
+  color: var(--ink-40);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 6px 8px;
+  font-family: inherit;
+}
+.signOutLink:hover { color: var(--red); }
+
+/* Slack notify (only shown when there are session comments) */
+.sendUpdateArea {
+  display: flex;
+  align-items: center;
+}
+.sendUpdateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--ink-10);
+  background: white;
+  color: var(--ink-60);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sendUpdateBtn:hover:not(:disabled) { border-color: var(--ink-30); color: var(--ink); }
+.sendUpdateBtn:disabled { opacity: 0.45; cursor: default; }
+.sendUpdateBtnActive { background: #4A154B; border-color: #4A154B; color: white; }
+.sendUpdateBtnActive:hover:not(:disabled) { background: #3d1040; border-color: #3d1040; color: white; }
+.sendSuccessMsg { font-size: 12px; font-weight: 500; color: var(--green); padding: 7px 14px; }
+
+/* ── Mode toggle row (its own dedicated row, centered) ──────────────────── */
+.modeToggleRow {
+  display: flex;
+  justify-content: center;
+  padding: 0 32px;
+  background: white;
+}
+
+.modeToggle {
+  display: inline-flex;
+  background: var(--cream-dark, #F5F0EA);
+  padding: 3px;
+  border-radius: 999px;
+  margin: 0 0 14px;
+  box-shadow: inset 0 1px 2px rgba(31, 27, 22, 0.04);
+}
+
+.modeToggleBtn {
+  border: none;
+  background: transparent;
+  color: var(--ink-60);
+  padding: 7px 22px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: all 0.18s ease;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+.modeToggleBtn:hover { color: var(--ink); }
+
+.modeToggleBtnActive {
+  background: var(--ink);
+  color: var(--cream);
+  box-shadow: 0 1px 2px rgba(31, 27, 22, 0.04), 0 1px 1px rgba(31, 27, 22, 0.06);
+}
+.modeToggleBtnActive:hover { color: var(--cream); }
+
+/* ── Setup banner ───────────────────────────────────────────────────────── */
 .setupBanner {
   background: var(--amber-light);
   border-top: 1px solid #e8d88a;
@@ -114,36 +276,84 @@
   border-radius: 3px;
 }
 
+/* ── Tab nav ────────────────────────────────────────────────────────────── */
 .nav {
   display: flex;
   padding: 0 32px;
-  gap: 0;
-  border-top: 1px solid var(--border);
+  gap: 4px;
+  border-top: 1px solid var(--ink-10);
 }
 
 .navTab {
-  padding: 11px 20px;
-  font-size: 13px;
-  font-weight: 400;
+  background: transparent;
   border: none;
+  padding: 12px 18px 14px;
+  font-size: 13px;
+  color: var(--ink-40);
+  cursor: pointer;
+  font-weight: 500;
   border-bottom: 2px solid transparent;
-  border-radius: 0;
-  color: var(--ink-60);
-  letter-spacing: 0.01em;
   margin-bottom: -1px;
+  border-radius: 0;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.navTab:hover { background: var(--ink-5); color: var(--ink); border-color: transparent; }
+.navTab:hover { color: var(--ink); background: transparent; }
 .navTabActive {
   color: var(--ink);
   border-bottom-color: var(--ink);
-  font-weight: 500;
+  font-weight: 600;
 }
 .navTabActive:hover { background: transparent; }
 
+.navTabNew {
+  display: inline-block;
+  background: #C0623A;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  vertical-align: 1px;
+}
+
+/* ── Admin "back to app" bar ────────────────────────────────────────────── */
+.adminBackBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 32px;
+  background: var(--cream-dark, #F5F0EA);
+  border-top: 1px solid var(--ink-10);
+  border-bottom: 1px solid var(--ink-10);
+}
+.adminBackBtn {
+  background: white;
+  border: 1px solid var(--ink-10);
+  color: var(--ink-60);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.adminBackBtn:hover { background: var(--ink-5); color: var(--ink); border-color: var(--ink-30); }
+.adminBackLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+}
+
+/* ── Main content area ──────────────────────────────────────────────────── */
 .main {
   flex: 1;
   padding: 32px;
-  max-width: 1100px;
+  max-width: 1280px;
   margin: 0 auto;
   width: 100%;
 }
@@ -172,60 +382,35 @@
   40% { transform: scale(1.1); opacity: 1; }
 }
 
+/* ── Footer ─────────────────────────────────────────────────────────────── */
 .footer {
   border-top: 1px solid var(--border);
-  padding: 12px 32px;
+  padding: 14px 32px;
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: var(--ink-60);
+  font-size: 11px;
+  color: var(--ink-40);
   background: white;
 }
 
-/* Send Update button */
-.sendUpdateArea {
+/* ── Legacy classes (kept for any consumers we haven't audited) ─────────── */
+.brandMark {
+  width: 42px;
+  height: 42px;
+  background: var(--ink);
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.sendUpdateBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: white;
-  color: var(--ink-60);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.sendUpdateBtn:hover:not(:disabled) { border-color: var(--ink-30); color: var(--ink); }
-.sendUpdateBtn:disabled { opacity: 0.45; cursor: default; }
-.sendUpdateBtnActive { background: #4A154B; border-color: #4A154B; color: white; }
-.sendUpdateBtnActive:hover:not(:disabled) { background: #3d1040; border-color: #3d1040; color: white; }
-.sendSuccessMsg { font-size: 12px; font-weight: 500; color: var(--green); padding: 7px 14px; }
-
-/* Header right area */
-.headerRight { display: flex; align-items: center; gap: 10px; }
-
-/* Gear button */
-.gearBtn {
-  width: 34px; height: 34px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; border-radius: var(--radius);
-  border: 1px solid var(--border); background: white;
-  color: var(--ink-60); cursor: pointer; transition: all 0.15s;
+  justify-content: center;
+  border-radius: 4px;
   flex-shrink: 0;
+  letter-spacing: 0.05em;
 }
-.gearBtn:hover { background: var(--ink-5); color: var(--ink); border-color: var(--ink-30); }
-.gearBtnActive { background: var(--ink); color: var(--cream); border-color: var(--ink); }
-.gearBtnActive:hover { background: #333; }
 
-/* Admin tab styling */
 .navTabAdmin { color: var(--ink); font-weight: 500; }
+
 .logoutBtn {
   margin-left: auto; padding: 8px 14px; font-size: 12px;
   color: var(--ink-60); border: none; background: none; cursor: pointer;
@@ -233,7 +418,6 @@
 }
 .logoutBtn:hover { color: var(--red); background: none; border-color: transparent; }
 
-/* Password modal */
 .modalOverlay {
   position: fixed; inset: 0; background: rgba(26,24,20,0.5);
   display: flex; align-items: center; justify-content: center;
@@ -258,7 +442,6 @@
 .modalError { font-size: 12px; color: var(--red); margin-bottom: 12px; }
 .modalActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
-/* Nav user area */
 .navUserArea {
   display: flex;
   align-items: center;
@@ -282,7 +465,6 @@
 }
 .signOutBtn:hover { color: var(--red); background: var(--red-light); border-color: transparent; }
 
-/* Confirmation modal draft list */
 .modalDraftList {
   display: flex;
   flex-direction: column;
@@ -308,7 +490,6 @@
 .modalDraftText { font-size: 13px; color: var(--ink); line-height: 1.5; }
 .modalDraftNotify { font-size: 11px; color: var(--accent); margin-top: 4px; }
 
-/* Slack sync button */
 .slackSyncBtn {
   display: inline-flex;
   align-items: center;
@@ -323,54 +504,3 @@
   transition: all 0.15s;
 }
 .slackSyncBtn:hover { border-color: var(--ink-30); color: var(--ink); }
-
-/* ─────────────────────────────────────────────────────────────────────────
-   PHASE 1 — Mode toggle (Executive / Operations)
-   New classes added for the role-based remodel. No existing class modified.
-   ───────────────────────────────────────────────────────────────────────── */
-
-.modeToggleRow {
-  display: flex;
-  justify-content: center;
-  padding: 0 32px;
-  background: white;
-  border-top: 1px solid var(--border);
-}
-
-.modeToggle {
-  display: inline-flex;
-  background: var(--ink-5);
-  padding: 3px;
-  border-radius: 999px;
-  margin: 6px 0 8px;
-  box-shadow: inset 0 1px 2px rgba(31, 27, 22, 0.04);
-}
-
-.modeToggleBtn {
-  border: none;
-  background: transparent;
-  color: var(--ink-60);
-  padding: 7px 22px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  border-radius: 999px;
-  transition: all 0.18s ease;
-  text-transform: uppercase;
-  font-family: inherit;
-}
-
-.modeToggleBtn:hover {
-  color: var(--ink);
-}
-
-.modeToggleBtnActive {
-  background: var(--ink);
-  color: var(--cream);
-  box-shadow: 0 1px 2px rgba(31, 27, 22, 0.04), 0 1px 1px rgba(31, 27, 22, 0.06);
-}
-
-.modeToggleBtnActive:hover {
-  color: var(--cream);
-}

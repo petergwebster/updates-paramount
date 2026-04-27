@@ -38,35 +38,19 @@ const NJ_DAYS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // MODE / ROLE / TAB DEFINITIONS
 // ─────────────────────────────────────────────────────────────────────────────
-//
-// Roles:
-//   admin   — Peter, Brynn. Lands in Operations. Can flip to Executive.
-//             Sees gear/admin. Full access.
-//   manager — Wendy, Chandler, future Production Planning Director, future
-//             CX & Ops Associate. Lands in Operations → Live Ops.
-//             Can flip to Executive for context.
-//   qa      — Sami. Lands in Operations → Live Ops. Scheduler is read-only.
-//             No Inventory/WIP. No gear. No Executive view.
-//   exec    — Timur, Antonella, Emily, Abigail, Kim. Lands in Executive →
-//             Dashboard. Can flip to Operations to peek (read-only feel).
-//             No gear.
-//
-// Mode determines which tabs render in the nav.
-// Tab definition includes which roles see it.
-// ─────────────────────────────────────────────────────────────────────────────
 
 const EXEC_TABS = [
   { id: 'dashboard',  label: 'Dashboard'  },
   { id: 'financials', label: 'Financials' },
   { id: 'people',     label: 'People'     },
-  { id: 'inventory',  label: 'Inventory'  },
+  { id: 'inventory',  label: 'Inventory', isNew: true  },
 ]
 
 const OPS_TABS = [
   { id: 'liveops',   label: 'Live Ops'  },
   { id: 'scheduler', label: 'Scheduler' },
-  { id: 'wip',       label: 'WIP'       },
-  { id: 'inventory', label: 'Inventory' },
+  { id: 'wip',       label: 'WIP', isNew: true       },
+  { id: 'inventory', label: 'Inventory', isNew: true },
   { id: 'dashboard', label: 'Dashboard' },
 ]
 
@@ -80,7 +64,6 @@ function landingFor(role) {
   if (role === 'exec')                        return { mode: 'executive',  tab: 'dashboard' }
   if (role === 'manager' || role === 'qa')    return { mode: 'operations', tab: 'liveops'   }
   if (role === 'admin')                       return { mode: 'operations', tab: 'liveops'   }
-  // unknown / null role: safest is Executive Dashboard
   return { mode: 'executive', tab: 'dashboard' }
 }
 
@@ -95,8 +78,14 @@ function canAccessGear(role) {
 }
 
 function canSwitchMode(role) {
-  // Everyone except qa can flip modes. QA stays in Ops.
   return role !== 'qa'
+}
+
+function getInitials(name) {
+  if (!name) return '??'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
 function SlackIcon({ size = 14 }) {
@@ -113,7 +102,6 @@ function SlackIcon({ size = 14 }) {
 }
 
 function getDefaultWeek() {
-  // Always land on the most recently completed Mon-Sun week
   const thisWeekMonday = startOfWeek(new Date(), { weekStartsOn: 1 })
   return subWeeks(thisWeekMonday, 1)
 }
@@ -129,10 +117,7 @@ function SectionLabel({ children }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// EXECUTIVE DASHBOARD
-// Phase 1 keeps the existing ConsolidatedPage layout untouched for the
-// Dashboard tab. Phase 2 will replace this with the Today/This Week/MTD
-// time-window toggle and Claude's read.
+// EXECUTIVE DASHBOARD — Phase 1 keeps existing layout. Phase 2 will rebuild.
 // ─────────────────────────────────────────────────────────────────────────────
 function ExecutiveDashboardPage({ weekStart, weekData, dbReady, commentProps }) {
   const fiscalLabel = getFiscalLabel(weekStart)
@@ -219,10 +204,8 @@ function ExecutiveDashboardPage({ weekStart, weekData, dbReady, commentProps }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN PAGE — wraps AdminPanel. AdminPanel manages its own section state
-// internally and accepts { weekStart, weekData, onSave, dbReady }.
-// Phase 4 will add the redesigned admin sidebar (LIFT Refresh, AI Monitoring,
-// User Management, etc.) — for now this is a passthrough.
+// ADMIN PAGE — Phase 1 wraps the existing AdminPanel as-is. Phase 4 redesigns
+// the admin sidebar with LIFT Refresh / AI Monitoring / User Management.
 // ─────────────────────────────────────────────────────────────────────────────
 function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps }) {
   return (
@@ -233,25 +216,6 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
         onSave={onSave}
         dbReady={dbReady}
       />
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODE TOGGLE — pill toggle in header for switching between Exec / Ops
-// ─────────────────────────────────────────────────────────────────────────────
-function ModeToggle({ mode, onChange, allowSwitch }) {
-  if (!allowSwitch) return null
-  return (
-    <div className={styles.modeToggle}>
-      <button
-        className={`${styles.modeToggleBtn} ${mode==='executive' ? styles.modeToggleBtnActive : ''}`}
-        onClick={()=>onChange('executive')}
-      >Executive</button>
-      <button
-        className={`${styles.modeToggleBtn} ${mode==='operations' ? styles.modeToggleBtnActive : ''}`}
-        onClick={()=>onChange('operations')}
-      >Operations</button>
     </div>
   )
 }
@@ -296,10 +260,7 @@ export default function App() {
             if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
             if (profile?.role === 'admin') setAdminAuthenticated(true)
 
-            // Land them in the right place based on role
             const landing = landingFor(profile?.role)
-
-            // Respect saved preference if it's compatible with their role
             const savedMode = localStorage.getItem('pp_mode')
             const savedTab  = localStorage.getItem('pp_active_tab')
             if (savedMode && (savedMode === 'executive' || savedMode === 'operations') && canSwitchMode(profile?.role)) {
@@ -307,7 +268,6 @@ export default function App() {
               const validTabs = tabsFor(savedMode, profile?.role).map(t=>t.id)
               setActiveTab(validTabs.includes(savedTab) ? savedTab : tabsFor(savedMode, profile?.role)[0].id)
             } else if (profile?.role === 'qa') {
-              // QA always lands in Ops, ignores any saved exec preference
               setMode('operations')
               setActiveTab('liveops')
             } else {
@@ -332,7 +292,6 @@ export default function App() {
     setSessionCommentCount(0)
   }, [currentWeek])
 
-  // Persist mode + tab so reload returns to where you were
   useEffect(() => {
     if (userProfile && !inAdmin) {
       localStorage.setItem('pp_mode', mode)
@@ -416,7 +375,6 @@ export default function App() {
     if (!allowModeSwitch) return
     setMode(newMode)
     setInAdmin(false)
-    // Set default tab for new mode if current tab is not in that mode's list
     const validTabs = tabsFor(newMode, role).map(t=>t.id)
     if (!validTabs.includes(activeTab)) {
       setActiveTab(tabsFor(newMode, role)[0].id)
@@ -428,11 +386,10 @@ export default function App() {
     setInAdmin(false)
   }
 
-  function handleGearClick() {
-    setInAdmin(true)
+  function toggleAdmin() {
+    setInAdmin(v => !v)
   }
 
-  // Week-nav visibility: only in Executive mode, not on Admin
   const showWeekNav = mode === 'executive' && !inAdmin
 
   const fiscalLabel = getFiscalLabel(currentWeek)
@@ -449,19 +406,24 @@ export default function App() {
   if (!authUser) return <LoginScreen onLogin={handleLogin}/>
 
   const commentProps = { currentUser: userProfile?.full_name, onCommentPosted }
+  const userInitials = getInitials(userProfile?.full_name)
+  const firstName = userProfile?.full_name?.split(' ')[0] || ''
 
   return (
     <div className={styles.app}>
       <header className={styles.header}>
+
+        {/* ── Header top row: brand left, week-nav center (exec only), user+gear right ── */}
         <div className={styles.headerTop}>
           <div className={styles.brand}>
-            <img src="/ParamountLogo.png" alt="Paramount Prints" style={{ height:64, width:'auto', display:'block' }}/>
-            <p style={{ margin:0, marginTop:4, fontSize:15, fontWeight:700, fontFamily:'Georgia, serif', color:'var(--ink)' }}>
-              Operations Dashboard
-            </p>
+            <img src="/ParamountLogo.png" alt="Paramount Prints" className={styles.brandLogo}/>
+            <div className={styles.brandText}>
+              <div className={styles.brandName}>Paramount Prints</div>
+              <div className={styles.brandSub}>Operations Dashboard</div>
+            </div>
           </div>
 
-          {showWeekNav && (
+          {showWeekNav ? (
             <div className={styles.weekNav}>
               <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
               <div className={styles.weekLabelStack}>
@@ -471,37 +433,60 @@ export default function App() {
               <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
               <button onClick={()=>setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>Last week</button>
             </div>
+          ) : (
+            <div className={styles.headerCenter}/>
           )}
 
           <div className={styles.headerRight}>
-            <div className={styles.sendUpdateArea}>
-              {notifySuccess ? (
-                <span className={styles.sendSuccessMsg}>✓ Slack notified</span>
-              ) : (
-                <button
-                  className={`${styles.sendUpdateBtn} ${sessionCommentCount>0?styles.sendUpdateBtnActive:''}`}
-                  onClick={handleNotifySlack}
-                  disabled={notifying||sessionCommentCount===0}
-                >
-                  <SlackIcon size={14}/>
-                  {notifying?'Notifying…':sessionCommentCount>0?`Notify Slack (${sessionCommentCount})`:'Notify Slack'}
-                </button>
-              )}
+            {sessionCommentCount > 0 || notifySuccess || notifying ? (
+              <div className={styles.sendUpdateArea}>
+                {notifySuccess ? (
+                  <span className={styles.sendSuccessMsg}>✓ Slack notified</span>
+                ) : (
+                  <button
+                    className={`${styles.sendUpdateBtn} ${sessionCommentCount>0?styles.sendUpdateBtnActive:''}`}
+                    onClick={handleNotifySlack}
+                    disabled={notifying||sessionCommentCount===0}
+                  >
+                    <SlackIcon size={14}/>
+                    {notifying?'Notifying…':sessionCommentCount>0?`Notify Slack (${sessionCommentCount})`:'Notify Slack'}
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            <div className={styles.userPill} title={userProfile?.full_name}>
+              <div className={styles.userAvatar}>{userInitials}</div>
+              <span className={styles.userName}>{firstName}</span>
             </div>
+
             {showGear && (
               <button
                 className={`${styles.gearBtn} ${inAdmin ? styles.gearBtnActive : ''}`}
-                onClick={handleGearClick}
-                title="Admin"
+                onClick={toggleAdmin}
+                title={inAdmin ? 'Close admin' : 'Admin'}
               >⚙</button>
             )}
+
+            <button className={styles.signOutLink} onClick={handleSignOut} title="Sign out">
+              Sign out
+            </button>
           </div>
         </div>
 
-        {/* Mode toggle row — only shown for users who can switch */}
+        {/* ── Mode toggle row (centered, on its own row) ── */}
         {allowModeSwitch && !inAdmin && (
           <div className={styles.modeToggleRow}>
-            <ModeToggle mode={mode} onChange={handleModeChange} allowSwitch={allowModeSwitch}/>
+            <div className={styles.modeToggle}>
+              <button
+                className={`${styles.modeToggleBtn} ${mode==='executive' ? styles.modeToggleBtnActive : ''}`}
+                onClick={()=>handleModeChange('executive')}
+              >Executive</button>
+              <button
+                className={`${styles.modeToggleBtn} ${mode==='operations' ? styles.modeToggleBtnActive : ''}`}
+                onClick={()=>handleModeChange('operations')}
+              >Operations</button>
+            </div>
           </div>
         )}
 
@@ -511,6 +496,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Tab nav (hidden in admin, escape via gear toggle) ── */}
         {!inAdmin && (
           <nav className={styles.nav}>
             {tabsForCurrentMode.map(t=>(
@@ -518,13 +504,22 @@ export default function App() {
                 key={t.id}
                 className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
                 onClick={()=>handleTabChange(t.id)}
-              >{t.label}</button>
+              >
+                {t.label}
+                {t.isNew && <span className={styles.navTabNew}>NEW</span>}
+              </button>
             ))}
-            <div className={styles.navUserArea}>
-              <span className={styles.navUserName}>{userProfile?.full_name?.split(' ')[0]}</span>
-              <button className={styles.signOutBtn} onClick={handleSignOut}>Sign out</button>
-            </div>
           </nav>
+        )}
+
+        {/* In admin, show a slim "back to app" bar so user always has an escape */}
+        {inAdmin && (
+          <div className={styles.adminBackBar}>
+            <button className={styles.adminBackBtn} onClick={() => setInAdmin(false)}>
+              ← Back to {mode === 'executive' ? 'Executive' : 'Operations'}
+            </button>
+            <span className={styles.adminBackLabel}>Admin Panel</span>
+          </div>
         )}
       </header>
 
@@ -533,7 +528,6 @@ export default function App() {
           <div className={styles.loading}><div className={styles.loadingDots}><span/><span/><span/></div></div>
         ) : (
           <>
-            {/* Admin (gear) takes precedence over tab routing */}
             {inAdmin && adminAuthenticated && (
               <AdminPage
                 weekStart={currentWeek}
@@ -548,20 +542,15 @@ export default function App() {
 
             {!inAdmin && (
               <>
-                {/* Dashboard — both modes */}
                 {activeTab==='dashboard' && (
                   <ExecutiveDashboardPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
                 )}
-
-                {/* Executive-mode tabs */}
                 {activeTab==='financials' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
                 )}
                 {activeTab==='people' && (
                   <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
                 )}
-
-                {/* Inventory — both modes, different views (Phase 3 splits these) */}
                 {activeTab==='inventory' && (
                   <StubPage
                     title="Inventory"
@@ -574,10 +563,6 @@ export default function App() {
                     note="Pending Brynn's review of the v5 mockup. Coming in Phase 3."
                   />
                 )}
-
-                {/* Ops-mode tabs */}
-                {/* Phase 2 TODO: add `readOnly` prop to SchedulerTab so QA users
-                    (Sami) get a read-only Scheduler. Requires component support. */}
                 {activeTab==='liveops' && (
                   <LiveOpsTab/>
                 )}
