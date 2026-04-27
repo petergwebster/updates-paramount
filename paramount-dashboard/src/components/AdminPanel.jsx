@@ -250,7 +250,7 @@ function KPIFileAttach({ kpiId, kpiName, fileData, onFileData }) {
 }
 
 // ── Main AdminPanel component ─────────────────────────────────────────────────
-export default function AdminPanel({ weekStart, weekData, onSave, dbReady }) {
+export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideChrome = false }) {
   const [activeSection, setActiveSection] = useState('production')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(null) // 'production' | 'kpis' | 'log'
@@ -406,12 +406,14 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
 
   return (
     <div className={styles.container}>
-      <div className={styles.topRow}>
-        <div>
-          <h2 className={styles.pageTitle}>Admin Panel</h2>
-          <p className={styles.pageSub}>Week of {format(weekStart, 'MMMM d, yyyy')} · Data entry & management</p>
+      {!hideChrome && (
+        <div className={styles.topRow}>
+          <div>
+            <h2 className={styles.pageTitle}>Admin Panel</h2>
+            <p className={styles.pageSub}>Week of {format(weekStart, 'MMMM d, yyyy')} · Data entry & management</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Section tabs */}
       <div className={styles.sectionTabs}>

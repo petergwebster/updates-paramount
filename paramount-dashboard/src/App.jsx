@@ -8,6 +8,7 @@ import Correspondence from './components/Correspondence'
 import HistoryPanel from './components/HistoryPanel'
 import ProductionDashboard from './components/ProductionDashboard'
 import AdminPanel from './components/AdminPanel'
+import AdminLayout from './components/AdminLayout'
 import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
@@ -204,19 +205,24 @@ function ExecutiveDashboardPage({ weekStart, weekData, dbReady, commentProps }) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN PAGE — Phase 1 wraps the existing AdminPanel as-is. Phase 4 redesigns
-// the admin sidebar with LIFT Refresh / AI Monitoring / User Management.
+// ADMIN PAGE — uses AdminLayout sidebar shell. Existing AdminPanel renders
+// inside the "Weekly Data Entry" section. New stub sections (LIFT Refresh,
+// AI Monitoring, Daily Digest, User Management, System Info) are routed
+// inside AdminLayout. Phase 4 will replace stubs with real implementations.
 // ─────────────────────────────────────────────────────────────────────────────
-function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps }) {
+function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps, adminSection, setAdminSection }) {
   return (
-    <div style={{ minHeight:'calc(100vh - 200px)' }}>
-      <AdminPanel
-        weekStart={weekStart}
-        weekData={weekData}
-        onSave={onSave}
-        dbReady={dbReady}
-      />
-    </div>
+    <AdminLayout
+      weekStart={weekStart}
+      weekData={weekData}
+      onSave={onSave}
+      onRefresh={onRefresh}
+      dbReady={dbReady}
+      userProfile={userProfile}
+      commentProps={commentProps}
+      section={adminSection}
+      setSection={setAdminSection}
+    />
   )
 }
 
@@ -231,6 +237,7 @@ export default function App() {
   const [loading,      setLoading]      = useState(true)
   const [dbReady,      setDbReady]      = useState(true)
   const [inAdmin,      setInAdmin]      = useState(false)
+  const [adminSection, setAdminSection] = useState('weekly-data')
 
   const [notifying,           setNotifying]           = useState(false)
   const [notifySuccess,       setNotifySuccess]       = useState(false)
@@ -537,6 +544,8 @@ export default function App() {
                 dbReady={dbReady}
                 userProfile={userProfile}
                 commentProps={commentProps}
+                adminSection={adminSection}
+                setAdminSection={setAdminSection}
               />
             )}
 

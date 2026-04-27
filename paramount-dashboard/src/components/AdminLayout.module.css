@@ -1,0 +1,207 @@
+.layout {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.pageHeader {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  margin-bottom: 8px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.subtitle {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: var(--ink-40);
+}
+
+/* ── Body: sidebar + content ─────────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.sidebar {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: white;
+  border: 1px solid var(--ink-10);
+  border-radius: 8px;
+  padding: 14px 10px;
+  position: sticky;
+  top: 180px;
+}
+
+.sidebarGroup {
+  margin-bottom: 18px;
+}
+.sidebarGroup:last-child {
+  margin-bottom: 0;
+}
+
+.sidebarGroupLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  padding: 4px 10px 8px;
+}
+
+.sidebarItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  margin-bottom: 2px;
+  transition: background 0.12s ease;
+}
+
+.sidebarItem:hover {
+  background: var(--cream-dark, #F5F0EA);
+}
+
+.sidebarItemActive {
+  background: var(--ink);
+  color: var(--cream);
+  font-weight: 600;
+}
+
+.sidebarItemActive:hover {
+  background: var(--ink);
+}
+
+.sidebarBadge {
+  display: inline-block;
+  background: #C0623A;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.sidebarItemActive .sidebarBadge {
+  background: var(--cream);
+  color: var(--ink);
+}
+
+/* ── Content area ────────────────────────────────────────────────────────── */
+.content {
+  background: white;
+  border: 1px solid var(--ink-10);
+  border-radius: 8px;
+  padding: 24px 28px;
+  min-height: 400px;
+}
+
+/* ── System Info panel ───────────────────────────────────────────────────── */
+.systemInfo {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+.systemHeader {
+  margin-bottom: 18px;
+}
+
+.systemTitle {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.systemSub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-40);
+}
+
+.systemTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.systemTable td {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--ink-10);
+  font-size: 13px;
+}
+
+.systemTable tr:last-child td {
+  border-bottom: none;
+}
+
+.systemLabel {
+  width: 160px;
+  color: var(--ink-40);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.systemValue {
+  color: var(--ink);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.systemDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.systemDot_ok    { background: #4F8A4B; }
+.systemDot_error { background: #B0533C; }
+.systemDot_info  { background: var(--ink-30); }
+
+/* ── Responsive: collapse sidebar on narrow screens ──────────────────────── */
+@media (max-width: 900px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    margin-bottom: 16px;
+  }
+}
