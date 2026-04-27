@@ -371,12 +371,14 @@ function parsePayrollRows(rows) {
 
   // Find columns by earning type label
   const findEarning = (label) => {
-    const idx = earHdr.findIndex(h => h.startsWith(label))
+    const idx = earHdr.findIndex(h => h === label || h.startsWith(label + ' '))
     return idx >= 0 ? { amt: idx, hrs: idx + 1 } : null
   }
   const otCols    = findEarning('OT')
-  const ptoCols   = findEarning('PTO ')  // space to avoid matching PTOP
-  const ptopCols  = findEarning('PTOP')
+  const ptopCols  = findEarning('PTOP')  // find PTOP first so PTO doesn't grab it
+  const ptoCols   = earHdr.findIndex(h => h === 'PTO') >= 0
+                      ? { amt: earHdr.findIndex(h => h === 'PTO'), hrs: earHdr.findIndex(h => h === 'PTO') + 1 }
+                      : null
   const regCols   = findEarning('REG')
   const bonusCols = findEarning('BONUS')
   const totalAmtCol = earHdr.findIndex(h => h.includes('TOTAL AMOUNT'))
