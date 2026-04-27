@@ -1,0 +1,262 @@
+.block {
+  background: white;
+  border: 1px solid var(--ink-10);
+  border-radius: 10px;
+  padding: 22px 26px 18px;
+  margin-bottom: 28px;
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #C0623A; /* burnt orange — Claude's accent */
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.headerText {
+  flex: 1;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  margin-bottom: 3px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--ink-60);
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  background: transparent;
+  border: 1px solid var(--ink-10);
+  color: var(--ink-60);
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.actionBtn:hover {
+  background: var(--cream-dark, #F5F0EA);
+  color: var(--ink);
+}
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────── */
+.body {
+  margin-left: 46px; /* align with content beside icon */
+  min-height: 60px;
+}
+
+.narrativeText {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.narrativeText p {
+  margin: 0 0 14px;
+}
+.narrativeText p:last-child {
+  margin-bottom: 0;
+}
+
+.loadingState {
+  font-size: 13px;
+  color: var(--ink-40);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.errorState {
+  font-size: 13px;
+  color: var(--red, #B0533C);
+  padding: 8px 0;
+}
+
+.emptyState {
+  font-size: 13px;
+  color: var(--ink-40);
+  padding: 8px 0;
+}
+
+.linkBtn {
+  background: transparent;
+  border: none;
+  color: #C0623A;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  font-family: inherit;
+}
+.linkBtn:hover {
+  color: var(--ink);
+}
+
+/* ── Editor ──────────────────────────────────────────────────────────── */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editorTextarea {
+  width: 100%;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink);
+  padding: 12px 14px;
+  border: 1px solid var(--ink-20);
+  border-radius: 6px;
+  background: #FCFBF8;
+  resize: vertical;
+  min-height: 180px;
+  box-sizing: border-box;
+}
+
+.editorTextarea:focus {
+  outline: none;
+  border-color: var(--ink-40);
+  background: white;
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancelBtn,
+.saveBtn,
+.dangerBtn {
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid var(--ink-10);
+  color: var(--ink-60);
+}
+.cancelBtn:hover { background: var(--ink-5); }
+.cancelBtn:disabled { opacity: 0.5; cursor: default; }
+
+.saveBtn {
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  color: var(--cream);
+}
+.saveBtn:hover { background: #333; }
+.saveBtn:disabled { opacity: 0.5; cursor: default; }
+
+.dangerBtn {
+  background: #B0533C;
+  border: 1px solid #B0533C;
+  color: white;
+}
+.dangerBtn:hover { background: #993E29; border-color: #993E29; }
+
+/* ── Footer ──────────────────────────────────────────────────────────── */
+.footer {
+  margin-left: 46px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--ink-10);
+  font-size: 11px;
+  color: var(--ink-40);
+  font-style: italic;
+}
+
+/* ── Modal (regenerate confirm) ──────────────────────────────────────── */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 27, 22, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  background: white;
+  border-radius: 10px;
+  padding: 24px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(31, 27, 22, 0.2);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+.modalTitle {
+  font-family: Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.modalBody {
+  font-size: 13px;
+  color: var(--ink-60);
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 700px) {
+  .body, .footer { margin-left: 0; }
+  .header { flex-wrap: wrap; }
+  .actions { width: 100%; justify-content: flex-end; }
+}

@@ -18,6 +18,7 @@ import WIPTab from './components/WIPTab'
 import SchedulerTab from './components/SchedulerTab'
 import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
+import DashboardPage from './components/DashboardPage'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -551,8 +552,13 @@ export default function App() {
 
             {!inAdmin && (
               <>
+                {/* Dashboard — both modes use the new Run Rate page */}
                 {activeTab==='dashboard' && (
-                  <ExecutiveDashboardPage weekStart={currentWeek} weekData={weekData} dbReady={dbReady} commentProps={commentProps}/>
+                  <DashboardPage
+                    weekStart={currentWeek}
+                    currentUser={userProfile?.full_name}
+                    userId={authUser?.id}
+                  />
                 )}
                 {activeTab==='financials' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>

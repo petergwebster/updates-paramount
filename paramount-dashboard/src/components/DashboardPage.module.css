@@ -1,0 +1,96 @@
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+/* ── Page header ─────────────────────────────────────────────────────── */
+.header {
+  margin-bottom: 22px;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  margin-bottom: 8px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.subtitle {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 13px;
+  color: var(--ink-40);
+  font-style: italic;
+}
+
+/* ── Time-window toggle ──────────────────────────────────────────────── */
+.toggleRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.toggle {
+  display: inline-flex;
+  background: var(--cream-dark, #F5F0EA);
+  padding: 3px;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(31, 27, 22, 0.04);
+}
+
+.toggleBtn {
+  border: none;
+  background: transparent;
+  color: var(--ink-60);
+  padding: 8px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: all 0.18s ease;
+  text-transform: uppercase;
+  font-family: inherit;
+}
+.toggleBtn:hover { color: var(--ink); }
+
+.toggleBtnActive {
+  background: var(--ink);
+  color: var(--cream);
+  box-shadow: 0 1px 2px rgba(31, 27, 22, 0.04), 0 1px 1px rgba(31, 27, 22, 0.06);
+}
+.toggleBtnActive:hover { color: var(--cream); }
+
+/* ── Today caveat note ───────────────────────────────────────────────── */
+.todayNote {
+  background: #FFF8F0;
+  border: 1px solid #FFE4C0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 22px;
+  font-size: 12px;
+  color: var(--ink-60);
+  line-height: 1.55;
+}
+.todayNote strong { color: #C49A2A; }
+
+/* ── Loading ─────────────────────────────────────────────────────────── */
+.loadingState {
+  text-align: center;
+  padding: 48px 0;
+  font-size: 13px;
+  color: var(--ink-40);
+  font-style: italic;
+}
