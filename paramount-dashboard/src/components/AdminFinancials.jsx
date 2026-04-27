@@ -283,10 +283,13 @@ function parseARFile(XLSX, workbook) {
   const rawSheet = workbook.Sheets[rawName]
   if (rawSheet) {
     const rows = XLSX.utils.sheet_to_json(rawSheet, { header:1, defval:null })
-    // Find header row
-    const hdrIdx = rows.findIndex(r => (r||[]).some(v => String(v||'').toLowerCase().includes('customer id') || String(v||'').toLowerCase().includes('lift order')))
+    // Find header row — match with or without underscores
+    const hdrIdx = rows.findIndex(r => (r||[]).some(v => {
+      const lc = String(v||'').toLowerCase().replace(/_/g,' ')
+      return lc.includes('customer id') || lc.includes('lift order')
+    }))
     if (hdrIdx >= 0) {
-      const hdr = (rows[hdrIdx]||[]).map(v => String(v||'').toLowerCase())
+      const hdr = (rows[hdrIdx]||[]).map(v => String(v||'').toLowerCase().replace(/_/g,' '))
       const ci = (name) => hdr.findIndex(h => h.includes(name))
       const nameCol   = ci('customer name') >= 0 ? ci('customer name') : 1
       const divCol    = ci('lift order')    >= 0 ? ci('lift order')    : 7
