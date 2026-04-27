@@ -498,18 +498,21 @@ export default function AdminFinancials({ weekStart }) {
         if (error) throw new Error("AP: "+error.message);
       }
       if (arData) {
-        const {error} = await supabase.from("financial_ar").upsert({
+        const arPayload = {
           period:selectedPeriod, aging_current:arData.aging.current||0,
           aging_1_30:arData.aging.days1_30||0, aging_31_60:arData.aging.days31_60||0,
           aging_61_90:arData.aging.days61_90||0, aging_91plus:arData.aging.days91plus||0,
           total_outstanding:arData.totalOutstanding||0, total_past_due:arData.totalPastDue||0,
-          key_accounts:arData.keyAccounts,
-          para_aging: arData.para?.aging||{}, para_customers: arData.para?.customers||[],
-          para_outstanding: arData.para?.totalOutstanding||0, para_past_due: arData.para?.totalPastDue||0,
-          bny_aging: arData.bny?.aging||{}, bny_customers: arData.bny?.customers||[],
-          bny_outstanding: arData.bny?.totalOutstanding||0, bny_past_due: arData.bny?.totalPastDue||0,
+          key_accounts: {
+            combined: arData.keyAccounts,
+            para: { aging: arData.para?.aging||{}, customers: (arData.para?.customers||[]).slice(0,15),
+              totalOutstanding: arData.para?.totalOutstanding||0, totalPastDue: arData.para?.totalPastDue||0 },
+            bny:  { aging: arData.bny?.aging||{}, customers: (arData.bny?.customers||[]).slice(0,15),
+              totalOutstanding: arData.bny?.totalOutstanding||0, totalPastDue: arData.bny?.totalPastDue||0 },
+          },
           uploaded_at:new Date().toISOString()
-        },{onConflict:"period"});
+        };
+        const {error} = await supabase.from("financial_ar").upsert(arPayload,{onConflict:"period"});
         if (error) throw new Error("AR: "+error.message);
       }
       if (cashPassaic || cashBNY) {
