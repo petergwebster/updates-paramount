@@ -147,9 +147,46 @@ function parseAPTab(XLSX, sheet, facility) {
     pastDue: d1+d8+d15+d31+d45 }
 }
 
-// Parse combined AP file — finds Paramount and BNY tabs (by name or position)
+// Parse combined AP file — handles both multi-tab and single-sheet-with-Division formats
 function parseAPCombinedFile(XLSX, workbook) {
   const names = workbook.SheetNames
+
+  // Check if the first (or only) sheet has a "Division" column → single-sheet format
+  const firstSheet = workbook.Sheets[names[0]]
+  const firstRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: null })
+  const hdr = (firstRows[0] || []).map(v => String(v || '').toLowerCase())
+  const divCol = hdr.findIndex(h => h.includes('division'))
+
+  if (divCol >= 0) {
+    // Single-sheet format: split rows by Division column (PH vs BNY)
+    const paraRows = [firstRows[0]]  // keep header
+    const bnyRows  = [firstRows[0]]
+    for (let i = 1; i < firstRows.length; i++) {
+      const row = firstRows[i]
+      if (!row) continue
+      const div = String(row[divCol] || '').trim().toUpperCase()
+      if (div === 'PH' || div.includes('PARA')) paraRows.push(row)
+      else if (div === 'BNY' || div.includes('BROOKLYN')) bnyRows.push(row)
+      // skip empty-division rows (they have no data)
+    }
+    // Build temporary sheets from filtered rows and parse each
+    const buildSheet = (rows) => {
+      const ws = {}
+      rows.forEach((row, r) => {
+        (row || []).forEach((val, c) => {
+          const cellRef = XLSX.utils.encode_cell({ r, c })
+          ws[cellRef] = { v: val }
+        })
+      })
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: (rows[0] || []).length - 1 } })
+      return ws
+    }
+    const para = paraRows.length > 1 ? parseAPTab(XLSX, buildSheet(paraRows), 'Paramount') : null
+    const bny  = bnyRows.length > 1  ? parseAPTab(XLSX, buildSheet(bnyRows),  'BNY')       : null
+    return { para, bny }
+  }
+
+  // Multi-tab format: find tabs by name
   const paraName = names.find(s => /paramount|para|ph/i.test(s)) || names[0]
   const bnyName  = names.find(s => /bny|brooklyn/i.test(s))       || (names.length > 1 ? names[1] : null)
   const para = paraName ? parseAPTab(XLSX, workbook.Sheets[paraName], 'Paramount') : null
@@ -467,21 +504,18 @@ export default function AdminFinancials({ weekStart }) {
         if (error) throw new Error("AP: "+error.message);
       }
       if (arData) {
-        const arPayload = {
+        const {error} = await supabase.from("financial_ar").upsert({
           period:selectedPeriod, aging_current:arData.aging.current||0,
           aging_1_30:arData.aging.days1_30||0, aging_31_60:arData.aging.days31_60||0,
           aging_61_90:arData.aging.days61_90||0, aging_91plus:arData.aging.days91plus||0,
           total_outstanding:arData.totalOutstanding||0, total_past_due:arData.totalPastDue||0,
-          key_accounts: {
-            combined: arData.keyAccounts,
-            para: { aging: arData.para?.aging||{}, customers: (arData.para?.customers||[]).slice(0,15),
-              totalOutstanding: arData.para?.totalOutstanding||0, totalPastDue: arData.para?.totalPastDue||0 },
-            bny:  { aging: arData.bny?.aging||{}, customers: (arData.bny?.customers||[]).slice(0,15),
-              totalOutstanding: arData.bny?.totalOutstanding||0, totalPastDue: arData.bny?.totalPastDue||0 },
-          },
+          key_accounts:arData.keyAccounts,
+          para_aging: arData.para?.aging||{}, para_customers: arData.para?.customers||[],
+          para_outstanding: arData.para?.totalOutstanding||0, para_past_due: arData.para?.totalPastDue||0,
+          bny_aging: arData.bny?.aging||{}, bny_customers: arData.bny?.customers||[],
+          bny_outstanding: arData.bny?.totalOutstanding||0, bny_past_due: arData.bny?.totalPastDue||0,
           uploaded_at:new Date().toISOString()
-        };
-        const {error} = await supabase.from("financial_ar").upsert(arPayload,{onConflict:"period"});
+        },{onConflict:"period"});
         if (error) throw new Error("AR: "+error.message);
       }
       if (cashPassaic || cashBNY) {
@@ -505,14 +539,6 @@ export default function AdminFinancials({ weekStart }) {
 
   const hasAnyFile = gpPreview||apData||arData||(cashPassaic||cashBNY);
 
-  // Warn before navigating away with unsaved uploads
-  useEffect(() => {
-    if (!hasAnyFile) return;
-    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [hasAnyFile]);
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:28}}>
 
@@ -531,22 +557,6 @@ export default function AdminFinancials({ weekStart }) {
             <option value="">— pick —</option>
             {(()=>{const opts=[];const now=new Date();for(let m=-2;m<=1;m++){const d=new Date(now.getFullYear(),now.getMonth()+m,1);const yr=d.getFullYear(),mo=d.getMonth()+1,mm=String(mo).padStart(2,"0"),lb=d.toLocaleString("en-US",{month:"long"});for(let w=1;w<=5;w++)opts.push(<option key={`${yr}-${mm}-W${w}`} value={`${yr}-${mm}-W${w}`}>{lb} {yr} — Week {w}</option>);}return opts;})()}
           </select>
-        )}
-      </div>
-
-      {/* Save bar — always at top */}
-      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-        <button onClick={handleSaveAll} disabled={saving||!selectedPeriod||!hasAnyFile}
-          style={{padding:"10px 24px",
-            background:hasAnyFile&&selectedPeriod?"#1f2937":"#d1d5db",
-            color:hasAnyFile&&selectedPeriod?"#fff":"#9ca3af",
-            border:"none",borderRadius:8,fontSize:14,fontWeight:600,
-            cursor:hasAnyFile&&selectedPeriod?"pointer":"not-allowed"}}>
-          {saving?"Saving…":hasAnyFile?`Save All to ${selectedPeriod||"…"}`:"Save All (upload files first)"}
-        </button>
-        {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
-        {hasAnyFile&&!saveMsg&&(
-          <span style={{fontSize:12,color:"#92400e",fontWeight:500}}>⚠️ Unsaved uploads — save before navigating away</span>
         )}
       </div>
 
@@ -688,6 +698,17 @@ export default function AdminFinancials({ weekStart }) {
         </div>
       )}
 
+      {/* Save */}
+      {hasAnyFile&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <button onClick={handleSaveAll} disabled={saving||!selectedPeriod}
+            style={{padding:"10px 24px",background:selectedPeriod?"#1f2937":"#9ca3af",color:"#fff",
+              border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:selectedPeriod?"pointer":"not-allowed"}}>
+            {saving?"Saving…":`Save All to ${selectedPeriod||"…"}`}
+          </button>
+          {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+        </div>
+      )}
 
       {/* History */}
       <div>
