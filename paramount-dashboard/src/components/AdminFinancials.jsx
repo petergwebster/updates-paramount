@@ -313,7 +313,7 @@ function parseARFile(XLSX, workbook) {
         const div = String(row[divCol] || '').trim().toUpperCase()
         if (div !== 'PARA' && div !== 'BNY') continue
         const name    = String(row[nameCol]).trim()
-        const unappl  = parseFloat(row[unapplCol]) || 0
+        const unappl  = Math.abs(parseFloat(row[unapplCol]) || 0)
         if (unappl === 0) continue
         const c   = parseFloat(row[curCol])  || 0
         const r1  = parseFloat(row[d1Col])   || 0
