@@ -44,6 +44,7 @@ const NJ_DAYS = [
 
 const EXEC_TABS = [
   { id: 'dashboard',  label: 'Dashboard'  },
+  { id: 'runrate',    label: 'Run Rate', isNew: true  },
   { id: 'financials', label: 'Financials' },
   { id: 'people',     label: 'People'     },
   { id: 'inventory',  label: 'Inventory', isNew: true  },
@@ -54,6 +55,7 @@ const OPS_TABS = [
   { id: 'scheduler', label: 'Scheduler' },
   { id: 'wip',       label: 'WIP', isNew: true       },
   { id: 'inventory', label: 'Inventory', isNew: true },
+  { id: 'runrate',   label: 'Run Rate', isNew: true  },
   { id: 'dashboard', label: 'Dashboard' },
 ]
 
@@ -467,22 +469,24 @@ export default function App() {
 
             {!inAdmin && (
               <>
-                {/* Dashboard — mode-aware: Executive sees weekly recap, Operations sees Run Rate */}
+                {/* Dashboard — both modes show the weekly recap */}
                 {activeTab==='dashboard' && (
-                  mode === 'executive'
-                    ? <ExecutiveDashboardPage
-                        weekStart={currentWeek}
-                        weekData={weekData}
-                        dbReady={dbReady}
-                        commentProps={commentProps}
-                        currentUser={userProfile?.full_name}
-                        userId={authUser?.id}
-                      />
-                    : <DashboardPage
-                        weekStart={currentWeek}
-                        currentUser={userProfile?.full_name}
-                        userId={authUser?.id}
-                      />
+                  <ExecutiveDashboardPage
+                    weekStart={currentWeek}
+                    weekData={weekData}
+                    dbReady={dbReady}
+                    commentProps={commentProps}
+                    currentUser={userProfile?.full_name}
+                    userId={authUser?.id}
+                  />
+                )}
+                {/* Run Rate — both modes show the current-week pace tool */}
+                {activeTab==='runrate' && (
+                  <DashboardPage
+                    weekStart={currentWeek}
+                    currentUser={userProfile?.full_name}
+                    userId={authUser?.id}
+                  />
                 )}
                 {activeTab==='financials' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>

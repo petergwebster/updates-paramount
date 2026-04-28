@@ -4,33 +4,29 @@ import { getFiscalLabel } from '../fiscalCalendar'
 import KPIScorecard from './KPIScorecard'
 import ProductionDashboard from './ProductionDashboard'
 import ClaudeReadBlock from './ClaudeReadBlock'
-import WeekPaceStrip from './WeekPaceStrip'
 import { buildWeeklyRecapNarrativePrompt } from '../lib/prompts/weeklyRecapNarrative'
 import styles from './ExecutiveDashboardPage.module.css'
 
 /**
  * ExecutiveDashboardPage — the weekly recap view for FSCO leadership.
  *
- * Routed when mode === 'executive' AND activeTab === 'dashboard'.
+ * Routed when activeTab === 'dashboard' in both Executive and Operations modes.
+ * (Run Rate lives on its own dedicated tab now — separate concern, separate page.)
  *
  * Page structure (top to bottom):
  *   1. Page header — eyebrow, week title, fiscal label, prepared-by attribution
  *   2. KPI status strip — counts of green/amber/red KPIs (only if KPIs are populated)
- *   3. WeekPaceStrip — the embedded mini Run Rate panel showing THIS week's pace
- *      (so execs see live pace without having to toggle to Operations mode)
- *   4. ClaudeReadBlock with `time_window='recap'` and the weekly recap prompt —
+ *   3. ClaudeReadBlock with `time_window='recap'` and the weekly recap prompt —
  *      auto-generates an executive recap narrative, editable, save-able
- *   5. Areas of Concern — if `concerns` field is populated for the week
- *   6. Production Summary — Brooklyn (BNY) and Passaic detail
- *   7. KPI Scorecard Detail — full breakdown of each KPI
+ *   4. Areas of Concern — if `concerns` field is populated for the week
+ *   5. Production Summary — Brooklyn (BNY) and Passaic detail
+ *   6. KPI Scorecard Detail — full breakdown of each KPI
  *
- * What's new vs the old ExecutiveDashboardPage:
- *   - v5 visual treatment (Georgia serif headers, italic subtitles, cream-dark accents)
- *   - WeekPaceStrip embedded so execs always see this week's pace inline
- *   - The old "Executive Summary" narrative (manually drafted in admin) is replaced
- *     by Claude's weekly recap — auto-generated from real data, editable, save-able
- *   - The old narrative in `weeks.executive_narrative` is honored as a fallback if
- *     it exists, but new narratives go to dashboard_narratives keyed by 'recap'
+ * What's purposefully NOT here (and lives on the Run Rate tab instead):
+ *   - Current week's in-flight pace
+ *   - Today / Week / Month toggle for the actively-building week
+ *   - Anything forward-looking
+ *   This page is purely backward-looking: last week's story, finalized.
  *
  * Props:
  *   weekStart     Date — the Monday of the week being recapped
@@ -99,9 +95,6 @@ export default function ExecutiveDashboardPage({
           <div className={styles.statusMeta}>KPI Scorecard · {kpiList.length} metrics</div>
         </div>
       )}
-
-      {/* ── This Week's Pace (embedded mini Run Rate) ──────────────────── */}
-      <WeekPaceStrip />
 
       {/* ── Claude's Executive Recap ──────────────────────────────────── */}
       <SectionLabel>Executive Recap</SectionLabel>
