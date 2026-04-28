@@ -19,6 +19,7 @@ import SchedulerTab from './components/SchedulerTab'
 import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
 import DashboardPage from './components/DashboardPage'
+import ExecutiveDashboardPage from './components/ExecutiveDashboardPage'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -118,92 +119,6 @@ function SectionLabel({ children }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXECUTIVE DASHBOARD — Phase 1 keeps existing layout. Phase 2 will rebuild.
-// ─────────────────────────────────────────────────────────────────────────────
-function ExecutiveDashboardPage({ weekStart, weekData, dbReady, commentProps }) {
-  const fiscalLabel = getFiscalLabel(weekStart)
-  const narrative   = weekData?.executive_narrative || null
-  const kpis        = weekData?.kpis || {}
-  const flags       = weekData?.flags || null
-  const kpiList     = Object.values(kpis)
-  const onTrack     = kpiList.filter(k=>k?.status==='green').length
-  const watch       = kpiList.filter(k=>k?.status==='amber').length
-  const concern     = kpiList.filter(k=>k?.status==='red').length
-  const hasKPIs     = kpiList.length > 0
-  const weekEnd     = addDays(weekStart, 4)
-  const dateRange   = `${format(weekStart,'MMM d')}–${format(weekEnd,'d, yyyy')}`
-
-  return (
-    <div style={{ maxWidth:980, margin:'0 auto', padding:'36px 24px 80px', fontFamily:'Georgia, serif' }}>
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
-        <div>
-          <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:8 }}>
-            Weekly Operations Report · Results
-          </div>
-          <h1 style={{ margin:0, fontSize:30, fontWeight:700, color:'var(--ink)', lineHeight:1.15 }}>{dateRange}</h1>
-          {fiscalLabel && <div style={{ marginTop:6, fontSize:13, color:'var(--ink-40)' }}>{fiscalLabel}</div>}
-        </div>
-        <div style={{ textAlign:'right', paddingTop:4 }}>
-          <div style={{ fontSize:11, color:'var(--ink-40)', marginBottom:3 }}>Prepared by</div>
-          <div style={{ fontSize:14, fontWeight:600, color:'var(--ink)' }}>Peter Webster</div>
-          <div style={{ fontSize:12, color:'var(--ink-40)' }}>President, Paramount Prints</div>
-        </div>
-      </div>
-
-      {hasKPIs && (
-        <div style={{ display:'flex', gap:20, margin:'20px 0 32px', padding:'12px 16px', background:'var(--cream-dark,#F5F0EA)', borderRadius:8, flexWrap:'wrap' }}>
-          {[{color:'#22c55e',count:onTrack,label:'On Track'},{color:'#f59e0b',count:watch,label:'Watch'},{color:'#ef4444',count:concern,label:'Concern'}].map(({color,count,label})=>(
-            <div key={label} style={{ display:'flex', alignItems:'center', gap:7, fontSize:13 }}>
-              <span style={{ width:9, height:9, borderRadius:'50%', background:color, display:'inline-block', flexShrink:0 }}/>
-              <span style={{ color:'var(--ink)' }}><strong>{count}</strong> {label}</span>
-            </div>
-          ))}
-          <div style={{ flex:1 }}/>
-          <div style={{ fontSize:11, color:'var(--ink-40)', alignSelf:'center' }}>KPI Scorecard · {kpiList.length} metrics</div>
-        </div>
-      )}
-
-      {!hasKPIs && <div style={{ height:32 }}/>}
-
-      <div style={{ marginBottom:48 }}>
-        <SectionLabel>Executive Summary</SectionLabel>
-        {narrative ? (
-          <div style={{ fontSize:15, lineHeight:1.85, color:'var(--ink)', whiteSpace:'pre-wrap',
-            background:'var(--cream-dark,#F5F0EA)', borderRadius:8, padding:'20px 24px', borderLeft:'3px solid var(--ink-20)' }}>
-            {narrative}
-          </div>
-        ) : (
-          <div style={{ background:'#FAFAF8', border:'1px dashed var(--ink-20)', borderRadius:8, padding:'28px 24px', textAlign:'center' }}>
-            <div style={{ fontSize:14, color:'var(--ink-40)', marginBottom:6 }}>No executive summary drafted yet.</div>
-            <div style={{ fontSize:12, color:'var(--ink-30)' }}>Go to ⚙ Admin → Weekly Data → fill in KPIs &amp; notes → Draft with AI</div>
-          </div>
-        )}
-      </div>
-
-      {flags && (
-        <div style={{ marginBottom:48 }}>
-          <SectionLabel>Areas of Concern</SectionLabel>
-          <div style={{ background:'#FFF8F0', border:'1px solid #FFE4C0', borderRadius:8, padding:'16px 20px', fontSize:14, lineHeight:1.7, color:'var(--ink)' }}>
-            {flags}
-          </div>
-        </div>
-      )}
-
-      <div style={{ marginBottom:48 }}>
-        <SectionLabel>Production — Brooklyn (BNY) &amp; Passaic</SectionLabel>
-        <ProductionDashboard weekStart={weekStart} dbReady={dbReady} readOnly {...commentProps} />
-      </div>
-
-      {hasKPIs && (
-        <div style={{ marginBottom:48 }}>
-          <SectionLabel>KPI Scorecard Detail</SectionLabel>
-          <KPIScorecard weekData={weekData} weekStart={weekStart} onSave={null} dbReady={dbReady} readOnly {...commentProps}/>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN PAGE — uses AdminLayout sidebar shell. Existing AdminPanel renders
@@ -552,13 +467,22 @@ export default function App() {
 
             {!inAdmin && (
               <>
-                {/* Dashboard — both modes use the new Run Rate page */}
+                {/* Dashboard — mode-aware: Executive sees weekly recap, Operations sees Run Rate */}
                 {activeTab==='dashboard' && (
-                  <DashboardPage
-                    weekStart={currentWeek}
-                    currentUser={userProfile?.full_name}
-                    userId={authUser?.id}
-                  />
+                  mode === 'executive'
+                    ? <ExecutiveDashboardPage
+                        weekStart={currentWeek}
+                        weekData={weekData}
+                        dbReady={dbReady}
+                        commentProps={commentProps}
+                        currentUser={userProfile?.full_name}
+                        userId={authUser?.id}
+                      />
+                    : <DashboardPage
+                        weekStart={currentWeek}
+                        currentUser={userProfile?.full_name}
+                        userId={authUser?.id}
+                      />
                 )}
                 {activeTab==='financials' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>

@@ -1,0 +1,151 @@
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--ink-10);
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  margin-bottom: 8px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.fiscalLabel {
+  font-family: Georgia, serif;
+  font-size: 13px;
+  color: var(--ink-40);
+  font-style: italic;
+}
+
+.preparedBy {
+  text-align: right;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.preparedLabel {
+  font-size: 11px;
+  color: var(--ink-40);
+  margin-bottom: 3px;
+}
+
+.preparedTeam {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  font-family: Georgia, serif;
+}
+
+.preparedSub {
+  font-size: 12px;
+  color: var(--ink-40);
+  font-style: italic;
+  margin-top: 2px;
+  font-family: Georgia, serif;
+}
+
+/* ── KPI Status Strip ─────────────────────────────────────────────── */
+.statusStrip {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 16px;
+  background: var(--cream-dark, #F5F0EA);
+  border-radius: 8px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.statusDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.statusText strong {
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.statusSpacer { flex: 1; }
+
+.statusMeta {
+  font-size: 11px;
+  color: var(--ink-40);
+  font-style: italic;
+}
+
+/* ── Section labels ──────────────────────────────────────────────── */
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-40);
+  margin: 36px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ink-10);
+}
+
+.sectionLabel:first-of-type {
+  margin-top: 8px;
+}
+
+/* ── Concerns block ──────────────────────────────────────────────── */
+.concernsBlock {
+  background: #FFF8F0;
+  border: 1px solid #FFE4C0;
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+/* ── Sub-panel container for ProductionDashboard / KPIScorecard ─── */
+.subPanel {
+  background: white;
+  border: 1px solid var(--ink-10);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+@media (max-width: 800px) {
+  .header { flex-direction: column; gap: 16px; }
+  .preparedBy { text-align: left; }
+}

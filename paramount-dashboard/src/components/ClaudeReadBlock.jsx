@@ -8,30 +8,35 @@ import styles from './ClaudeReadBlock.module.css'
 /**
  * ClaudeReadBlock — Auto-generating, editable, save-able AI narrative widget.
  *
- * Behavior:
- *   1. On mount, looks up an existing narrative for (week_start, time_window).
- *   2. If found and fresh (< 2 hours old), shows it.
- *   3. If not found, or stale and the user hasn't manually edited it, auto-generates
- *      a new one via /api/claude.
- *   4. User can edit (pencil icon) → makes textarea editable.
- *   5. User can save → writes back to dashboard_narratives, marks edited_by + edited_at.
- *   6. User can regenerate → confirms if there are unsaved edits, then re-runs Claude.
- *
- * Costs are kept down by:
- *   - Only auto-generating when narrative is missing or >2 hours stale
- *   - Storing in Supabase so reloads don't re-trigger generation
+ * Used by both the Run Rate dashboard (Operations mode) and the Weekly Recap
+ * dashboard (Executive mode). The prompt builder is pluggable via the
+ * `promptBuilder` prop so each consumer can tailor what Claude writes.
  *
  * Props:
- *   weekStart    Date — Monday of the week being analyzed
- *   timeWindow   'today' | 'week' | 'month'
- *   currentData  { actuals, expected, gaps } — passed in from parent page
- *   currentUser  string — user's full name (for edited_by attribution)
- *   userId       string — user's auth UUID (for edited_by FK)
+ *   weekStart      Date — Monday of the week being analyzed
+ *   timeWindow     'today' | 'week' | 'month' | 'recap'
+ *   currentData    { actuals, expected, gaps, hasData } from parent page
+ *   currentUser    user's full name (for edited_by attribution)
+ *   userId         user's auth UUID
+ *   subtitle       optional override for the italic subtitle line
+ *   eyebrow        optional override for the "CLAUDE'S READ" label
+ *   promptBuilder  optional ({contextString, timeWindow, hasData}) => string
+ *                  — defaults to dashboardNarrative (Run Rate)
+ *                  — pass weeklyRecapNarrative for Executive Recap
  */
 
 const STALE_HOURS = 2
 
-export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, currentUser, userId }) {
+export default function ClaudeReadBlock({
+  weekStart,
+  timeWindow,
+  currentData,
+  currentUser,
+  userId,
+  subtitle: subtitleOverride,
+  eyebrow: eyebrowOverride,
+  promptBuilder,
+}) {
   const [narrative, setNarrative] = useState(null)
   const [generatedAt, setGeneratedAt] = useState(null)
   const [editedBy, setEditedBy] = useState(null)
@@ -123,8 +128,9 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
         currentData,
       })
 
-      // Build prompt
-      const prompt = buildDashboardNarrativePrompt({
+      // Build prompt — use the pluggable builder if supplied, else default
+      const builder = promptBuilder || buildDashboardNarrativePrompt
+      const prompt = builder({
         contextString,
         timeWindow,
         hasData: currentData?.hasData ?? true,
@@ -149,7 +155,7 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
         // Log failure
         logAICall({
           callerId: userId,
-          promptType: 'dashboard_narrative',
+          promptType: timeWindow === 'recap' ? 'weekly_recap_narrative' : 'dashboard_narrative',
           context: contextObject,
           prompt,
           response: '',
@@ -173,7 +179,7 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
       // Log success
       logAICall({
         callerId: userId,
-        promptType: 'dashboard_narrative',
+        promptType: timeWindow === 'recap' ? 'weekly_recap_narrative' : 'dashboard_narrative',
         context: contextObject,
         prompt,
         response: text,
@@ -191,7 +197,7 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
       setError('Generation failed. Check your connection.')
       logAICall({
         callerId: userId,
-        promptType: 'dashboard_narrative',
+        promptType: timeWindow === 'recap' ? 'weekly_recap_narrative' : 'dashboard_narrative',
         context: { time_window: timeWindow },
         prompt: '',
         response: '',
@@ -265,8 +271,8 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
       <div className={styles.header}>
         <div className={styles.icon}>C</div>
         <div className={styles.headerText}>
-          <div className={styles.eyebrow}>Claude's read</div>
-          <div className={styles.subtitle}>{getSubtitleForWindow(timeWindow)}</div>
+          <div className={styles.eyebrow}>{eyebrowOverride || "Claude's read"}</div>
+          <div className={styles.subtitle}>{subtitleOverride || getSubtitleForWindow(timeWindow)}</div>
         </div>
         <div className={styles.actions}>
           {!isEditing && narrative && (
@@ -357,6 +363,7 @@ function getSubtitleForWindow(timeWindow) {
     case 'today': return "How today is shaping up — what we've done so far vs. what was scheduled."
     case 'week':  return "Where the week stands — pace, gaps, and what's queued for the rest."
     case 'month': return "Month-to-date picture, with trend context against prior months."
+    case 'recap': return "Executive recap of the week — performance, financials, and what to watch."
     default:      return ''
   }
 }
