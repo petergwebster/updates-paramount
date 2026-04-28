@@ -20,6 +20,10 @@ import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
 import DashboardPage from './components/DashboardPage'
 import ExecutiveDashboardPage from './components/ExecutiveDashboardPage'
+import LandingPage from './components/LandingPage'
+import DestinationNav from './components/DestinationNav'
+import UserManagement from './components/UserManagement'
+import { destinationsFor, isSuperAdmin, DESTINATIONS } from './lib/access'
 import styles from './App.module.css'
 
 // ── Day col definitions (needed by LiveOpsPage) ──────────────────────────────
@@ -39,43 +43,64 @@ const NJ_DAYS = [
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODE / ROLE / TAB DEFINITIONS
+// DESTINATION / TAB DEFINITIONS
+//
+// Phase A change: Executive/Operations mode toggle is REPLACED with the
+// three-destination model (Performance / Operations / Heartbeat). Users land
+// on the chooser (LandingPage) after login and pick a destination.
+//
+// The `destination` state can be:
+//   'landing'     — the chooser is showing
+//   'performance' — Paramount Performance destination
+//   'operations'  — Operations destination
+//   'heartbeat'   — Paramount's Heartbeat destination
+//
+// Inside each destination, the tab structure is destination-specific.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const EXEC_TABS = [
-  { id: 'dashboard',  label: 'Dashboard'  },
-  { id: 'runrate',    label: 'Run Rate', isNew: true  },
+const PERFORMANCE_TABS = [
+  { id: 'dashboard',  label: 'Recap'      },  // weekly recap (was: Dashboard in exec mode)
   { id: 'financials', label: 'Financials' },
   { id: 'people',     label: 'People'     },
-  { id: 'inventory',  label: 'Inventory', isNew: true  },
+  { id: 'inventory',  label: 'Inventory', isNew: true },
 ]
 
-const OPS_TABS = [
+const OPERATIONS_TABS = [
   { id: 'liveops',   label: 'Live Ops'  },
   { id: 'scheduler', label: 'Scheduler' },
-  { id: 'wip',       label: 'WIP', isNew: true       },
-  { id: 'inventory', label: 'Inventory', isNew: true },
-  { id: 'runrate',   label: 'Run Rate', isNew: true  },
-  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'wip',       label: 'WIP', isNew: true },
 ]
 
-// QA gets a stripped-down Operations tab list — no WIP, no Inventory, no Dashboard.
-const QA_OPS_TABS = [
+// QA users get a stripped-down Operations tab list
+const QA_OPERATIONS_TABS = [
   { id: 'liveops',   label: 'Live Ops'  },
   { id: 'scheduler', label: 'Scheduler' },
 ]
 
-function landingFor(role) {
-  if (role === 'exec')                        return { mode: 'executive',  tab: 'dashboard' }
-  if (role === 'manager' || role === 'qa')    return { mode: 'operations', tab: 'liveops'   }
-  if (role === 'admin')                       return { mode: 'operations', tab: 'liveops'   }
-  return { mode: 'executive', tab: 'dashboard' }
+// Heartbeat is a single-page deep view; tab structure is just its one page
+// for now. Future expansion may add sub-views.
+const HEARTBEAT_TABS = [
+  { id: 'runrate', label: 'Run Rate' },
+]
+
+/**
+ * Default tab to land on when entering a destination.
+ */
+function defaultTabFor(destination, role) {
+  if (destination === 'performance') return 'dashboard'
+  if (destination === 'operations')  return 'liveops'
+  if (destination === 'heartbeat')   return 'runrate'
+  return null
 }
 
-function tabsFor(mode, role) {
-  if (mode === 'executive') return EXEC_TABS
-  if (role === 'qa')        return QA_OPS_TABS
-  return OPS_TABS
+/**
+ * Tab list for the current destination.
+ */
+function tabsFor(destination, role) {
+  if (destination === 'performance') return PERFORMANCE_TABS
+  if (destination === 'operations')  return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
+  if (destination === 'heartbeat')   return HEARTBEAT_TABS
+  return []
 }
 
 function canAccessGear(role) {
@@ -128,7 +153,7 @@ function SectionLabel({ children }) {
 // AI Monitoring, Daily Digest, User Management, System Info) are routed
 // inside AdminLayout. Phase 4 will replace stubs with real implementations.
 // ─────────────────────────────────────────────────────────────────────────────
-function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, commentProps, adminSection, setAdminSection }) {
+function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfile, authUser, commentProps, adminSection, setAdminSection }) {
   return (
     <AdminLayout
       weekStart={weekStart}
@@ -137,6 +162,7 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
       onRefresh={onRefresh}
       dbReady={dbReady}
       userProfile={userProfile}
+      authUser={authUser}
       commentProps={commentProps}
       section={adminSection}
       setSection={setAdminSection}
@@ -148,8 +174,9 @@ function AdminPage({ weekStart, weekData, onSave, onRefresh, dbReady, userProfil
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [mode,         setMode]         = useState('executive')
-  const [activeTab,    setActiveTab]    = useState('dashboard')
+  // destination = 'landing' | 'performance' | 'operations' | 'heartbeat'
+  const [destination,  setDestination]  = useState('landing')
+  const [activeTab,    setActiveTab]    = useState(null)
   const [currentWeek,  setCurrentWeek]  = useState(getDefaultWeek())
   const [weekData,     setWeekData]     = useState(null)
   const [loading,      setLoading]      = useState(true)
@@ -171,34 +198,22 @@ export default function App() {
   const role           = userProfile?.role || null
   const isAdmin        = role === 'admin'
   const showGear       = canAccessGear(role)
-  const allowModeSwitch = canSwitchMode(role)
-  const tabsForCurrentMode = tabsFor(mode, role)
+  const tabsForCurrentDestination = tabsFor(destination, role)
+  const isOnLanding    = destination === 'landing'
 
-  // ── Auth bootstrap + role-based landing ─────────────────────────────────────
+  // ── Auth bootstrap — every user lands on the chooser ────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setAuthUser(session.user)
-        supabase.from('profiles').select('full_name, role').eq('id', session.user.id).single()
+        supabase.from('profiles').select('full_name, role, active, email').eq('id', session.user.id).single()
           .then(({ data: profile }) => {
             setUserProfile(profile)
             if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
             if (profile?.role === 'admin') setAdminAuthenticated(true)
-
-            const landing = landingFor(profile?.role)
-            const savedMode = localStorage.getItem('pp_mode')
-            const savedTab  = localStorage.getItem('pp_active_tab')
-            if (savedMode && (savedMode === 'executive' || savedMode === 'operations') && canSwitchMode(profile?.role)) {
-              setMode(savedMode)
-              const validTabs = tabsFor(savedMode, profile?.role).map(t=>t.id)
-              setActiveTab(validTabs.includes(savedTab) ? savedTab : tabsFor(savedMode, profile?.role)[0].id)
-            } else if (profile?.role === 'qa') {
-              setMode('operations')
-              setActiveTab('liveops')
-            } else {
-              setMode(landing.mode)
-              setActiveTab(landing.tab)
-            }
+            // Always land on the chooser. Users navigate from there.
+            setDestination('landing')
+            setActiveTab(null)
           })
       }
       setAuthLoading(false)
@@ -217,12 +232,15 @@ export default function App() {
     setSessionCommentCount(0)
   }, [currentWeek])
 
+  // Persist the current destination + tab so a hard refresh inside a destination
+  // returns the user to it. Landing isn't persisted — the chooser is the entry
+  // point only after a fresh login.
   useEffect(() => {
-    if (userProfile && !inAdmin) {
-      localStorage.setItem('pp_mode', mode)
-      localStorage.setItem('pp_active_tab', activeTab)
+    if (userProfile && !inAdmin && destination !== 'landing') {
+      localStorage.setItem('pp_destination', destination)
+      if (activeTab) localStorage.setItem('pp_active_tab', activeTab)
     }
-  }, [mode, activeTab, userProfile, inAdmin])
+  }, [destination, activeTab, userProfile, inAdmin])
 
   async function loadWeek(weekDate) {
     setLoading(true)
@@ -280,30 +298,43 @@ export default function App() {
   async function handleSignOut() {
     await supabase.auth.signOut()
     localStorage.removeItem('pp_commenter')
-    localStorage.removeItem('pp_mode')
+    localStorage.removeItem('pp_destination')
     localStorage.removeItem('pp_active_tab')
+    // Older keys from before the redesign — clean up if present
+    localStorage.removeItem('pp_mode')
     setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false)
-    setMode('executive'); setActiveTab('dashboard'); setInAdmin(false)
+    setDestination('landing'); setActiveTab(null); setInAdmin(false)
   }
 
   function handleLogin(user, profile) {
     setAuthUser(user); setUserProfile(profile)
     if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
     if (profile?.role === 'admin') setAdminAuthenticated(true)
-    const landing = landingFor(profile?.role)
-    setMode(landing.mode)
-    setActiveTab(landing.tab)
+    // Every user lands on the chooser
+    setDestination('landing')
+    setActiveTab(null)
     setInAdmin(false)
   }
 
-  function handleModeChange(newMode) {
-    if (!allowModeSwitch) return
-    setMode(newMode)
-    setInAdmin(false)
-    const validTabs = tabsFor(newMode, role).map(t=>t.id)
-    if (!validTabs.includes(activeTab)) {
-      setActiveTab(tabsFor(newMode, role)[0].id)
+  /**
+   * handleDestinationChange — called from LandingPage.onChoose AND DestinationNav.
+   * Routes the user into a destination, OR back to the landing chooser.
+   */
+  function handleDestinationChange(newDestination) {
+    if (newDestination === 'landing') {
+      setDestination('landing')
+      setActiveTab(null)
+      setInAdmin(false)
+      return
     }
+    // Validate user has access to the destination they're trying to enter
+    if (!destinationsFor(userProfile).includes(newDestination)) {
+      console.warn('Access denied to destination:', newDestination)
+      return
+    }
+    setDestination(newDestination)
+    setActiveTab(defaultTabFor(newDestination, role))
+    setInAdmin(false)
   }
 
   function handleTabChange(tabId) {
@@ -315,7 +346,8 @@ export default function App() {
     setInAdmin(v => !v)
   }
 
-  const showWeekNav = mode === 'executive' && !inAdmin
+  // Week nav is shown in destinations that have a week-based view (Performance recap)
+  const showWeekNav = destination === 'performance' && !inAdmin
 
   const fiscalLabel = getFiscalLabel(currentWeek)
   const weekLabel   = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
@@ -399,19 +431,14 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Mode toggle row (centered, on its own row) ── */}
-        {allowModeSwitch && !inAdmin && (
+        {/* ── Destination nav (replaces old Executive/Operations mode toggle) ── */}
+        {!inAdmin && !isOnLanding && (
           <div className={styles.modeToggleRow}>
-            <div className={styles.modeToggle}>
-              <button
-                className={`${styles.modeToggleBtn} ${mode==='executive' ? styles.modeToggleBtnActive : ''}`}
-                onClick={()=>handleModeChange('executive')}
-              >Executive</button>
-              <button
-                className={`${styles.modeToggleBtn} ${mode==='operations' ? styles.modeToggleBtnActive : ''}`}
-                onClick={()=>handleModeChange('operations')}
-              >Operations</button>
-            </div>
+            <DestinationNav
+              userProfile={userProfile}
+              activeDestination={destination}
+              onChange={handleDestinationChange}
+            />
           </div>
         )}
 
@@ -421,10 +448,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Tab nav (hidden in admin, escape via gear toggle) ── */}
-        {!inAdmin && (
+        {/* ── Tab nav (hidden on landing and in admin) ── */}
+        {!inAdmin && !isOnLanding && tabsForCurrentDestination.length > 1 && (
           <nav className={styles.nav}>
-            {tabsForCurrentMode.map(t=>(
+            {tabsForCurrentDestination.map(t=>(
               <button
                 key={t.id}
                 className={`${styles.navTab} ${activeTab===t.id?styles.navTabActive:''}`}
@@ -441,7 +468,7 @@ export default function App() {
         {inAdmin && (
           <div className={styles.adminBackBar}>
             <button className={styles.adminBackBtn} onClick={() => setInAdmin(false)}>
-              ← Back to {mode === 'executive' ? 'Executive' : 'Operations'}
+              ← Back to {destination === 'landing' ? 'Welcome' : DESTINATIONS[destination]?.shortName || 'app'}
             </button>
             <span className={styles.adminBackLabel}>Admin Panel</span>
           </div>
@@ -453,6 +480,14 @@ export default function App() {
           <div className={styles.loading}><div className={styles.loadingDots}><span/><span/><span/></div></div>
         ) : (
           <>
+            {/* Landing — the destination chooser */}
+            {isOnLanding && !inAdmin && (
+              <LandingPage
+                userProfile={userProfile}
+                onChoose={handleDestinationChange}
+              />
+            )}
+
             {inAdmin && adminAuthenticated && (
               <AdminPage
                 weekStart={currentWeek}
@@ -461,16 +496,17 @@ export default function App() {
                 onRefresh={()=>loadWeek(currentWeek)}
                 dbReady={dbReady}
                 userProfile={userProfile}
+                authUser={authUser}
                 commentProps={commentProps}
                 adminSection={adminSection}
                 setAdminSection={setAdminSection}
               />
             )}
 
-            {!inAdmin && (
+            {!inAdmin && !isOnLanding && (
               <>
-                {/* Dashboard — both modes show the weekly recap */}
-                {activeTab==='dashboard' && (
+                {/* Performance · Recap (the weekly recap) */}
+                {destination === 'performance' && activeTab==='dashboard' && (
                   <ExecutiveDashboardPage
                     weekStart={currentWeek}
                     weekData={weekData}
@@ -480,40 +516,39 @@ export default function App() {
                     userId={authUser?.id}
                   />
                 )}
-                {/* Run Rate — both modes show the current-week pace tool */}
-                {activeTab==='runrate' && (
+                {destination === 'performance' && activeTab==='financials' && (
+                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+                )}
+                {destination === 'performance' && activeTab==='people' && (
+                  <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
+                )}
+                {destination === 'performance' && activeTab==='inventory' && (
+                  <StubPage
+                    title="Inventory"
+                    eyebrow="Performance · Inventory"
+                    description="Three-zone inventory: Paramount Buy, Pass-Through, FSCO Watchlist with audit log + reorder cart."
+                    note="Pending Brynn's review of the v5 mockup. Coming in Phase 3."
+                  />
+                )}
+
+                {/* Operations · Live Ops, Scheduler, WIP */}
+                {destination === 'operations' && activeTab==='liveops' && (
+                  <LiveOpsTab/>
+                )}
+                {destination === 'operations' && activeTab==='scheduler' && (
+                  <SchedulerTab/>
+                )}
+                {destination === 'operations' && activeTab==='wip' && (
+                  <WIPTab weekStart={currentWeek} />
+                )}
+
+                {/* Heartbeat · Run Rate (deeper view coming in Phase B) */}
+                {destination === 'heartbeat' && activeTab==='runrate' && (
                   <DashboardPage
                     weekStart={currentWeek}
                     currentUser={userProfile?.full_name}
                     userId={authUser?.id}
                   />
-                )}
-                {activeTab==='financials' && (
-                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
-                )}
-                {activeTab==='people' && (
-                  <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
-                )}
-                {activeTab==='inventory' && (
-                  <StubPage
-                    title="Inventory"
-                    eyebrow={mode === 'executive' ? 'Executive View' : 'Operations View'}
-                    description={
-                      mode === 'executive'
-                        ? "Exec overview — WIP exposure headline, FSCO Watchlist with audit log, KPI rollup."
-                        : "Three-zone working surface — Paramount Buy, Pass-Through, FSCO Watchlist with reorder cart."
-                    }
-                    note="Pending Brynn's review of the v5 mockup. Coming in Phase 3."
-                  />
-                )}
-                {activeTab==='liveops' && (
-                  <LiveOpsTab/>
-                )}
-                {activeTab==='scheduler' && (
-                  <SchedulerTab/>
-                )}
-                {activeTab==='wip' && (
-                  <WIPTab weekStart={currentWeek} />
                 )}
               </>
             )}
