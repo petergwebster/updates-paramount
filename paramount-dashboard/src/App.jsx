@@ -210,7 +210,7 @@ export default function App() {
       try {
         const { data: profile, error } = await supabase
           .from('profiles')
-          .select('full_name, role, active, email')
+          .select('full_name, role, active')
           .eq('id', userId)
           .single()
         if (cancelled) return null
