@@ -1,0 +1,342 @@
+.tile {
+  background: white;
+  border-radius: 14px;
+  padding: 22px 24px 20px;
+  border: 1px solid var(--ink-05, #E8E9EB);
+  box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
+  position: relative;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.tile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+}
+.tile_emerald::before { background: var(--emerald, #0F7A4E); }
+.tile_saffron::before { background: var(--saffron, #E89A1E); }
+.tile_crimson::before { background: var(--crimson, #C12B1A); }
+
+/* ─── Header ─── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.label {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  letter-spacing: -0.015em;
+  margin-bottom: 3px;
+}
+.expectedFile {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  color: var(--ink-30, #8E919A);
+  letter-spacing: -0.01em;
+}
+
+/* ─── Freshness chip ─── */
+.chip {
+  font-size: 9px;
+  padding: 5px 11px;
+  border-radius: 100px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chip_emerald { background: var(--emerald-light, #D2EBDC); color: var(--emerald-deep, #0A4F33); }
+.chip_saffron { background: var(--saffron-light, #FBEFD0); color: var(--saffron-deep, #A66A0F); }
+.chip_crimson { background: var(--crimson-light, #F8DDD8); color: var(--crimson-deep, #831A0E); }
+
+/* ─── Last upload summary ─── */
+.lastUpload {
+  background: linear-gradient(180deg, var(--paper-light, #FCFBF8), var(--paper, #F9F8F4));
+  border-radius: 9px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--ink-10, #DBDCDE);
+  min-height: 84px;
+}
+.loading {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--ink-50, #5C5F69);
+}
+.noUpload {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-30, #8E919A);
+  display: block;
+  text-align: center;
+  padding: 14px 0;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  font-size: 12px;
+}
+.summaryLabel {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-50, #5C5F69);
+  margin-bottom: 3px;
+}
+.summaryValue {
+  font-family: Georgia, serif;
+  color: var(--ink, #101218);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 13px;
+}
+.summarySub {
+  color: var(--ink-30, #8E919A);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 11px;
+}
+.summaryEmail {
+  color: var(--ink-30, #8E919A);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 11px;
+}
+.summaryError {
+  color: var(--crimson, #C12B1A);
+  font-weight: 400;
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* ─── Status pill ─── */
+.statusPill {
+  font-size: 9px;
+  padding: 3px 9px;
+  border-radius: 100px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+.statusPillSmall { font-size: 8px; padding: 2px 7px; }
+.status_emerald { background: var(--emerald-light, #D2EBDC); color: var(--emerald-deep, #0A4F33); }
+.status_saffron { background: var(--saffron-light, #FBEFD0); color: var(--saffron-deep, #A66A0F); }
+.status_crimson { background: var(--crimson-light, #F8DDD8); color: var(--crimson-deep, #831A0E); }
+.status_royal   { background: var(--royal-light, #DCE6F5);   color: var(--royal-deep, #14376E); }
+.status_muted   { background: var(--linen, #E8E5DC);          color: var(--ink-50, #5C5F69); }
+
+/* ─── Drop zone ─── */
+.dropZone {
+  background: var(--paper-light, #FCFBF8);
+  border: 2px dashed var(--ink-20, #B5B7BD);
+  border-radius: 9px;
+  padding: 26px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dropZone:hover {
+  border-color: var(--ink-50, #5C5F69);
+  background: white;
+}
+.dropZoneActive {
+  border-color: var(--emerald, #0F7A4E);
+  background: var(--emerald-light, #D2EBDC);
+  border-style: solid;
+}
+.dropZoneBusy {
+  cursor: progress;
+  opacity: 0.85;
+}
+.dropZoneText {
+  font-size: 13px;
+  color: var(--ink-70, #353841);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.dropZoneText strong {
+  color: var(--ink, #101218);
+  font-weight: 700;
+}
+.dropIcon {
+  font-size: 22px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-50, #5C5F69);
+  font-weight: 800;
+  border: 1.5px solid var(--ink-20, #B5B7BD);
+  margin-bottom: 4px;
+}
+.dropZoneActive .dropIcon { color: var(--emerald-deep, #0A4F33); border-color: var(--emerald, #0F7A4E); }
+.dropHint {
+  font-size: 10px;
+  color: var(--ink-30, #8E919A);
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--ink-10, #DBDCDE);
+  border-top-color: var(--royal, #1E4FA8);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── Validation feedback ─── */
+.validationError {
+  margin-top: 14px;
+  background: var(--crimson-light, #F8DDD8);
+  border-left: 3px solid var(--crimson, #C12B1A);
+  padding: 12px 14px;
+  border-radius: 0 8px 8px 0;
+  font-size: 12px;
+  color: var(--ink, #101218);
+}
+.validationError strong {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 5px;
+  font-weight: 800;
+  color: var(--crimson-deep, #831A0E);
+}
+.validationError p { margin: 4px 0; line-height: 1.5; }
+.suggestion {
+  font-style: italic;
+  font-family: Georgia, serif;
+  color: var(--ink-50, #5C5F69) !important;
+  margin-top: 8px !important;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(193, 43, 26, 0.3);
+}
+
+.validationOk {
+  margin-top: 14px;
+  background: var(--emerald-light, #D2EBDC);
+  border-left: 3px solid var(--emerald, #0F7A4E);
+  padding: 12px 14px;
+  border-radius: 0 8px 8px 0;
+  font-size: 12px;
+}
+.validationOk strong {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-bottom: 5px;
+  font-weight: 800;
+  color: var(--emerald-deep, #0A4F33);
+}
+.validationOk p { margin: 4px 0; line-height: 1.5; color: var(--ink-70, #353841); }
+
+.sheetDetails {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.sheetDetails summary {
+  cursor: pointer;
+  color: var(--ink-50, #5C5F69);
+  font-weight: 700;
+  padding: 3px 0;
+}
+.sheetDetails ul {
+  margin: 6px 0 0 0;
+  padding-left: 20px;
+  color: var(--ink-50, #5C5F69);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+}
+.sheetDetails li { margin: 2px 0; }
+
+/* ─── History ─── */
+.historyToggle {
+  margin-top: 14px;
+  text-align: center;
+}
+.historyToggle button {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--royal, #1E4FA8);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: -apple-system, sans-serif;
+}
+.historyToggle button:hover {
+  background: var(--royal-light, #DCE6F5);
+}
+
+.historyPanel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--paper-light, #FCFBF8);
+  border: 1px solid var(--ink-10, #DBDCDE);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.historyRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--ink-10, #DBDCDE);
+}
+.historyRow:last-child { border-bottom: none; }
+.historyRowCurrent {
+  background: rgba(15, 122, 78, 0.05);
+  margin: 0 -8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border-bottom: 1px dashed var(--ink-10, #DBDCDE);
+}
+.historyDate {
+  font-family: Georgia, serif;
+  color: var(--ink-70, #353841);
+  font-size: 11px;
+}
+.historyEmail {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--ink-30, #8E919A);
+}
+.historyCurrentBadge {
+  font-size: 8px;
+  padding: 2px 6px;
+  background: var(--emerald, #0F7A4E);
+  color: white;
+  border-radius: 100px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

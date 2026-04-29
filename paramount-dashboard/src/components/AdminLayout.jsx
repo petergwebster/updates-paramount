@@ -1,6 +1,9 @@
 import React from 'react'
 import AdminPanel from './AdminPanel'
 import StubPage from './StubPage'
+import UserManagement from './UserManagement'
+import LIFTDataRefresh from './LIFTDataRefresh'
+import { isSuperAdmin } from '../lib/access'
 import styles from './AdminLayout.module.css'
 
 /**
@@ -34,7 +37,10 @@ const SIDEBAR = [
   {
     group: 'Access',
     items: [
-      { id: 'user-management', label: 'User Management', badge: 'NEW' },
+      // superAdminOnly items only render in the sidebar if the current user
+      // is the super-admin (Peter). Defense-in-depth — UserManagement also
+      // checks itself.
+      { id: 'user-management', label: 'User Management', badge: 'NEW', superAdminOnly: true },
     ],
   },
   {
@@ -52,10 +58,20 @@ export default function AdminLayout({
   onRefresh,
   dbReady,
   userProfile,
+  authUser,
   commentProps,
   section,
   setSection,
 }) {
+  const userIsSuperAdmin = isSuperAdmin(authUser)
+
+  // Filter sidebar groups so super-admin items only appear for super-admin
+  const visibleSidebar = SIDEBAR
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => !item.superAdminOnly || userIsSuperAdmin),
+    }))
+    .filter(group => group.items.length > 0)
   return (
     <div className={styles.layout}>
       {/* ── Page header ── */}
@@ -70,7 +86,7 @@ export default function AdminLayout({
       <div className={styles.body}>
         {/* ── Sidebar ── */}
         <aside className={styles.sidebar}>
-          {SIDEBAR.map(group => (
+          {visibleSidebar.map(group => (
             <div key={group.group} className={styles.sidebarGroup}>
               <div className={styles.sidebarGroupLabel}>{group.group}</div>
               {group.items.map(item => (
@@ -99,14 +115,7 @@ export default function AdminLayout({
             />
           )}
 
-          {section === 'lift-refresh' && (
-            <StubPage
-              title="LIFT Data Refresh"
-              eyebrow="Data"
-              description="Upload and parse the API_Dashboard MOS file to refresh inventory and WIP data. Replaces the manual Excel upload flow."
-              note="Coming in a future phase. Today: still using Excel uploads on the existing Weekly Data Entry section."
-            />
-          )}
+          {section === 'lift-refresh' && <LIFTDataRefresh />}
 
           {section === 'ai-monitoring' && (
             <StubPage
@@ -126,12 +135,14 @@ export default function AdminLayout({
             />
           )}
 
-          {section === 'user-management' && (
+          {section === 'user-management' && userIsSuperAdmin && (
+            <UserManagement authUser={authUser} />
+          )}
+          {section === 'user-management' && !userIsSuperAdmin && (
             <StubPage
-              title="User Management"
+              title="Restricted"
               eyebrow="Access"
-              description="UI for adding, removing, and changing roles for dashboard users. Replaces the SQL-only flow currently used."
-              note="Coming in a future phase. Today: user management is done directly in Supabase Auth + SQL."
+              description="User Management is restricted to the super-admin only."
             />
           )}
 
