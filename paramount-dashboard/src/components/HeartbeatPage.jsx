@@ -60,16 +60,26 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const fiscalLabel = getFiscalLabel(weekStart)
 
   // ── Load this week's production + the latest WIP-by-status ─────────
+  // WIP comes from v_current_wip_rollup (the parsed file upload).
+  // Fallback to business_facts seed if no upload yet exists.
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     Promise.all([
       supabase.from('production').select('*').eq('week_start', weekKey).maybeSingle(),
+      supabase.from('v_current_wip_rollup').select('yard_order_status, num_orders, yards_written'),
       supabase.from('business_facts').select('fact_number, fact').eq('category', 'wip-passaic').eq('active', true).order('fact_number'),
-    ]).then(([prodRes, wipRes]) => {
+    ]).then(([prodRes, wipRollupRes, wipFactsRes]) => {
       if (cancelled) return
       setProductionRow(prodRes.data || null)
-      setWipByStatus(parseWipFacts(wipRes.data || []))
+
+      // Prefer the live snapshot rollup; fall back to seeded facts
+      const rollupRows = wipRollupRes.data || []
+      if (rollupRows.length > 0) {
+        setWipByStatus(parseWipRollupRows(rollupRows))
+      } else {
+        setWipByStatus(parseWipFacts(wipFactsRes.data || []))
+      }
       setLoading(false)
     })
     return () => { cancelled = true }
@@ -325,6 +335,46 @@ function parseWipFacts(facts) {
       yards:  parseInt(yardsStr.replace(/,/g, ''), 10),
       orders: parseInt(ordersStr.replace(/,/g, ''), 10),
     }
+  })
+  return out
+}
+
+/**
+ * Parse rows from v_current_wip_rollup into the shape WIPStatusBar wants.
+ * Sums across all (division, third_party_vs_house) groupings — Heartbeat
+ * shows total Passaic WIP by status regardless of customer.
+ *
+ * Each row has: yard_order_status, num_orders, yards_written
+ */
+function parseWipRollupRows(rows) {
+  if (!rows || rows.length === 0) return null
+  const out = {
+    unallocated:        { yards: 0, orders: 0 },
+    waitingApproval:    { yards: 0, orders: 0 },
+    waitingMaterial:    { yards: 0, orders: 0 },
+    approvedToPrint:    { yards: 0, orders: 0 },
+    readyToPrint:       { yards: 0, orders: 0 },
+    inPacking:          { yards: 0, orders: 0 },
+    inProgress:         { yards: 0, orders: 0 },
+    strikeOff:          { yards: 0, orders: 0 },
+    inMixingQueue:      { yards: 0, orders: 0 },
+  }
+  const statusMap = {
+    'Orders Unallocated':   'unallocated',
+    'Waiting for Approval': 'waitingApproval',
+    'Waiting for Material': 'waitingMaterial',
+    'Approved to Print':    'approvedToPrint',
+    'Ready to Print':       'readyToPrint',
+    'In Packing':           'inPacking',
+    'In Progress':          'inProgress',
+    'Strike Off':           'strikeOff',
+    'In Mixing Queue':      'inMixingQueue',
+  }
+  rows.forEach(r => {
+    const key = statusMap[r.yard_order_status]
+    if (!key) return
+    out[key].yards  += Number(r.yards_written || 0)
+    out[key].orders += Number(r.num_orders || 0)
   })
   return out
 }

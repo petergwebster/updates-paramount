@@ -1,27 +1,64 @@
 import React from 'react'
+import { supabase } from '../supabase'
 import UploadTile from './UploadTile'
+import { parseWipFile } from '../lib/parsers/parseWipFile'
+import { parseMosFile } from '../lib/parsers/parseMosFile'
+import { parseInventoryFile } from '../lib/parsers/parseInventoryFile'
+import { persistSnapshot } from '../lib/persistSnapshot'
 import styles from './LIFTDataRefresh.module.css'
 
 /**
- * LIFTDataRefresh — admin page replacing the StubPage.
+ * LIFTDataRefresh — admin page with three upload tiles.
  *
- * Three upload tiles for the three core daily files:
- *   1. WIP file        (Data_for_WIP.xlsx)
- *   2. MOS file        (API_Dashboard_MOS_3_0.xlsx)
- *   3. Inventory file  (Paramount_Inventory_Reporting_2026.xlsx)
- *
- * Stage B status: tiles render fully, validate uploaded files, but parsing
- * + database write is stubbed. Stage C wires the parsers.
- *
- * Future:
- *   - ShareFile auto-refresh (~60-day timeline) — when wired, the tile chrome
- *     stays the same but the "Source" line says "Auto · ShareFile" instead
- *     of "Manual"
+ * Stage C: tiles are now fully functional.
  */
 export default function LIFTDataRefresh() {
+
+  async function handleUpload(fileKind, file, buffer, onComplete) {
+    const t0 = performance.now()
+    let parserResult
+    try {
+      switch (fileKind) {
+        case 'wip':       parserResult = await parseWipFile(buffer); break
+        case 'mos':       parserResult = await parseMosFile(buffer); break
+        case 'inventory': parserResult = await parseInventoryFile(buffer); break
+        default: throw new Error(`Unknown fileKind: ${fileKind}`)
+      }
+    } catch (e) {
+      console.error('Parser failed:', e)
+      parserResult = {
+        parsedData: {},
+        errors: { _parser: e?.message || 'Parser threw an exception' },
+      }
+    }
+    const parseDurationMs = Math.round(performance.now() - t0)
+
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const result = await persistSnapshot({
+      fileKind,
+      sourceFile: file.name,
+      fileSizeBytes: file.size,
+      source: 'manual_upload',
+      authUser: user,
+      parsedData: parserResult.parsedData,
+      errors: parserResult.errors,
+      parseDurationMs,
+    })
+
+    if (!result.ok) {
+      console.error('Persist failed:', result)
+      alert(`Upload failed: ${result.error || 'unknown error'}`)
+    } else {
+      const totalRows = Object.values(result.rows_written || {}).reduce((s, n) => s + n, 0)
+      console.log(`Upload complete · ${totalRows.toLocaleString()} rows captured in ${parseDurationMs}ms`)
+    }
+
+    if (onComplete) onComplete()
+  }
+
   return (
     <div className={styles.page}>
-      {/* ── Header ── */}
       <div className={styles.pageHeader}>
         <div>
           <div className={styles.eyebrow}>Data Pipeline</div>
@@ -34,7 +71,6 @@ export default function LIFTDataRefresh() {
         </div>
       </div>
 
-      {/* ── ShareFile prep banner ── */}
       <div className={styles.shareFileBanner}>
         <div className={styles.bannerIcon}>↻</div>
         <div className={styles.bannerText}>
@@ -47,22 +83,19 @@ export default function LIFTDataRefresh() {
         </div>
       </div>
 
-      {/* ── Tile grid ── */}
       <div className={styles.tileGrid}>
-        <UploadTile fileKind="wip" />
-        <UploadTile fileKind="mos" />
-        <UploadTile fileKind="inventory" />
+        <UploadTile fileKind="wip"       onUpload={handleUpload} />
+        <UploadTile fileKind="mos"       onUpload={handleUpload} />
+        <UploadTile fileKind="inventory" onUpload={handleUpload} />
       </div>
 
-      {/* ── Footer note ── */}
       <div className={styles.footerNote}>
         <strong>How it works</strong>
         <p>
           Each upload creates a snapshot row in <code>data_snapshots</code> plus
           rows in the relevant child tables. Heartbeat and Inventory pages always
           read the most recent successful snapshot. Old snapshots stay in the
-          database for audit (showing the most recent 10 per file in the
-          "Show recent uploads" panel).
+          database for audit.
         </p>
         <p>
           File validation happens in the browser before upload — wrong file in
