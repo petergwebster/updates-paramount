@@ -204,25 +204,68 @@ export default function App() {
 
   // ── Auth bootstrap — every user lands on the chooser ────────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let cancelled = false
+
+    async function loadProfile(userId, attempt = 1) {
+      try {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('full_name, role, active, email')
+          .eq('id', userId)
+          .single()
+        if (cancelled) return null
+
+        if (error) {
+          console.error(`[Auth] Profile fetch attempt ${attempt} failed:`, error.message)
+          // Retry once after a short delay — sometimes the auth JWT
+          // hasn't fully propagated when a stored session is restored
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 500))
+            return loadProfile(userId, attempt + 1)
+          }
+          return null
+        }
+        return profile
+      } catch (e) {
+        console.error('[Auth] Profile fetch threw:', e)
+        return null
+      }
+    }
+
+    async function bootstrap() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (cancelled) return
+
       if (session?.user) {
         setAuthUser(session.user)
-        supabase.from('profiles').select('full_name, role, active, email').eq('id', session.user.id).single()
-          .then(({ data: profile }) => {
-            setUserProfile(profile)
-            if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
-            if (profile?.role === 'admin') setAdminAuthenticated(true)
-            // Always land on the chooser. Users navigate from there.
-            setDestination('landing')
-            setActiveTab(null)
-          })
+        const profile = await loadProfile(session.user.id)
+        if (cancelled) return
+
+        if (profile) {
+          setUserProfile(profile)
+          if (profile.full_name) localStorage.setItem('pp_commenter', profile.full_name)
+          if (profile.role === 'admin') setAdminAuthenticated(true)
+        } else {
+          // Profile failed to load even after retry. Surface it instead of
+          // silently showing "no destinations available".
+          console.error('[Auth] Profile could not be loaded — user will see no destinations. Sign out and back in.')
+        }
+        setDestination('landing')
+        setActiveTab(null)
       }
       setAuthLoading(false)
-    })
+    }
+    bootstrap()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return
       if (!session) { setAuthUser(null); setUserProfile(null); setAdminAuthenticated(false) }
     })
-    return () => subscription.unsubscribe()
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => { loadWeek(currentWeek) }, [currentWeek])
