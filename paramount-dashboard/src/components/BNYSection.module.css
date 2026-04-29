@@ -1,0 +1,162 @@
+.machineGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.machineCard {
+  background: white;
+  border-radius: 11px;
+  padding: 16px 14px;
+  box-shadow: 0 1px 2px rgba(16,18,24,0.05), 0 2px 6px rgba(16,18,24,0.04);
+  border: 1px solid var(--ink-05, #E8E9EB);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  position: relative;
+  overflow: hidden;
+}
+.machineCard::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+.m_3600::before { background: var(--emerald, #0F7A4E); }
+.m_570::before  { background: var(--royal, #1E4FA8); }
+
+.machineHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.machineName {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  letter-spacing: -0.015em;
+}
+.machineKind {
+  font-size: 9px;
+  color: var(--ink-30, #8E919A);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+}
+.machineActual {
+  font-family: Georgia, serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  line-height: 1;
+  margin-top: 4px;
+  letter-spacing: -0.025em;
+}
+.smallUnit {
+  font-size: 12px;
+  color: var(--ink-30, #8E919A);
+  font-weight: 400;
+}
+.machineTarget {
+  font-size: 10px;
+  color: var(--ink-50, #5C5F69);
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+.machineBar {
+  height: 6px;
+  background: var(--linen, #E8E5DC);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+  margin-top: 2px;
+}
+.machineBarFill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  border-radius: 4px;
+}
+.fill_emerald { background: var(--emerald, #0F7A4E); }
+.fill_saffron { background: var(--saffron, #E89A1E); }
+.fill_crimson { background: var(--crimson, #C12B1A); }
+
+@media (max-width: 1100px) {
+  .machineGrid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 700px) {
+  .machineGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ─── Mix card ─── */
+.mixCard {
+  background: white;
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
+  border: 1px solid var(--ink-05, #E8E9EB);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+.mixTitle {
+  font-family: Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  letter-spacing: -0.015em;
+}
+.mixTitleSmall {
+  font-size: 11px;
+  color: var(--ink-30, #8E919A);
+  font-weight: 400;
+  font-style: italic;
+  font-family: Georgia, serif;
+}
+.mixBars { display: flex; flex-direction: column; gap: 11px; }
+.mixBarRow {
+  display: grid;
+  grid-template-columns: 110px 1fr 100px;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+}
+.mixLabel { font-weight: 800; color: var(--ink, #101218); font-size: 13px; }
+.mixBg {
+  height: 24px;
+  background: var(--linen, #E8E5DC);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+.mixFill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  border-radius: 6px;
+}
+.mixFill_emerald { background: linear-gradient(180deg, #1F9866, var(--emerald, #0F7A4E)); }
+.mixFill_royal   { background: linear-gradient(180deg, #2D62BC, var(--royal, #1E4FA8)); }
+.mixFill_saffron { background: linear-gradient(180deg, #F2AD3A, var(--saffron, #E89A1E)); }
+.mixFill_muted   { background: var(--ink-30, #8E919A); }
+.mixVal {
+  font-family: Georgia, serif;
+  font-weight: 700;
+  text-align: right;
+  font-size: 14px;
+  letter-spacing: -0.015em;
+  color: var(--ink, #101218);
+}
+.mixSubtext {
+  font-size: 10px;
+  color: var(--ink-30, #8E919A);
+  font-style: italic;
+  margin-left: 6px;
+  font-family: Georgia, serif;
+  font-weight: 400;
+}

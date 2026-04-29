@@ -20,6 +20,7 @@ import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
 import DashboardPage from './components/DashboardPage'
 import ExecutiveDashboardPage from './components/ExecutiveDashboardPage'
+import HeartbeatPage from './components/HeartbeatPage'
 import LandingPage from './components/LandingPage'
 import DestinationNav from './components/DestinationNav'
 import UserManagement from './components/UserManagement'
@@ -77,10 +78,10 @@ const QA_OPERATIONS_TABS = [
   { id: 'scheduler', label: 'Scheduler' },
 ]
 
-// Heartbeat is a single-page deep view; tab structure is just its one page
-// for now. Future expansion may add sub-views.
+// Heartbeat is a single-page deep view, so no tab strip is shown.
+// The `'pulse'` id is just an internal route identifier.
 const HEARTBEAT_TABS = [
-  { id: 'runrate', label: 'Run Rate' },
+  { id: 'pulse', label: 'Pulse' },
 ]
 
 /**
@@ -89,7 +90,7 @@ const HEARTBEAT_TABS = [
 function defaultTabFor(destination, role) {
   if (destination === 'performance') return 'dashboard'
   if (destination === 'operations')  return 'liveops'
-  if (destination === 'heartbeat')   return 'runrate'
+  if (destination === 'heartbeat')   return 'pulse'
   return null
 }
 
@@ -542,9 +543,9 @@ export default function App() {
                   <WIPTab weekStart={currentWeek} />
                 )}
 
-                {/* Heartbeat · Run Rate (deeper view coming in Phase B) */}
-                {destination === 'heartbeat' && activeTab==='runrate' && (
-                  <DashboardPage
+                {/* Heartbeat · The deep operational view */}
+                {destination === 'heartbeat' && activeTab==='pulse' && (
+                  <HeartbeatPage
                     weekStart={currentWeek}
                     currentUser={userProfile?.full_name}
                     userId={authUser?.id}

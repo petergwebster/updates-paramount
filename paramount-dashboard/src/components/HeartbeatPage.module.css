@@ -1,0 +1,189 @@
+/* ═════════════════════════════════════════════════════════════════
+   HeartbeatPage chrome — hero, sections, site pills
+   ═════════════════════════════════════════════════════════════════ */
+
+.page {
+  max-width: 1340px;
+  margin: 0 auto;
+  padding: 36px 36px 96px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+
+/* ─── Hero ─── */
+.pageHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 40px;
+  margin-bottom: 36px;
+  padding: 8px 0 28px;
+  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  position: relative;
+}
+
+.heartbeatEyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--blood-orange, #D33A28);
+  margin-bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.pulseDot {
+  width: 12px;
+  height: 12px;
+  background: var(--blood-orange, #D33A28);
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 0 0 4px rgba(211, 58, 40, 0.18);
+  animation: heartbeatPulse 1.4s ease-in-out infinite;
+}
+@keyframes heartbeatPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 4px rgba(211,58,40,0.20), 0 0 0 8px rgba(211,58,40,0);
+  }
+  50% {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 6px rgba(211,58,40,0.10), 0 0 0 14px rgba(211,58,40,0);
+  }
+}
+
+.pageTitle {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  margin: 0 0 12px;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+.pageSub {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  color: var(--ink-50, #5C5F69);
+  max-width: 680px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.pageMeta {
+  text-align: right;
+  flex-shrink: 0;
+  padding-top: 6px;
+}
+.pageMetaWeek {
+  font-family: Georgia, serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  letter-spacing: -0.01em;
+}
+.pageMetaSub {
+  font-size: 12px;
+  color: var(--ink-30, #8E919A);
+  font-style: italic;
+  font-family: Georgia, serif;
+  margin-top: 4px;
+}
+.pageMetaUpdated {
+  font-size: 9px;
+  color: var(--ink-30, #8E919A);
+  margin-top: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pageMetaUpdated::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--emerald, #0F7A4E);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--emerald-light, #D2EBDC);
+}
+
+/* ─── Section ─── */
+.section {
+  margin-top: 48px;
+  margin-bottom: 8px;
+}
+.section:first-of-type { margin-top: 8px; }
+
+.sectionHeader {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+}
+.sectionEyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-50, #5C5F69);
+  margin-bottom: 10px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.sectionTitleText {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink, #101218);
+  letter-spacing: -0.02em;
+}
+
+.sitePill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 7px;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  font-family: -apple-system, sans-serif;
+  box-shadow: 0 1px 2px rgba(16,18,24,0.05), 0 2px 6px rgba(16,18,24,0.04);
+}
+.pillPlant   { background: linear-gradient(135deg, var(--ink, #101218), var(--ink-90, #1F2128)); }
+.pillPassaic { background: linear-gradient(135deg, var(--blood-orange-deep, #94251B), var(--blood-orange, #D33A28)); }
+.pillBny     { background: linear-gradient(135deg, var(--saffron-deep, #A66A0F), var(--saffron, #E89A1E)); }
+.pillRead    { background: linear-gradient(135deg, var(--royal-deep, #14376E), var(--royal, #1E4FA8)); }
+
+.sectionDesc {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ink-30, #8E919A);
+  font-family: Georgia, serif;
+  text-align: right;
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+/* ─── Loading state ─── */
+.loading {
+  text-align: center;
+  padding: 48px 24px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--ink-50, #5C5F69);
+  background: white;
+  border-radius: 12px;
+  border: 1px solid var(--ink-10, #DBDCDE);
+}
