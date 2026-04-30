@@ -61,7 +61,7 @@ const BNY_PASSAIC_DIGITAL = [
 // ═══════════════════════════════════════════════════════════════════════════
 // LiveOpsTab — daily actuals entry for Passaic (Sami) and BNY (Chandler)
 // ═══════════════════════════════════════════════════════════════════════════
-export default function LiveOpsTab() {
+export default function LiveOpsTab({ currentUser } = {}) {
   const [viewMode, setViewMode] = useState('entry')  // 'entry' | 'summary'
   const [site, setSite] = useState('passaic')
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -361,6 +361,7 @@ export default function LiveOpsTab() {
                   plannedDetails={row?.plannedDetails || []}
                   op={row?.op}
                   canEnterActuals={true}
+                  currentUser={currentUser}
                   onSave={(patch) => saveRow(t.code, patch)}
                 />
               </div>
@@ -382,7 +383,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, onSave }) {
+function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, currentUser, onSave }) {
   const [yards, setYards]   = useState(op?.actual_yards ?? '')
   const [waste, setWaste]   = useState(op?.waste_yards ?? '')
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
@@ -444,6 +445,7 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assignedTo,
+          assignedBy: currentUser || 'Unknown user',
           site,
           tableLabel: table.label || table.code,
           dateLabel: op?.date_label || '',

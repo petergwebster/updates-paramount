@@ -577,7 +577,7 @@ export default function App() {
 
                 {/* Operations · Live Ops, Scheduler, WIP */}
                 {destination === 'operations' && activeTab==='liveops' && (
-                  <LiveOpsTab/>
+                  <LiveOpsTab currentUser={userProfile?.full_name} />
                 )}
                 {destination === 'operations' && activeTab==='scheduler' && (
                   <SchedulerTab/>
