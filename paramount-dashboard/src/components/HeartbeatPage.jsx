@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { format, startOfWeek } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalLabel } from '../fiscalCalendar'
@@ -49,6 +49,7 @@ const BNY_TARGETS = {
 const NJ_TOTAL_YARDS_TGT      = NJ_TARGETS.fabric.yards      + NJ_TARGETS.grass.yards      + NJ_TARGETS.paper.yards
 const NJ_TOTAL_COLORYARDS_TGT = NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards
 const PLANT_YARDS_TGT         = NJ_TOTAL_YARDS_TGT + BNY_TARGETS.total
+const TARGET_COMPLEXITY       = NJ_TOTAL_COLORYARDS_TGT / NJ_TOTAL_YARDS_TGT // ~3.13
 
 // ──────────────────────────────────────────────────────────────────────────────
 export default function HeartbeatPage({ weekStart, currentUser, userId }) {
@@ -58,6 +59,10 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
   const weekKey = format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const fiscalLabel = getFiscalLabel(weekStart)
+
+  // Diagnostic: log raw production payload once per week change so we can
+  // confirm field names from the browser instead of waiting on SQL.
+  const loggedKeyRef = useRef(null)
 
   // ── Load this week's production + the latest WIP-by-status ─────────
   // WIP comes from v_current_wip_rollup (the parsed file upload).
@@ -71,7 +76,21 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
       supabase.from('business_facts').select('fact_number, fact').eq('category', 'wip-passaic').eq('active', true).order('fact_number'),
     ]).then(([prodRes, wipRollupRes, wipFactsRes]) => {
       if (cancelled) return
-      setProductionRow(prodRes.data || null)
+      const prodRow = prodRes.data || null
+      setProductionRow(prodRow)
+
+      // One-time diagnostic per (week) load — paste this into chat if numbers look wrong
+      if (loggedKeyRef.current !== weekKey) {
+        loggedKeyRef.current = weekKey
+        // eslint-disable-next-line no-console
+        console.log('[Heartbeat] week', weekKey, {
+          hasProductionRow: !!prodRow,
+          nj_data_keys: prodRow?.nj_data ? Object.keys(prodRow.nj_data) : null,
+          bny_data_keys: prodRow?.bny_data ? Object.keys(prodRow.bny_data) : null,
+          nj_data: prodRow?.nj_data,
+          bny_data: prodRow?.bny_data,
+        })
+      }
 
       // Prefer the live snapshot rollup; fall back to seeded facts
       const rollupRows = wipRollupRes.data || []
@@ -89,20 +108,27 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const njData  = extractNjData(productionRow)
   const bnyData = extractBnyData(productionRow)
 
+  // True if we actually have production numbers for this week. Drives empty
+  // states + gates the narrative so Claude doesn't hallucinate from zeros.
+  const hasRealData = !loading && (njData.totalYards > 0 || bnyData.totalYards > 0)
+
   // Plant rollup numbers
+  const plantTotalYards = njData.totalYards + bnyData.totalYards
   const plantYards = {
     budget: PLANT_YARDS_TGT,
-    actual: (njData.totalYards || 0) + (bnyData.totalYards || 0),
+    actual: plantTotalYards,
   }
   const plantColorYards = {
     budget: NJ_TOTAL_COLORYARDS_TGT, // BNY doesn't track color-yards (digital is single-pass)
-    actual: njData.totalColorYards || 0,
+    actual: njData.totalColorYards,
   }
   const plantComplexity = {
-    budget: NJ_TOTAL_COLORYARDS_TGT / NJ_TOTAL_YARDS_TGT, // ~3.13
+    budget: TARGET_COMPLEXITY,
+    // Guard: only compute ratio when we have NJ yards. Otherwise show target
+    // so the card displays a real number instead of NaN/Infinity.
     actual: njData.totalYards > 0
-      ? (njData.totalColorYards || 0) / njData.totalYards
-      : NJ_TOTAL_COLORYARDS_TGT / NJ_TOTAL_YARDS_TGT,
+      ? njData.totalColorYards / njData.totalYards
+      : TARGET_COMPLEXITY,
   }
 
   // Per-category data for Passaic
@@ -118,10 +144,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const machines = buildBnyMachines(bnyData)
   const { mix, totalYards: bnyMixTotal } = buildBnyMix(bnyData)
 
-  // Claude prompt builder
+  // Claude prompt builder — pass hasData flag so the prompt can short-circuit
+  // to "no production data this week" instead of hallucinating from zeros.
   const buildPrompt = ({ contextString }) => buildHeartbeatNarrativePrompt({
     contextString,
-    hasData: !!productionRow,
+    hasData: hasRealData,
   })
 
   return (
@@ -164,6 +191,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
         {loading ? (
           <div className={styles.loading}>Loading production data…</div>
+        ) : !hasRealData ? (
+          <div className={styles.loading}>
+            No production entered for the week of {format(weekStart, 'MMM d')} yet.
+            Data will appear here once Live Ops actuals or admin entry are in.
+          </div>
         ) : (
           <PlantRollup
             yards={plantYards}
@@ -259,41 +291,79 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
 /**
  * Production row stores nj_data and bny_data as JSON. Extract NJ totals.
- * Defensive — production row may not exist for the week yet.
+ *
+ * Important: DashboardPage writes per-category yards (fabric/grass/paper) but
+ * does NOT necessarily write a top-level totalYards. Always derive totals
+ * from the components — the explicit field check is just a fast path for
+ * future writers that DO include it.
  */
 function extractNjData(row) {
   const nj = row?.nj_data || {}
+
+  const fabricYards      = num(nj.fabricYards,      nj.fabric)
+  const grassYards       = num(nj.grassYards,       nj.grass)
+  const paperYards       = num(nj.paperYards,       nj.paper)
+  const fabricColorYards = num(nj.fabricColorYards, nj.fabric_color_yards)
+  const grassColorYards  = num(nj.grassColorYards,  nj.grass_color_yards)
+  const paperColorYards  = num(nj.paperColorYards,  nj.paper_color_yards)
+
+  // Compute totals from components — always reliable, never relies on a
+  // possibly-missing top-level field.
+  const componentYardsSum      = fabricYards + grassYards + paperYards
+  const componentColorYardsSum = fabricColorYards + grassColorYards + paperColorYards
+
   return {
-    totalYards:      Number(nj.totalYards      || nj.netYards || 0),
-    totalColorYards: Number(nj.colorYards      || nj.totalColorYards || 0),
-    fabricYards:     Number(nj.fabricYards     || nj.fabric    || 0),
-    grassYards:      Number(nj.grassYards      || nj.grass     || 0),
-    paperYards:      Number(nj.paperYards      || nj.paper     || 0),
-    fabricColorYards: Number(nj.fabricColorYards || 0),
-    grassColorYards:  Number(nj.grassColorYards  || 0),
-    paperColorYards:  Number(nj.paperColorYards  || 0),
+    totalYards:       num(nj.totalYards, nj.netYards) || componentYardsSum,
+    totalColorYards:  num(nj.colorYards, nj.totalColorYards) || componentColorYardsSum,
+    fabricYards,
+    grassYards,
+    paperYards,
+    fabricColorYards,
+    grassColorYards,
+    paperColorYards,
   }
 }
 
 function extractBnyData(row) {
   const bny = row?.bny_data || {}
+
+  const glow   = num(bny.glow,   bny.glow_yards)
+  const sasha  = num(bny.sasha,  bny.sasha_yards)
+  const trish  = num(bny.trish,  bny.trish_yards)
+  const bianca = num(bny.bianca, bny.bianca_yards)
+  const lash   = num(bny.lash,   bny.lash_yards)
+  const chyna  = num(bny.chyna,  bny.chyna_yards)
+  const rhonda = num(bny.rhonda, bny.rhonda_yards)
+
+  const replen   = num(bny.replen)
+  const custom   = num(bny.custom)
+  const mto      = num(bny.mto)
+  const hos      = num(bny.hos)
+  const memo     = num(bny.memo)
+  const threeP   = num(bny.threeP, bny['3p'])
+  const newGoods = num(bny.newGoods, bny['new'])
+
+  // Total = whichever decomposition has data. Machines and mix should sum to
+  // the same value, but if one side is missing we still want a real number.
+  const machineSum = glow + sasha + trish + bianca + lash + chyna + rhonda
+  const mixSum     = replen + custom + mto + hos + memo + threeP + newGoods
+  const totalYards = num(bny.totalYards, bny.total) || machineSum || mixSum
+
   return {
-    totalYards: Number(bny.totalYards || bny.total || 0),
-    glow:       Number(bny.glow       || bny.glow_yards    || 0),
-    sasha:      Number(bny.sasha      || bny.sasha_yards   || 0),
-    trish:      Number(bny.trish      || bny.trish_yards   || 0),
-    bianca:     Number(bny.bianca     || bny.bianca_yards  || 0),
-    lash:       Number(bny.lash       || bny.lash_yards    || 0),
-    chyna:      Number(bny.chyna      || bny.chyna_yards   || 0),
-    rhonda:     Number(bny.rhonda     || bny.rhonda_yards  || 0),
-    replen:     Number(bny.replen     || 0),
-    custom:     Number(bny.custom     || 0),
-    mto:        Number(bny.mto        || 0),
-    hos:        Number(bny.hos        || 0),
-    memo:       Number(bny.memo       || 0),
-    threeP:     Number(bny.threeP     || bny['3p'] || 0),
-    newGoods:   Number(bny.newGoods   || bny['new'] || 0),
+    totalYards,
+    glow, sasha, trish, bianca, lash, chyna, rhonda,
+    replen, custom, mto, hos, memo, threeP, newGoods,
   }
+}
+
+// Coerce any number of arguments to numbers and return the first non-zero one.
+// Treats undefined/null/NaN/0 as "no value".
+function num(...vals) {
+  for (const v of vals) {
+    const n = Number(v)
+    if (Number.isFinite(n) && n !== 0) return n
+  }
+  return 0
 }
 
 /**
@@ -424,7 +494,7 @@ function buildCategoryData(nj, wipByStatus) {
       yards: nj.fabricYards,
       colorYds: nj.fabricColorYards || Math.round(nj.fabricYards * 3.9),
       avgColors: nj.fabricYards > 0 ? (nj.fabricColorYards / nj.fabricYards) || 3.9 : 3.9,
-      pacingNote: 'capacity-limited by supply',
+      pacingNote: nj.fabricYards > 0 ? 'capacity-limited by supply' : 'no production yet this week',
       bottleneck: {
         tone: 'saffron',
         label: 'Supply-constrained',
@@ -445,7 +515,7 @@ function buildCategoryData(nj, wipByStatus) {
       yards: nj.paperYards,
       colorYds: nj.paperColorYards || Math.round(nj.paperYards * 5.2),
       avgColors: nj.paperYards > 0 ? (nj.paperColorYards / nj.paperYards) || 5.2 : 5.2,
-      pacingNote: 'heavy complexity load',
+      pacingNote: nj.paperYards > 0 ? 'heavy complexity load' : 'no production yet this week',
       bottleneck: {
         tone: 'royal',
         label: 'Complexity-bound · Citrus Garden',
