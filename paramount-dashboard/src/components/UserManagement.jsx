@@ -4,10 +4,10 @@ import { isSuperAdmin, SUPER_ADMIN_EMAIL, destinationsFor } from '../lib/access'
 import styles from './UserManagement.module.css'
 
 /**
- * UserManagement — the User Management admin UI, restricted to super-admin only.
+ * UserManagement — admin UI restricted to the super-admin.
  *
  * Features:
- *   - View all users (name, email, role, active, last sign-in)
+ *   - View all users (name, role, active, last sign-in)
  *   - Change a user's role (admin / exec / manager / qa)
  *   - Activate / deactivate users
  *   - Every change is logged to role_change_log for audit trail
@@ -18,8 +18,11 @@ import styles from './UserManagement.module.css'
  *   - Confirmation required on all changes
  *
  * If the current user is NOT the super-admin, this component renders an
- * access-denied message rather than the UI. App.jsx should already gate
- * this, but defense in depth.
+ * access-denied message. App.jsx should already gate this; defense in depth.
+ *
+ * Schema note: the `profiles` table does not have an email column — email
+ * lives on auth.users. We identify users here by full_name + the auth-side
+ * email shown in the header for the current user only.
  *
  * Props:
  *   authUser — the current auth.users object (has .id, .email)
@@ -31,29 +34,25 @@ export default function UserManagement({ authUser }) {
   const [savingId, setSavingId] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
 
-  // Defense-in-depth check
-  if (!isSuperAdmin(authUser)) {
-    return (
-      <div className={styles.denied}>
-        <div className={styles.deniedTitle}>Restricted</div>
-        <div className={styles.deniedBody}>
-          User Management is restricted to the super-admin only.
-        </div>
-      </div>
-    )
-  }
+  const isAllowed = isSuperAdmin(authUser)
 
+  // Load users — gated to super-admin via the conditional inside the effect,
+  // not via an early return before the hook (which would violate React's
+  // rules-of-hooks if access ever toggles for the same component instance).
   useEffect(() => {
+    if (!isAllowed) return
     loadUsers()
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAllowed])
 
   async function loadUsers() {
     setLoading(true)
     setError(null)
     try {
+      // No email column on profiles — it lives on auth.users.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, full_name, role, active, created_at')
+        .select('id, full_name, role, active, created_at')
         .order('full_name', { ascending: true })
       if (error) throw error
       setUsers(data || [])
@@ -70,7 +69,7 @@ export default function UserManagement({ authUser }) {
         changed_by: authUser.id,
         changed_by_email: authUser.email,
         target_user: targetUser.id,
-        target_email: targetUser.email,
+        target_email: null, // not available client-side; auth.users not directly queryable
         old_role: oldRole,
         new_role: newRole,
         old_active: oldActive,
@@ -79,7 +78,6 @@ export default function UserManagement({ authUser }) {
         notes: notes || null,
       })
     } catch (err) {
-      // Audit log failure shouldn't block the operation but we want to know about it
       console.error('Failed to write role_change_log:', err)
     }
   }
@@ -93,7 +91,7 @@ export default function UserManagement({ authUser }) {
       type: 'role',
       target: targetUser,
       newValue: newRole,
-      message: `Change ${targetUser.full_name}'s role from "${targetUser.role}" to "${newRole}"?`,
+      message: `Change ${targetUser.full_name || 'this user'}'s role from "${targetUser.role}" to "${newRole}"?`,
     })
   }
 
@@ -108,8 +106,8 @@ export default function UserManagement({ authUser }) {
       target: targetUser,
       newValue: newActive,
       message: newActive
-        ? `Reactivate ${targetUser.full_name}? They'll regain access on next login.`
-        : `Deactivate ${targetUser.full_name}? They'll lose all destination access immediately.`,
+        ? `Reactivate ${targetUser.full_name || 'this user'}? They'll regain access on next login.`
+        : `Deactivate ${targetUser.full_name || 'this user'}? They'll lose all destination access immediately.`,
     })
   }
 
@@ -158,6 +156,18 @@ export default function UserManagement({ authUser }) {
     }
   }
 
+  // Render: access denial AFTER hooks, not before.
+  if (!isAllowed) {
+    return (
+      <div className={styles.denied}>
+        <div className={styles.deniedTitle}>Restricted</div>
+        <div className={styles.deniedBody}>
+          User Management is restricted to the super-admin only.
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return <div className={styles.loadingState}>Loading users…</div>
   }
@@ -190,7 +200,6 @@ export default function UserManagement({ authUser }) {
       <div className={styles.table}>
         <div className={`${styles.row} ${styles.headerRow}`}>
           <div className={styles.cell}>User</div>
-          <div className={styles.cell}>Email</div>
           <div className={styles.cell}>Role</div>
           <div className={styles.cell}>Access</div>
           <div className={styles.cell}>Status</div>
@@ -208,9 +217,6 @@ export default function UserManagement({ authUser }) {
                   {u.full_name || '(no name)'}
                   {isSelf && <span className={styles.selfBadge}>you</span>}
                 </div>
-              </div>
-              <div className={styles.cell}>
-                <span className={styles.email}>{u.email}</span>
               </div>
               <div className={styles.cell}>
                 <select
