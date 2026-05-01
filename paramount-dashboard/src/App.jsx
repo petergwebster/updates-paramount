@@ -132,11 +132,18 @@ function SlackIcon({ size = 14 }) {
   )
 }
 
-// Week defaults — operational tables are Sunday-Saturday (weekStartsOn: 0).
+// Week defaults — Scheduler and Live Ops use Monday-anchored weeks
+// (weekStartsOn: 1). Operational tables (sched_assignments, sched_daily_ops)
+// store week_start as the Monday date.
+//
 // Performance destination wants the prior closed week (what Brynn enters).
 // Operations + Heartbeat destinations want the current week.
+//
+// Future cleanup: weekend scheduling will require this model to extend
+// Sat/Sun day_of_week slots; second shift will require a shift column on
+// assignments + daily_ops. Both deferred until base flow is verified.
 function getCurrentWeekStart() {
-  return startOfWeek(new Date(), { weekStartsOn: 0 })
+  return startOfWeek(new Date(), { weekStartsOn: 1 })
 }
 function getPriorWeekStart() {
   return subWeeks(getCurrentWeekStart(), 1)
