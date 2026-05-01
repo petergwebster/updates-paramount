@@ -5,10 +5,14 @@
 // PassaicScheduler / BNYScheduler and the Live Ops tab use these; keeping
 // them centralized means one query surface for Claude context wiring and
 // one place to evolve the schema from.
+//
+// Phase A rewrite (May 1, 2026): day_of_week is now TEXT ('Sun'..'Sat')
+// per Migration B2. The summary builder sorts by DAY_INDEX rather than
+// numeric value, and labels days using their stored text directly.
 // ============================================================================
 
 import { supabase } from '../supabase'
-import { isoDate, addDays, dayOfWeekFiscal, DAY_NAMES_SHORT } from './scheduleUtils'
+import { isoDate, DAY_INDEX, DAY_NAMES_FULL } from './scheduleUtils'
 
 // Fetch all daily_ops rows for a given (site, week_start). Returns [] if none.
 export async function loadWeekDailyOps(site, weekStart) {
@@ -21,20 +25,26 @@ export async function loadWeekDailyOps(site, weekStart) {
   return data || []
 }
 
-// Upsert one daily_ops row. Uses the unique (site, week, table, day) key.
-// Pass only the fields you want to change — others are preserved.
+// Upsert one daily_ops row. Uses the unique (site, week, table, day, shift)
+// key established by Migration B1. Pass only the fields you want to change —
+// others are preserved.
 export async function upsertDailyOp(row) {
   const payload = { ...row, updated_at: new Date().toISOString() }
   const { error } = await supabase
     .from('sched_daily_ops')
-    .upsert(payload, { onConflict: 'site,week_start,table_code,day_of_week' })
+    .upsert(payload, { onConflict: 'site,week_start,table_code,day_of_week,shift' })
   if (error) { console.error('upsertDailyOp', error); throw error }
 }
 
 // Build a compact string summary of recent actuals for the AI context note.
 // Returns something like:
-//   "Mon:\n  GC-1: 150 planned / 120 actual (-30) · 5 waste · Angel Acevedo + Armando Acevedo · banding on grounds\n  ..."
+//   "Friday:
+//     GC-1: 150 planned / 120 actual (-30) · 5 waste · Angel Acevedo + Armando Acevedo · banding on grounds
+//     ..."
 // If no recent actuals exist, returns null (caller can omit the block).
+//
+// "Recent" means: of the days that have actuals in this week, take the
+// latest `maxDaysBack` of them (Fri before Thu before Wed, etc.).
 export function buildRecentActualsSummary(dailyOps, weekStart, maxDaysBack = 3) {
   if (!dailyOps || dailyOps.length === 0) return null
 
@@ -48,19 +58,29 @@ export function buildRecentActualsSummary(dailyOps, weekStart, maxDaysBack = 3) 
   )
   if (withActuals.length === 0) return null
 
+  // Group by day_of_week (text: 'Sun'..'Sat')
   const byDay = {}
   for (const r of withActuals) {
     const d = r.day_of_week
     if (!byDay[d]) byDay[d] = []
     byDay[d].push(r)
   }
-  const daysWithData = Object.keys(byDay).map(Number).sort((a, b) => b - a)
+
+  // Sort days by DAY_INDEX descending — latest day in the week first.
+  // Unknown labels (defensive) sort to the end.
+  const daysWithData = Object.keys(byDay).sort((a, b) => {
+    const ia = DAY_INDEX[a] ?? -1
+    const ib = DAY_INDEX[b] ?? -1
+    return ib - ia
+  })
   const daysToShow = daysWithData.slice(0, maxDaysBack)
   if (daysToShow.length === 0) return null
 
   const lines = []
   for (const d of daysToShow) {
-    const dayLabel = DAY_NAMES_SHORT[d] || `d${d}`
+    // Use the full name for readability ('Friday' vs 'Fri'). Fall back to
+    // the raw label if it's somehow not in our map.
+    const dayLabel = DAY_NAMES_FULL[d] || d
     lines.push(`${dayLabel}:`)
     for (const r of byDay[d]) {
       const parts = []
@@ -79,6 +99,8 @@ export function buildRecentActualsSummary(dailyOps, weekStart, maxDaysBack = 3) 
         parts.push(ops)
       }
       if (r.notes && r.notes.trim()) parts.push(`note: ${r.notes.trim()}`)
+      // If shift is present and is 2nd, surface it — 1st is the implicit default.
+      if (r.shift === '2nd') parts.push('2nd shift')
       lines.push(`  ${r.table_code}: ${parts.join(' · ') || '(no data)'}`)
     }
   }
