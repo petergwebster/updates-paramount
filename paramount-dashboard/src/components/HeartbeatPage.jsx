@@ -120,18 +120,18 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
     async function load() {
       try {
-        // 1. Schedule (planned) for the week
-        // 2. Actuals (sched_daily_ops) for the week
+        // 1. Schedule (planned) for the week — now includes shift
+        // 2. Actuals (sched_daily_ops) for the week — now includes shift
         // 3. WIP rollup for status bar
         // 4. WIP rows for bucket classification (BNY) + NEW Goods yards
         const [assignRes, opsRes, wipRollupRes, wipFactsRes, wipRowsRes] = await Promise.all([
           supabase
             .from('sched_assignments')
-            .select('site, po_number, product_type, table_code, day_of_week, planned_yards, planned_cy, status')
+            .select('site, po_number, product_type, table_code, day_of_week, shift, planned_yards, planned_cy, status')
             .eq('week_start', weekKey),
           supabase
             .from('sched_daily_ops')
-            .select('site, table_code, day_of_week, actual_yards, waste_yards')
+            .select('site, table_code, day_of_week, shift, actual_yards, waste_yards')
             .eq('week_start', weekKey),
           supabase
             .from('v_current_wip_rollup')
@@ -197,6 +197,19 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   // ── Aggregations from raw rows ─────────────────────────────────────────
   const njAgg  = aggregateBySite(assignments, dailyOps, 'passaic')
   const bnyAgg = aggregateBySite(assignments, dailyOps, 'bny')
+
+  // Shift-aware splits for Site Performance card.
+  // Passaic: real 1st/2nd split (hand-screen runs both).
+  // BNY: 1st only — BNY machines and Passaic MTO digital don't run 2nd shift.
+  // (Eligibility lives in the UI/scheduler — schema is permissive; if a
+  // 2nd-shift row appears for BNY data, we'll show it but not expect any.)
+  const njShift1Agg = aggregateBySite(assignments, dailyOps, 'passaic', '1st')
+  const njShift2Agg = aggregateBySite(assignments, dailyOps, 'passaic', '2nd')
+  const bnyShift1Agg = aggregateBySite(assignments, dailyOps, 'bny', '1st')
+
+  // Active-cells counts for the Site Performance KPI ("active tables/machines")
+  const njActiveTables  = countActiveCells(assignments, 'passaic')
+  const bnyActiveMachines = countActiveCells(assignments, 'bny')
 
   // Did anything get scheduled, anywhere?
   const hasSchedule = assignments.length > 0
@@ -327,6 +340,39 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         )}
       </div>
 
+      {/* Site Performance — middle-layer comparative read */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Site Performance</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillPlant}`}>SITES</span>
+              Brooklyn vs Passaic
+            </div>
+            <div className={styles.sectionDesc}>
+              Comparative read · Passaic split by shift · weekend cells included where scheduled.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : !hasSchedule ? (
+          <div className={styles.loading}>
+            Site comparison populates once the schedule is built.
+          </div>
+        ) : (
+          <SitePerformance
+            njAgg={njAgg}
+            bnyAgg={bnyAgg}
+            njShift1Agg={njShift1Agg}
+            njShift2Agg={njShift2Agg}
+            njActiveTables={njActiveTables}
+            bnyActiveMachines={bnyActiveMachines}
+          />
+        )}
+      </div>
+
       {/* Passaic */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
@@ -408,6 +454,239 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
+   SitePerformance — middle-layer comparative read
+   BNY card + Passaic card side-by-side. Passaic splits 1st/2nd shift.
+   Four KPIs: yards, color-yards, complexity ratio, active tables/machines.
+
+   Uses inline styles for new visual elements so it ships independently of
+   HeartbeatPage.module.css. Polish pass can extract these into the module.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+const SP_COLORS = {
+  ink:     '#101218',
+  paper:   '#F9F8F4',
+  linen:   '#E8E5DC',
+  bny:     '#E89A1E',
+  passaic: '#D33A28',
+  emerald: '#0F7A4E',
+  crimson: '#C12B1A',
+  saffron: '#E89A1E',
+  muted:   '#6b6b6b',
+}
+
+const SP_STYLES = {
+  row: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '1rem',
+    marginTop: '0.5rem',
+  },
+  card: {
+    background: '#fff',
+    border: `1px solid ${SP_COLORS.linen}`,
+    borderRadius: 6,
+    padding: '1.25rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  header: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    paddingBottom: '0.5rem',
+    borderBottom: `1px solid ${SP_COLORS.linen}`,
+  },
+  title: {
+    fontFamily: 'Georgia, serif',
+    fontSize: '1.4rem',
+    color: SP_COLORS.ink,
+    fontWeight: 600,
+    marginTop: '0.25rem',
+  },
+  meta: {
+    fontSize: '0.78rem',
+    color: SP_COLORS.muted,
+    fontStyle: 'italic',
+  },
+  kpi: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    fontSize: '0.95rem',
+  },
+  kpiLabel: {
+    color: SP_COLORS.muted,
+    textTransform: 'uppercase',
+    fontSize: '0.72rem',
+    letterSpacing: '0.06em',
+  },
+  kpiValue: {
+    color: SP_COLORS.ink,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  kpiActual: {
+    fontWeight: 700,
+    fontSize: '1.05rem',
+  },
+  kpiPlanned: {
+    color: SP_COLORS.muted,
+    fontSize: '0.85rem',
+  },
+  varBadge: {
+    marginLeft: '0.5rem',
+    fontSize: '0.78rem',
+    padding: '0.1rem 0.4rem',
+    borderRadius: 3,
+    fontWeight: 600,
+  },
+  shiftBlock: {
+    marginTop: '0.5rem',
+    paddingTop: '0.75rem',
+    borderTop: `1px dashed ${SP_COLORS.linen}`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+  },
+  shiftBlockTitle: {
+    fontSize: '0.7rem',
+    color: SP_COLORS.muted,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  },
+  shiftRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.85rem',
+  },
+  shiftLabel: {
+    color: SP_COLORS.ink,
+    fontWeight: 500,
+  },
+  shiftValue: {
+    color: SP_COLORS.muted,
+    fontVariantNumeric: 'tabular-nums',
+  },
+}
+
+const SP_VAR_TONES = {
+  on:      { background: '#E0F0E5', color: SP_COLORS.emerald },
+  ahead:   { background: '#E0F0E5', color: SP_COLORS.emerald },
+  behind:  { background: '#FAE2DE', color: SP_COLORS.crimson },
+  pending: { background: SP_COLORS.linen, color: SP_COLORS.muted },
+  neutral: { background: SP_COLORS.linen, color: SP_COLORS.muted },
+}
+
+function SitePerformance({
+  njAgg, bnyAgg,
+  njShift1Agg, njShift2Agg,
+  njActiveTables, bnyActiveMachines,
+}) {
+  const njComplexity  = njAgg.actualYards > 0
+    ? njAgg.actualColorYards / njAgg.actualYards
+    : (njAgg.plannedYards > 0 ? njAgg.plannedColorYards / njAgg.plannedYards : 0)
+  const bnyComplexity = bnyAgg.actualYards > 0
+    ? bnyAgg.actualColorYards / bnyAgg.actualYards
+    : (bnyAgg.plannedYards > 0 ? bnyAgg.plannedColorYards / bnyAgg.plannedYards : 0)
+
+  return (
+    <div style={SP_STYLES.row}>
+      {/* Brooklyn */}
+      <div style={SP_STYLES.card}>
+        <div style={SP_STYLES.header}>
+          <div>
+            <span className={`${styles.sitePill} ${styles.pillBny}`}>BNY</span>
+          </div>
+          <div style={SP_STYLES.title}>Brooklyn · Digital</div>
+          <div style={SP_STYLES.meta}>1st shift only · 19 machines · digital, no shift expansion</div>
+        </div>
+
+        <SitePerfKpi label="Yards" planned={bnyAgg.plannedYards} actual={bnyAgg.actualYards} unit="yds" />
+        <SitePerfKpi label="Color-Yards" planned={bnyAgg.plannedColorYards} actual={bnyAgg.actualColorYards} unit="cyds" />
+        <SitePerfKpi label="Complexity" planned={bnyAgg.plannedYards > 0 ? bnyAgg.plannedColorYards / bnyAgg.plannedYards : 0} actual={bnyComplexity} unit="" decimals={2} suffix=" colors/yd" />
+        <SitePerfKpi label="Active machines" planned={bnyActiveMachines} actual={bnyActiveMachines} unit="" suffix=" of 19" plainCount />
+      </div>
+
+      {/* Passaic */}
+      <div style={SP_STYLES.card}>
+        <div style={SP_STYLES.header}>
+          <div>
+            <span className={`${styles.sitePill} ${styles.pillPassaic}`}>NJ</span>
+          </div>
+          <div style={SP_STYLES.title}>Passaic · Screen Print</div>
+          <div style={SP_STYLES.meta}>1st + 2nd shift · 17 hand-screen + MTO digital fleet</div>
+        </div>
+
+        <SitePerfKpi label="Yards" planned={njAgg.plannedYards} actual={njAgg.actualYards} unit="yds" />
+        <SitePerfKpi label="Color-Yards" planned={njAgg.plannedColorYards} actual={njAgg.actualColorYards} unit="cyds" />
+        <SitePerfKpi label="Complexity" planned={njAgg.plannedYards > 0 ? njAgg.plannedColorYards / njAgg.plannedYards : 0} actual={njComplexity} unit="" decimals={2} suffix=" colors/yd" />
+        <SitePerfKpi label="Active tables" planned={njActiveTables} actual={njActiveTables} unit="" suffix=" of 17 hand-screen" plainCount />
+
+        {(njShift1Agg.plannedYards + njShift2Agg.plannedYards) > 0 && (
+          <div style={SP_STYLES.shiftBlock}>
+            <div style={SP_STYLES.shiftBlockTitle}>Shift split</div>
+            <div style={SP_STYLES.shiftRow}>
+              <span style={SP_STYLES.shiftLabel}>1st shift (6:30a–3p)</span>
+              <span style={SP_STYLES.shiftValue}>
+                {fmt(njShift1Agg.plannedYards)} yds planned · {fmt(njShift1Agg.actualYards)} yds actual
+              </span>
+            </div>
+            <div style={SP_STYLES.shiftRow}>
+              <span style={SP_STYLES.shiftLabel}>2nd shift (3p–11p)</span>
+              <span style={SP_STYLES.shiftValue}>
+                {njShift2Agg.plannedYards > 0
+                  ? `${fmt(njShift2Agg.plannedYards)} yds planned · ${fmt(njShift2Agg.actualYards)} yds actual`
+                  : 'no 2nd-shift schedule this week'}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SitePerfKpi({ label, planned, actual, unit, decimals = 0, suffix = '', plainCount = false }) {
+  const fmtNum = (n) => decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString()
+  const variance = planned > 0 ? ((actual - planned) / planned) * 100 : 0
+  const tone = plainCount ? 'neutral'
+            : actual === 0 && planned > 0 ? 'pending'
+            : Math.abs(variance) < 5 ? 'on'
+            : variance < 0 ? 'behind'
+            : 'ahead'
+
+  if (plainCount) {
+    return (
+      <div style={SP_STYLES.kpi}>
+        <span style={SP_STYLES.kpiLabel}>{label}</span>
+        <span style={SP_STYLES.kpiValue}>
+          <span style={SP_STYLES.kpiActual}>{fmtNum(actual)}</span>
+          <span style={SP_STYLES.kpiPlanned}>{suffix}</span>
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div style={SP_STYLES.kpi}>
+      <span style={SP_STYLES.kpiLabel}>{label}</span>
+      <span style={SP_STYLES.kpiValue}>
+        <span style={SP_STYLES.kpiActual}>{fmtNum(actual)}</span>
+        <span style={SP_STYLES.kpiPlanned}>
+          {' '}/ {fmtNum(planned)} {unit}{suffix}
+        </span>
+        {planned > 0 && (
+          <span style={{...SP_STYLES.varBadge, ...SP_VAR_TONES[tone]}}>
+            {variance >= 0 ? '+' : ''}{variance.toFixed(0)}%
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+function fmt(n) { return Math.round(n).toLocaleString() }
+
+/* ═════════════════════════════════════════════════════════════════════════
    Aggregation helpers — pure functions over raw rows
    ═════════════════════════════════════════════════════════════════════════ */
 
@@ -419,32 +698,37 @@ function num(v) {
 /**
  * Roll up planned + actual yards/color-yards for one site across the whole week.
  * Color-yards on the actual side is interpolated: actualYards × (cellPlannedCy / cellPlannedYards).
+ *
+ * @param {string|null} shiftFilter — when provided ('1st' | '2nd'), only rows
+ *   matching that shift contribute. When omitted/null, both shifts roll up.
  */
-function aggregateBySite(assignments, dailyOps, site) {
+function aggregateBySite(assignments, dailyOps, site, shiftFilter = null) {
   let plannedYards = 0
   let plannedColorYards = 0
   let actualYards = 0
   let actualColorYards = 0
 
-  // Sum planned by cell (site, table_code, day_of_week) and remember the
+  // Sum planned by cell (site, table_code, day_of_week, shift) and remember the
   // planned ratio so we can interpolate actual color-yards.
   const cellPlanned = new Map()
   assignments.forEach(a => {
     if (a.site !== site) return
+    if (shiftFilter && a.shift !== shiftFilter) return
     const py = num(a.planned_yards)
     const pcy = num(a.planned_cy)
     plannedYards += py
     plannedColorYards += pcy
-    const key = `${a.table_code}|${a.day_of_week}`
+    const key = `${a.table_code}|${a.day_of_week}|${a.shift || '1st'}`
     const prev = cellPlanned.get(key) || { y: 0, cy: 0 }
     cellPlanned.set(key, { y: prev.y + py, cy: prev.cy + pcy })
   })
 
   dailyOps.forEach(o => {
     if (o.site !== site) return
+    if (shiftFilter && o.shift !== shiftFilter) return
     const ay = num(o.actual_yards)
     actualYards += ay
-    const key = `${o.table_code}|${o.day_of_week}`
+    const key = `${o.table_code}|${o.day_of_week}|${o.shift || '1st'}`
     const planned = cellPlanned.get(key)
     if (planned && planned.y > 0) {
       actualColorYards += ay * (planned.cy / planned.y)
@@ -452,6 +736,19 @@ function aggregateBySite(assignments, dailyOps, site) {
   })
 
   return { plannedYards, plannedColorYards, actualYards, actualColorYards }
+}
+
+/**
+ * Count distinct (table_code, shift) cells with at least one assignment.
+ * Active = something is scheduled there this week.
+ */
+function countActiveCells(assignments, site) {
+  const cells = new Set()
+  assignments.forEach(a => {
+    if (a.site !== site) return
+    cells.add(`${a.table_code}|${a.shift || '1st'}`)
+  })
+  return cells.size
 }
 
 /**
