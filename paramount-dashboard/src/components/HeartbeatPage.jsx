@@ -26,8 +26,8 @@ import styles from './HeartbeatPage.module.css'
  * HOS / Memo / 3P) come from joining sched_assignments → sched_wip_rows on
  * po_number to inherit the bucket classification.
  *
- * Weeks are Monday-Sunday (weekStartsOn: 1) to match Scheduler/Live Ops.
- * sched_assignments and sched_daily_ops store week_start as the Monday date.
+ * Weeks are Sunday-Saturday (weekStartsOn: 0) to match FSCO's 4/4/5 fiscal calendar.
+ * sched_assignments and sched_daily_ops store week_start as the Sunday date.
  *
  * No production-table fallback. If there's no schedule yet, the page says
  * so. If there's a schedule but no actuals, it shows the plan and waits.
@@ -107,7 +107,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const [error,          setError]         = useState(null)
 
   // Monday-Sunday week (matches Scheduler convention)
-  const weekKey = format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const weekKey = format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'yyyy-MM-dd')
   const fiscalLabel = getFiscalLabel(weekStart)
 
   // Diagnostic — one log per week change
@@ -266,9 +266,9 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         </div>
         <div className={styles.pageMeta}>
           <div className={styles.pageMetaWeek}>
-            Week of {format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'MMM d')}
+            Week of {format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'MMM d')}
             {' – '}
-            {format(addDays(startOfWeek(weekStart, { weekStartsOn: 1 }), 6), 'MMM d')}
+            {format(addDays(startOfWeek(weekStart, { weekStartsOn: 0 }), 6), 'MMM d')}
           </div>
           {fiscalLabel && <div className={styles.pageMetaSub}>{fiscalLabel}</div>}
           <div className={styles.pageMetaUpdated}>
@@ -303,7 +303,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         ) : !hasSchedule ? (
           <div className={styles.loading}>
             No schedule built yet for the week of{' '}
-            {format(startOfWeek(weekStart, { weekStartsOn: 1 }), 'MMM d')}.
+            {format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'MMM d')}.
             Heartbeat will populate as Wendy and Chandler assign POs in Scheduler.
           </div>
         ) : !hasActuals ? (
