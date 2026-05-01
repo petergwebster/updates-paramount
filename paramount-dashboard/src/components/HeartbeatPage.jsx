@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { format, startOfWeek, addDays } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalLabel } from '../fiscalCalendar'
-import PlantRollup from './PlantRollup'
 import PassaicSection from './PassaicSection'
 import BNYSection from './BNYSection'
 import ClaudeReadBlock from './ClaudeReadBlock'
@@ -12,22 +11,34 @@ import styles from './HeartbeatPage.module.css'
 /**
  * HeartbeatPage — schedule-vs-actuals live read.
  *
- * Data flow (the actual one, finally):
+ * Data flow:
  *   Scheduler → writes sched_assignments (planned_yards, planned_cy per
  *               table-day, per PO line, per week)
  *   Live Ops  → reads sched_assignments as the daily target,
  *               writes sched_daily_ops (actual_yards, waste_yards per
  *               table-day as Sami/Wendy/Chandler enter end-of-shift)
  *   Heartbeat → joins those two on (site, week_start, table_code, day_of_week)
- *               and rolls up plant-wide / per-category / per-machine views
+ *               and rolls up plant-wide / per-category / per-machine views.
  *
- * NEW Goods bucket comes from sched_wip_rows where is_new_goods=true (the
- * LIFT-uploaded WIP pool). The other 6 BNY buckets (Replen / Custom / MTO /
- * HOS / Memo / 3P) come from joining sched_assignments → sched_wip_rows on
- * po_number to inherit the bucket classification.
+ * Architectural note (May 1, 2026):
+ *   Color-yards is a HAND-SCREEN labor unit. BNY is digital — it prints all
+ *   colors in one pass, so there is no per-color labor cost on that side.
+ *   Color-yards therefore only applies to Passaic. Plant Rollup shows YARDS
+ *   ONLY (the one metric that means the same thing on both floors).
+ *   Color-yards and complexity live in the Passaic site card and
+ *   per-category Passaic table where they belong.
  *
- * Weeks are Sunday-Saturday (weekStartsOn: 0) to match FSCO's 4/4/5 fiscal calendar.
- * sched_assignments and sched_daily_ops store week_start as the Sunday date.
+ *   Site Performance cards are intentionally asymmetric:
+ *     - BNY: yards, active machines, kind-of-work bucket mix.
+ *     - Passaic: yards, color-yards, complexity, active tables, shift split.
+ *
+ * NEW Goods bucket comes from sched_wip_rows where is_new_goods=true.
+ * The other 6 BNY buckets come from joining assignments → wip_rows on
+ * po_number to inherit customer_type classification.
+ *
+ * Weeks are Sunday-Saturday (weekStartsOn: 0) to match FSCO's 4/4/5
+ * fiscal calendar. sched_assignments and sched_daily_ops store week_start
+ * as the Sunday date.
  *
  * No production-table fallback. If there's no schedule yet, the page says
  * so. If there's a schedule but no actuals, it shows the plan and waits.
@@ -49,10 +60,8 @@ const BNY_TARGETS = {
   hp3600_per_machine: 600 * 6, // per machine per week, 6 days
   hp570_per_machine:  500 * 6,
 }
-const NJ_TOTAL_YARDS_TGT      = NJ_TARGETS.fabric.yards      + NJ_TARGETS.grass.yards      + NJ_TARGETS.paper.yards
-const NJ_TOTAL_COLORYARDS_TGT = NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards
-const PLANT_YARDS_TGT         = NJ_TOTAL_YARDS_TGT + BNY_TARGETS.total
-const TARGET_COMPLEXITY       = NJ_TOTAL_COLORYARDS_TGT / NJ_TOTAL_YARDS_TGT // ~3.13
+const NJ_TOTAL_YARDS_TGT = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
+const PLANT_YARDS_TGT    = NJ_TOTAL_YARDS_TGT + BNY_TARGETS.total
 
 // ─── 17 Passaic tables (canonical numbering) ───────────────────────────────
 const PASSAIC_TABLES = [
@@ -101,12 +110,13 @@ const BNY_BUCKETS = ['Replen', 'NEW Goods', 'Custom', 'MTO', 'HOS', 'Memo', '3P'
 export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const [assignments,    setAssignments]   = useState([])
   const [dailyOps,       setDailyOps]      = useState([])
+  const [wipRows,        setWipRows]       = useState([])
   const [bnyBucketYards, setBnyBucketYards] = useState({})
   const [wipByStatus,    setWipByStatus]   = useState(null)
   const [loading,        setLoading]       = useState(true)
   const [error,          setError]         = useState(null)
 
-  // Monday-Sunday week (matches Scheduler convention)
+  // Sunday-Saturday week (matches Scheduler convention)
   const weekKey = format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'yyyy-MM-dd')
   const fiscalLabel = getFiscalLabel(weekStart)
 
@@ -120,10 +130,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
     async function load() {
       try {
-        // 1. Schedule (planned) for the week — now includes shift
-        // 2. Actuals (sched_daily_ops) for the week — now includes shift
+        // 1. Schedule (planned) for the week — includes shift
+        // 2. Actuals (sched_daily_ops) for the week — includes shift
         // 3. WIP rollup for status bar
-        // 4. WIP rows for bucket classification (BNY) + NEW Goods yards
+        // 4. WIP rows for bucket classification (BNY) + Top Complexity enrichment
+        //    (line_description = pattern, color = colorway)
         const [assignRes, opsRes, wipRollupRes, wipFactsRes, wipRowsRes] = await Promise.all([
           supabase
             .from('sched_assignments')
@@ -143,20 +154,21 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             .order('fact_number'),
           supabase
             .from('sched_wip_rows')
-            .select('po_number, site, customer_type, product_type, is_new_goods, yards_written'),
+            .select('po_number, site, customer_type, product_type, is_new_goods, yards_written, line_description, color'),
         ])
 
         if (cancelled) return
 
         const assignRows = assignRes.data || []
         const opsRows    = opsRes.data || []
-        const wipRows    = wipRowsRes.data || []
+        const wipRowsData = wipRowsRes.data || []
 
         setAssignments(assignRows)
         setDailyOps(opsRows)
+        setWipRows(wipRowsData)
 
         // Classify BNY bucket yards from assignments × wip_rows
-        setBnyBucketYards(buildBnyBucketYards(assignRows, wipRows))
+        setBnyBucketYards(buildBnyBucketYards(assignRows, wipRowsData))
 
         // WIP-by-status (independent of week)
         const rollupRows = wipRollupRes.data || []
@@ -174,7 +186,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             week_start: weekKey,
             assignments_count: assignRows.length,
             daily_ops_count: opsRows.length,
-            wip_rows_count: wipRows.length,
+            wip_rows_count: wipRowsData.length,
             sample_assignment: assignRows[0] || null,
             sample_ops: opsRows[0] || null,
           })
@@ -201,14 +213,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   // Shift-aware splits for Site Performance card.
   // Passaic: real 1st/2nd split (hand-screen runs both).
   // BNY: 1st only — BNY machines and Passaic MTO digital don't run 2nd shift.
-  // (Eligibility lives in the UI/scheduler — schema is permissive; if a
-  // 2nd-shift row appears for BNY data, we'll show it but not expect any.)
   const njShift1Agg = aggregateBySite(assignments, dailyOps, 'passaic', '1st')
   const njShift2Agg = aggregateBySite(assignments, dailyOps, 'passaic', '2nd')
-  const bnyShift1Agg = aggregateBySite(assignments, dailyOps, 'bny', '1st')
 
   // Active-cells counts for the Site Performance KPI ("active tables/machines")
-  const njActiveTables  = countActiveCells(assignments, 'passaic')
+  const njActiveTables    = countActiveCells(assignments, 'passaic')
   const bnyActiveMachines = countActiveCells(assignments, 'bny')
 
   // Did anything get scheduled, anywhere?
@@ -217,26 +226,13 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const hasActuals  = dailyOps.some(r => Number(r.actual_yards) > 0)
   const hasRealData = hasSchedule
 
-  // Plant Rollup
+  // Plant Rollup — yards only. Color-yards is hand-screen-only and lives
+  // in the Passaic site detail and per-category sections.
   const plantPlannedYards = njAgg.plannedYards + bnyAgg.plannedYards
   const plantActualYards  = njAgg.actualYards  + bnyAgg.actualYards
-
   const plantYards = {
     budget: hasSchedule ? plantPlannedYards : PLANT_YARDS_TGT,
     actual: plantActualYards,
-  }
-  // Color-yards = Passaic only (digital is single-pass).
-  const plantColorYards = {
-    budget: hasSchedule ? njAgg.plannedColorYards : NJ_TOTAL_COLORYARDS_TGT,
-    actual: njAgg.actualColorYards,
-  }
-  const plantComplexity = {
-    budget: TARGET_COMPLEXITY,
-    actual: njAgg.actualYards > 0
-      ? njAgg.actualColorYards / njAgg.actualYards
-      : (njAgg.plannedYards > 0
-          ? njAgg.plannedColorYards / njAgg.plannedYards
-          : TARGET_COMPLEXITY),
   }
 
   // Per-category Passaic
@@ -245,8 +241,9 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   // 17-table state — real, derived from today's assignments + actuals
   const tablesState = build17TableState(assignments, dailyOps)
 
-  // Top complexity jobs — by planned_cy desc
-  const topJobs = buildTopJobs(assignments)
+  // Top complexity jobs — Passaic-only, sorted by planned_cy desc, top 5,
+  // enriched with pattern (line_description) + color from wip_rows.
+  const topJobs = buildTopJobs(assignments, wipRows)
 
   // BNY machines — all 19, planned vs actual
   const machines = buildBnyMachines(assignments, dailyOps)
@@ -296,17 +293,18 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         </div>
       )}
 
-      {/* Plant Rollup */}
+      {/* Plant Rollup — yards only */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <div className={styles.sectionEyebrow}>The Two-Measure Picture</div>
+          <div className={styles.sectionEyebrow}>The Plant Pulse</div>
           <div className={styles.sectionTitle}>
             <div className={styles.sectionTitleText}>
               <span className={`${styles.sitePill} ${styles.pillPlant}`}>PLANT</span>
               Plant Rollup
             </div>
             <div className={styles.sectionDesc}>
-              Scheduled vs. actual · Passaic + Brooklyn combined.
+              Yards · the one metric that means the same on both floors.
+              Color-yards and complexity live downstairs at Passaic.
             </div>
           </div>
         </div>
@@ -319,23 +317,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             {format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'MMM d')}.
             Heartbeat will populate as Wendy and Chandler assign POs in Scheduler.
           </div>
-        ) : !hasActuals ? (
-          <>
-            <PlantRollup
-              yards={plantYards}
-              colorYards={plantColorYards}
-              complexity={plantComplexity}
-            />
-            <div className={styles.loading} style={{ marginTop: '0.75rem', fontStyle: 'italic' }}>
-              Schedule built. Actuals will appear here as Sami and Wendy enter
-              end-of-shift in Live Ops.
-            </div>
-          </>
         ) : (
-          <PlantRollup
+          <PlantPulse
             yards={plantYards}
-            colorYards={plantColorYards}
-            complexity={plantComplexity}
+            weekStart={weekStart}
+            hasActuals={hasActuals}
           />
         )}
       </div>
@@ -350,7 +336,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
               Brooklyn vs Passaic
             </div>
             <div className={styles.sectionDesc}>
-              Comparative read · Passaic split by shift · weekend cells included where scheduled.
+              Comparative read · cards are intentionally asymmetric — BNY tells a volume story, Passaic tells a labor-cost story.
             </div>
           </div>
         </div>
@@ -369,6 +355,8 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             njShift2Agg={njShift2Agg}
             njActiveTables={njActiveTables}
             bnyActiveMachines={bnyActiveMachines}
+            bnyMix={mix}
+            bnyMixTotal={bnyMixTotal}
           />
         )}
       </div>
@@ -454,12 +442,216 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   SitePerformance — middle-layer comparative read
-   BNY card + Passaic card side-by-side. Passaic splits 1st/2nd shift.
-   Four KPIs: yards, color-yards, complexity ratio, active tables/machines.
+   PlantPulse — single wide Yards card with budget/actual/variance/pace.
+   Inlined here (not in PlantRollup.jsx) so this file is self-contained.
+   ═════════════════════════════════════════════════════════════════════════ */
 
-   Uses inline styles for new visual elements so it ships independently of
-   HeartbeatPage.module.css. Polish pass can extract these into the module.
+const PP_COLORS = {
+  ink:       '#101218',
+  paper:     '#F9F8F4',
+  linen:     '#E8E5DC',
+  linenDark: '#D8D3C5',
+  emerald:   '#0F7A4E',
+  crimson:   '#C12B1A',
+  saffron:   '#E89A1E',
+  muted:     '#6b6b6b',
+}
+
+const PP_PILL_TONES = {
+  on:      { background: '#E0F0E5', color: PP_COLORS.emerald },
+  ahead:   { background: '#E0F0E5', color: PP_COLORS.emerald },
+  behind:  { background: '#FAE2DE', color: PP_COLORS.crimson },
+  pending: { background: PP_COLORS.linen, color: PP_COLORS.muted },
+}
+
+const PP_STYLES = {
+  card: {
+    background: '#fff',
+    border: `1px solid ${PP_COLORS.linen}`,
+    borderRadius: 6,
+    padding: '1.5rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.25rem',
+  },
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  label: {
+    color: PP_COLORS.muted,
+    textTransform: 'uppercase',
+    fontSize: '0.78rem',
+    letterSpacing: '0.08em',
+    fontWeight: 600,
+  },
+  pill: {
+    fontSize: '0.72rem',
+    padding: '0.2rem 0.55rem',
+    borderRadius: 999,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  barBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.7rem',
+  },
+  barRow: {
+    display: 'grid',
+    gridTemplateColumns: '80px 1fr auto',
+    alignItems: 'center',
+    gap: '1rem',
+  },
+  barLabel: {
+    color: PP_COLORS.muted,
+    fontSize: '0.78rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+  },
+  barTrack: {
+    height: 10,
+    background: PP_COLORS.linen,
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 5,
+    transition: 'width 0.3s ease',
+  },
+  barValue: {
+    fontFamily: 'Georgia, serif',
+    fontSize: '1.5rem',
+    fontWeight: 600,
+    color: PP_COLORS.ink,
+    fontVariantNumeric: 'tabular-nums',
+    minWidth: '120px',
+    textAlign: 'right',
+  },
+  summaryRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '1rem',
+    paddingTop: '0.75rem',
+    borderTop: `1px solid ${PP_COLORS.linen}`,
+  },
+  summaryItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.2rem',
+  },
+  summaryLabel: {
+    color: PP_COLORS.muted,
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+  },
+  summaryValue: {
+    color: PP_COLORS.ink,
+    fontSize: '0.95rem',
+    fontVariantNumeric: 'tabular-nums',
+  },
+}
+
+function PlantPulse({ yards, weekStart, hasActuals }) {
+  const budget = yards.budget
+  const actual = yards.actual
+  const variance     = budget > 0 ? ((actual - budget) / budget) * 100 : 0
+  const trackingPct  = budget > 0 ? (actual / budget) * 100 : 0
+  const actualBarPct = budget > 0 ? Math.min(100, (actual / budget) * 100) : 0
+
+  // Day-of-week pace projection. Sunday-Saturday week.
+  const today    = new Date()
+  const ws       = startOfWeek(weekStart, { weekStartsOn: 0 })
+  const msPerDay = 1000 * 60 * 60 * 24
+  const rawDays  = Math.floor((today - ws) / msPerDay) + 1
+  const daysElapsed = Math.min(7, Math.max(0, rawDays))
+  const projected   = daysElapsed > 0 && hasActuals ? actual * (7 / daysElapsed) : 0
+
+  // Status pill — "on/ahead/behind/pending"
+  const tone = !hasActuals ? 'pending'
+            : Math.abs(variance) < 5 ? 'on'
+            : variance < 0 ? 'behind'
+            : 'ahead'
+  const pillLabel = !hasActuals ? 'Awaiting Actuals'
+                  : tone === 'on' ? 'On Pace'
+                  : tone === 'ahead' ? 'Ahead'
+                  : 'Behind Pace'
+
+  const fillColor = !hasActuals ? PP_COLORS.linenDark
+                  : tone === 'behind' ? PP_COLORS.crimson
+                  : tone === 'ahead' ? PP_COLORS.emerald
+                  : PP_COLORS.emerald
+
+  return (
+    <div style={PP_STYLES.card}>
+      <div style={PP_STYLES.headerRow}>
+        <div style={PP_STYLES.label}>Yards</div>
+        <span style={{...PP_STYLES.pill, ...PP_PILL_TONES[tone]}}>{pillLabel}</span>
+      </div>
+
+      <div style={PP_STYLES.barBlock}>
+        <div style={PP_STYLES.barRow}>
+          <span style={PP_STYLES.barLabel}>Budget</span>
+          <div style={PP_STYLES.barTrack}>
+            <div style={{...PP_STYLES.barFill, background: PP_COLORS.linenDark, width: '100%'}} />
+          </div>
+          <span style={PP_STYLES.barValue}>{fmt(budget)} yds</span>
+        </div>
+        <div style={PP_STYLES.barRow}>
+          <span style={PP_STYLES.barLabel}>Actual</span>
+          <div style={PP_STYLES.barTrack}>
+            <div style={{...PP_STYLES.barFill, background: fillColor, width: `${actualBarPct}%`}} />
+          </div>
+          <span style={PP_STYLES.barValue}>{fmt(actual)} yds</span>
+        </div>
+      </div>
+
+      <div style={PP_STYLES.summaryRow}>
+        <div style={PP_STYLES.summaryItem}>
+          <span style={PP_STYLES.summaryLabel}>Tracking</span>
+          <span style={PP_STYLES.summaryValue}>
+            {hasActuals ? `${trackingPct.toFixed(0)}% of budget` : '0% of budget'}
+          </span>
+        </div>
+        <div style={PP_STYLES.summaryItem}>
+          <span style={PP_STYLES.summaryLabel}>Variance</span>
+          <span style={{
+            ...PP_STYLES.summaryValue,
+            color: !hasActuals ? PP_COLORS.muted
+                 : variance < -5 ? PP_COLORS.crimson
+                 : variance > 5  ? PP_COLORS.emerald
+                 : PP_COLORS.ink,
+            fontWeight: hasActuals ? 600 : 400,
+          }}>
+            {hasActuals ? `${variance >= 0 ? '+' : ''}${variance.toFixed(0)}%` : '—'}
+          </span>
+        </div>
+        <div style={PP_STYLES.summaryItem}>
+          <span style={PP_STYLES.summaryLabel}>Pace</span>
+          <span style={PP_STYLES.summaryValue}>
+            {!hasActuals
+              ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>schedule built · awaiting actuals</span>
+              : daysElapsed === 0
+                ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>week not yet started</span>
+                : `Day ${daysElapsed} of 7 · projected ${fmt(projected)} yds`
+            }
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   SitePerformance — middle-layer comparative read
+   BNY card + Passaic card side-by-side. Cards are intentionally asymmetric:
+     - BNY: yards, active machines, kind-of-work bucket mix.
+     - Passaic: yards, color-yards, complexity, active tables, shift split.
+   Color-yards is hand-screen-only; digital prints all colors in one pass.
    ═════════════════════════════════════════════════════════════════════════ */
 
 const SP_COLORS = {
@@ -471,6 +663,7 @@ const SP_COLORS = {
   emerald: '#0F7A4E',
   crimson: '#C12B1A',
   saffron: '#E89A1E',
+  royal:   '#1E4FA8',
   muted:   '#6b6b6b',
 }
 
@@ -540,7 +733,7 @@ const SP_STYLES = {
     borderRadius: 3,
     fontWeight: 600,
   },
-  shiftBlock: {
+  subBlock: {
     marginTop: '0.5rem',
     paddingTop: '0.75rem',
     borderTop: `1px dashed ${SP_COLORS.linen}`,
@@ -548,22 +741,22 @@ const SP_STYLES = {
     flexDirection: 'column',
     gap: '0.4rem',
   },
-  shiftBlockTitle: {
+  subBlockTitle: {
     fontSize: '0.7rem',
     color: SP_COLORS.muted,
     textTransform: 'uppercase',
     letterSpacing: '0.08em',
   },
-  shiftRow: {
+  subRow: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '0.85rem',
   },
-  shiftLabel: {
+  subLabel: {
     color: SP_COLORS.ink,
     fontWeight: 500,
   },
-  shiftValue: {
+  subValue: {
     color: SP_COLORS.muted,
     fontVariantNumeric: 'tabular-nums',
   },
@@ -581,33 +774,46 @@ function SitePerformance({
   njAgg, bnyAgg,
   njShift1Agg, njShift2Agg,
   njActiveTables, bnyActiveMachines,
+  bnyMix, bnyMixTotal,
 }) {
-  const njComplexity  = njAgg.actualYards > 0
+  const njComplexity = njAgg.actualYards > 0
     ? njAgg.actualColorYards / njAgg.actualYards
     : (njAgg.plannedYards > 0 ? njAgg.plannedColorYards / njAgg.plannedYards : 0)
-  const bnyComplexity = bnyAgg.actualYards > 0
-    ? bnyAgg.actualColorYards / bnyAgg.actualYards
-    : (bnyAgg.plannedYards > 0 ? bnyAgg.plannedColorYards / bnyAgg.plannedYards : 0)
 
   return (
     <div style={SP_STYLES.row}>
-      {/* Brooklyn */}
+      {/* Brooklyn — yards, machines, kind-of-work */}
       <div style={SP_STYLES.card}>
         <div style={SP_STYLES.header}>
           <div>
             <span className={`${styles.sitePill} ${styles.pillBny}`}>BNY</span>
           </div>
           <div style={SP_STYLES.title}>Brooklyn · Digital</div>
-          <div style={SP_STYLES.meta}>1st shift only · 19 machines · digital, no shift expansion</div>
+          <div style={SP_STYLES.meta}>1st shift only · 19 machines · digital prints colors in a single pass</div>
         </div>
 
         <SitePerfKpi label="Yards" planned={bnyAgg.plannedYards} actual={bnyAgg.actualYards} unit="yds" />
-        <SitePerfKpi label="Color-Yards" planned={bnyAgg.plannedColorYards} actual={bnyAgg.actualColorYards} unit="cyds" />
-        <SitePerfKpi label="Complexity" planned={bnyAgg.plannedYards > 0 ? bnyAgg.plannedColorYards / bnyAgg.plannedYards : 0} actual={bnyComplexity} unit="" decimals={2} suffix=" colors/yd" />
         <SitePerfKpi label="Active machines" planned={bnyActiveMachines} actual={bnyActiveMachines} unit="" suffix=" of 19" plainCount />
+
+        {bnyMixTotal > 0 && (
+          <div style={SP_STYLES.subBlock}>
+            <div style={SP_STYLES.subBlockTitle}>Kind of work</div>
+            {bnyMix
+              .filter(b => b.yards > 0)
+              .map(b => (
+                <div key={b.label} style={SP_STYLES.subRow}>
+                  <span style={SP_STYLES.subLabel}>{b.label}</span>
+                  <span style={SP_STYLES.subValue}>
+                    {fmt(b.yards)} yds · {b.pct.toFixed(0)}%
+                  </span>
+                </div>
+              ))
+            }
+          </div>
+        )}
       </div>
 
-      {/* Passaic */}
+      {/* Passaic — full hand-screen picture */}
       <div style={SP_STYLES.card}>
         <div style={SP_STYLES.header}>
           <div>
@@ -619,21 +825,28 @@ function SitePerformance({
 
         <SitePerfKpi label="Yards" planned={njAgg.plannedYards} actual={njAgg.actualYards} unit="yds" />
         <SitePerfKpi label="Color-Yards" planned={njAgg.plannedColorYards} actual={njAgg.actualColorYards} unit="cyds" />
-        <SitePerfKpi label="Complexity" planned={njAgg.plannedYards > 0 ? njAgg.plannedColorYards / njAgg.plannedYards : 0} actual={njComplexity} unit="" decimals={2} suffix=" colors/yd" />
+        <SitePerfKpi
+          label="Complexity"
+          planned={njAgg.plannedYards > 0 ? njAgg.plannedColorYards / njAgg.plannedYards : 0}
+          actual={njComplexity}
+          unit=""
+          decimals={2}
+          suffix=" colors/yd"
+        />
         <SitePerfKpi label="Active tables" planned={njActiveTables} actual={njActiveTables} unit="" suffix=" of 17 hand-screen" plainCount />
 
         {(njShift1Agg.plannedYards + njShift2Agg.plannedYards) > 0 && (
-          <div style={SP_STYLES.shiftBlock}>
-            <div style={SP_STYLES.shiftBlockTitle}>Shift split</div>
-            <div style={SP_STYLES.shiftRow}>
-              <span style={SP_STYLES.shiftLabel}>1st shift (6:30a–3p)</span>
-              <span style={SP_STYLES.shiftValue}>
+          <div style={SP_STYLES.subBlock}>
+            <div style={SP_STYLES.subBlockTitle}>Shift split</div>
+            <div style={SP_STYLES.subRow}>
+              <span style={SP_STYLES.subLabel}>1st shift (6:30a–3p)</span>
+              <span style={SP_STYLES.subValue}>
                 {fmt(njShift1Agg.plannedYards)} yds planned · {fmt(njShift1Agg.actualYards)} yds actual
               </span>
             </div>
-            <div style={SP_STYLES.shiftRow}>
-              <span style={SP_STYLES.shiftLabel}>2nd shift (3p–11p)</span>
-              <span style={SP_STYLES.shiftValue}>
+            <div style={SP_STYLES.subRow}>
+              <span style={SP_STYLES.subLabel}>2nd shift (3p–11p)</span>
+              <span style={SP_STYLES.subValue}>
                 {njShift2Agg.plannedYards > 0
                   ? `${fmt(njShift2Agg.plannedYards)} yds planned · ${fmt(njShift2Agg.actualYards)} yds actual`
                   : 'no 2nd-shift schedule this week'}
@@ -698,6 +911,10 @@ function num(v) {
 /**
  * Roll up planned + actual yards/color-yards for one site across the whole week.
  * Color-yards on the actual side is interpolated: actualYards × (cellPlannedCy / cellPlannedYards).
+ *
+ * Note: BNY assignments are expected to have planned_cy = 0 (digital prints all
+ * colors in one pass; color-yards is a hand-screen labor unit). The math still
+ * runs cleanly for BNY — it just produces 0 cyds, which is correct.
  *
  * @param {string|null} shiftFilter — when provided ('1st' | '2nd'), only rows
  *   matching that shift contribute. When omitted/null, both shifts roll up.
@@ -866,18 +1083,34 @@ function labelForCategory(cat, attention) {
 
 /**
  * Top complexity jobs — assignments sorted by planned_cy desc, top 5.
- * Real PO numbers and product types pulled from the assignment row.
+ *
+ * Two changes vs. earlier version:
+ *   1. Filtered to site === 'passaic' so BNY assignments (which have planned_cy = 0
+ *      by design) can never accidentally surface. Defensive — they'd sort to
+ *      the bottom anyway, but explicit is better.
+ *   2. Joined to wip_rows by po_number for pattern + color enrichment.
+ *      Headline becomes "Pattern · Color"; PO + spec moves to meta line.
+ *      In-memory dedup by Map.set semantics — no SQL JOIN duplication concern.
  */
-function buildTopJobs(assignments) {
-  // Aggregate per po_number (a PO can have multiple table-day lines)
+function buildTopJobs(assignments, wipRows) {
+  // Index wip rows by po_number. Map.set with same key overwrites, so we get
+  // one wip row per PO regardless of how many snapshots contain that PO.
+  // This is the JS equivalent of SELECT DISTINCT ON (po_number).
+  const wipByPo = new Map()
+  wipRows.forEach(w => {
+    if (!wipByPo.has(w.po_number)) wipByPo.set(w.po_number, w)
+  })
+
+  // Aggregate per po_number (a PO can have multiple table-day lines).
   const byPo = new Map()
   assignments.forEach(a => {
+    if (a.site !== 'passaic') return
     const key = a.po_number
     const prev = byPo.get(key) || {
       po: a.po_number, product_type: a.product_type, table_code: a.table_code,
       yards: 0, colorYds: 0,
     }
-    prev.yards += num(a.planned_yards)
+    prev.yards    += num(a.planned_yards)
     prev.colorYds += num(a.planned_cy)
     byPo.set(key, prev)
   })
@@ -891,10 +1124,26 @@ function buildTopJobs(assignments) {
       const badge = colors >= 8 ? `${colors.toFixed(0)}c · margin pressure`
                   : colors >= 6 ? `${colors.toFixed(0)}c · watch`
                   : `${colors.toFixed(0)}c`
+
+      const wip     = wipByPo.get(j.po)
+      const pattern = wip?.line_description || ''
+      const color   = wip?.color || ''
+
+      // Headline: Pattern · Color when both present, fall back gracefully.
+      const name = pattern && color ? `${pattern} · ${color}`
+                 : pattern ? pattern
+                 : color   ? color
+                 : j.po
+      // Meta: PO + product type + table + yard/color spec.
+      const meta = [
+        j.po,
+        j.product_type,
+        j.table_code,
+        `${Math.round(j.yards)} yd · ${colors.toFixed(0)} colors`,
+      ].filter(Boolean).join(' · ')
+
       return {
-        name: j.po,
-        meta: `${j.product_type || ''} · ${colors.toFixed(0)} colors · ${j.table_code}`,
-        badge, tone,
+        name, meta, badge, tone,
         colorYds: j.colorYds,
         yards: j.yards,
         colors: colors,
