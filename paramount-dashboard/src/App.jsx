@@ -132,9 +132,20 @@ function SlackIcon({ size = 14 }) {
   )
 }
 
-function getDefaultWeek() {
-  const thisWeekMonday = startOfWeek(new Date(), { weekStartsOn: 1 })
-  return subWeeks(thisWeekMonday, 1)
+// Week defaults — operational tables are Sunday-Saturday (weekStartsOn: 0).
+// Performance destination wants the prior closed week (what Brynn enters).
+// Operations + Heartbeat destinations want the current week.
+function getCurrentWeekStart() {
+  return startOfWeek(new Date(), { weekStartsOn: 0 })
+}
+function getPriorWeekStart() {
+  return subWeeks(getCurrentWeekStart(), 1)
+}
+// Pick the right default for a given destination.
+function defaultWeekForDestination(destination) {
+  if (destination === 'performance') return getPriorWeekStart()
+  // operations, heartbeat, landing → current week
+  return getCurrentWeekStart()
 }
 function weekKey(date) { return format(date, 'yyyy-MM-dd') }
 
@@ -178,7 +189,7 @@ export default function App() {
   // destination = 'landing' | 'performance' | 'operations' | 'heartbeat'
   const [destination,  setDestination]  = useState('landing')
   const [activeTab,    setActiveTab]    = useState(null)
-  const [currentWeek,  setCurrentWeek]  = useState(getDefaultWeek())
+  const [currentWeek,  setCurrentWeek]  = useState(getCurrentWeekStart())
   const [weekData,     setWeekData]     = useState(null)
   const [loading,      setLoading]      = useState(true)
   const [dbReady,      setDbReady]      = useState(true)
@@ -363,12 +374,15 @@ export default function App() {
   /**
    * handleDestinationChange — called from LandingPage.onChoose AND DestinationNav.
    * Routes the user into a destination, OR back to the landing chooser.
+   * Also resets the active week to the appropriate default for that destination
+   * (Performance = prior closed week, Operations + Heartbeat = current week).
    */
   function handleDestinationChange(newDestination) {
     if (newDestination === 'landing') {
       setDestination('landing')
       setActiveTab(null)
       setInAdmin(false)
+      setCurrentWeek(defaultWeekForDestination('landing'))
       return
     }
     // Validate user has access to the destination they're trying to enter
@@ -379,6 +393,7 @@ export default function App() {
     setDestination(newDestination)
     setActiveTab(defaultTabFor(newDestination, role))
     setInAdmin(false)
+    setCurrentWeek(defaultWeekForDestination(newDestination))
   }
 
   function handleTabChange(tabId) {
@@ -432,7 +447,7 @@ export default function App() {
                 {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
               </div>
               <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
-              <button onClick={()=>setCurrentWeek(getDefaultWeek())} className={styles.weekTodayBtn}>Last week</button>
+              <button onClick={()=>setCurrentWeek(getPriorWeekStart())} className={styles.weekTodayBtn}>Last week</button>
             </div>
           ) : (
             <div className={styles.headerCenter}/>
