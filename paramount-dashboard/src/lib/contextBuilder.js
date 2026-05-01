@@ -283,16 +283,52 @@ function formatRecentNarratives(rows) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Builds the full context block for the Dashboard Run Rate narrative.
+ * Builds the full context block for a Claude prompt.
  *
  * @param {Object} opts
- * @param {Date}   opts.weekStart    — the Monday of the week being analyzed
- * @param {string} opts.timeWindow   — 'today' | 'week' | 'month'
+ * @param {Date}   opts.weekStart    — the Sunday/Monday of the week being analyzed
+ * @param {string} opts.timeWindow   — 'today' | 'week' | 'month' | 'heartbeat' | 'recap'
  * @param {Object} opts.currentData  — { actuals, expected } for the time window
- *                                     (passed in from the page; varies by window)
+ * @param {string} [opts.scope]      — 'full' (default) | 'minimal'
+ *
+ *   'full'    — pulls business_facts + recent weeks + tiered summaries +
+ *               section comments + prior narratives. The right shape for
+ *               the weekly Recap and Run Rate prompts.
+ *
+ *   'minimal' — pulls only business_facts and the current data payload.
+ *               The right shape for Heartbeat, where the prompt is about
+ *               THIS WEEK'S schedule-vs-actuals only and stale historical
+ *               commentary actively poisons the output (Claude parrots
+ *               months-old concerns and prior hallucinations as if they
+ *               were current truth).
+ *
  * @returns {Promise<{ contextString: string, contextObject: Object }>}
  */
-export async function buildDashboardContext({ weekStart, timeWindow, currentData }) {
+export async function buildDashboardContext({ weekStart, timeWindow, currentData, scope = 'full' }) {
+  // Minimal scope: just business facts + the current data payload.
+  // Used by the heartbeat narrative to keep the prompt focused on this
+  // week's live schedule-vs-actuals and avoid feedback loops from prior
+  // narratives or stale section comments.
+  if (scope === 'minimal') {
+    const facts = await fetchBusinessFacts()
+    const sections = [
+      formatBusinessFacts(facts),
+      formatCurrentWindow(timeWindow, weekStart, currentData),
+    ].filter(s => s && s.trim().length > 0)
+
+    return {
+      contextString: sections.join('\n\n---\n\n'),
+      contextObject: {
+        time_window: timeWindow,
+        scope: 'minimal',
+        week_start: format(weekStart, 'yyyy-MM-dd'),
+        fact_count: facts.length,
+        current_data: currentData,
+      },
+    }
+  }
+
+  // Full scope (default): everything.
   // Fetch all the pieces in parallel
   const [
     facts,
@@ -328,6 +364,7 @@ export async function buildDashboardContext({ weekStart, timeWindow, currentData
   // Also return as structured object for ai_call_log
   const contextObject = {
     time_window: timeWindow,
+    scope: 'full',
     week_start: format(weekStart, 'yyyy-MM-dd'),
     fact_count: facts.length,
     recent_weeks_count: recentWeeks.length,
