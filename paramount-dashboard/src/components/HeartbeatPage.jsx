@@ -49,15 +49,21 @@ import styles from './HeartbeatPage.module.css'
  *   userId      — auth UUID for Claude attribution
  */
 
-// ─── Targets (must match DashboardPage.jsx) ────────────────────────────────
+import { PASSAIC_BUDGET, BNY_BUDGET } from '../lib/budgets'
+
+// ─── Targets sourced from src/lib/budgets.js (canonical FY2026 plan) ──────
+// Single source of truth — same values everywhere (Recap / Live Ops / Heartbeat
+// / Schedulers). Per-machine BNY day targets retained locally because they're
+// used for the per-machine card capacity bars; the per-machine values are
+// summed into the BNY total budget so they stay consistent.
 const NJ_TARGETS = {
-  fabric: { yards: 810,  colorYards: 4522  },
-  grass:  { yards: 3615, colorYards: 7570  },
-  paper:  { yards: 4185, colorYards: 13405 },
+  fabric: PASSAIC_BUDGET.categories.fabric,
+  grass:  PASSAIC_BUDGET.categories.grass,
+  paper:  PASSAIC_BUDGET.categories.paper,
 }
 const BNY_TARGETS = {
-  total: 12000,
-  hp3600_per_machine: 600 * 6, // per machine per week, 6 days
+  total: BNY_BUDGET.weekly.yards,
+  hp3600_per_machine: 600 * 6, // per machine per week, 6 days — used by capacity bars
   hp570_per_machine:  500 * 6,
 }
 const NJ_TOTAL_YARDS_TGT = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
@@ -234,11 +240,16 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
   // Plant Rollup — yards only. Color-yards is hand-screen-only and lives
   // in the Passaic site detail and per-category sections.
+  // Three layers per FY2026 budget design:
+  //   - Budget    = annual plan (PLANT_YARDS_TGT, always the same per week)
+  //   - Scheduled = sum of Wendy + Chandler's assignments for this week
+  //   - Actual    = sum of Live Ops actuals for this week
   const plantPlannedYards = njAgg.plannedYards + bnyAgg.plannedYards
   const plantActualYards  = njAgg.actualYards  + bnyAgg.actualYards
   const plantYards = {
-    budget: hasSchedule ? plantPlannedYards : PLANT_YARDS_TGT,
-    actual: plantActualYards,
+    budget:    PLANT_YARDS_TGT,
+    scheduled: plantPlannedYards,
+    actual:    plantActualYards,
   }
 
   // Per-category Passaic
@@ -607,11 +618,25 @@ const PP_STYLES = {
 }
 
 function PlantPulse({ yards, weekStart, hasActuals }) {
-  const budget = yards.budget
-  const actual = yards.actual
-  const variance     = budget > 0 ? ((actual - budget) / budget) * 100 : 0
-  const trackingPct  = budget > 0 ? (actual / budget) * 100 : 0
-  const actualBarPct = budget > 0 ? Math.min(100, (actual / budget) * 100) : 0
+  const budget    = yards.budget
+  const scheduled = yards.scheduled
+  const actual    = yards.actual
+  const hasSchedule = scheduled > 0
+
+  // Two variance lenses, both meaningful:
+  //   - vs Budget = "are we on pace for the annual plan"
+  //   - vs Scheduled = "did Wendy's plan execute"
+  // Status pill uses the execution lens (vs Scheduled) since that's the
+  // operational question this week. Tracking line uses the budget lens.
+  const variance     = scheduled > 0 ? ((actual - scheduled) / scheduled) * 100 : 0
+  const trackingPct  = budget > 0    ? (actual / budget) * 100 : 0
+
+  // Bar widths — both Scheduled and Actual rendered as % of Budget so the
+  // visual comparison is apples-to-apples. Scheduled at 90% of budget +
+  // Actual at 80% of budget reads instantly: schedule is light vs plan,
+  // execution is light vs schedule.
+  const scheduledBarPct = budget > 0 ? Math.min(100, (scheduled / budget) * 100) : 0
+  const actualBarPct    = budget > 0 ? Math.min(100, (actual    / budget) * 100) : 0
 
   // Day-of-week pace projection. Sunday-Saturday week.
   const today    = new Date()
@@ -621,7 +646,7 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
   const daysElapsed = Math.min(7, Math.max(0, rawDays))
   const projected   = daysElapsed > 0 && hasActuals ? actual * (7 / daysElapsed) : 0
 
-  // Status pill — "on/ahead/behind/pending"
+  // Status pill — vs scheduled (execution lens)
   const tone = !hasActuals ? 'pending'
             : Math.abs(variance) < 5 ? 'on'
             : variance < 0 ? 'behind'
@@ -635,6 +660,10 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
                   : tone === 'behind' ? PP_COLORS.crimson
                   : tone === 'ahead' ? PP_COLORS.emerald
                   : PP_COLORS.emerald
+
+  // Scheduled bar tone — ink-mid neutral; it's neither good nor bad on its
+  // own, just shows where Wendy's plan lands relative to budget.
+  const scheduledFill = '#7d7f86'
 
   return (
     <div style={PP_STYLES.card}>
@@ -652,6 +681,13 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
           <span style={PP_STYLES.barValue}>{fmt(budget)} yds</span>
         </div>
         <div style={PP_STYLES.barRow}>
+          <span style={PP_STYLES.barLabel}>Scheduled</span>
+          <div style={PP_STYLES.barTrack}>
+            <div style={{...PP_STYLES.barFill, background: hasSchedule ? scheduledFill : PP_COLORS.linenDark, width: `${scheduledBarPct}%`}} />
+          </div>
+          <span style={PP_STYLES.barValue}>{hasSchedule ? `${fmt(scheduled)} yds` : '—'}</span>
+        </div>
+        <div style={PP_STYLES.barRow}>
           <span style={PP_STYLES.barLabel}>Actual</span>
           <div style={PP_STYLES.barTrack}>
             <div style={{...PP_STYLES.barFill, background: fillColor, width: `${actualBarPct}%`}} />
@@ -662,13 +698,13 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
 
       <div style={PP_STYLES.summaryRow}>
         <div style={PP_STYLES.summaryItem}>
-          <span style={PP_STYLES.summaryLabel}>Tracking</span>
+          <span style={PP_STYLES.summaryLabel}>Tracking vs Budget</span>
           <span style={PP_STYLES.summaryValue}>
             {hasActuals ? `${trackingPct.toFixed(0)}% of budget` : '0% of budget'}
           </span>
         </div>
         <div style={PP_STYLES.summaryItem}>
-          <span style={PP_STYLES.summaryLabel}>Variance</span>
+          <span style={PP_STYLES.summaryLabel}>Variance vs Scheduled</span>
           <span style={{
             ...PP_STYLES.summaryValue,
             color: !hasActuals ? PP_COLORS.muted

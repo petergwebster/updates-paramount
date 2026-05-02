@@ -7,6 +7,7 @@ import {
   PASSAIC_OPERATORS, BNY_OPERATORS_BROOKLYN, BNY_OPERATORS_PASSAIC_DIGITAL,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
+import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
 // stable when people change positions. Edit this list when org changes.
@@ -352,6 +353,15 @@ export default function LiveOpsTab({ currentUser } = {}) {
           </button>
         </div>
       </div>
+
+      {/* ───────── Budget / Scheduled / Actual KPI strip ─────────
+          Three-layer comparison most prominent at top of page.
+            BUDGET    = annual flat-line plan (canonical, from budgets.js)
+            SCHEDULED = sum of Wendy/Chandler's plan for this week
+            ACTUAL    = sum of Live Ops actuals for this week
+          Shows yards always; color-yards on the Passaic site only (digital
+          is single-pass — color-yards is meaningless for BNY).               */}
+      {!loading && <KpiStrip site={site} weekStart={weekStart} dailyOps={dailyOps} assignments={assignments} />}
 
       {/* No-plan-data warning — only if neither explicit targets nor PO assignments exist */}
       {!loading && !dailyOps.some(r => r.planned_yards != null) && assignments.length === 0 && (
@@ -1243,3 +1253,187 @@ const SUMMARY_BNY_MACHINES = [
   { code: 'Poseidon', label: 'Poseidon' },
   { code: 'Zoey', label: 'Zoey' },
 ]
+
+/* ═════════════════════════════════════════════════════════════════════════
+   KpiStrip — three-card row at the top of the entry view.
+
+   Cards: Budget · Scheduled · Actual
+     Budget    = canonical FY2026 weekly plan (from src/lib/budgets.js).
+                 Same value every week — annual flat-line.
+     Scheduled = sum of sched_assignments.planned_yards for this site/week.
+                 What Wendy / Chandler committed to.
+     Actual    = sum of sched_daily_ops.actual_yards for this site/week.
+                 What came off the floor.
+
+   Variance pills below the headline numbers:
+     "vs Budget" on the Scheduled card  → ambition gap (is the plan enough?)
+     "vs Scheduled" on the Actual card  → execution gap (are we hitting plan?)
+
+   Color-yards row appears only on Passaic (digital is single-pass — color-
+   yards is meaningless for BNY). All cards size equally.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+function KpiStrip({ site, weekStart, dailyOps, assignments }) {
+  const showCY = site === 'passaic'
+
+  // Site-level totals from canonical budgets.js
+  const budgetYards      = weeklyBudgetYards(site)
+  const budgetColorYards = showCY ? weeklyBudgetColorYards() : null
+
+  // Scheduled — sum of assignments. For Passaic also sum planned_cy.
+  const scheduledYards = assignments
+    .filter(a => a.site === site)
+    .reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+  const scheduledColorYards = showCY
+    ? assignments.filter(a => a.site === site).reduce((s, a) => s + Number(a.planned_cy || 0), 0)
+    : null
+
+  // Actual — sum of daily ops actual_yards. Color-yards is interpolated from
+  // each cell's planned ratio (same approach as the operator scorecard).
+  const actualYards = dailyOps
+    .filter(o => o.site === site)
+    .reduce((s, o) => s + Number(o.actual_yards || 0), 0)
+  let actualColorYards = null
+  if (showCY) {
+    actualColorYards = 0
+    for (const o of dailyOps) {
+      if (o.site !== site) continue
+      const yd = Number(o.actual_yards || 0)
+      if (yd <= 0) continue
+      // Find matching assignment cell to derive cy/yd ratio
+      const ratioCell = assignments
+        .filter(a =>
+          a.site === site &&
+          a.table_code === o.table_code &&
+          a.day_of_week === o.day_of_week &&
+          (a.shift || '1st') === (o.shift || '1st')
+        )
+        .reduce((acc, a) => ({
+          yd: acc.yd + Number(a.planned_yards || 0),
+          cy: acc.cy + Number(a.planned_cy || 0),
+        }), { yd: 0, cy: 0 })
+      if (ratioCell.yd > 0) {
+        actualColorYards += (yd / ratioCell.yd) * ratioCell.cy
+      }
+    }
+  }
+
+  // Variance computations — keep nullable so the UI can render "—" cleanly
+  const schedVsBudget = budgetYards > 0 ? scheduledYards - budgetYards : null
+  const actualVsSched = scheduledYards > 0 ? actualYards   - scheduledYards : null
+  const schedVsBudgetCY = (showCY && budgetColorYards > 0) ? scheduledColorYards - budgetColorYards : null
+  const actualVsSchedCY = (showCY && scheduledColorYards > 0) ? actualColorYards - scheduledColorYards : null
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+      <KpiCard
+        label="Budget"
+        sublabel="Annual plan · weekly target"
+        accent={C.inkLight}
+        primary={budgetYards}
+        primaryUnit="yds"
+        secondary={showCY ? budgetColorYards : null}
+        secondaryUnit="cyds"
+        secondaryLabel={showCY ? 'Color-yards' : null}
+      />
+      <KpiCard
+        label="Scheduled"
+        sublabel="Wendy/Chandler's plan this week"
+        accent={C.navy}
+        primary={scheduledYards}
+        primaryUnit="yds"
+        primaryVariance={schedVsBudget}
+        primaryVarianceLabel="vs Budget"
+        secondary={showCY ? scheduledColorYards : null}
+        secondaryUnit="cyds"
+        secondaryLabel={showCY ? 'Color-yards' : null}
+        secondaryVariance={schedVsBudgetCY}
+      />
+      <KpiCard
+        label="Actual"
+        sublabel="Off the floor this week"
+        accent={C.amber}
+        primary={actualYards}
+        primaryUnit="yds"
+        primaryVariance={actualVsSched}
+        primaryVarianceLabel="vs Scheduled"
+        secondary={showCY ? actualColorYards : null}
+        secondaryUnit="cyds"
+        secondaryLabel={showCY ? 'Color-yards' : null}
+        secondaryVariance={actualVsSchedCY}
+        emptyOK
+      />
+    </div>
+  )
+}
+
+function KpiCard({
+  label, sublabel, accent,
+  primary, primaryUnit, primaryVariance, primaryVarianceLabel,
+  secondary, secondaryUnit, secondaryLabel, secondaryVariance,
+  emptyOK,
+}) {
+  const hasData = primary > 0 || emptyOK
+  return (
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${C.border}`,
+      borderLeft: `3px solid ${accent}`,
+      borderRadius: 8,
+      padding: '14px 16px',
+    }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 2 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 10, color: C.inkLight, marginBottom: 10, fontStyle: 'italic' }}>
+        {sublabel}
+      </div>
+
+      {/* Primary metric — yards */}
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Georgia, serif', color: hasData ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+        {hasData ? fmt(primary) : '—'}
+        <span style={{ fontSize: 12, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{primaryUnit}</span>
+      </div>
+      {primaryVariance != null && (
+        <VarianceChip delta={primaryVariance} label={primaryVarianceLabel} unit={primaryUnit} />
+      )}
+
+      {/* Secondary metric — color-yards (Passaic only) */}
+      {secondary != null && (
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 2 }}>
+            {secondaryLabel}
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 600, fontFamily: 'Georgia, serif', color: secondary > 0 ? C.ink : C.inkLight }}>
+            {secondary > 0 ? fmt(Math.round(secondary)) : '—'}
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{secondaryUnit}</span>
+          </div>
+          {secondaryVariance != null && (
+            <VarianceChip delta={secondaryVariance} unit={secondaryUnit} small />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VarianceChip({ delta, label, unit, small }) {
+  const tone = Math.abs(delta) < 1 ? 'neutral'
+            : delta < 0 ? 'behind'
+            : 'ahead'
+  const color = tone === 'behind' ? C.rose
+              : tone === 'ahead'  ? C.sage
+              : C.inkLight
+  const sign = delta > 0 ? '+' : ''
+  return (
+    <div style={{
+      marginTop: 4,
+      fontSize: small ? 9 : 10,
+      color,
+      fontWeight: 600,
+    }}>
+      {sign}{fmt(Math.round(delta))} {unit}
+      {label && <span style={{ color: C.inkLight, fontWeight: 400, marginLeft: 4 }}>{label}</span>}
+    </div>
+  )
+}
