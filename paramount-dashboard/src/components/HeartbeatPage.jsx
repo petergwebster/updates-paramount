@@ -155,7 +155,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             .eq('week_start', weekKey),
           supabase
             .from('sched_daily_ops')
-            .select('site, table_code, day_of_week, shift, planned_yards, actual_yards, waste_yards, operator_1, operator_2')
+            .select('site, table_code, day_of_week, shift, planned_yards, actual_yards, waste_yards, operator_1, operator_2, notes, note_assigned_to, note_status')
             .eq('week_start', weekKey),
           supabase
             .from('v_current_wip_rollup')
@@ -239,8 +239,8 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const hasActuals  = dailyOps.some(r => Number(r.actual_yards) > 0)
   const hasRealData = hasSchedule
 
-  // Plant Rollup — yards only. Color-yards is hand-screen-only and lives
-  // in the Passaic site detail and per-category sections.
+  // Plant Rollup — yards. Color-yards is hand-screen-only and lives in
+  // its own pulse below (Passaic numbers, framed for plant-level visibility).
   // Three layers per FY2026 budget design:
   //   - Budget    = annual plan (PLANT_YARDS_TGT, always the same per week)
   //   - Scheduled = sum of Wendy + Chandler's assignments for this week
@@ -261,6 +261,27 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
     shift2: {
       scheduled: njShift2Agg.plannedYards,
       actual:    njShift2Agg.actualYards,
+    },
+  }
+
+  // Plant Color-Yards — Passaic-only (hand-screen labor unit). BNY digital
+  // prints all colors in one pass, so it contributes 0. Budget is the sum
+  // of category color-yards budgets from canonical budgets.js.
+  const plantCYBudget =
+    (weeklyBudgetColorYards('fabric') ?? 0) +
+    (weeklyBudgetColorYards('grass')  ?? 0) +
+    (weeklyBudgetColorYards('paper')  ?? 0)
+  const plantCY = {
+    budget:    plantCYBudget,
+    scheduled: njAgg.plannedColorYards,
+    actual:    njAgg.actualColorYards,
+    shift1: {
+      scheduled: njShift1Agg.plannedColorYards,
+      actual:    njShift1Agg.actualColorYards,
+    },
+    shift2: {
+      scheduled: njShift2Agg.plannedColorYards,
+      actual:    njShift2Agg.actualColorYards,
     },
   }
 
@@ -400,6 +421,42 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             yards={plantYards}
             weekStart={weekStart}
             hasActuals={hasActuals}
+            label="Yards"
+            unit="yds"
+          />
+        )}
+      </div>
+
+      {/* Plant Color-Yards — Passaic-only labor unit, framed plant-level
+          so Peter can read the hand-screen labor pulse next to the plant
+          yards pulse. BNY contributes zero (digital is single-pass).      */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Hand-Screen Labor</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillPassaic}`}>NJ</span>
+              Plant Color-Yards
+            </div>
+            <div className={styles.sectionDesc}>
+              Passaic only · color-yards = yards × colors. The labor unit. An 11-color job invoices like a small order but costs ~4× the labor.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : !hasSchedule ? (
+          <div className={styles.loading}>
+            Color-yards populate once Passaic POs are scheduled.
+          </div>
+        ) : (
+          <PlantPulse
+            yards={plantCY}
+            weekStart={weekStart}
+            hasActuals={hasActuals && plantCY.actual > 0}
+            label="Color-Yards"
+            unit="cy"
           />
         )}
       </div>
@@ -489,6 +546,79 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             mix={mix}
             totalYards={bnyMixTotal}
           />
+        )}
+      </div>
+
+      {/* Day-by-Day grids — migrated from LiveOpsTab Summary view (May 2026).
+          Two grids: Passaic 17 tables, BNY 19 machines. Plan/actual/delta per
+          (table, day) with a week total column on the right. Same data sources
+          as the rest of the page (sched_assignments + sched_daily_ops), so the
+          numbers always agree with Plant Pulse and Site Performance above.   */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Daily Detail</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillPlant}`}>GRID</span>
+              Day-by-Day · Plan vs Actual
+            </div>
+            <div className={styles.sectionDesc}>
+              Where the variance lives. One row per table/machine, one column per day Sun–Sat. Bigger picture above; this grid is for tracing a number you don't believe.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : !hasSchedule ? (
+          <div className={styles.loading}>
+            Day-by-day grid populates once the schedule is built.
+          </div>
+        ) : (
+          <>
+            <DayGrid
+              label="Passaic — 17 tables"
+              site="passaic"
+              tables={PASSAIC_TABLES.map(t => ({ code: t.table_code, label: t.table_code }))}
+              assignments={assignments.filter(a => a.site === 'passaic')}
+              dailyOps={dailyOps.filter(o => o.site === 'passaic')}
+              accent={SP_COLORS.crimson}
+            />
+            <DayGrid
+              label="BNY — 19 machines"
+              site="bny"
+              tables={BNY_MACHINES.map(m => ({ code: m.table_code, label: m.name }))}
+              assignments={assignments.filter(a => a.site === 'bny')}
+              dailyOps={dailyOps.filter(o => o.site === 'bny')}
+              accent={SP_COLORS.saffron}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Recent Notes — top 3 most-recent notes from this week's daily-ops
+          rows. Surfaced here so Peter sees operational commentary without
+          opening Live Ops. Notes assigned to a role also fire to Slack on
+          save (see /api/slack-note-notify), so this panel is a passive
+          reflection — it's not the primary delivery channel.                */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Operator Commentary</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillRead}`}>NOTES</span>
+              Recent Live Ops Notes
+            </div>
+            <div className={styles.sectionDesc}>
+              Top 3 most recent from this week. Anything assigned to a role also pings #paramount-prints-production in Slack.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : (
+          <RecentNotes dailyOps={dailyOps} />
         )}
       </div>
 
@@ -703,7 +833,7 @@ const PP_STYLES = {
   },
 }
 
-function PlantPulse({ yards, weekStart, hasActuals }) {
+function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds' }) {
   const budget    = yards.budget
   const scheduled = yards.scheduled
   const actual    = yards.actual
@@ -754,7 +884,7 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
   return (
     <div style={PP_STYLES.card}>
       <div style={PP_STYLES.headerRow}>
-        <div style={PP_STYLES.label}>Yards</div>
+        <div style={PP_STYLES.label}>{label}</div>
         <span style={{...PP_STYLES.pill, ...PP_PILL_TONES[tone]}}>{pillLabel}</span>
       </div>
 
@@ -764,21 +894,21 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
           <div style={PP_STYLES.barTrack}>
             <div style={{...PP_STYLES.barFill, background: PP_COLORS.linenDark, width: '100%'}} />
           </div>
-          <span style={PP_STYLES.barValue}>{fmt(budget)} yds</span>
+          <span style={PP_STYLES.barValue}>{fmt(budget)} {unit}</span>
         </div>
         <div style={PP_STYLES.barRow}>
           <span style={PP_STYLES.barLabel}>Scheduled</span>
           <div style={PP_STYLES.barTrack}>
             <div style={{...PP_STYLES.barFill, background: hasSchedule ? scheduledFill : PP_COLORS.linenDark, width: `${scheduledBarPct}%`}} />
           </div>
-          <span style={PP_STYLES.barValue}>{hasSchedule ? `${fmt(scheduled)} yds` : '—'}</span>
+          <span style={PP_STYLES.barValue}>{hasSchedule ? `${fmt(scheduled)} ${unit}` : '—'}</span>
         </div>
         <div style={PP_STYLES.barRow}>
           <span style={PP_STYLES.barLabel}>Actual</span>
           <div style={PP_STYLES.barTrack}>
             <div style={{...PP_STYLES.barFill, background: fillColor, width: `${actualBarPct}%`}} />
           </div>
-          <span style={PP_STYLES.barValue}>{fmt(actual)} yds</span>
+          <span style={PP_STYLES.barValue}>{fmt(actual)} {unit}</span>
         </div>
       </div>
 
@@ -855,7 +985,7 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
               ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>schedule built · awaiting actuals</span>
               : daysElapsed === 0
                 ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>week not yet started</span>
-                : `Day ${daysElapsed} of 7 · projected ${fmt(projected)} yds`
+                : `Day ${daysElapsed} of 7 · projected ${fmt(projected)} ${unit}`
             }
           </span>
         </div>
@@ -1933,6 +2063,272 @@ function OperatorRow({ op, rank, isLast, rankColor, showColorYards }) {
           {op.actualColorYards > 0 && <>actual {fmt(Math.round(op.actualColorYards))} cyds</>}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   DayGrid — table × day grid showing plan/actual per cell + week total.
+   Migrated from LiveOpsTab Summary view (May 2026).
+
+   Plan precedence (matches LiveOpsTab rowsByCell):
+     1. explicit sched_daily_ops.planned_yards
+     2. cell-level sched_assignments (table, day, shift)
+     3. weekly ÷ 5 fallback for Passaic 1st-shift Mon-Fri only
+
+   Heartbeat usage: takes site-filtered assignments + dailyOps. Renders one
+   row per table/machine, expanding to a 2nd-shift sub-row only for Passaic
+   tables that have any 2nd-shift activity this week.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+const DG_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DG_PROD_WEEKDAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+
+function plannedForDayGridCell(site, tableCode, day, ops, assignments, shift = null) {
+  // 1. Explicit planned_yards on sched_daily_ops for this cell + shift
+  const matching = ops.filter(r =>
+    r.table_code === tableCode &&
+    r.day_of_week === day &&
+    (shift == null ? true : (r.shift || '1st') === shift)
+  )
+  const explicit = matching.filter(r => r.planned_yards != null)
+  if (explicit.length > 0) {
+    return explicit.reduce((s, r) => s + Number(r.planned_yards), 0)
+  }
+
+  // 2. Cell-level assignments (table, day, shift) — Wendy's CrewModal placement
+  const onCell = assignments.filter(a =>
+    a.table_code === tableCode &&
+    a.day_of_week === day &&
+    (shift == null ? true : (a.shift || '1st') === shift)
+  )
+  const cellSum = onCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+  if (cellSum > 0) return cellSum
+
+  // 3. Passaic 1st-shift Mon-Fri fallback: weekly table total ÷ 5
+  if (site === 'passaic' && (shift === null || shift === '1st') && DG_PROD_WEEKDAYS.has(day)) {
+    const onTable = assignments.filter(a => a.table_code === tableCode)
+    const weekly = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+    if (weekly > 0) return Math.round(weekly / 5)
+  }
+  return null
+}
+
+function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
+  const isPassaic = site === 'passaic'
+  const dgInk     = '#212029'
+  const dgInkMid  = '#5b5762'
+  const dgInkLite = '#8a8694'
+  const dgLinen   = '#e8e3da'
+  const dgPaper   = '#fbf8f1'
+  const dgSage    = '#3F704D'
+  const dgGold    = '#A87A2E'
+  const dgRose    = '#A8413B'
+
+  // Build rows: 1st shift always; 2nd shift only when there's any data
+  // anywhere in the week for that Passaic table.
+  const rows = []
+  for (const t of tables) {
+    rows.push({ table: t, shift: '1st', label: t.label || t.code })
+    if (isPassaic) {
+      let any2nd = false
+      for (const d of DG_DAYS) {
+        const op = dailyOps.find(r =>
+          r.table_code === t.code && r.day_of_week === d && (r.shift || '1st') === '2nd'
+        )
+        const plan = plannedForDayGridCell(site, t.code, d, dailyOps, assignments, '2nd')
+        if ((op && op.actual_yards != null) || plan != null) { any2nd = true; break }
+      }
+      if (any2nd) {
+        rows.push({ table: t, shift: '2nd', label: `${t.label || t.code} · 2nd` })
+      }
+    }
+  }
+
+  function cellData(tableCode, day, shift) {
+    const op = dailyOps.find(r =>
+      r.table_code === tableCode && r.day_of_week === day && (r.shift || '1st') === shift
+    )
+    const plan = plannedForDayGridCell(site, tableCode, day, dailyOps, assignments, shift)
+    const actual = op ? op.actual_yards : null
+    return { plan, actual }
+  }
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${dgLinen}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '10px 14px', background: dgPaper, borderBottom: `1px solid ${dgLinen}`, fontSize: 12, fontWeight: 700, color: dgInk, fontFamily: 'Georgia,serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
+        {label}
+      </div>
+      {/* Header */}
+      <div style={{ display: 'grid', gridTemplateColumns: `130px repeat(${DG_DAYS.length}, 1fr) 90px`, gap: 1, background: dgLinen, padding: 1 }}>
+        <div style={{ background: dgPaper, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: dgInkLite, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Table</div>
+        {DG_DAYS.map(d => (
+          <div key={d} style={{ background: dgPaper, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: dgInkLite, textTransform: 'uppercase', textAlign: 'center', letterSpacing: '0.06em' }}>{d}</div>
+        ))}
+        <div style={{ background: dgPaper, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: dgInkLite, textTransform: 'uppercase', textAlign: 'right', letterSpacing: '0.06em' }}>Week</div>
+      </div>
+      {/* Rows */}
+      {rows.map((r, i) => {
+        let weekPlan = 0, weekActual = 0
+        const cells = DG_DAYS.map(d => {
+          const c = cellData(r.table.code, d, r.shift)
+          if (c.plan != null) weekPlan += c.plan
+          if (c.actual != null) weekActual += Number(c.actual)
+          return c
+        })
+        const weekDelta = weekPlan > 0 ? weekActual - weekPlan : null
+        const weekColor = weekDelta == null ? dgInkLite
+          : Math.abs(weekDelta) / weekPlan < 0.05 ? dgSage
+          : Math.abs(weekDelta) / weekPlan < 0.15 ? dgGold : dgRose
+        const isSecond = r.shift === '2nd'
+        return (
+          <div key={`${r.table.code}|${r.shift}`} style={{ display: 'grid', gridTemplateColumns: `130px repeat(${DG_DAYS.length}, 1fr) 90px`, gap: 1, background: dgLinen, padding: '0 1px' }}>
+            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: dgInk }}>
+              {r.table.label || r.table.code}
+              {isSecond && <span style={{ color: dgGold, fontWeight: 700 }}> · 2nd</span>}
+            </div>
+            {cells.map((c, idx) => {
+              const delta = (c.plan != null && c.actual != null) ? Number(c.actual) - c.plan : null
+              const color = delta == null ? dgInkLite
+                : c.plan > 0 && Math.abs(delta) / c.plan < 0.05 ? dgSage
+                : c.plan > 0 && Math.abs(delta) / c.plan < 0.15 ? dgGold
+                : delta < 0 ? dgRose : dgGold
+              return (
+                <div key={idx} style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>
+                  <div style={{ color: dgInkMid }}>
+                    {c.plan != null ? fmt(c.plan) : '—'}
+                    <span style={{ color: dgInkLite }}> / </span>
+                    <span style={{ color: c.actual != null ? dgInk : dgInkLite, fontWeight: c.actual != null ? 700 : 400 }}>
+                      {c.actual != null ? fmt(c.actual) : '—'}
+                    </span>
+                  </div>
+                  {delta != null && (
+                    <div style={{ fontSize: 9, color, fontWeight: 600 }}>
+                      {delta >= 0 ? `+${fmt(delta)}` : fmt(delta)}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'right' }}>
+              <div style={{ color: dgInkMid }}>
+                {fmt(weekPlan)} <span style={{ color: dgInkLite }}>/</span> <span style={{ color: dgInk, fontWeight: 700 }}>{fmt(weekActual)}</span>
+              </div>
+              {weekDelta != null && (
+                <div style={{ fontSize: 9, color: weekColor, fontWeight: 600 }}>
+                  {weekDelta >= 0 ? `+${fmt(weekDelta)}` : fmt(weekDelta)}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   RecentNotes — top 3 most recent notes from this week's sched_daily_ops.
+   Sort by day_of_week descending (Sat → Sun) so the freshest entries are
+   at the top. If a note has note_assigned_to set, surface that assignee
+   so Peter knows who's owning it.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+const RN_DAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+function RecentNotes({ dailyOps }) {
+  const rnInk     = '#212029'
+  const rnInkMid  = '#5b5762'
+  const rnInkLite = '#8a8694'
+  const rnLinen   = '#e8e3da'
+  const rnPaper   = '#fbf8f1'
+  const rnRoyal   = '#1E4FA8'
+  const rnSaffron = '#E89A1E'
+
+  const notes = (dailyOps || [])
+    .filter(r => r.notes && String(r.notes).trim().length > 0)
+    .map(r => ({
+      site: r.site,
+      day: r.day_of_week,
+      shift: r.shift || '1st',
+      table: r.table_code,
+      operators: [r.operator_1, r.operator_2].filter(Boolean).join(' & ') || 'unattributed',
+      text: String(r.notes).trim(),
+      assignedTo: r.note_assigned_to || null,
+      status: r.note_status || null,
+    }))
+    .sort((a, b) => {
+      // Most recent day first; stable tiebreak on site then table.
+      const ia = RN_DAY_INDEX[a.day] ?? -1
+      const ib = RN_DAY_INDEX[b.day] ?? -1
+      if (ia !== ib) return ib - ia
+      if (a.site !== b.site) return a.site.localeCompare(b.site)
+      return a.table.localeCompare(b.table)
+    })
+    .slice(0, 3)
+
+  if (notes.length === 0) {
+    return (
+      <div style={{
+        background: '#fff', border: `1px solid ${rnLinen}`, borderRadius: 10,
+        padding: '20px 18px', fontSize: 13, color: rnInkLite, fontStyle: 'italic',
+      }}>
+        No notes yet for this week. Notes appear here as Sami, Wendy, and Chandler add them in Live Ops.
+      </div>
+    )
+  }
+
+  const siteColor = { passaic: rnRoyal, bny: rnSaffron }
+  const siteShort = { passaic: 'Passaic', bny: 'BNY' }
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${rnLinen}`, borderRadius: 10, overflow: 'hidden' }}>
+      {notes.map((n, i) => (
+        <div key={i} style={{
+          padding: '12px 16px',
+          borderTop: i > 0 ? `1px solid ${rnLinen}` : 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontSize: 10, color: rnInkLite, flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-block', padding: '2px 7px',
+              background: siteColor[n.site] || rnInkLite, color: '#fff',
+              borderRadius: 3, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+            }}>{siteShort[n.site] || n.site}</span>
+            <span style={{ fontWeight: 600, color: rnInkMid }}>{n.day || '—'}</span>
+            <span>·</span>
+            <span style={{ fontWeight: 600, color: rnInk }}>{n.table}</span>
+            {n.shift === '2nd' && (
+              <span style={{ fontSize: 9, color: rnSaffron, fontWeight: 700 }}>· 2nd shift</span>
+            )}
+            <span>·</span>
+            <span>{n.operators}</span>
+            {n.assignedTo && (
+              <>
+                <span>·</span>
+                <span style={{
+                  display: 'inline-block', padding: '1px 6px',
+                  background: rnPaper, border: `1px solid ${rnLinen}`,
+                  borderRadius: 3, fontSize: 9, fontWeight: 700, color: rnInkMid,
+                }}>
+                  → {n.assignedTo}
+                </span>
+              </>
+            )}
+            {n.status && n.status !== 'open' && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: rnInkLite,
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {n.status}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 13, color: rnInk, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+            {n.text}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
