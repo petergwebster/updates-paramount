@@ -1014,7 +1014,7 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
 // Used for both 1st and 2nd shift; shiftLabel distinguishes them visually.
 function CrewCellRow({ cell, shiftLabel, isSaving, onUpdate, onSave, showRemove, onRemove }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '70px 90px 1fr 1fr 70px 24px', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '90px 90px 1fr 1fr 70px 24px', gap: 8, alignItems: 'center', marginBottom: 4 }}>
       <div style={{ fontSize: 10, color: C.inkLight, fontWeight: 600, letterSpacing: '0.04em' }}>{shiftLabel}</div>
       <input type="number" value={cell.planned_yards}
         onChange={e => onUpdate({ planned_yards: e.target.value })}

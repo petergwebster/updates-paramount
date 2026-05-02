@@ -418,13 +418,24 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   />
                 )}
                 {isPassaic && !showSecondShift && (
-                  <div style={{ padding: '4px 16px 6px 16px', borderBottom: `1px solid ${C.border}` }}>
+                  // marginTop: -1 + bg #fff overlaps the 1st-shift OpsRow's
+                  // borderBottom, hiding it. The wrapper provides the only
+                  // separator between this row group and the next, so the
+                  // button visually belongs to the row above (not floating
+                  // between two row groups).
+                  <div style={{
+                    marginTop: -1,
+                    padding: '0 16px 8px 16px',
+                    background: '#fff',
+                    borderBottom: `1px solid ${C.border}`,
+                    position: 'relative',
+                  }}>
                     <button
                       onClick={() => setExpandedSecondShifts(prev => {
                         const next = new Set(prev); next.add(t.code); return next
                       })}
-                      style={{ marginLeft: 152, padding: '3px 10px', fontSize: 10, fontWeight: 600, color: C.inkLight, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 3, cursor: 'pointer', letterSpacing: '0.04em' }}>
-                      + add 2nd shift entry
+                      style={{ marginLeft: 16, padding: '3px 10px', fontSize: 10, fontWeight: 600, color: C.inkLight, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 3, cursor: 'pointer', letterSpacing: '0.04em' }}>
+                      ↳ Add 2nd shift entry
                     </button>
                   </div>
                 )}
