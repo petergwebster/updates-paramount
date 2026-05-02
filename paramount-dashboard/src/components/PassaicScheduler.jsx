@@ -550,20 +550,26 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
-  // Card grid: max 4 cards per row in normal mode (was 6 — too cramped to
-  // fit two-operator crew names in CrewStrip), max 2 in compact. Lets each
-  // card claim ~50% more horizontal real estate so "Romer Ortiz / Daniel
-  // Reyes" renders without truncation. Categories with more tables wrap to
-  // additional rows — vertical space is cheap, horizontal squeeze hurts
-  // readability.
-  const cols = compact ? Math.min(tables.length, 2) : Math.min(tables.length, 4)
+  // Responsive card grid. Each card claims at least 280px (enough for the
+  // CrewStrip CREW column to fully render two-operator names like
+  // "Romer O. / Daniel R." without truncation), then fills the remaining
+  // row width via 1fr. The browser packs as many cards into a row as it
+  // can, then wraps. This sidesteps the "guess the right number per row"
+  // problem — the layout now responds to actual container width rather
+  // than a hardcoded count.
+  const cardMin = compact ? 220 : 280
+  const gridStyle = {
+    display: 'grid',
+    gridTemplateColumns: `repeat(auto-fit, minmax(${cardMin}px, 1fr))`,
+    gap: 8,
+  }
 
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMid, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
         {label} <span style={{ color: C.inkLight, fontWeight: 400 }}>— {tables.length} table{tables.length !== 1 ? 's' : ''}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
+      <div style={gridStyle}>
         {tables.map(t => {
           const asgs = byTable[t.code] || []
           const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
