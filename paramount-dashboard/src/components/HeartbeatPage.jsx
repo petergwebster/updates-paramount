@@ -1228,6 +1228,7 @@ function buildBnyMachines(assignments, dailyOps) {
     return {
       name: m.name,
       kind: m.kind,
+      location: m.location,
       actual,
       target: plan, // "target" is whatever was scheduled this week, per machine
     }
