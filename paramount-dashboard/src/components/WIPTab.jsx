@@ -49,16 +49,42 @@ const STATUS_ORDER = [
   'Shipped',
 ]
 
-// Statuses Scheduler EXCLUDES from its unscheduled pool (NEW Goods preprod).
-// We surface a small badge on these rows here so users can see at a glance
-// "this is in WIP but won't show up in the Scheduler pool yet."
-const NOT_IN_SCHEDULER_POOL = new Set([
-  'Waiting for Approval',
+// ── Scheduler pool eligibility — mirrors PassaicScheduler / BNYScheduler ──
+//
+// Source of truth: PassaicScheduler.jsx pool memo + BNYScheduler.jsx pool
+// memo (May 2026). Statuses ELIGIBLE for the Scheduler pool:
+const SCHEDULABLE_STATUSES = new Set([
+  'Approved to Print', 'Ready to Print',
+  'In Mixing Queue',   'In Progress',
+  'Waiting for Material', 'Waiting for Screen',
+  'Waiting for Approval', 'Waiting for Sample',
   'Strike Off',
-  'Waiting for Sample',
-  'Waiting for Screen',
-  'Waiting for Material',
+  'Orders Unallocated',
 ])
+// New Goods preproduction is excluded — those POs live in the New Goods view
+// until they reach Approved to Print.
+const NG_PREPROD = new Set([
+  'Waiting for Approval','Strike Off','Waiting for Sample',
+  'Waiting for Screen','Waiting for Material',
+])
+
+// Returns true if this row is currently eligible for its site's Scheduler
+// pool. Does NOT account for the per-week `remaining_yards > 0` filter
+// (Scheduler additionally hides POs already fully assigned for the week);
+// this gives an upper-bound "potentially schedulable" count.
+function isSchedulable(r) {
+  // Only Passaic and BNY have schedulers — Procurement is pass-through.
+  if (r.site !== 'passaic' && r.site !== 'bny') return false
+  const status = (r.order_status || '').trim()
+  if (!SCHEDULABLE_STATUSES.has(status)) return false
+  if (r.is_new_goods && NG_PREPROD.has(status)) return false
+  // BNY-specific: must have a bny_bucket and have yards written.
+  if (r.site === 'bny') {
+    if (!r.bny_bucket) return false
+    if (!(Number(r.yards_written) > 0)) return false
+  }
+  return true
+}
 
 // Map sched_wip_rows.site → Division label that mirrors the LIFT pivot.
 // Falls back to division_raw for anything outside the canonical three (e.g.
@@ -80,20 +106,67 @@ function customerKeyFor(row) {
   return 'other'
 }
 
-// Reduce wipRows to { divisionLabel: { statusLabel: { orders, yards, income, qtyInvoiced } } }.
+// Reduce wipRows to per-division aggregates:
+//   {
+//     [divisionLabel]: {
+//       statuses: { [status]: { orders, yards, income, qtyInvoiced } },
+//       totalPOs: <distinct POs across all statuses in this division>,
+//       schedulablePOs: <distinct POs eligible for the Scheduler pool>,
+//       hasScheduler: <true for Passaic/Digital, false for Procurement etc.>,
+//     }
+//   }
+// "orders" matches the legacy LIFT pivot's "# of Orders Ordered" semantics —
+// distinct POs per status. Falls back to order_number when po_number is
+// missing so we don't silently undercount.
 function buildDivisionPivots(rows, customerFilter) {
-  const out = {}
+  const work = {}
   for (const r of rows) {
     if (customerFilter !== 'all' && customerKeyFor(r) !== customerFilter) continue
     const div = divisionLabelFor(r)
     const status = (r.order_status || '').trim() || '(no status)'
-    if (!out[div]) out[div] = {}
-    if (!out[div][status]) out[div][status] = { orders: 0, yards: 0, income: 0, qtyInvoiced: 0 }
-    const s = out[div][status]
-    s.orders      += 1
+    if (!work[div]) work[div] = {
+      statuses: {},
+      totalPoSet: new Set(),
+      schedPoSet: new Set(),
+      hasScheduler: r.site === 'passaic' || r.site === 'bny',
+    }
+    if (!work[div].statuses[status]) work[div].statuses[status] = {
+      poSet: new Set(),
+      yards: 0, income: 0, qtyInvoiced: 0,
+    }
+    const s = work[div].statuses[status]
+    const poKey = (r.po_number && String(r.po_number).trim())
+                || (r.order_number && String(r.order_number).trim())
+    if (poKey) {
+      s.poSet.add(poKey)
+      work[div].totalPoSet.add(poKey)
+      if (isSchedulable(r)) work[div].schedPoSet.add(poKey)
+    }
     s.yards       += Number(r.yards_written || 0)
     s.income      += Number(r.income_written || 0)
     s.qtyInvoiced += Number(r.qty_invoiced || 0)
+    // hasScheduler holds across rows in the same division — first row sets it
+    if (r.site === 'passaic' || r.site === 'bny') work[div].hasScheduler = true
+  }
+  // Resolve sets to counts
+  const out = {}
+  for (const div in work) {
+    const statuses = {}
+    for (const status in work[div].statuses) {
+      const s = work[div].statuses[status]
+      statuses[status] = {
+        orders: s.poSet.size,
+        yards: s.yards,
+        income: s.income,
+        qtyInvoiced: s.qtyInvoiced,
+      }
+    }
+    out[div] = {
+      statuses,
+      totalPOs:       work[div].totalPoSet.size,
+      schedulablePOs: work[div].schedPoSet.size,
+      hasScheduler:   work[div].hasScheduler,
+    }
   }
   return out
 }
@@ -145,7 +218,7 @@ export default function WIPTab() {
       while (true) {
         const { data, error: re } = await supabase
           .from('sched_wip_rows')
-          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, order_status, yards_written, qty_invoiced, income_written')
+          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, order_status, yards_written, qty_invoiced, income_written')
           .eq('snapshot_id', snap.id)
           .range(from, from + pageSize - 1)
         if (re) throw re
@@ -328,7 +401,7 @@ export default function WIPTab() {
               <DivisionPivot
                 key={div}
                 division={div}
-                statuses={pivots[div]}
+                agg={pivots[div]}
               />
             ))
           )}
@@ -389,13 +462,16 @@ function ConnectionNote() {
     <div style={{
       background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 8,
       padding: '10px 14px', marginBottom: 20, fontSize: 12, color: C.inkMid,
-      lineHeight: 1.5,
+      lineHeight: 1.55,
     }}>
       <strong style={{ color: C.ink }}>Source of truth.</strong>{' '}
-      This is the universe of orders Paramount has on the books. The Scheduler reads from
-      the same data — its unscheduled pool is a filtered slice of what you see here, by site,
-      excluding the New Goods preproduction statuses (Waiting for Approval / Material / Sample
-      / Screen, Strike Off). Upload here, schedule there.
+      The Scheduler reads from this same data. Its unscheduled pool is a per-site, distinct-PO
+      view of orders eligible to schedule — production-active statuses (Approved to Print,
+      Ready to Print, In Mixing Queue, In Progress, Strike Off, Orders Unallocated, and Waiting
+      for Approval / Material / Sample / Screen) with New Goods rows in pre-production routed
+      to the New Goods view instead. Statuses past the printer (Mixing, In Packing, Ready to
+      Ship, Shipped) are not in the pool. Procurement isn't scheduled — it's pass-through.
+      Each section header below shows total POs and how many are in that site's Scheduler pool.
     </div>
   )
 }
@@ -436,28 +512,35 @@ function CustomerFilter({ value, counts, onChange }) {
 
 // ─── Division pivot — one section per division ─────────────────────────────
 
-function DivisionPivot({ division, statuses }) {
+function DivisionPivot({ division, agg }) {
+  const { statuses, totalPOs, schedulablePOs, hasScheduler } = agg
   const statusKeys = statusRenderOrder(Object.keys(statuses))
 
   // Roll up totals across all statuses for the section header
   const totals = statusKeys.reduce((acc, s) => {
     const v = statuses[s]
-    acc.orders      += v.orders
     acc.yards       += v.yards
     acc.income      += v.income
     acc.qtyInvoiced += v.qtyInvoiced
     return acc
-  }, { orders: 0, yards: 0, income: 0, qtyInvoiced: 0 })
+  }, { yards: 0, income: 0, qtyInvoiced: 0 })
 
   return (
     <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       {/* Section header */}
-      <div style={{ padding: '12px 16px', background: C.ink, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <div style={{ padding: '12px 16px', background: C.ink, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
           {division}
         </h3>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)' }}>
-          {fmt(totals.orders)} orders · {fmt(totals.yards)} yds written · {fmtD(totals.income)}
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <span><strong style={{ color: '#fff' }}>{fmt(totalPOs)}</strong> POs</span>
+          {hasScheduler ? (
+            <span><strong style={{ color: '#fff' }}>{fmt(schedulablePOs)}</strong> in Scheduler pool</span>
+          ) : (
+            <span style={{ fontStyle: 'italic' }}>not scheduled</span>
+          )}
+          <span>{fmt(totals.yards)} yds written</span>
+          <span>{fmtD(totals.income)}</span>
         </div>
       </div>
 
@@ -473,7 +556,6 @@ function DivisionPivot({ division, statuses }) {
       {/* Status rows */}
       {statusKeys.map((status, i) => {
         const v = statuses[status]
-        const isPreprod = NOT_IN_SCHEDULER_POOL.has(status)
         return (
           <div key={status} style={{
             display: 'grid',
@@ -483,20 +565,7 @@ function DivisionPivot({ division, statuses }) {
             fontSize: 13,
             alignItems: 'center',
           }}>
-            <span style={{ color: C.ink, fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              {status}
-              {isPreprod && (
-                <span title="Pre-production — excluded from Scheduler's unscheduled pool"
-                  style={{
-                    fontSize: 9, fontWeight: 700, padding: '2px 6px',
-                    background: C.amberBg, color: C.amber,
-                    border: `1px solid ${C.amber}`, borderRadius: 3,
-                    letterSpacing: '0.04em', textTransform: 'uppercase',
-                  }}>
-                  preprod
-                </span>
-              )}
-            </span>
+            <span style={{ color: C.ink, fontWeight: 500 }}>{status}</span>
             <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.orders)}</span>
             <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.yards)}</span>
             <span style={{ textAlign: 'right', color: C.inkMid }}>{v.qtyInvoiced > 0 ? fmt(v.qtyInvoiced) : '—'}</span>
@@ -505,7 +574,9 @@ function DivisionPivot({ division, statuses }) {
         )
       })}
 
-      {/* Section total row */}
+      {/* Section total row — sum of distinct POs across statuses (will exceed
+          totalPOs if any PO has lines in multiple statuses; matches the
+          legacy LIFT pivot behavior). */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1.6fr 80px 110px 110px 130px',
@@ -515,7 +586,7 @@ function DivisionPivot({ division, statuses }) {
         fontSize: 13, fontWeight: 700, color: C.ink,
       }}>
         <span>Total</span>
-        <span style={{ textAlign: 'right' }}>{fmt(totals.orders)}</span>
+        <span style={{ textAlign: 'right' }}>{fmt(statusKeys.reduce((a, s) => a + statuses[s].orders, 0))}</span>
         <span style={{ textAlign: 'right' }}>{fmt(totals.yards)}</span>
         <span style={{ textAlign: 'right' }}>{totals.qtyInvoiced > 0 ? fmt(totals.qtyInvoiced) : '—'}</span>
         <span style={{ textAlign: 'right' }}>{fmtD(totals.income)}</span>
