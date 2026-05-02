@@ -3,7 +3,7 @@ import { supabase } from '../supabase'
 import {
   C, fmt, fmtD, isoDate, mondayOf, addDays, addWeeks,
   weekLabel, weekLabelFiscal, defaultSchedulerWeek,
-  DAY_NAMES_SHORT, DAY_NAMES_FULL, dayOfWeekFiscal, dateForDayOfWeek,
+  DAY_NAMES_SHORT, DAY_NAMES_FULL, DAY_INDEX, dayOfWeekFiscal, dateForDayOfWeek,
   PASSAIC_OPERATORS, BNY_OPERATORS_BROOKLYN, BNY_OPERATORS_PASSAIC_DIGITAL,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
@@ -70,10 +70,24 @@ export default function LiveOpsTab({ currentUser } = {}) {
   const [dailyOps, setDailyOps] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(false)
+  // Tracks which Passaic tables the user has clicked "+ add 2nd shift" on
+  // for the currently-selected day, but hasn't saved any data for yet.
+  // Cleared when the day changes (each day starts fresh; persisted 2nd-shift
+  // rows surface from sched_daily_ops automatically). Keyed by table code.
+  const [expandedSecondShifts, setExpandedSecondShifts] = useState(() => new Set())
 
-  // Week that contains the selected date (Monday-anchored, per existing convention)
+  // Week that contains the selected date. mondayOf is now an alias for
+  // sundayOf post Phase A — returns the Sunday week_start, matching the
+  // fiscal calendar. Function name kept for compatibility.
   const weekStart = useMemo(() => mondayOf(selectedDate), [selectedDate])
   const dayOfWeek = useMemo(() => dayOfWeekFiscal(weekStart, selectedDate), [weekStart, selectedDate])
+
+  // Reset 2nd-shift expansions when the user navigates to a different day.
+  // Days are isolated for the purposes of "did the user expand here yet" —
+  // stale expansions from yesterday shouldn't bleed into today.
+  useEffect(() => {
+    setExpandedSecondShifts(new Set())
+  }, [dayOfWeek, site])
 
   // Auto-jump to the most recent week that has PO assignments for this site on
   // mount or when the site toggles. Using sched_assignments (not daily_ops) as
@@ -133,45 +147,60 @@ export default function LiveOpsTab({ currentUser } = {}) {
     ? PASSAIC_TABLES
     : [...BNY_BROOKLYN, ...BNY_PASSAIC_DIGITAL]
 
-  // For each table, find the daily_ops row for the selected day (if any),
-  // and summarize planned yards for that table (weekly for Passaic since
-  // sched_assignments.day_of_week is null; daily for BNY).
-  const rowsForTable = useMemo(() => {
+  // Per-cell rows keyed by `${tableCode}|${shift}`. For Passaic hand-screen
+  // tables, both '1st' and '2nd' shift entries exist (2nd shift is rendered
+  // only when it has data or the user has expanded — see render block).
+  // For BNY, only '1st' shift exists; BNY machines don't run 2nd shift.
+  //
+  // Note: derived plan ("weekly ÷ 5") only applies to Passaic 1st shift on
+  // production weekdays Mon-Fri. 2nd shift requires explicit planning via
+  // CrewModal in the Scheduler. Sat/Sun cells have no auto-derived plan.
+  const PRODUCTION_WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+  const rowsByCell = useMemo(() => {
     const m = {}
     for (const t of tables) {
-      const op = dailyOps.find(r =>
-        r.table_code === t.code && r.day_of_week === dayOfWeek
-      ) || null
+      const isPassaic = site === 'passaic'
+      const shifts = isPassaic ? ['1st', '2nd'] : ['1st']
+      for (const shift of shifts) {
+        const op = dailyOps.find(r =>
+          r.table_code === t.code &&
+          r.day_of_week === dayOfWeek &&
+          ((r.shift || '1st') === shift)
+        ) || null
 
-      let plannedYards = 0
-      let plannedSource = 'none'  // 'explicit' | 'derived' | 'none'
-      let plannedDetails = []
-      if (site === 'passaic') {
-        // Passaic: prefer explicit daily target (sched_daily_ops.planned_yards).
-        // If not set, derive from weekly PO total ÷ 5 so Live Ops has a target
-        // to verify against even when Wendy hasn't opened PLAN.
-        const onTable = assignments.filter(a => a.table_code === t.code)
-        plannedDetails = onTable.map(a => a.line_description || a.po_number)
-        if (op?.planned_yards != null) {
-          plannedYards = Number(op.planned_yards)
-          plannedSource = 'explicit'
-        } else if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-          const weekly = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
-          if (weekly > 0) {
-            plannedYards = Math.round(weekly / 5)
-            plannedSource = 'derived'
+        let plannedYards = 0
+        let plannedSource = 'none'  // 'explicit' | 'derived' | 'none'
+        let plannedDetails = []
+
+        if (isPassaic) {
+          // Passaic: prefer explicit daily target (sched_daily_ops.planned_yards).
+          // If not set, derive from weekly PO total ÷ 5 so Live Ops has a target
+          // to verify against — but only on 1st shift, only on Mon-Fri.
+          const onTable = assignments.filter(a => a.table_code === t.code)
+          // Plan details (PO list) only useful on 1st-shift row; suppress on 2nd
+          // to keep the second row visually lighter.
+          plannedDetails = shift === '1st' ? onTable.map(a => a.line_description || a.po_number) : []
+          if (op?.planned_yards != null) {
+            plannedYards = Number(op.planned_yards)
+            plannedSource = 'explicit'
+          } else if (shift === '1st' && PRODUCTION_WEEKDAYS.includes(dayOfWeek)) {
+            const weekly = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+            if (weekly > 0) {
+              plannedYards = Math.round(weekly / 5)
+              plannedSource = 'derived'
+            }
           }
+        } else {
+          // BNY: day-specific assignments, single shift
+          const onCell = assignments.filter(a =>
+            a.table_code === t.code && a.day_of_week === dayOfWeek
+          )
+          plannedYards = onCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+          plannedDetails = onCell.map(a => a.line_description || a.po_number)
         }
-      } else {
-        // BNY: day-specific
-        const onCell = assignments.filter(a =>
-          a.table_code === t.code && a.day_of_week === dayOfWeek
-        )
-        plannedYards = onCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
-        plannedDetails = onCell.map(a => a.line_description || a.po_number)
-      }
 
-      m[t.code] = { op, plannedYards, plannedSource, plannedDetails }
+        m[`${t.code}|${shift}`] = { op, plannedYards, plannedSource, plannedDetails }
+      }
     }
     return m
   }, [tables, dailyOps, assignments, dayOfWeek, site])
@@ -188,13 +217,14 @@ export default function LiveOpsTab({ currentUser } = {}) {
     setSelectedDate(d)
   }
 
-  async function saveRow(tableCode, patch) {
-    const existing = rowsForTable[tableCode]?.op || {}
+  async function saveRow(tableCode, shift, patch) {
+    const existing = rowsByCell[`${tableCode}|${shift}`]?.op || {}
     const row = {
       site,
       week_start: isoDate(weekStart),
       table_code: tableCode,
       day_of_week: dayOfWeek,
+      shift,
       ...existing,
       ...patch,
     }
@@ -202,10 +232,12 @@ export default function LiveOpsTab({ currentUser } = {}) {
     delete row.id; delete row.created_at; delete row.updated_at
     try {
       await upsertDailyOp(row)
-      // Optimistic local update
+      // Optimistic local update — match by (table, day, shift)
       setDailyOps(prev => {
         const idx = prev.findIndex(r =>
-          r.table_code === tableCode && r.day_of_week === dayOfWeek
+          r.table_code === tableCode &&
+          r.day_of_week === dayOfWeek &&
+          ((r.shift || '1st') === shift)
         )
         if (idx >= 0) {
           const next = [...prev]
@@ -341,10 +373,16 @@ export default function LiveOpsTab({ currentUser } = {}) {
       {!loading && (
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
           {tables.map((t, i) => {
-            const row = rowsForTable[t.code]
+            const isPassaic = site === 'passaic'
+            const firstCell  = rowsByCell[`${t.code}|1st`]
+            const secondCell = rowsByCell[`${t.code}|2nd`]
+            // Show 2nd-shift row if saved data exists OR user has expanded.
+            const has2ndData = secondCell?.op != null
+            const showSecondShift = isPassaic && (has2ndData || expandedSecondShifts.has(t.code))
+
             const cat = categorize(t)
             const catLabel = cat === 'grass' ? 'Grasscloth' : cat === 'fabric' ? 'Fabric' : cat === 'wallpaper' ? 'Wallpaper' : null
-            const showCategoryHeader = site === 'passaic' && (i === 0 || categorize(tables[i - 1]) !== cat)
+            const showCategoryHeader = isPassaic && (i === 0 || categorize(tables[i - 1]) !== cat)
 
             return (
               <div key={t.code}>
@@ -356,14 +394,40 @@ export default function LiveOpsTab({ currentUser } = {}) {
                 <OpsRow
                   table={t}
                   site={site}
-                  plannedYards={row?.plannedYards || 0}
-                  plannedSource={row?.plannedSource || 'none'}
-                  plannedDetails={row?.plannedDetails || []}
-                  op={row?.op}
+                  shift="1st"
+                  plannedYards={firstCell?.plannedYards || 0}
+                  plannedSource={firstCell?.plannedSource || 'none'}
+                  plannedDetails={firstCell?.plannedDetails || []}
+                  op={firstCell?.op}
                   canEnterActuals={true}
                   currentUser={currentUser}
-                  onSave={(patch) => saveRow(t.code, patch)}
+                  onSave={(patch) => saveRow(t.code, '1st', patch)}
                 />
+                {showSecondShift && (
+                  <OpsRow
+                    table={t}
+                    site={site}
+                    shift="2nd"
+                    plannedYards={secondCell?.plannedYards || 0}
+                    plannedSource={secondCell?.plannedSource || 'none'}
+                    plannedDetails={secondCell?.plannedDetails || []}
+                    op={secondCell?.op}
+                    canEnterActuals={true}
+                    currentUser={currentUser}
+                    onSave={(patch) => saveRow(t.code, '2nd', patch)}
+                  />
+                )}
+                {isPassaic && !showSecondShift && (
+                  <div style={{ padding: '4px 16px 6px 16px', borderBottom: `1px solid ${C.border}` }}>
+                    <button
+                      onClick={() => setExpandedSecondShifts(prev => {
+                        const next = new Set(prev); next.add(t.code); return next
+                      })}
+                      style={{ marginLeft: 152, padding: '3px 10px', fontSize: 10, fontWeight: 600, color: C.inkLight, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 3, cursor: 'pointer', letterSpacing: '0.04em' }}>
+                      + add 2nd shift entry
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -383,7 +447,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, currentUser, onSave }) {
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, currentUser, onSave }) {
   const [yards, setYards]   = useState(op?.actual_yards ?? '')
   const [waste, setWaste]   = useState(op?.waste_yards ?? '')
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
@@ -397,6 +461,8 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
   const [notesModalOpen, setNotesModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
+
+  const isSecondShift = shift === '2nd'
 
   // Reset fields when the underlying row changes (user navigates day/site).
   // Also close the notes modal so it doesn't hover with stale state.
@@ -478,9 +544,14 @@ function OpsRow({ table, site, plannedYards, plannedSource, plannedDetails, op, 
     <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '140px minmax(140px, 1fr) 80px 80px 130px 130px 100px 80px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{table.label || table.code}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>
+          {table.label || table.code}
+          {isSecondShift && <span style={{ color: C.amber, fontWeight: 600 }}> · 2nd</span>}
+        </div>
         <div style={{ fontSize: 10, color: C.inkLight }}>
-          {site === 'passaic' ? "day's target" : `${table.capacity} yd/day cap`}
+          {isSecondShift ? '2nd shift (3p–11p)'
+            : site === 'passaic' ? "1st shift · day's target"
+            : `${table.capacity} yd/day cap`}
         </div>
       </div>
 
@@ -783,10 +854,23 @@ function SummaryView({ weekStart, setSelectedDate }) {
 // stores assignments with day_of_week (this is reading actual scheduled
 // data, not deriving). Returns null for cells with no plan; null contributes
 // nothing to totals and renders as "—" in the grid.
-function plannedForCell(site, tableCode, d, ops, assignments) {
-  const op = ops.find(r => r.table_code === tableCode && r.day_of_week === d)
-  if (op?.planned_yards != null) return Number(op.planned_yards)
-  if (site === 'bny') {
+//
+// Shift filter (optional, post Migration B1):
+//   - shift === null: sums planned across BOTH shifts (totals views).
+//   - shift === '1st' / '2nd': isolates that shift (per-shift grid rows).
+//   BNY is 1st-shift-only by design; passing shift='2nd' for BNY returns null.
+function plannedForCell(site, tableCode, d, ops, assignments, shift = null) {
+  const matching = ops.filter(r =>
+    r.table_code === tableCode &&
+    r.day_of_week === d &&
+    (shift == null ? true : (r.shift || '1st') === shift)
+  )
+  const hasExplicit = matching.some(r => r.planned_yards != null)
+  if (hasExplicit) {
+    return matching.reduce((s, r) => r.planned_yards != null ? s + Number(r.planned_yards) : s, 0)
+  }
+  if (site === 'bny' && shift !== '2nd') {
+    // BNY: derive from sched_assignments (1st-shift only by convention)
     const daily = assignments
       .filter(a => a.table_code === tableCode && a.day_of_week === d)
       .reduce((s, a) => s + Number(a.planned_yards || 0), 0)
@@ -795,12 +879,16 @@ function plannedForCell(site, tableCode, d, ops, assignments) {
   return null
 }
 
-// Site totals card: planned, actual, variance, waste for selected week
+// Site totals card: planned, actual, variance, waste for selected week.
+// Iterates the full Sun-Sat week for both sites (post Phase B). Sums across
+// shifts implicitly — actuals from a 2nd-shift Passaic row count toward the
+// site total just like 1st shift does.
 function SiteTotals({ label, color, ops, assignments, tables, site }) {
-  const days = site === 'bny' ? [0,1,2,3,4,5,6] : [1,2,3,4,5]
+  const days = DAY_NAMES_SHORT  // ['Sun', 'Mon', ..., 'Sat']
 
   // Planned: sum across every (table, day) cell using the shared helper.
-  // Guarantees this card and the day-by-day grid agree.
+  // Helper sums shifts when no shift filter is passed, so 2nd-shift plan
+  // contributes here automatically.
   let totalPlanned = 0
   for (const t of tables) {
     for (const d of days) {
@@ -870,17 +958,24 @@ function WeeklyNotesPanel({ passaicOps, bnyOps }) {
     .filter(r => r.notes && r.notes.trim().length > 0)
     .map(r => ({
       site,
-      day: r.day_of_week ?? 99,
+      day: r.day_of_week,
+      shift: r.shift || '1st',
       table: r.table_code,
       operators: [r.operator_1, r.operator_2].filter(Boolean).join(' & ') || 'unattributed',
       text: r.notes.trim(),
     }))
+  // day_of_week is TEXT post Migration B2; use DAY_INDEX for chronological order.
+  // Unknown labels sort to the end.
   const all = [...collect(passaicOps, 'passaic'), ...collect(bnyOps, 'bny')]
-    .sort((a, b) => a.day - b.day || a.table.localeCompare(b.table))
+    .sort((a, b) => {
+      const ia = DAY_INDEX[a.day] ?? 99
+      const ib = DAY_INDEX[b.day] ?? 99
+      if (ia !== ib) return ia - ib
+      return a.table.localeCompare(b.table)
+    })
 
   if (all.length === 0) return null
 
-  const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
   const siteColor = { passaic: C.navy, bny: C.amber }
   const siteShort = { passaic: 'Passaic', bny: 'BNY' }
 
@@ -896,9 +991,12 @@ function WeeklyNotesPanel({ passaicOps, bnyOps }) {
         <div key={i} style={{ padding: '10px 14px', borderTop: i > 0 ? `1px solid ${C.border}` : 'none' }}>
           <div style={{ fontSize: 10, color: C.inkLight, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ display: 'inline-block', padding: '1px 6px', background: siteColor[n.site], color: '#fff', borderRadius: 3, fontSize: 9, fontWeight: 700, letterSpacing: '0.05em' }}>{siteShort[n.site]}</span>
-            <span style={{ fontWeight: 600, color: C.inkMid }}>{dayLabels[n.day] || '—'}</span>
+            <span style={{ fontWeight: 600, color: C.inkMid }}>{n.day || '—'}</span>
             <span>·</span>
             <span style={{ fontWeight: 600, color: C.ink }}>{n.table}</span>
+            {n.shift === '2nd' && (
+              <span style={{ fontSize: 9, color: C.amber, fontWeight: 700 }}>· 2nd shift</span>
+            )}
             <span>·</span>
             <span>{n.operators}</span>
           </div>
@@ -909,17 +1007,50 @@ function WeeklyNotesPanel({ passaicOps, bnyOps }) {
   )
 }
 
-// Day-by-day grid: rows = tables/machines, columns = Mon-Fri + Week total
+// Day-by-day grid: rows = tables/machines, columns = Sun-Sat + Week total.
+// Both sites now render the full 7-day week (post Phase B).
+//
+// Passaic per-shift split: a hand-screen table that has any 2nd-shift data
+// anywhere in the week renders TWO rows — "FAB-3" (1st shift) and "FAB-3 · 2nd"
+// (2nd shift). Tables that only run 1st shift this week show only the 1st row,
+// keeping the grid quiet when 2nd shift isn't in use. BNY is always one row
+// per machine — BNY doesn't run 2nd shift.
 function DayGrid({ label, tables, ops, assignments, site }) {
-  const days = site === 'bny' ? [0,1,2,3,4,5,6] : [1,2,3,4,5]
-  const dayLabels = site === 'bny' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['Mon','Tue','Wed','Thu','Fri']
+  const days = DAY_NAMES_SHORT  // ['Sun', 'Mon', ..., 'Sat']
   const colCount = days.length
 
-  // Plan + actual for a (table, day). Plan computation uses the shared
+  // Build the row list. For Passaic, expand to (table, shift) rows where
+  // 2nd shift is included only if there's any plan or actual data this week.
+  const rows = []
+  for (const t of tables) {
+    const isPassaic = site === 'passaic'
+    if (!isPassaic) {
+      rows.push({ table: t, shift: '1st', label: t.label || t.code })
+      continue
+    }
+    // 1st shift row always renders for Passaic.
+    rows.push({ table: t, shift: '1st', label: t.label || t.code })
+    // 2nd shift row only if any cell has plan or actual data this week.
+    let any2nd = false
+    for (const d of days) {
+      const op = ops.find(r =>
+        r.table_code === t.code && r.day_of_week === d && (r.shift || '1st') === '2nd'
+      )
+      const plan = plannedForCell(site, t.code, d, ops, assignments, '2nd')
+      if (op?.actual_yards != null || plan != null) { any2nd = true; break }
+    }
+    if (any2nd) {
+      rows.push({ table: t, shift: '2nd', label: `${t.label || t.code} · 2nd` })
+    }
+  }
+
+  // Plan + actual for a (table, day, shift). Plan computation uses the shared
   // plannedForCell helper so this grid agrees with the SiteTotals card above.
-  function cellData(tableCode, d) {
-    const op = ops.find(r => r.table_code === tableCode && r.day_of_week === d)
-    const plan = plannedForCell(site, tableCode, d, ops, assignments)
+  function cellData(tableCode, d, shift) {
+    const op = ops.find(r =>
+      r.table_code === tableCode && r.day_of_week === d && (r.shift || '1st') === shift
+    )
+    const plan = plannedForCell(site, tableCode, d, ops, assignments, shift)
     const actual = op?.actual_yards
     return { plan, actual }
   }
@@ -932,16 +1063,16 @@ function DayGrid({ label, tables, ops, assignments, site }) {
       {/* Header */}
       <div style={{ display: 'grid', gridTemplateColumns: `130px repeat(${colCount}, 1fr) 90px`, gap: 1, background: C.border, padding: 1 }}>
         <div style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Table</div>
-        {dayLabels.map(d => (
+        {days.map(d => (
           <div key={d} style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', textAlign: 'center', letterSpacing: '0.06em' }}>{d}</div>
         ))}
         <div style={{ background: C.parchment, padding: '6px 8px', fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', textAlign: 'right', letterSpacing: '0.06em' }}>Week</div>
       </div>
       {/* Rows */}
-      {tables.map((t, i) => {
+      {rows.map((r, i) => {
         let weekPlan = 0, weekActual = 0
         const cells = days.map(d => {
-          const c = cellData(t.code, d)
+          const c = cellData(r.table.code, d, r.shift)
           if (c.plan != null) weekPlan += c.plan
           if (c.actual != null) weekActual += c.actual
           return c
@@ -950,9 +1081,13 @@ function DayGrid({ label, tables, ops, assignments, site }) {
         const weekColor = weekDelta == null ? C.inkLight
           : Math.abs(weekDelta) / weekPlan < 0.05 ? C.sage
           : Math.abs(weekDelta) / weekPlan < 0.15 ? C.gold : C.rose
+        const isSecond = r.shift === '2nd'
         return (
-          <div key={t.code} style={{ display: 'grid', gridTemplateColumns: `130px repeat(${colCount}, 1fr) 90px`, gap: 1, background: C.border, padding: '0 1px', borderTop: i === 0 ? 'none' : undefined }}>
-            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: C.ink }}>{t.label || t.code}</div>
+          <div key={`${r.table.code}|${r.shift}`} style={{ display: 'grid', gridTemplateColumns: `130px repeat(${colCount}, 1fr) 90px`, gap: 1, background: C.border, padding: '0 1px', borderTop: i === 0 ? 'none' : undefined }}>
+            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: C.ink }}>
+              {r.table.label || r.table.code}
+              {isSecond && <span style={{ color: C.amber, fontWeight: 700 }}> · 2nd</span>}
+            </div>
             {cells.map((c, idx) => {
               const delta = (c.plan != null && c.actual != null) ? c.actual - c.plan : null
               const color = delta == null ? C.inkLight

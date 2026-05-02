@@ -474,6 +474,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           onApplyAssignments={async (proposals) => {
             // Seed per-cell running totals with what's already on the board
             // so we don't push existing cells over capacity either.
+            // Existing assignments have TEXT day_of_week (e.g. 'Mon') after
+            // Migration B2; Claude's proposals come in as INT 0-6 per the
+            // prompt contract. Convert each proposal's day to text once at
+            // the boundary so cell keys match consistently.
             const cellTotals = {}
             for (const a of enrichedAssignments) {
               const key = `${a.table_code}|${a.day_of_week}`
@@ -483,12 +487,17 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             const accepted = []
             const skipped = []
             for (const p of proposals) {
-              const key = `${p.machine}|${p.day_of_week}`
+              const dayText = DAY_LABELS[p.day_of_week]  // INT from Claude → TEXT
+              const key = `${p.machine}|${dayText}`
               const loc = brooklynMachineNames.has(p.machine)
                 ? 'brooklyn'
                 : passaicMachineNames.has(p.machine) ? 'passaic' : null
               if (!loc) {
                 skipped.push({ p, reason: `unknown machine "${p.machine}"` })
+                continue
+              }
+              if (!dayText) {
+                skipped.push({ p, reason: `invalid day_of_week ${p.day_of_week}` })
                 continue
               }
               const cap = capacityFor(p.machine, loc)
@@ -497,11 +506,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               if (current + yd > cap) {
                 skipped.push({
                   p,
-                  reason: `${p.machine} ${DAY_LABELS[p.day_of_week] || `d${p.day_of_week}`} would be ${current + yd}/${cap}`,
+                  reason: `${p.machine} ${dayText} would be ${current + yd}/${cap}`,
                 })
                 continue
               }
-              accepted.push(p)
+              accepted.push({ ...p, _dayText: dayText })
               cellTotals[key] = current + yd
             }
 
@@ -513,7 +522,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                 product_type: p.product_type || null,
                 table_code: p.machine,
                 week_start: isoDate(weekStart),
-                day_of_week: p.day_of_week,
+                day_of_week: p._dayText,  // TEXT for the DB column
                 planned_yards: p.planned_yards,
                 planned_cy: null,
                 operator: null,
@@ -714,8 +723,10 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
 }
 
 function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
+  // Iterate text day labels — day_of_week is TEXT in the DB post Migration B2,
+  // so cell keys like `Glow|Mon` (vs the old `Glow|1`).
   let weekTotal = 0
-  for (let d = 0; d < NUM_DAYS; d++) {
+  for (const d of DAY_LABELS) {
     const cell = assignmentsByMachineDay[`${machine.name}|${d}`] || []
     weekTotal += cell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   }
@@ -731,7 +742,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
         <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMid }}>{machine.capacity}</div>
         <div style={{ fontSize: 9, color: C.inkLight }}>yd/day</div>
       </div>
-      {DAY_LABELS.map((_, d) => (
+      {DAY_LABELS.map(d => (
         <MachineDayCell
           key={d}
           machine={machine}
@@ -852,7 +863,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
       onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>
-          Assign to {machine} · {DAY_LABELS[dayOfWeek]}
+          Assign to {machine} · {dayOfWeek}
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
