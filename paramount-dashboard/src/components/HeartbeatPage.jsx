@@ -265,12 +265,9 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   }
 
   // Plant Color-Yards — Passaic-only (hand-screen labor unit). BNY digital
-  // prints all colors in one pass, so it contributes 0. Budget is the sum
-  // of category color-yards budgets from canonical budgets.js.
-  const plantCYBudget =
-    (weeklyBudgetColorYards('fabric') ?? 0) +
-    (weeklyBudgetColorYards('grass')  ?? 0) +
-    (weeklyBudgetColorYards('paper')  ?? 0)
+  // prints all colors in one pass, so it contributes 0. Budget is the
+  // canonical Passaic weekly total from budgets.js (sum of category budgets).
+  const plantCYBudget = weeklyBudgetColorYards() ?? 0
   const plantCY = {
     budget:    plantCYBudget,
     scheduled: njAgg.plannedColorYards,
