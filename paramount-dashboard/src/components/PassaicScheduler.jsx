@@ -631,37 +631,37 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 // They appear as soon as Wendy plans weekend work in CrewModal.
 function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
-  // Keyed by day_of_week (TEXT 'Sun'..'Sat' per Migration B1). When 1st and
-  // 2nd shifts both have rows for the same day, prefer the row that has
-  // actuals; otherwise prefer 1st shift. Card strip is summary-level —
-  // CrewModal exposes the per-shift detail.
-  const byDay = {}
+  // Index by (day, shift). Per Peter 5/2/2026, Passaic 1st and 2nd are
+  // independent crews — strip needs to surface both. Earlier "winner-takes-
+  // all" approach hid 2nd shift work entirely on tables where 1st had data.
+  const byCell = {}
   for (const r of forTable) {
-    const existing = byDay[r.day_of_week]
-    if (!existing) {
-      byDay[r.day_of_week] = r
-    } else if (Number(r.actual_yards) > 0 && !(Number(existing.actual_yards) > 0)) {
-      byDay[r.day_of_week] = r
-    } else if ((r.shift || '1st') === '1st' && existing.shift === '2nd') {
-      byDay[r.day_of_week] = r
-    }
+    const sh = r.shift === '2nd' ? '2nd' : '1st'
+    byCell[`${r.day_of_week}|${sh}`] = r
   }
-  // Show Mon-Fri always; show Sun/Sat only when they have data this week.
-  // Keeps cards compact in the common case (no weekend work) while
-  // surfacing weekend work the moment Wendy plans any.
-  const hasWeekend = (d) => {
-    const r = byDay[d]
+
+  const hasShiftData = (d, sh) => {
+    const r = byCell[`${d}|${sh}`]
     return r && (r.operator_1 || r.operator_2 || (r.planned_yards != null && r.planned_yards !== 0) || r.actual_yards != null)
   }
-  const days = [
-    ...(hasWeekend('Sun') ? ['Sun'] : []),
-    'Mon', 'Tue', 'Wed', 'Thu', 'Fri',
-    ...(hasWeekend('Sat') ? ['Sat'] : []),
-  ]
-  // Plan reads only from sched_daily_ops. No auto-derived fallback — assigning
-  // a PO no longer phantom-splits the yards across the week. Wendy plans
-  // explicitly via the Daily Plan modal (Even split button is opt-in there).
-  // 0 and null both render as "—" on the dashboard — operationally identical.
+  // For each day, decide which shift rows to render. 1st shift always
+  // renders Mon-Fri; weekend (Sun/Sat) only when either shift has data;
+  // 2nd shift renders any day that has data.
+  const dayHasAny = (d) => hasShiftData(d, '1st') || hasShiftData(d, '2nd')
+  const cells = []
+  for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
+    const isWeekend = d === 'Sun' || d === 'Sat'
+    if (isWeekend && !dayHasAny(d)) continue
+
+    // 1st shift always renders for Mon-Fri (and weekends if any day data)
+    cells.push({ day: d, shift: '1st' })
+    // 2nd shift only renders when it has data — keeps the strip compact
+    // on tables where 2nd shift isn't running.
+    if (hasShiftData(d, '2nd')) {
+      cells.push({ day: d, shift: '2nd' })
+    }
+  }
+
   const shortName = (n) => {
     if (!n) return null
     const parts = n.trim().split(/\s+/)
@@ -676,11 +676,14 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
     if (pct > -0.15) return C.gold
     return C.rose
   }
-  // Column proportions: now that cards are 50% wider (max 4 per row instead
-  // of 6), give CREW the column space it needs for "Romer O. / Daniel R."
-  // without truncation. Plan/Actual/Δ widen modestly; CREW takes the
-  // remaining flex.
-  const cols = '32px 44px 44px 38px 1fr'
+  // Column proportions: Day column slightly wider to accommodate the shift
+  // pill. CREW gets the remaining flex (responsive width since cards are
+  // now auto-fit).
+  const cols = '54px 44px 44px 38px 1fr'
+
+  // Track previous day so we can render a divider between days
+  let prevDay = null
+
   return (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
       <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, fontSize: 8, color: C.inkLight, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 3, paddingBottom: 3, borderBottom: `1px dashed ${C.border}` }}>
@@ -690,20 +693,49 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
         <span style={{ textAlign: 'right' }}>Δ</span>
         <span>Crew</span>
       </div>
-      {days.map((d) => {
-        const row = byDay[d]
+      {cells.map(({ day, shift }, idx) => {
+        const row = byCell[`${day}|${shift}`]
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
         const crew = [op1, op2].filter(Boolean).join(' / ')
-        // Treat 0 and null identically — "no plan set" for display purposes.
         const rawPlan = row?.planned_yards
         const plan = (rawPlan != null && rawPlan !== 0) ? rawPlan : null
         const actual = row?.actual_yards
         const delta = (plan != null && actual != null) ? actual - plan : null
         const deltaColor = varianceColor(delta, plan)
+
+        // Visual separator between days — top-of-day rows get a faint line
+        const isNewDay = day !== prevDay
+        prevDay = day
+        const isSecondShift = shift === '2nd'
+
         return (
-          <div key={d} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
-            <span style={{ color: C.inkLight, fontWeight: 600 }}>{d}</span>
+          <div key={`${day}|${shift}`} style={{
+            display: 'grid',
+            gridTemplateColumns: cols,
+            gap: 6,
+            fontSize: 10,
+            lineHeight: 1.4,
+            marginBottom: 1,
+            paddingTop: isNewDay && idx > 0 ? 2 : 0,
+            borderTop: isNewDay && idx > 0 ? `1px dotted ${C.border}` : 'none',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: isNewDay ? C.inkLight : 'transparent', fontWeight: 600, minWidth: 26 }}>
+                {isNewDay ? day : ''}
+              </span>
+              <span style={{
+                fontSize: 7,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                color: isSecondShift ? C.gold : C.inkLight,
+                background: isSecondShift ? '#FFF8EE' : 'transparent',
+                padding: isSecondShift ? '1px 4px' : '0',
+                borderRadius: 2,
+              }}>
+                {shift}
+              </span>
+            </span>
             <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
               {plan != null ? fmt(plan) : '—'}
             </span>
