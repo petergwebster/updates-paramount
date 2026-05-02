@@ -312,6 +312,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         week_start: isoDate(weekStart),
         table_code: machine,
         day_of_week: dayOfWeek,
+        shift: '1st',  // BNY runs 1st only by design (digital, single shift)
         operator_1: operator || null,
       })
     } catch (e) {
