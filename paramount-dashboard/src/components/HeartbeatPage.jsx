@@ -1155,12 +1155,25 @@ function buildTopJobs(assignments, wipRows) {
  * Build BNY machine cards — all 19 machines, planned + actual yards each.
  */
 function buildBnyMachines(assignments, dailyOps) {
+  // Case/whitespace-tolerant matcher. Scheduler writes table_code = machine.name
+  // (e.g. 'Glow', 'EMBER', 'Dakota Ka'). The constant here uses the lowercase
+  // snake_case form from the Section 12 contract ('glow', 'ember', 'dakota_ka').
+  // Both describe the same machine — normalize both sides so the comparison
+  // succeeds. Without this, every per-machine card showed "0 / target 0"
+  // even when the machine had assignments.
+  //
+  // Long-term debt: BNYScheduler should normalize before writing so the DB
+  // values match the contract. Until then, this read-side normalization is
+  // the safety net.
+  const norm = (s) => (s || '').toLowerCase().replace(/[\s_-]/g, '')
+
   return BNY_MACHINES.map(m => {
+    const key = norm(m.table_code)
     const plan = assignments
-      .filter(a => a.site === 'bny' && a.table_code === m.table_code)
+      .filter(a => a.site === 'bny' && norm(a.table_code) === key)
       .reduce((s, a) => s + num(a.planned_yards), 0)
     const actual = dailyOps
-      .filter(o => o.site === 'bny' && o.table_code === m.table_code)
+      .filter(o => o.site === 'bny' && norm(o.table_code) === key)
       .reduce((s, o) => s + num(o.actual_yards), 0)
     return {
       name: m.name,
