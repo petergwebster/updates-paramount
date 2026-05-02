@@ -4,31 +4,52 @@ import { supabase } from '../supabase'
 import { getFiscalLabel, getFiscalInfo } from '../fiscalCalendar'
 import CommentButton from './CommentButton'
 import styles from './ProductionDashboard.module.css'
+import { PASSAIC_BUDGET, BNY_BUDGET, PROCUREMENT_BUDGET } from '../lib/budgets'
 
+// ─── Targets sourced from src/lib/budgets.js (canonical FY2026 plan) ──────
+// The shapes below are kept identical to the prior local constants so the
+// rest of this file (calc functions, JSX renders) is untouched. budgets.js
+// is the single source of truth — to change a value, edit there and the
+// change flows everywhere (Recap, Live Ops, Heartbeat, Scheduler).
 const NJ_TARGETS = {
-  fabric: { yards: 810,  colorYards: 4522,  invoiceYds: 772,  invoiceRev: 14112.75 },
-  grass:  { yards: 3615, colorYards: 7570,  invoiceYds: 3538, invoiceRev: 36646 },
-  paper:  { yards: 4185, colorYards: 13405, invoiceYds: 3516, invoiceRev: 26330.25 },
-  wasteTarget: 10,
-  weeklyInvoiceYds: 7826,
-  weeklyRevenue: 128951.25,
+  fabric: PASSAIC_BUDGET.categories.fabric,
+  grass:  PASSAIC_BUDGET.categories.grass,
+  paper:  PASSAIC_BUDGET.categories.paper,
+  wasteTarget: PASSAIC_BUDGET.wasteCeilingPct,
+  weeklyInvoiceYds: PASSAIC_BUDGET.weekly.invoiceYds,
+  weeklyRevenue:    PASSAIC_BUDGET.weekly.invoiceRev,
 }
 const NJ_TOTAL_TARGET = NJ_TARGETS.fabric.yards + NJ_TARGETS.grass.yards + NJ_TARGETS.paper.yards
 
 const BNY_TARGETS = {
-  replen: 7886, mto: 1280, hos: 1532, memo: 211, contract: 1091, total: 12000,
-  incomeReplen: 90675.83, incomeMto: 14398.5, incomeHos: 10727.25, incomeMemo: 4010.5, incomeContract: 13087.5,
-  totalIncomeInvoiced: 132899.58,
+  // Bucket yards — flatten the bucket structure to the legacy keys this file
+  // consumes. "contract" is the legacy name for the 3P bucket.
+  replen:   BNY_BUDGET.buckets['Replen']?.yards   ?? 0,
+  // Legacy single MTO (combined Custom + MTO per Wendy's 4/2026 split) — sum
+  // back to the legacy 1,280 figure for ProductionDashboard's purposes.
+  mto:      (BNY_BUDGET.buckets['Custom']?.yards ?? 0) + (BNY_BUDGET.buckets['MTO']?.yards ?? 0),
+  hos:      BNY_BUDGET.buckets['HOS']?.yards      ?? 0,
+  memo:     BNY_BUDGET.buckets['Memo']?.yards     ?? 0,
+  contract: BNY_BUDGET.buckets['3P']?.yards       ?? 0,
+  total:    BNY_BUDGET.weekly.yards,
+  incomeReplen:   BNY_BUDGET.buckets['Replen']?.revenue   ?? 0,
+  // Custom + MTO revenue stays combined (budgets.js intentionally splits the
+  // yards budget but keeps revenue as a single legacy figure of $14,398.50).
+  incomeMto:      14398.5,
+  incomeHos:      BNY_BUDGET.buckets['HOS']?.revenue      ?? 0,
+  incomeMemo:     BNY_BUDGET.buckets['Memo']?.revenue     ?? 0,
+  incomeContract: BNY_BUDGET.buckets['3P']?.revenue       ?? 0,
+  totalIncomeInvoiced: BNY_BUDGET.weekly.revenue,
 }
 
-// Weekly revenue and yard targets
+// Weekly revenue and yard targets (Schumacher vs 3rd Party split + totals)
 const WEEKLY_TARGETS = {
-  schRevenue: 106645,
-  schYards: 5886,
-  tpRevenue: 31277,
-  tpYards: 2564,
-  totalYards: 8610,
-  totalColorYards: 25497,
+  schRevenue: PASSAIC_BUDGET.schumacher.revenue,
+  schYards:   PASSAIC_BUDGET.schumacher.yards,
+  tpRevenue:  PASSAIC_BUDGET.thirdParty.revenue,
+  tpYards:    PASSAIC_BUDGET.thirdParty.yards,
+  totalYards: PASSAIC_BUDGET.weekly.yards,
+  totalColorYards: PASSAIC_BUDGET.weekly.colorYards,
 }
 
 // BNY Machine definitions

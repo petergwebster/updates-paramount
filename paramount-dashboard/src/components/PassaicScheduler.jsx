@@ -2,13 +2,25 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
+import { weeklyBudgetYards, weeklyBudgetColorYards, PASSAIC_BUDGET } from '../lib/budgets'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
+// Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan
+// matching what Recap and FSCO leadership see). The internal key for the
+// printed-paper-substrate category is 'paper' (matches finance / GL); the
+// user-visible label is 'Wallpaper'. Translate at the boundary via this map.
+const CATEGORY_TO_BUDGET_KEY = { grass: 'grass', fabric: 'fabric', wallpaper: 'paper' }
+function targetYards(cat)      { return weeklyBudgetYards('passaic', CATEGORY_TO_BUDGET_KEY[cat]) ?? 0 }
+function targetColorYards(cat) { return weeklyBudgetColorYards(CATEGORY_TO_BUDGET_KEY[cat]) ?? 0 }
+
+// Compatibility shim — keep PASSAIC_TARGETS shape for sites in this file that
+// still read it directly (table capacity_cy calc, etc). Pulls live values
+// from budgets.js so changes to finance plan flow through automatically.
 const PASSAIC_TARGETS = {
-  total:     { yards: 8500,  cy: 33797, revenue: 116450 },
-  grass:     { yards: 3785,  cy: 11355, tables: 2 },
-  fabric:    { yards: 834,   cy: 3337,  tables: 9 },
-  wallpaper: { yards: 3830,  cy: 15319, tables: 6 },
+  total:     { yards: PASSAIC_BUDGET.weekly.yards, cy: PASSAIC_BUDGET.weekly.colorYards, revenue: PASSAIC_BUDGET.weekly.invoiceRev },
+  grass:     { yards: targetYards('grass'),     cy: targetColorYards('grass'),     tables: 2 },
+  fabric:    { yards: targetYards('fabric'),    cy: targetColorYards('fabric'),    tables: 9 },
+  wallpaper: { yards: targetYards('wallpaper'), cy: targetColorYards('wallpaper'), tables: 6 },
 }
 
 const MIX_TARGET_SCH = 0.60
@@ -538,21 +550,14 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
-  // Auto-fill cards at GC width so Fabric/WP wrap to multiple rows instead
-  // of squeezing 6+ cards across one row (which truncated the crew strip
-  // to ~50px and clipped operator names). Every card now has room for both
-  // operators in "Yensi H. / Edward I." form. Compact mode keeps a denser
-  // minimum for callers that want it, but the default Scheduler path uses
-  // 360px = matches the previous GC width on typical 1000-1100px schedule
-  // areas (= ~2 cards across), Fabric becomes 5 rows of 2, WP 3 rows of 2.
-  const minCardWidth = compact ? '280px' : '360px'
+  const cols = compact ? Math.min(tables.length, 3) : Math.min(tables.length, 6)
 
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMid, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
         {label} <span style={{ color: C.inkLight, fontWeight: 400 }}>— {tables.length} table{tables.length !== 1 ? 's' : ''}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}, 1fr))`, gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
         {tables.map(t => {
           const asgs = byTable[t.code] || []
           const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
@@ -606,31 +611,15 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 }
 
 // Full daily plan/actual grid. Sits at the bottom of each Passaic table card
-// and surfaces 7-day Sun-Sat performance at a glance — plan yards, actual yards,
+// and surfaces Mon-Fri performance at a glance — plan yards, actual yards,
 // variance, and crew. As Sami enters actuals in Live Ops, they flow up here
 // so the scheduler card doubles as a monitoring view for Wendy's 3pm check.
-//
-// Shift handling: the strip aggregates BOTH shifts per day. Tables that run
-// 2nd shift will show their combined plan/actual on the day row. Per-shift
-// detail lives in the CrewModal (PLAN button) and Live Ops daily entry.
 function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
-  // Group by day, aggregate across both shifts.
-  // day_of_week is TEXT ('Sun'..'Sat') post Migration B2.
   const byDay = {}
-  for (const r of forTable) {
-    const d = r.day_of_week
-    if (!byDay[d]) byDay[d] = { planned_yards: null, actual_yards: null, operator_1: null, operator_2: null, _rows: [] }
-    byDay[d]._rows.push(r)
-    // Sum planned/actual across shifts; first non-null wins for operators
-    // (operators usually only set on 1st shift; 2nd shift on the few tables
-    // running it will surface in the CrewModal where shift detail matters).
-    if (r.planned_yards != null) byDay[d].planned_yards = (byDay[d].planned_yards || 0) + Number(r.planned_yards)
-    if (r.actual_yards  != null) byDay[d].actual_yards  = (byDay[d].actual_yards  || 0) + Number(r.actual_yards)
-    if (!byDay[d].operator_1 && r.operator_1) byDay[d].operator_1 = r.operator_1
-    if (!byDay[d].operator_2 && r.operator_2) byDay[d].operator_2 = r.operator_2
-  }
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  for (const r of forTable) byDay[r.day_of_week] = r
+  const days = [1, 2, 3, 4, 5]
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
   // Plan reads only from sched_daily_ops. No auto-derived fallback — assigning
   // a PO no longer phantom-splits the yards across the week. Wendy plans
   // explicitly via the Daily Plan modal (Even split button is opt-in there).
@@ -658,7 +647,7 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
         <span style={{ textAlign: 'right' }}>Δ</span>
         <span>Crew</span>
       </div>
-      {days.map(d => {
+      {days.map((d, i) => {
         const row = byDay[d]
         const op1 = shortName(row?.operator_1)
         const op2 = shortName(row?.operator_2)
@@ -671,7 +660,7 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
         const deltaColor = varianceColor(delta, plan)
         return (
           <div key={d} style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
-            <span style={{ color: C.inkLight, fontWeight: 600 }}>{d}</span>
+            <span style={{ color: C.inkLight, fontWeight: 600 }}>{dayLabels[i]}</span>
             <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
               {plan != null ? fmt(plan) : '—'}
             </span>
@@ -766,19 +755,11 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CrewModal — assign 2 operators per day for a given Passaic table
-// 7-day Sun-Sat grid. 1st shift always shown. 2nd shift opt-in per day:
-// renders if any saved data exists, OR after the user clicks "+ add 2nd shift"
-// for that day. All 17 hand-screen tables support 2nd shift.
 // ═══════════════════════════════════════════════════════════════════════════
-const CREW_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
 function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
-  // Cells keyed by `${day}|${shift}`. Always seeded with 7 1st-shift cells.
-  // 2nd-shift cells appear only when (a) saved data exists for them, or
-  // (b) the user clicks "+ add 2nd shift" for a given day.
-  const [cells, setCells] = useState([])
+  const [rows, setRows] = useState([])  // one row per day_of_week 1..5 (Mon..Fri)
   const [loading, setLoading] = useState(true)
-  const [savingKey, setSavingKey] = useState(null)
+  const [savingDay, setSavingDay] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -786,144 +767,77 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
       setLoading(true)
       const data = await loadWeekDailyOps('passaic', weekStart)
       if (cancelled) return
-
-      // Index existing rows by (day, shift). Treat null shift as '1st' for
-      // backward compat with rows written before Migration B1's shift column.
-      const existing = {}
+      const existingByDay = {}
       for (const r of (data || [])) {
-        if (r.table_code !== tableCode) continue
-        const shift = r.shift || '1st'
-        existing[`${r.day_of_week}|${shift}`] = r
+        if (r.table_code === tableCode) existingByDay[r.day_of_week] = r
       }
-
-      const seeded = []
-      // Always seed all 7 1st-shift days
-      for (const d of CREW_DAYS) {
-        const r = existing[`${d}|1st`]
-        seeded.push({
-          day_of_week: d,
-          shift: '1st',
-          operator_1: r?.operator_1 || '',
-          operator_2: r?.operator_2 || '',
-          // Use || not ?? so a saved 0 (legacy artifact of the old workaround)
-          // loads as blank input, matching the "—" the dashboard shows for it.
-          planned_yards: r?.planned_yards || '',
-          _persisted: !!r,
-          _savedAt: null,
-        })
-      }
-      // Add any pre-existing 2nd-shift rows
-      for (const d of CREW_DAYS) {
-        const r = existing[`${d}|2nd`]
-        if (!r) continue
-        seeded.push({
-          day_of_week: d,
-          shift: '2nd',
-          operator_1: r.operator_1 || '',
-          operator_2: r.operator_2 || '',
-          planned_yards: r.planned_yards || '',
-          _persisted: true,
-          _savedAt: null,
-        })
-      }
-      setCells(seeded)
+      const seeded = [1, 2, 3, 4, 5].map(d => ({
+        day_of_week: d,
+        operator_1: existingByDay[d]?.operator_1 || '',
+        operator_2: existingByDay[d]?.operator_2 || '',
+        // Use || not ?? so a saved 0 (legacy artifact of the old workaround
+        // where Wendy typed 0 to clear phantom plans) loads as blank input,
+        // matching the "—" the dashboard now shows for it.
+        planned_yards: existingByDay[d]?.planned_yards || '',
+        _savedAt: null,
+      }))
+      setRows(seeded)
       setLoading(false)
     }
     load()
     return () => { cancelled = true }
   }, [tableCode, weekStart])
 
-  function cellKey(day, shift) { return `${day}|${shift}` }
-
-  function updateCell(day, shift, patch) {
-    setCells(prev => prev.map(c =>
-      c.day_of_week === day && c.shift === shift
-        ? { ...c, ...patch, _savedAt: null }
-        : c
-    ))
-  }
-
-  function addSecondShift(day) {
-    setCells(prev => {
-      // Don't double-add if it's already there
-      if (prev.some(c => c.day_of_week === day && c.shift === '2nd')) return prev
-      return [...prev, {
-        day_of_week: day, shift: '2nd',
-        operator_1: '', operator_2: '', planned_yards: '',
-        _persisted: false, _savedAt: null,
-      }]
-    })
-  }
-
-  function removeUnsavedSecondShift(day) {
-    setCells(prev => prev.filter(c =>
-      !(c.day_of_week === day && c.shift === '2nd' && !c._persisted)
-    ))
+  function updateRow(d, patch) {
+    setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, ...patch, _savedAt: null } : r))
   }
 
   function applyEvenSplit() {
     if (!weeklyYards || weeklyYards <= 0) return
-    const perDay = Math.round(weeklyYards / 7)
-    // Even split applies to 1st-shift only; 2nd shift is for overflow days
-    // and shouldn't be auto-populated.
-    setCells(prev => prev.map(c =>
-      c.shift === '1st' ? { ...c, planned_yards: perDay, _savedAt: null } : c
-    ))
+    const perDay = Math.round(weeklyYards / 5)
+    setRows(prev => prev.map(r => ({ ...r, planned_yards: perDay, _savedAt: null })))
   }
 
-  async function saveCell(day, shift) {
-    const cell = cells.find(c => c.day_of_week === day && c.shift === shift)
-    if (!cell) return
-    const key = cellKey(day, shift)
-    setSavingKey(key)
+  async function saveRow(d) {
+    const row = rows.find(r => r.day_of_week === d)
+    if (!row) return
+    setSavingDay(d)
     try {
       await upsertDailyOp({
         site: 'passaic',
         week_start: isoDate(weekStart),
         table_code: tableCode,
-        day_of_week: day,
-        shift,
-        operator_1: cell.operator_1 || null,
-        operator_2: cell.operator_2 || null,
-        planned_yards: cell.planned_yards === '' ? null : Number(cell.planned_yards),
+        day_of_week: d,
+        operator_1: row.operator_1 || null,
+        operator_2: row.operator_2 || null,
+        planned_yards: row.planned_yards === '' ? null : Number(row.planned_yards),
       })
-      setCells(prev => prev.map(c =>
-        c.day_of_week === day && c.shift === shift
-          ? { ...c, _persisted: true, _savedAt: Date.now() }
-          : c
-      ))
+      setRows(prev => prev.map(r => r.day_of_week === d ? { ...r, _savedAt: Date.now() } : r))
     } catch (e) {
       alert('Save failed: ' + (e.message || e))
     } finally {
-      setSavingKey(null)
+      setSavingDay(null)
     }
   }
 
   async function saveAll() {
-    for (const c of cells) {
-      if (c.operator_1 || c.operator_2 || c.planned_yards !== '') {
-        await saveCell(c.day_of_week, c.shift)
-      }
+    for (const r of rows) {
+      if (r.operator_1 || r.operator_2 || r.planned_yards !== '') await saveRow(r.day_of_week)
     }
   }
 
-  const totalPlanned = cells.reduce((s, c) => s + (Number(c.planned_yards) || 0), 0)
+  const totalPlanned = rows.reduce((s, r) => s + (Number(r.planned_yards) || 0), 0)
   const allocationDelta = weeklyYards != null ? totalPlanned - weeklyYards : null
-
-  // Render days in canonical order; for each day show 1st-shift cell + either
-  // a 2nd-shift cell or an "add 2nd shift" button.
-  const cellsByDayShift = {}
-  for (const c of cells) cellsByDayShift[cellKey(c.day_of_week, c.shift)] = c
 
   return (
     <div
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(760px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(720px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Daily Plan · {tableCode}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · 7-day Sun-Sat · 2nd shift available per day</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · set target yards and crew for each day</div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 22, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
         </div>
@@ -942,54 +856,35 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
               </div>
               <button onClick={applyEvenSplit} disabled={!weeklyYards}
                 style={{ padding: '6px 12px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: weeklyYards ? 'pointer' : 'not-allowed' }}>
-                Even split ({weeklyYards ? Math.round(weeklyYards/7) : 0}/day · 1st shift)
+                Even split ({weeklyYards ? Math.round(weeklyYards/5) : 0}/day)
               </button>
             </div>
           )}
 
           {loading && <div style={{ textAlign: 'center', padding: 40, color: C.inkLight, fontSize: 13 }}>Loading…</div>}
-
-          {!loading && CREW_DAYS.map(d => {
-            const first  = cellsByDayShift[cellKey(d, '1st')]
-            const second = cellsByDayShift[cellKey(d, '2nd')]
+          {!loading && rows.map(r => {
+            const dayLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][r.day_of_week]
+            const isSaving = savingDay === r.day_of_week
             return (
-              <div key={d} style={{ marginBottom: 14, paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 6 }}>{d}</div>
-                {/* 1st shift row */}
-                {first && (
-                  <CrewCellRow
-                    cell={first}
-                    shiftLabel="1st (6:30a–3p)"
-                    isSaving={savingKey === cellKey(d, '1st')}
-                    onUpdate={(patch) => updateCell(d, '1st', patch)}
-                    onSave={() => saveCell(d, '1st')}
-                    showRemove={false}
-                  />
-                )}
-                {/* 2nd shift row OR add button */}
-                {second ? (
-                  <CrewCellRow
-                    cell={second}
-                    shiftLabel="2nd (3p–11p)"
-                    isSaving={savingKey === cellKey(d, '2nd')}
-                    onUpdate={(patch) => updateCell(d, '2nd', patch)}
-                    onSave={() => saveCell(d, '2nd')}
-                    showRemove={!second._persisted}
-                    onRemove={() => removeUnsavedSecondShift(d)}
-                  />
-                ) : (
-                  <button
-                    onClick={() => addSecondShift(d)}
-                    style={{
-                      marginTop: 4, marginLeft: 70,
-                      padding: '4px 10px',
-                      fontSize: 10, fontWeight: 600, color: C.inkMid,
-                      background: 'transparent', border: `1px dashed ${C.border}`,
-                      borderRadius: 4, cursor: 'pointer', letterSpacing: '0.04em',
-                    }}>
-                    + add 2nd shift
-                  </button>
-                )}
+              <div key={r.day_of_week} style={{ display: 'grid', gridTemplateColumns: '60px 100px 1fr 1fr 90px', gap: 10, alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{dayLabel}</div>
+                <input type="number" value={r.planned_yards} onChange={e => updateRow(r.day_of_week, { planned_yards: e.target.value })}
+                  placeholder="yds"
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff', boxSizing: 'border-box' }} />
+                <select value={r.operator_1} onChange={e => updateRow(r.day_of_week, { operator_1: e.target.value })}
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  <option value="">— Operator 1 —</option>
+                  {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <select value={r.operator_2} onChange={e => updateRow(r.day_of_week, { operator_2: e.target.value })}
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  <option value="">— Operator 2 —</option>
+                  {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <button onClick={() => saveRow(r.day_of_week)} disabled={isSaving}
+                  style={{ padding: '7px 10px', background: isSaving ? C.warm : C.ink, color: isSaving ? C.inkLight : '#fff', border: 'none', borderRadius: 5, fontSize: 12, fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
+                  {isSaving ? '…' : r._savedAt ? '✓' : 'Save'}
+                </button>
               </div>
             )
           })}
@@ -1013,43 +908,6 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// One row in the CrewModal — yards input + 2 operator selects + Save button.
-// Used for both 1st and 2nd shift; shiftLabel distinguishes them visually.
-function CrewCellRow({ cell, shiftLabel, isSaving, onUpdate, onSave, showRemove, onRemove }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '90px 90px 1fr 1fr 70px 24px', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-      <div style={{ fontSize: 10, color: C.inkLight, fontWeight: 600, letterSpacing: '0.04em' }}>{shiftLabel}</div>
-      <input type="number" value={cell.planned_yards}
-        onChange={e => onUpdate({ planned_yards: e.target.value })}
-        placeholder="yds"
-        style={{ padding: '6px 9px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff', boxSizing: 'border-box' }} />
-      <select value={cell.operator_1}
-        onChange={e => onUpdate({ operator_1: e.target.value })}
-        style={{ padding: '6px 9px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
-        <option value="">— Operator 1 —</option>
-        {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
-      </select>
-      <select value={cell.operator_2}
-        onChange={e => onUpdate({ operator_2: e.target.value })}
-        style={{ padding: '6px 9px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
-        <option value="">— Operator 2 —</option>
-        {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
-      </select>
-      <button onClick={onSave} disabled={isSaving}
-        style={{ padding: '6px 9px', background: isSaving ? C.warm : C.ink, color: isSaving ? C.inkLight : '#fff', border: 'none', borderRadius: 5, fontSize: 11, fontWeight: 600, cursor: isSaving ? 'not-allowed' : 'pointer' }}>
-        {isSaving ? '…' : cell._savedAt ? '✓' : 'Save'}
-      </button>
-      {showRemove ? (
-        <button onClick={onRemove}
-          title="Remove this 2nd-shift row (unsaved)"
-          style={{ padding: 0, width: 22, height: 22, background: 'transparent', color: C.inkLight, border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 14, lineHeight: 1, cursor: 'pointer' }}>
-          ×
-        </button>
-      ) : <span />}
     </div>
   )
 }

@@ -2,25 +2,31 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
+import { BNY_BUDGET, weeklyBudgetYards } from '../lib/budgets'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
+// Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan).
+// Notable shifts from the prior local constants:
+//   - Total weekly yards 15,000 → 12,000 (matches finance plan)
+//   - Brooklyn/Passaic split was hardcoded 10,000/5,000 — these were always
+//     ad-hoc estimates, not budget. Plan only specifies total. We approximate
+//     here as a simple 60/40 split for the progress bars; the real
+//     production-vs-budget lives at the BNY total level.
+//   - Bucket targets reconciled to plan (Replen 7,886, MTO 1,280 split as
+//     Custom 430 + MTO 850 per Wendy 4/2026, HOS 1,532, Memo 211, 3P 1,091).
+const BNY_TOTAL = BNY_BUDGET.weekly.yards
 const BNY_TARGETS = {
-  brooklyn_yards: 10000,
-  passaic_yards:  5000,
-  total_yards:   15000,
+  brooklyn_yards: Math.round(BNY_TOTAL * 0.60),  // ~7,200 — display split only
+  passaic_yards:  Math.round(BNY_TOTAL * 0.40),  // ~4,800 — display split only
+  total_yards:    BNY_TOTAL,
   buckets: {
-    'Replen':    7885,
-    'NEW GOODS': null,
-    // Wendy 4/2026: "Custom" = Schumacher Custom Team orders (Sarah's lane on
-    // BNY 3600s/570s). "MTO" = regular Made-to-Order (prints on Passaic digital
-    // fleet). LIFT category is "MTO" for both; customer name disambiguates.
-    // Combined target was 1,280/wk under the legacy single MTO bucket — split
-    // proportionally below pending Wendy's confirmation of per-lane target.
-    'Custom':     430,   // ~34% of 1,280 (43 of 127 current MTO POs are Custom)
-    'MTO':        850,   // ~66% of 1,280 (84 of 127 current MTO POs are regular)
-    'HOS':        210,
-    'Memo':      1535,
-    '3P':        1090,
+    'Replen':    BNY_BUDGET.buckets['Replen']?.yards    ?? 0,
+    'NEW GOODS': BNY_BUDGET.buckets['NEW GOODS']?.yards ?? null,
+    'Custom':    BNY_BUDGET.buckets['Custom']?.yards    ?? 0,
+    'MTO':       BNY_BUDGET.buckets['MTO']?.yards       ?? 0,
+    'HOS':       BNY_BUDGET.buckets['HOS']?.yards       ?? 0,
+    'Memo':      BNY_BUDGET.buckets['Memo']?.yards      ?? 0,
+    '3P':        BNY_BUDGET.buckets['3P']?.yards        ?? 0,
   },
 }
 
@@ -474,10 +480,6 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           onApplyAssignments={async (proposals) => {
             // Seed per-cell running totals with what's already on the board
             // so we don't push existing cells over capacity either.
-            // Existing assignments have TEXT day_of_week (e.g. 'Mon') after
-            // Migration B2; Claude's proposals come in as INT 0-6 per the
-            // prompt contract. Convert each proposal's day to text once at
-            // the boundary so cell keys match consistently.
             const cellTotals = {}
             for (const a of enrichedAssignments) {
               const key = `${a.table_code}|${a.day_of_week}`
@@ -487,17 +489,12 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             const accepted = []
             const skipped = []
             for (const p of proposals) {
-              const dayText = DAY_LABELS[p.day_of_week]  // INT from Claude → TEXT
-              const key = `${p.machine}|${dayText}`
+              const key = `${p.machine}|${p.day_of_week}`
               const loc = brooklynMachineNames.has(p.machine)
                 ? 'brooklyn'
                 : passaicMachineNames.has(p.machine) ? 'passaic' : null
               if (!loc) {
                 skipped.push({ p, reason: `unknown machine "${p.machine}"` })
-                continue
-              }
-              if (!dayText) {
-                skipped.push({ p, reason: `invalid day_of_week ${p.day_of_week}` })
                 continue
               }
               const cap = capacityFor(p.machine, loc)
@@ -506,11 +503,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               if (current + yd > cap) {
                 skipped.push({
                   p,
-                  reason: `${p.machine} ${dayText} would be ${current + yd}/${cap}`,
+                  reason: `${p.machine} ${DAY_LABELS[p.day_of_week] || `d${p.day_of_week}`} would be ${current + yd}/${cap}`,
                 })
                 continue
               }
-              accepted.push({ ...p, _dayText: dayText })
+              accepted.push(p)
               cellTotals[key] = current + yd
             }
 
@@ -522,7 +519,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                 product_type: p.product_type || null,
                 table_code: p.machine,
                 week_start: isoDate(weekStart),
-                day_of_week: p._dayText,  // TEXT for the DB column
+                day_of_week: p.day_of_week,
                 planned_yards: p.planned_yards,
                 planned_cy: null,
                 operator: null,
@@ -723,10 +720,8 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
 }
 
 function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
-  // Iterate text day labels — day_of_week is TEXT in the DB post Migration B2,
-  // so cell keys like `Glow|Mon` (vs the old `Glow|1`).
   let weekTotal = 0
-  for (const d of DAY_LABELS) {
+  for (let d = 0; d < NUM_DAYS; d++) {
     const cell = assignmentsByMachineDay[`${machine.name}|${d}`] || []
     weekTotal += cell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   }
@@ -742,7 +737,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
         <div style={{ fontSize: 12, fontWeight: 600, color: C.inkMid }}>{machine.capacity}</div>
         <div style={{ fontSize: 9, color: C.inkLight }}>yd/day</div>
       </div>
-      {DAY_LABELS.map(d => (
+      {DAY_LABELS.map((_, d) => (
         <MachineDayCell
           key={d}
           machine={machine}
@@ -863,7 +858,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
       onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>
-          Assign to {machine} · {dayOfWeek}
+          Assign to {machine} · {DAY_LABELS[dayOfWeek]}
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
