@@ -550,7 +550,13 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
-  const cols = compact ? Math.min(tables.length, 3) : Math.min(tables.length, 6)
+  // Card grid: max 4 cards per row in normal mode (was 6 — too cramped to
+  // fit two-operator crew names in CrewStrip), max 2 in compact. Lets each
+  // card claim ~50% more horizontal real estate so "Romer Ortiz / Daniel
+  // Reyes" renders without truncation. Categories with more tables wrap to
+  // additional rows — vertical space is cheap, horizontal squeeze hurts
+  // readability.
+  const cols = compact ? Math.min(tables.length, 2) : Math.min(tables.length, 4)
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -611,9 +617,12 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 }
 
 // Full daily plan/actual grid. Sits at the bottom of each Passaic table card
-// and surfaces Mon-Fri performance at a glance — plan yards, actual yards,
+// and surfaces Sun-Sat performance at a glance — plan yards, actual yards,
 // variance, and crew. As Sami enters actuals in Live Ops, they flow up here
 // so the scheduler card doubles as a monitoring view for Wendy's 3pm check.
+//
+// Sun and Sat auto-hide when empty (most weeks), keeping the strip compact.
+// They appear as soon as Wendy plans weekend work in CrewModal.
 function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
   // Keyed by day_of_week (TEXT 'Sun'..'Sat' per Migration B1). When 1st and
@@ -631,9 +640,18 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
       byDay[r.day_of_week] = r
     }
   }
-  // Mon-Fri only on the card — weekend visibility lives in the CrewModal
-  // (the modal exposes all 7 days).
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+  // Show Mon-Fri always; show Sun/Sat only when they have data this week.
+  // Keeps cards compact in the common case (no weekend work) while
+  // surfacing weekend work the moment Wendy plans any.
+  const hasWeekend = (d) => {
+    const r = byDay[d]
+    return r && (r.operator_1 || r.operator_2 || (r.planned_yards != null && r.planned_yards !== 0) || r.actual_yards != null)
+  }
+  const days = [
+    ...(hasWeekend('Sun') ? ['Sun'] : []),
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri',
+    ...(hasWeekend('Sat') ? ['Sat'] : []),
+  ]
   // Plan reads only from sched_daily_ops. No auto-derived fallback — assigning
   // a PO no longer phantom-splits the yards across the week. Wendy plans
   // explicitly via the Daily Plan modal (Even split button is opt-in there).
@@ -652,9 +670,14 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
     if (pct > -0.15) return C.gold
     return C.rose
   }
+  // Column proportions: now that cards are 50% wider (max 4 per row instead
+  // of 6), give CREW the column space it needs for "Romer O. / Daniel R."
+  // without truncation. Plan/Actual/Δ widen modestly; CREW takes the
+  // remaining flex.
+  const cols = '32px 44px 44px 38px 1fr'
   return (
     <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 8, color: C.inkLight, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 3, paddingBottom: 3, borderBottom: `1px dashed ${C.border}` }}>
+      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, fontSize: 8, color: C.inkLight, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 3, paddingBottom: 3, borderBottom: `1px dashed ${C.border}` }}>
         <span>Day</span>
         <span style={{ textAlign: 'right' }}>Plan</span>
         <span style={{ textAlign: 'right' }}>Actual</span>
@@ -673,7 +696,7 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
         const delta = (plan != null && actual != null) ? actual - plan : null
         const deltaColor = varianceColor(delta, plan)
         return (
-          <div key={d} style={{ display: 'grid', gridTemplateColumns: '28px 38px 38px 32px 1fr', gap: 4, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
+          <div key={d} style={{ display: 'grid', gridTemplateColumns: cols, gap: 6, fontSize: 10, lineHeight: 1.4, marginBottom: 1 }}>
             <span style={{ color: C.inkLight, fontWeight: 600 }}>{d}</span>
             <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
               {plan != null ? fmt(plan) : '—'}
@@ -684,7 +707,7 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
             <span style={{ textAlign: 'right', color: deltaColor, fontWeight: 600 }}>
               {delta != null ? (delta > 0 ? `+${fmt(delta)}` : fmt(delta)) : '—'}
             </span>
-            <span style={{ color: crew ? C.inkMid : C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: crew ? 'normal' : 'italic', fontSize: 9 }}>
+            <span style={{ color: crew ? C.inkMid : C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: crew ? 'normal' : 'italic', fontSize: 10 }}>
               {crew || '—'}
             </span>
           </div>
