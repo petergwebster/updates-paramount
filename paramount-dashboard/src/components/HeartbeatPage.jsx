@@ -79,28 +79,34 @@ const PASSAIC_TABLES = [
 ]
 
 // ─── 19 BNY machines (canonical fleet) ─────────────────────────────────────
+// `location` is PHYSICAL location (where the machine sits + who runs it day to
+// day), NOT scheduling/budget. All 19 are scheduled by Chandler and budget to
+// BNY — but 12 of them sit at Passaic (the small digital fleet) while 7 are
+// physically at Brooklyn (the 3600s and 570s). The operator scorecard groups
+// people by physical location, not by who scheduled them.
 const BNY_MACHINES = [
-  // 3 HP 3600s (high-volume workhorses)
-  { name: 'Glow',      kind: '3600', table_code: 'glow'      },
-  { name: 'Sasha',     kind: '3600', table_code: 'sasha'     },
-  { name: 'Trish',     kind: '3600', table_code: 'trish'     },
-  // HP 570s and other
-  { name: 'Bianca',    kind: '570',  table_code: 'bianca'    },
-  { name: 'LASH',      kind: '570',  table_code: 'lash'      },
-  { name: 'Chyna',     kind: '570',  table_code: 'chyna'     },
-  { name: 'Rhonda',    kind: '570',  table_code: 'rhonda'    },
-  { name: 'Dakota Ka', kind: '570',  table_code: 'dakota_ka' },
-  { name: 'Dementia',  kind: '570',  table_code: 'dementia'  },
-  { name: 'Ember',     kind: '570',  table_code: 'ember'     },
-  { name: 'Ivy Nile',  kind: '570',  table_code: 'ivy_nile'  },
-  { name: 'Jacy Jayne',kind: '570',  table_code: 'jacy_jayne'},
-  { name: 'Apollo',    kind: '570',  table_code: 'apollo'    },
-  { name: 'Valhalla',  kind: '570',  table_code: 'valhalla'  },
-  { name: 'XIA',       kind: '570',  table_code: 'xia'       },
-  { name: 'Ruby',      kind: '570',  table_code: 'ruby'      },
-  { name: 'Nemesis',   kind: '570',  table_code: 'nemesis'   },
-  { name: 'Poseidon',  kind: '570',  table_code: 'poseidon'  },
-  { name: 'Zoey',      kind: '570',  table_code: 'zoey'      },
+  // 3 HP 3600s (Brooklyn — high-volume workhorses)
+  { name: 'Glow',      kind: '3600', location: 'brooklyn', table_code: 'glow'      },
+  { name: 'Sasha',     kind: '3600', location: 'brooklyn', table_code: 'sasha'     },
+  { name: 'Trish',     kind: '3600', location: 'brooklyn', table_code: 'trish'     },
+  // 4 HP 570s (Brooklyn)
+  { name: 'Bianca',    kind: '570',  location: 'brooklyn', table_code: 'bianca'    },
+  { name: 'LASH',      kind: '570',  location: 'brooklyn', table_code: 'lash'      },
+  { name: 'Chyna',     kind: '570',  location: 'brooklyn', table_code: 'chyna'     },
+  { name: 'Rhonda',    kind: '570',  location: 'brooklyn', table_code: 'rhonda'    },
+  // 12 small digitals — physically at Passaic, scheduled by Chandler, budget to BNY
+  { name: 'Dakota Ka', kind: '570',  location: 'passaic',  table_code: 'dakota_ka' },
+  { name: 'Dementia',  kind: '570',  location: 'passaic',  table_code: 'dementia'  },
+  { name: 'Ember',     kind: '570',  location: 'passaic',  table_code: 'ember'     },
+  { name: 'Ivy Nile',  kind: '570',  location: 'passaic',  table_code: 'ivy_nile'  },
+  { name: 'Jacy Jayne',kind: '570',  location: 'passaic',  table_code: 'jacy_jayne'},
+  { name: 'Apollo',    kind: '570',  location: 'passaic',  table_code: 'apollo'    },
+  { name: 'Valhalla',  kind: '570',  location: 'passaic',  table_code: 'valhalla'  },
+  { name: 'XIA',       kind: '570',  location: 'passaic',  table_code: 'xia'       },
+  { name: 'Ruby',      kind: '570',  location: 'passaic',  table_code: 'ruby'      },
+  { name: 'Nemesis',   kind: '570',  location: 'passaic',  table_code: 'nemesis'   },
+  { name: 'Poseidon',  kind: '570',  location: 'passaic',  table_code: 'poseidon'  },
+  { name: 'Zoey',      kind: '570',  location: 'passaic',  table_code: 'zoey'      },
 ]
 
 // ─── BNY bucket order (matches Scheduler filter chips) ─────────────────────
@@ -142,7 +148,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             .eq('week_start', weekKey),
           supabase
             .from('sched_daily_ops')
-            .select('site, table_code, day_of_week, shift, actual_yards, waste_yards')
+            .select('site, table_code, day_of_week, shift, actual_yards, waste_yards, operator_1, operator_2')
             .eq('week_start', weekKey),
           supabase
             .from('v_current_wip_rollup')
@@ -250,6 +256,9 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
   // BNY bucket mix — 7 buckets in canonical order
   const { mix, totalYards: bnyMixTotal } = buildBnyMix(bnyBucketYards)
+
+  // Operator scorecards — per physical location, ranked by actual yards
+  const operatorScorecards = buildOperatorScorecards(dailyOps, assignments)
 
   // Narrative gates on schedule existence + data quality
   const buildPrompt = ({ contextString }) => buildHeartbeatNarrativePrompt({
@@ -395,10 +404,10 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
           <div className={styles.sectionTitle}>
             <div className={styles.sectionTitleText}>
               <span className={`${styles.sitePill} ${styles.pillBny}`}>BNY</span>
-              Brooklyn · Digital
+              BNY · Digital
             </div>
             <div className={styles.sectionDesc}>
-              19 machines · 3 HP 3600s + 16 HP 570s · digital is volume, not complexity.
+              19 machines · 7 in Brooklyn (3 HP 3600s + 4 HP 570s) + 12 small digitals at Passaic. All scheduled by Chandler, all to BNY budget.
             </div>
           </div>
         </div>
@@ -411,6 +420,47 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
             mix={mix}
             totalYards={bnyMixTotal}
           />
+        )}
+      </div>
+
+      {/* Operator Scorecards — per physical location */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Operator Performance</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillPlant}`}>OPS</span>
+              Print Operator Scorecard
+            </div>
+            <div className={styles.sectionDesc}>
+              Yards produced this week — by physical location, ranked. 50/50 credit when two operators worked the same shift. Color-yards interpolated from planned ratio for hand-screen sessions.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : !hasActuals ? (
+          <div className={styles.loading}>
+            Operator scorecards populate as Sami and Chandler enter actuals in Live Ops.
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <OperatorScorecard
+              label="Brooklyn"
+              sublabel="Digital · 7 machines"
+              accent={PP_COLORS.saffron}
+              operators={operatorScorecards.brooklyn}
+              showColorYards={false}
+            />
+            <OperatorScorecard
+              label="Passaic"
+              sublabel="Hand-screen 17 tables + 12 small digitals"
+              accent={PP_COLORS.crimson}
+              operators={operatorScorecards.passaic}
+              showColorYards={true}
+            />
+          </div>
         )}
       </div>
 
@@ -1185,6 +1235,86 @@ function buildBnyMachines(assignments, dailyOps) {
 }
 
 /**
+ * Operator scorecards — per physical location, ranked by yards produced.
+ *
+ * Attribution rules:
+ *   - Passaic location includes BOTH hand-screen actuals (site='passaic') AND
+ *     Passaic-physical BNY-digital actuals (site='bny' on a machine whose
+ *     BNY_MACHINES.location='passaic'). Different scheduling pools (Wendy
+ *     vs Chandler) but same physical location → same scorecard.
+ *   - Brooklyn location is just the 7 Brooklyn-physical BNY machines.
+ *   - When two operators worked the same shift cell, yards split 50/50.
+ *   - Color-yards is interpolated from the matching assignment's
+ *     planned_cy/planned_yards ratio. Only meaningful on Passaic hand-screen
+ *     (digital is single-pass). Falls back to "—" if the planned ratio isn't
+ *     available for that cell.
+ */
+function buildOperatorScorecards(dailyOps, assignments) {
+  // Same case/whitespace tolerance as buildBnyMachines — Scheduler may write
+  // 'Glow' while the constant has 'glow'. Normalize both sides for lookup.
+  const norm = (s) => (s || '').toLowerCase().replace(/[\s_-]/g, '')
+  const bnyLocation = new Map()
+  BNY_MACHINES.forEach(m => bnyLocation.set(norm(m.table_code), m.location))
+
+  // Build a planned-cy ratio map for hand-screen color-yards interpolation.
+  // Key: table|day|shift (Passaic only).
+  const ratioByCell = new Map()
+  assignments.forEach(a => {
+    if (a.site !== 'passaic') return
+    const key = `${a.table_code}|${a.day_of_week}|${a.shift || '1st'}`
+    const prev = ratioByCell.get(key) || { yards: 0, cy: 0 }
+    prev.yards += num(a.planned_yards)
+    prev.cy    += num(a.planned_cy)
+    ratioByCell.set(key, prev)
+  })
+
+  const byLocation = { brooklyn: new Map(), passaic: new Map() }
+
+  dailyOps.forEach(o => {
+    const yd = num(o.actual_yards)
+    if (yd <= 0) return
+    const ops = [o.operator_1, o.operator_2].filter(Boolean)
+    if (ops.length === 0) return
+
+    // Determine PHYSICAL location of this work
+    let location
+    if (o.site === 'passaic') {
+      location = 'passaic'
+    } else if (o.site === 'bny') {
+      location = bnyLocation.get(norm(o.table_code)) || 'brooklyn'
+    } else {
+      return
+    }
+
+    const yardsPerOp = yd / ops.length
+
+    // Color-yards interpolation — only meaningful on Passaic hand-screen
+    let cyPerOp = 0
+    if (o.site === 'passaic') {
+      const cellKey = `${o.table_code}|${o.day_of_week}|${o.shift || '1st'}`
+      const ratio = ratioByCell.get(cellKey)
+      if (ratio && ratio.yards > 0) {
+        cyPerOp = ((yd / ratio.yards) * ratio.cy) / ops.length
+      }
+    }
+
+    ops.forEach(name => {
+      const map = byLocation[location]
+      const existing = map.get(name) || { name, yards: 0, colorYards: 0 }
+      existing.yards += yardsPerOp
+      existing.colorYards += cyPerOp
+      map.set(name, existing)
+    })
+  })
+
+  const sortByYards = (a, b) => b.yards - a.yards
+  return {
+    brooklyn: Array.from(byLocation.brooklyn.values()).sort(sortByYards),
+    passaic:  Array.from(byLocation.passaic.values()).sort(sortByYards),
+  }
+}
+
+/**
  * Classify a wip row into a BNY bucket. Mirrors Scheduler's filter chips.
  */
 function classifyBnyBucket(wipRow) {
@@ -1314,4 +1444,102 @@ function wipLabelMap() {
     'Strike Off':           'strikeOff',
     'In Mixing Queue':      'inMixingQueue',
   }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   OperatorScorecard — ranked operator-yards card, used by the Operator
+   Performance section. One per physical location (Brooklyn, Passaic).
+   ═════════════════════════════════════════════════════════════════════════ */
+
+function OperatorScorecard({ label, sublabel, accent, operators, showColorYards }) {
+  const cols = showColorYards ? '24px 1fr 80px 80px' : '24px 1fr 80px'
+  const rankColor = (i) => {
+    if (i === 0) return PP_COLORS.emerald
+    if (i === 1) return PP_COLORS.saffron
+    if (i === 2) return '#a16207'
+    return PP_COLORS.muted
+  }
+  return (
+    <div style={{
+      background: '#fff',
+      border: `1px solid ${PP_COLORS.linen}`,
+      borderRadius: 6,
+      padding: '1.25rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14,
+    }}>
+      <div style={{ borderLeft: `3px solid ${accent}`, paddingLeft: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: PP_COLORS.ink, fontFamily: 'Georgia,serif' }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 11, color: PP_COLORS.muted, marginTop: 2 }}>{sublabel}</div>
+      </div>
+
+      {operators.length === 0 ? (
+        <div style={{ fontSize: 12, color: PP_COLORS.muted, fontStyle: 'italic', padding: '8px 0' }}>
+          No actuals attributed yet this week.
+        </div>
+      ) : (
+        <div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: cols,
+            gap: 8,
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: PP_COLORS.muted,
+            paddingBottom: 6,
+            borderBottom: `1px solid ${PP_COLORS.linen}`,
+          }}>
+            <span></span>
+            <span>Operator</span>
+            <span style={{ textAlign: 'right' }}>Yards</span>
+            {showColorYards && <span style={{ textAlign: 'right' }}>Color-Yds</span>}
+          </div>
+          {operators.map((op, i) => (
+            <div key={op.name} style={{
+              display: 'grid',
+              gridTemplateColumns: cols,
+              gap: 8,
+              fontSize: 12,
+              padding: '8px 0',
+              borderBottom: i < operators.length - 1 ? `1px dashed ${PP_COLORS.linen}` : 'none',
+              alignItems: 'center',
+            }}>
+              <span style={{
+                fontFamily: 'Georgia,serif',
+                color: rankColor(i),
+                fontWeight: i < 3 ? 700 : 600,
+              }}>
+                {i + 1}
+              </span>
+              <span style={{ color: PP_COLORS.ink, fontWeight: i === 0 ? 700 : 500 }}>
+                {op.name}
+              </span>
+              <span style={{
+                textAlign: 'right',
+                color: PP_COLORS.ink,
+                fontWeight: 600,
+                fontFamily: 'Georgia,serif',
+              }}>
+                {fmt(op.yards)}
+              </span>
+              {showColorYards && (
+                <span style={{
+                  textAlign: 'right',
+                  color: op.colorYards > 0 ? PP_COLORS.ink : PP_COLORS.muted,
+                  fontFamily: 'Georgia,serif',
+                }}>
+                  {op.colorYards > 0 ? fmt(op.colorYards) : '—'}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
