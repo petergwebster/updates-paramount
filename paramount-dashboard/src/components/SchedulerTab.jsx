@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { parseLiftWorkbook } from '../liftParser'
 import { C, SITES, isoDate, defaultSchedulerWeek } from '../lib/scheduleUtils'
 import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
@@ -8,14 +7,17 @@ import BNYScheduler from './BNYScheduler'
 // ═══════════════════════════════════════════════════════════════════════════
 // SchedulerTab — schedule grid orchestrator
 //
-// Stripped-down responsibility (Push A, May 2026 restructure):
+// Stripped-down responsibility (Push C-prep, May 2026):
 //   • Site pill (Passaic / BNY)
-//   • LIFT WIP upload (snapshot management — moves to WIP tab in a later push)
 //   • Routes to PassaicScheduler / BNYScheduler for the weekly schedule grid
 //
-// WIP-list and New-Goods views previously lived here. They now live in the
-// WIP tab. Procurement was a WIP-list-only site here and has been dropped
-// from the site pill — it's pass-through, not scheduled.
+// LIFT WIP upload moved to the WIP tab (the data source of truth). Scheduler
+// reads from sched_wip_rows like before — same snapshot, just refreshed
+// from the WIP tab now. Refresh button stays here so users can pull the
+// latest snapshot after a co-worker uploads on another tab.
+//
+// WIP-list, New-Goods, and Procurement views previously lived here. They
+// now live in the WIP tab.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Filter scheduleUtils' SITES down to the two that actually get scheduled.
@@ -29,10 +31,7 @@ export default function SchedulerTab() {
   const [assignments, setAssignments] = useState([])
   const [weekStart, setWeekStart] = useState(defaultSchedulerWeek())
   const [loading, setLoading] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
-  const [uploadStatus, setUploadStatus] = useState(null)
-  const fileInputRef = useRef(null)
 
   async function loadLatest() {
     setLoading(true); setError(null)
@@ -82,70 +81,6 @@ export default function SchedulerTab() {
 
   useEffect(() => { loadLatest() }, [site, weekStart])
 
-  async function handleFileChosen(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true); setError(null); setUploadStatus('Parsing workbook…')
-    try {
-      const parsed = await parseLiftWorkbook(file)
-      setUploadStatus(`Parsed ${parsed.meta.total_rows} rows · saving…`)
-
-      const { data: snapRow, error: ie } = await supabase
-        .from('sched_snapshots')
-        .insert({
-          uploaded_by: null,
-          source_filename: parsed.meta.source_filename,
-          passaic_orders:  parsed.summary.passaic.orders,
-          passaic_yards:   parsed.summary.passaic.yards,
-          passaic_revenue: parsed.summary.passaic.revenue,
-          bny_orders:  parsed.summary.bny.orders,
-          bny_yards:   parsed.summary.bny.yards,
-          bny_revenue: parsed.summary.bny.revenue,
-          procurement_orders:  parsed.summary.procurement.orders,
-          procurement_revenue: parsed.summary.procurement.revenue,
-          total_rows: parsed.meta.total_rows,
-          unclassified_rows: parsed.unclassified.length,
-          parse_notes: parsed.warnings.join(' | ') || null,
-        })
-        .select()
-        .single()
-      if (ie) throw ie
-
-      const snapshotId = snapRow.id
-      const batchSize = 500
-      const rowsToInsert = parsed.rows.map(r => ({
-        snapshot_id: snapshotId, site: r.site,
-        division_raw: r.division_raw, customer_type: r.customer_type,
-        category_customer_mto: r.category_customer_mto,
-        customer_name_clean: r.customer_name_clean,
-        bny_bucket: r.bny_bucket,
-        product_type: r.product_type, is_new_goods: r.is_new_goods,
-        order_number: r.order_number, po_number: r.po_number,
-        line_description: r.line_description, item_sku: r.item_sku,
-        color: r.color, material: r.material,
-        order_status: r.order_status, colors_count: r.colors_count,
-        color_yards: r.color_yards, order_created: r.order_created,
-        yards_written: r.yards_written, qty_invoiced: r.qty_invoiced,
-        income_written: r.income_written, age_days: r.age_days, age_bucket: r.age_bucket,
-      }))
-
-      for (let i = 0; i < rowsToInsert.length; i += batchSize) {
-        const chunk = rowsToInsert.slice(i, i + batchSize)
-        setUploadStatus(`Saving rows ${i + 1}–${i + chunk.length} of ${rowsToInsert.length}…`)
-        const { error: be } = await supabase.from('sched_wip_rows').insert(chunk)
-        if (be) throw be
-      }
-
-      setUploadStatus(`✓ Uploaded ${parsed.meta.total_rows} rows · Passaic ${parsed.summary.passaic.orders} · BNY ${parsed.summary.bny.orders} · Procurement ${parsed.summary.procurement.orders}`)
-      await loadLatest()
-    } catch (e) {
-      console.error(e); setError(e.message || String(e)); setUploadStatus(null)
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-    }
-  }
-
   async function reloadAssignments() {
     const { data } = await supabase
       .from('sched_assignments')
@@ -162,24 +97,16 @@ export default function SchedulerTab() {
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>Production · Scheduler</h2>
             <p style={{ fontSize: 13, color: C.inkLight, margin: '4px 0 0' }}>
-              LIFT WIP · {snapshot ? `Uploaded ${new Date(snapshot.uploaded_at).toLocaleString()}` : 'No data yet'}
+              LIFT WIP · {snapshot ? `Uploaded ${new Date(snapshot.uploaded_at).toLocaleString()}` : 'No data yet — upload on the WIP tab'}
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChosen} style={{ display: 'none' }} />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-              style={{ padding: '9px 20px', background: uploading ? C.warm : C.ink, color: uploading ? C.inkLight : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer' }}>
-              {uploading ? 'Uploading…' : '⬆ Upload LIFT WIP'}
-            </button>
-            <button onClick={loadLatest} disabled={loading || uploading}
-              style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: (loading || uploading) ? 'not-allowed' : 'pointer' }}>
+            <button onClick={loadLatest} disabled={loading}
+              style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? 'Loading…' : '↻ Refresh'}
             </button>
           </div>
         </div>
-        {uploadStatus && (
-          <div style={{ marginTop: 12, fontSize: 12, color: C.inkMid, background: C.goldBg, border: `1px solid ${C.warm}`, borderRadius: 6, padding: '8px 12px' }}>{uploadStatus}</div>
-        )}
         {error && (
           <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '8px 12px' }}>{error}</div>
         )}
@@ -202,7 +129,7 @@ export default function SchedulerTab() {
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>⌘</div>
           <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'Georgia,serif', marginBottom: 8 }}>No WIP data yet</div>
-          <div style={{ fontSize: 13, color: C.inkLight }}>Click "Upload LIFT WIP" to get started.</div>
+          <div style={{ fontSize: 13, color: C.inkLight }}>Head to the WIP tab and upload the latest LIFT export to get started.</div>
         </div>
       )}
 
