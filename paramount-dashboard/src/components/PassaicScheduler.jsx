@@ -538,14 +538,21 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
-  const cols = compact ? Math.min(tables.length, 3) : Math.min(tables.length, 6)
+  // Auto-fill cards at GC width so Fabric/WP wrap to multiple rows instead
+  // of squeezing 6+ cards across one row (which truncated the crew strip
+  // to ~50px and clipped operator names). Every card now has room for both
+  // operators in "Yensi H. / Edward I." form. Compact mode keeps a denser
+  // minimum for callers that want it, but the default Scheduler path uses
+  // 360px = matches the previous GC width on typical 1000-1100px schedule
+  // areas (= ~2 cards across), Fabric becomes 5 rows of 2, WP 3 rows of 2.
+  const minCardWidth = compact ? '280px' : '360px'
 
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: C.inkMid, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
         {label} <span style={{ color: C.inkLight, fontWeight: 400 }}>— {tables.length} table{tables.length !== 1 ? 's' : ''}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${minCardWidth}, 1fr))`, gap: 8 }}>
         {tables.map(t => {
           const asgs = byTable[t.code] || []
           const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
