@@ -947,9 +947,10 @@ function SitePerformance({
 
 function SitePerfKpi({ label, planned, actual, unit, decimals = 0, suffix = '', plainCount = false }) {
   const fmtNum = (n) => decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString()
-  const variance = planned > 0 ? ((actual - planned) / planned) * 100 : 0
+  const hasActual = actual > 0
+  const variance = planned > 0 && hasActual ? ((actual - planned) / planned) * 100 : 0
   const tone = plainCount ? 'neutral'
-            : actual === 0 && planned > 0 ? 'pending'
+            : !hasActual && planned > 0 ? 'pending'
             : Math.abs(variance) < 5 ? 'on'
             : variance < 0 ? 'behind'
             : 'ahead'
@@ -973,9 +974,19 @@ function SitePerfKpi({ label, planned, actual, unit, decimals = 0, suffix = '', 
         <span style={SP_STYLES.kpiPlanned}>
           {' '}/ {fmtNum(planned)} {unit}{suffix}
         </span>
-        {planned > 0 && (
+        {planned > 0 && hasActual && (
+          // Variance pill — only when there's an actual value to compare.
+          // Without actuals we'd render "-100%" alarming-red, which is
+          // factually nonsense ("we're 100% behind on a week that hasn't
+          // happened yet"). Plant Pulse handles this with an AWAITING
+          // ACTUALS pill; the per-site cards now do the same.
           <span style={{...SP_STYLES.varBadge, ...SP_VAR_TONES[tone]}}>
             {variance >= 0 ? '+' : ''}{variance.toFixed(0)}%
+          </span>
+        )}
+        {planned > 0 && !hasActual && (
+          <span style={{...SP_STYLES.varBadge, ...SP_VAR_TONES.pending, fontSize: 9}}>
+            Awaiting Actuals
           </span>
         )}
       </span>
