@@ -187,6 +187,36 @@ function CategoryRow({ cat, wipData }) {
             </span>
           )}
         </div>
+        {/* Shift split sub-line — only when 2nd shift activity exists for
+            this category. Per Peter 5/2/2026, 1st and 2nd shifts are
+            independent crews so they're broken out at every layer. */}
+        {cat.shiftAgg && (cat.shiftAgg['2nd'].plannedYards > 0 || cat.shiftAgg['2nd'].actualYards > 0) && (
+          <div style={{
+            marginTop: 6,
+            paddingTop: 6,
+            borderTop: '1px dashed #DBDCDE',
+            fontSize: 11,
+            color: '#4A4D57',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+          }}>
+            <span>
+              <strong style={{ color: '#101218' }}>1st:</strong>{' '}
+              {cat.shiftAgg['1st'].plannedYards.toLocaleString()} sched
+              {cat.shiftAgg['1st'].actualYards > 0 && (
+                <> · {cat.shiftAgg['1st'].actualYards.toLocaleString()} actual</>
+              )}
+            </span>
+            <span>
+              <strong style={{ color: '#101218' }}>2nd:</strong>{' '}
+              {cat.shiftAgg['2nd'].plannedYards.toLocaleString()} sched
+              {cat.shiftAgg['2nd'].actualYards > 0 && (
+                <> · {cat.shiftAgg['2nd'].actualYards.toLocaleString()} actual</>
+              )}
+            </span>
+          </div>
+        )}
         <div className={styles.pacingNote}>{cat.pacingNote}</div>
       </div>
       <div className={styles.catCell}>
@@ -233,16 +263,43 @@ function SourcePill({ source }) {
 /* ─── Floor table cell ─── */
 function TableCell({ table }) {
   const isIdle = table.status === 'idle'
+
+  // Two-shift mode: render dual dots when 2nd shift has activity for this
+  // table. Per Peter 5/2/2026, 1st and 2nd are independent crews — a table
+  // running both shifts deserves two indicators rather than one combined.
+  const has2nd = table.shift2 && table.shift2.status !== 'idle'
+
+  // Tooltip surfaces the shift breakdown when relevant
+  const baseTooltip = table.tooltip || `Table ${table.number}`
+  const tooltip = has2nd
+    ? `${baseTooltip}\n1st: ${table.shift1.status} · ${table.shift1.planned}y planned · ${table.shift1.actual}y actual\n2nd: ${table.shift2.status} · ${table.shift2.planned}y planned · ${table.shift2.actual}y actual`
+    : baseTooltip
+
   return (
     <div
       className={`${styles.tCell} ${styles[`t_${table.category}`]} ${isIdle ? styles.idle : ''}`}
-      title={table.tooltip || `Table ${table.number}`}
+      title={tooltip}
     >
       <div>
         <div className={styles.tNumber}>{table.number}</div>
         <div className={styles.tStatus}>{table.label}</div>
       </div>
-      <div className={`${styles.tDot} ${styles[`tDot_${table.status}`]}`} />
+      {has2nd ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center' }}>
+          <div
+            className={`${styles.tDot} ${styles[`tDot_${table.shift1.status}`]}`}
+            title="1st shift"
+            style={{ width: 7, height: 7 }}
+          />
+          <div
+            className={`${styles.tDot} ${styles[`tDot_${table.shift2.status}`]}`}
+            title="2nd shift"
+            style={{ width: 7, height: 7 }}
+          />
+        </div>
+      ) : (
+        <div className={`${styles.tDot} ${styles[`tDot_${table.status}`]}`} />
+      )}
     </div>
   )
 }

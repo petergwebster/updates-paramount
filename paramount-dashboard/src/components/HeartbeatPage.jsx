@@ -245,12 +245,23 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   //   - Budget    = annual plan (PLANT_YARDS_TGT, always the same per week)
   //   - Scheduled = sum of Wendy + Chandler's assignments for this week
   //   - Actual    = sum of Live Ops actuals for this week
+  // Plus per-shift split (only used by Plant Pulse when 2nd shift active).
+  // BNY is 1st-only by definition, so plant-level 2nd shift = Passaic 2nd.
   const plantPlannedYards = njAgg.plannedYards + bnyAgg.plannedYards
   const plantActualYards  = njAgg.actualYards  + bnyAgg.actualYards
   const plantYards = {
     budget:    PLANT_YARDS_TGT,
     scheduled: plantPlannedYards,
     actual:    plantActualYards,
+    // Per-shift split — surfaced by Plant Pulse only when 2nd shift > 0.
+    shift1: {
+      scheduled: njShift1Agg.plannedYards + bnyAgg.plannedYards,  // BNY all in 1st
+      actual:    njShift1Agg.actualYards  + bnyAgg.actualYards,
+    },
+    shift2: {
+      scheduled: njShift2Agg.plannedYards,
+      actual:    njShift2Agg.actualYards,
+    },
   }
 
   // Per-category Passaic
@@ -723,6 +734,52 @@ function PlantPulse({ yards, weekStart, hasActuals }) {
         </div>
       </div>
 
+      {/* Shift split — only renders when 2nd shift is active. Per Peter
+          5/2/2026, 1st and 2nd are independent crews; surfacing the split
+          here lets them be evaluated separately at the plant level. */}
+      {(yards.shift2 && (yards.shift2.scheduled > 0 || yards.shift2.actual > 0)) && (
+        <div style={{
+          marginTop: 4,
+          paddingTop: 12,
+          borderTop: `1px dashed ${PP_COLORS.linen}`,
+          display: 'grid',
+          gridTemplateColumns: '110px 1fr 1fr',
+          gap: 12,
+          fontSize: 11,
+          color: PP_COLORS.muted,
+        }}>
+          <span style={{
+            fontWeight: 800,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: PP_COLORS.muted,
+            alignSelf: 'center',
+          }}>
+            Shift Split
+          </span>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: PP_COLORS.muted, textTransform: 'uppercase', marginBottom: 2 }}>
+              1st Shift · 6:30a–3p
+            </div>
+            <div style={{ color: PP_COLORS.ink, fontFamily: 'Georgia,serif', fontWeight: 600 }}>
+              {fmt(yards.shift1.scheduled)} sched
+              <span style={{ color: PP_COLORS.muted, fontWeight: 400 }}> · </span>
+              {fmt(yards.shift1.actual)} actual
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: PP_COLORS.muted, textTransform: 'uppercase', marginBottom: 2 }}>
+              2nd Shift · 3p–11p
+            </div>
+            <div style={{ color: PP_COLORS.ink, fontFamily: 'Georgia,serif', fontWeight: 600 }}>
+              {fmt(yards.shift2.scheduled)} sched
+              <span style={{ color: PP_COLORS.muted, fontWeight: 400 }}> · </span>
+              {fmt(yards.shift2.actual)} actual
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={PP_STYLES.summaryRow}>
         <div style={PP_STYLES.summaryItem}>
           <span style={PP_STYLES.summaryLabel}>Tracking vs Budget</span>
@@ -1118,6 +1175,11 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
     let actualYards = 0
     const activeTables = new Set()
     const cellPlanned = new Map()
+    // Per-shift accumulators — surfaced in PassaicSection when 2nd shift active.
+    const shiftAgg = {
+      '1st': { plannedYards: 0, actualYards: 0 },
+      '2nd': { plannedYards: 0, actualYards: 0 },
+    }
 
     assignments.forEach(a => {
       if (a.site !== 'passaic') return
@@ -1127,15 +1189,21 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
       plannedYards += py
       plannedColorYards += pcy
       activeTables.add(a.table_code)
-      const key = `${a.table_code}|${a.day_of_week}`
+      const sh = a.shift === '2nd' ? '2nd' : '1st'
+      shiftAgg[sh].plannedYards += py
+      const key = `${a.table_code}|${a.day_of_week}|${sh}`
       const prev = cellPlanned.get(key) || { y: 0, cy: 0 }
       cellPlanned.set(key, { y: prev.y + py, cy: prev.cy + pcy })
     })
 
     dailyOps.forEach(o => {
       if (o.site !== 'passaic') return
-      if (!cellPlanned.has(`${o.table_code}|${o.day_of_week}`)) return
-      actualYards += num(o.actual_yards)
+      const sh = o.shift === '2nd' ? '2nd' : '1st'
+      const key = `${o.table_code}|${o.day_of_week}|${sh}`
+      if (!cellPlanned.has(key)) return
+      const ay = num(o.actual_yards)
+      actualYards += ay
+      shiftAgg[sh].actualYards += ay
     })
 
     const activeCount = activeTables.size
@@ -1184,6 +1252,7 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
           ? 'scheduled — awaiting actuals'
           : 'no schedule yet for this week',
       bottleneck: cat.bottleneck,
+      shiftAgg,              // {'1st':{plannedYards,actualYards},'2nd':{...}}
     }
   })
 }
@@ -1194,27 +1263,48 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
  *   scheduled — has assignments but no actuals yet
  *   attention — has actuals but variance > 25% behind plan
  *   idle      — no assignments
+ *
+ * Each table also includes per-shift status (shift1, shift2) so the
+ * floor view can render a split indicator when 2nd shift is active. Per
+ * Peter 5/2/2026, 1st and 2nd are independent crews — surface the split
+ * everywhere it's meaningful.
  */
 function build17TableState(assignments, dailyOps) {
+  const statusForCell = (planned, actual) => {
+    if (planned === 0 && actual === 0) return 'idle'
+    if (actual > 0 && planned > 0 && actual / planned < 0.75) return 'attention'
+    if (actual > 0) return 'running'
+    return 'scheduled'
+  }
+
   return PASSAIC_TABLES.map(t => {
     const tableAssigns = assignments.filter(a => a.site === 'passaic' && a.table_code === t.table_code)
-    const tableOps = dailyOps.filter(o => o.site === 'passaic' && o.table_code === t.table_code)
+    const tableOps     = dailyOps.filter(o => o.site === 'passaic' && o.table_code === t.table_code)
 
     const planned = tableAssigns.reduce((s, a) => s + num(a.planned_yards), 0)
     const actual  = tableOps.reduce((s, o) => s + num(o.actual_yards), 0)
+    const status  = statusForCell(planned, actual)
+    const label = status === 'idle' ? 'idle'
+                : status === 'attention' ? labelForCategory(t.category, true)
+                : labelForCategory(t.category, false)
 
-    let status, label
-    if (planned === 0 && actual === 0) {
-      status = 'idle';  label = 'idle'
-    } else if (actual > 0 && planned > 0 && actual / planned < 0.75) {
-      status = 'attention'; label = labelForCategory(t.category, true)
-    } else if (actual > 0) {
-      status = 'running'; label = labelForCategory(t.category, false)
-    } else {
-      status = 'scheduled'; label = labelForCategory(t.category, false)
+    // Per-shift breakdown — used by TableCell to render a split indicator
+    // when 2nd shift is active. shift2.status === 'idle' is the common case
+    // (no 2nd shift this week); when it's anything else, the cell renders
+    // a small dual-dot.
+    const sh1Planned = tableAssigns.filter(a => (a.shift || '1st') === '1st').reduce((s, a) => s + num(a.planned_yards), 0)
+    const sh1Actual  = tableOps.filter(o => (o.shift || '1st') === '1st').reduce((s, o) => s + num(o.actual_yards), 0)
+    const sh2Planned = tableAssigns.filter(a => a.shift === '2nd').reduce((s, a) => s + num(a.planned_yards), 0)
+    const sh2Actual  = tableOps.filter(o => o.shift === '2nd').reduce((s, o) => s + num(o.actual_yards), 0)
+
+    return {
+      number: t.number,
+      category: t.category,
+      label,
+      status,
+      shift1: { status: statusForCell(sh1Planned, sh1Actual), planned: sh1Planned, actual: sh1Actual },
+      shift2: { status: statusForCell(sh2Planned, sh2Actual), planned: sh2Planned, actual: sh2Actual },
     }
-
-    return { number: t.number, category: t.category, label, status }
   })
 }
 
