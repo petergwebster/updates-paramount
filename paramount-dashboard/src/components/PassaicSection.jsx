@@ -112,6 +112,24 @@ export default function PassaicSection({
 
 /* ─── Category row ─── */
 function CategoryRow({ cat, wipData }) {
+  // Budget context — formats the headline yards number against this category's
+  // weekly budget. Three meaningful states:
+  //   - actuals exist  → "X / B yd · Y% of budget" with tone color
+  //   - scheduled only → "X / B sched · Y%" in scheduled-tone (neutral blue)
+  //   - nothing yet    → "0 yd · no schedule this week" muted
+  const hasYards    = cat.yards > 0
+  const hasBudget   = cat.budgetYards > 0
+  const yardsPctOfBudget = hasBudget ? Math.round((cat.yards / cat.budgetYards) * 100) : null
+  const yardsTone = !hasBudget        ? 'neutral'
+                  : !hasYards         ? 'pending'
+                  : cat.yardsSource === 'actual' && yardsPctOfBudget >= 95 ? 'emerald'
+                  : cat.yardsSource === 'actual' && yardsPctOfBudget >= 75 ? 'saffron'
+                  : cat.yardsSource === 'actual'                            ? 'crimson'
+                  : 'scheduled'   // scheduled-source uses neutral blue regardless of %
+
+  const hasColorYds = cat.colorYds > 0
+  const cyPctOfBudget = cat.budgetColorYards > 0 ? Math.round((cat.colorYds / cat.budgetColorYards) * 100) : null
+
   return (
     <div className={styles.catRow}>
       <div className={styles.catCell}>
@@ -127,9 +145,47 @@ function CategoryRow({ cat, wipData }) {
         <div className={styles.utilDetail}>{cat.utilDetail}</div>
       </div>
       <div className={styles.catCell}>
-        <div className={styles.yardsBig}>{cat.yards.toLocaleString()} yd</div>
-        <div className={styles.colorYdsLine}>
-          {cat.colorYds.toLocaleString()} color-yds · avg {cat.avgColors.toFixed(1)} colors
+        {/* Headline yards — "300 / 3,615 yd" with source pill */}
+        <div className={styles.yardsBig}>
+          {cat.yards.toLocaleString()}
+          {hasBudget && <span style={{ fontSize: '0.55em', fontWeight: 400, color: '#6b6b6b', marginLeft: 4 }}>
+            / {cat.budgetYards.toLocaleString()}
+          </span>}
+          <span style={{ fontSize: '0.55em', fontWeight: 400, color: '#6b6b6b', marginLeft: 4 }}>yd</span>
+        </div>
+        {/* Source + budget % */}
+        {hasYards && (
+          <div style={{ fontSize: 11, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <SourcePill source={cat.yardsSource} />
+            {yardsPctOfBudget != null && (
+              <span style={{
+                fontWeight: 600,
+                color: yardsTone === 'emerald'   ? '#0F7A4E'
+                     : yardsTone === 'saffron'   ? '#A66A0F'
+                     : yardsTone === 'crimson'   ? '#C12B1A'
+                     : yardsTone === 'scheduled' ? '#1E4FA8'
+                     : '#6b6b6b',
+              }}>
+                {yardsPctOfBudget}% of budget
+              </span>
+            )}
+          </div>
+        )}
+        {/* Color-yards line with budget context */}
+        <div className={styles.colorYdsLine} style={{ marginTop: 6 }}>
+          {hasColorYds ? (
+            <>
+              {cat.colorYds.toLocaleString()}
+              {cat.budgetColorYards > 0 && <span style={{ color: '#8a8a8a' }}> / {cat.budgetColorYards.toLocaleString()}</span>}
+              {' color-yds'}
+              {cyPctOfBudget != null && <span style={{ color: '#6b6b6b' }}> · {cyPctOfBudget}%</span>}
+              {cat.avgColors > 0 && <span style={{ color: '#6b6b6b' }}> · avg {cat.avgColors.toFixed(1)} colors</span>}
+            </>
+          ) : (
+            <span style={{ color: '#8a8a8a', fontStyle: 'italic' }}>
+              {cat.budgetColorYards > 0 ? `0 / ${cat.budgetColorYards.toLocaleString()} color-yds` : '—'}
+            </span>
+          )}
         </div>
         <div className={styles.pacingNote}>{cat.pacingNote}</div>
       </div>
@@ -144,6 +200,34 @@ function CategoryRow({ cat, wipData }) {
       </div>
     </div>
   )
+}
+
+/**
+ * Small pill that says whether the headline yards are SCHEDULED or ACTUAL.
+ * Matters because the same field can mean different things week-by-week —
+ * 300 yd this week is "scheduled" (awaiting actuals); next Friday it'll be
+ * "actual". Without the label there's no way to tell from the dashboard.
+ */
+function SourcePill({ source }) {
+  if (source === 'actual') {
+    return (
+      <span style={{
+        fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+        padding: '2px 6px', borderRadius: 3,
+        background: '#E0F0E5', color: '#0A4F33',
+      }}>Actual</span>
+    )
+  }
+  if (source === 'scheduled') {
+    return (
+      <span style={{
+        fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+        padding: '2px 6px', borderRadius: 3,
+        background: '#E5EBF6', color: '#14376E',
+      }}>Scheduled</span>
+    )
+  }
+  return null
 }
 
 /* ─── Floor table cell ─── */

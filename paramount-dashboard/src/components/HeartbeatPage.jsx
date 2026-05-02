@@ -50,6 +50,7 @@ import styles from './HeartbeatPage.module.css'
  */
 
 import { PASSAIC_BUDGET, BNY_BUDGET } from '../lib/budgets'
+import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
 // ─── Targets sourced from src/lib/budgets.js (canonical FY2026 plan) ──────
 // Single source of truth — same values everywhere (Recap / Live Ops / Heartbeat
@@ -1117,6 +1118,23 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
                   : activeCount >= cat.tableCount * 0.33 ? 'saffron'
                   : 'crimson'
 
+    // Per-category weekly budgets — sourced from canonical budgets.js. The
+    // 'paper' key here matches the internal/finance label; PassaicSection
+    // renders these alongside the scheduled/actual numbers so categories
+    // are interpretable at a glance ("300 of 3,615 sched · 8%") rather
+    // than just "300 yd" with no anchor.
+    const budgetYards      = weeklyBudgetYards('passaic', cat.id) ?? 0
+    const budgetColorYards = weeklyBudgetColorYards(cat.id) ?? 0
+
+    // Source label tells the reader which number they're looking at without
+    // the ambiguity of "yards: actualYards || plannedYards" — when actuals
+    // exist they win, when not they fall back to scheduled. Caller knows
+    // which.
+    const yardsValue = actualYards > 0 ? actualYards : plannedYards
+    const yardsSource = actualYards > 0 ? 'actual'
+                      : plannedYards > 0 ? 'scheduled'
+                      : 'none'
+
     return {
       id: cat.id,
       name: cat.name,
@@ -1128,8 +1146,11 @@ function buildCategoryData(assignments, dailyOps, wipByStatus) {
       utilPct,
       utilTone,
       utilDetail: `${activeCount} of ${cat.tableCount} active`,
-      yards: actualYards || plannedYards,
+      yards: yardsValue,
+      yardsSource,           // 'actual' | 'scheduled' | 'none' — disambiguates display
+      budgetYards,           // canonical weekly budget for this category
       colorYds: plannedColorYards,
+      budgetColorYards,      // canonical weekly color-yards budget for this category
       avgColors: plannedYards > 0 ? plannedColorYards / plannedYards : 0,
       pacingNote: actualYards > 0
         ? `${Math.round((actualYards / plannedYards) * 100)}% of plan delivered`
