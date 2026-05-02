@@ -22,16 +22,41 @@ import styles from './ClaudeReadBlock.module.css'
  *   - Storing in Supabase so reloads don't re-trigger generation
  *
  * Props:
- *   weekStart    Date — Monday of the week being analyzed
- *   timeWindow   'today' | 'week' | 'month'
- *   currentData  { actuals, expected, gaps } — passed in from parent page
- *   currentUser  string — user's full name (for edited_by attribution)
- *   userId       string — user's auth UUID (for edited_by FK)
+ *   weekStart      Date — Sunday of the week being analyzed
+ *   timeWindow     'today' | 'week' | 'month' | 'heartbeat' | 'recap'
+ *   currentData    Object — page-specific data payload passed into the context.
+ *                  Heartbeat passes Plant Pulse + Passaic + BNY + per-category
+ *                  + scorecard facts here so Claude analyzes REAL numbers instead
+ *                  of a generic context. Other pages can pass {actuals, expected,
+ *                  gaps} or whatever shape their prompt needs.
+ *   buildPrompt    function({contextString}) → string — OPTIONAL prompt builder
+ *                  override. When provided, replaces the default
+ *                  buildDashboardNarrativePrompt. HeartbeatPage uses this to
+ *                  call buildHeartbeatNarrativePrompt, which is tailored to
+ *                  schedule-vs-actuals analysis. When omitted, falls back to
+ *                  the generic dashboard narrative prompt.
+ *   contextScope   'full' | 'minimal' — OPTIONAL. Controls how
+ *                  buildDashboardContext assembles the context block. 'minimal'
+ *                  (recommended for heartbeat) skips historical summaries +
+ *                  prior narratives + section comments; 'full' (default) pulls
+ *                  the full tiered history. Heartbeat MUST use 'minimal' or
+ *                  Claude parrots stale weekly recap data as if it were live
+ *                  heartbeat truth.
+ *   currentUser    string — user's full name (for edited_by attribution)
+ *   userId         string — user's auth UUID (for edited_by FK)
  */
 
 const STALE_HOURS = 2
 
-export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, currentUser, userId }) {
+export default function ClaudeReadBlock({
+  weekStart,
+  timeWindow,
+  currentData,
+  buildPrompt,
+  contextScope,
+  currentUser,
+  userId,
+}) {
   const [narrative, setNarrative] = useState(null)
   const [generatedAt, setGeneratedAt] = useState(null)
   const [editedBy, setEditedBy] = useState(null)
@@ -116,22 +141,30 @@ export default function ClaudeReadBlock({ weekStart, timeWindow, currentData, cu
     const startedAt = Date.now()
 
     try {
-      // Build context — Heartbeat uses minimal scope (just business facts +
-      // current data) to avoid feedback loops from stale section comments and
-      // prior narratives. Other prompt types still get full historical context.
+      // Build context. Parent page can request 'minimal' scope to skip the
+      // tiered historical summaries + prior narratives + section comments,
+      // which is the right call for heartbeat (we want Claude analyzing
+      // THIS WEEK'S live schedule-vs-actuals, not parroting stale weekly
+      // recap commentary as if it were current truth).
+      const scope = contextScope || 'full'
       const { contextString, contextObject } = await buildDashboardContext({
         weekStart,
         timeWindow,
         currentData,
-        scope: timeWindow === 'heartbeat' ? 'minimal' : 'full',
+        scope,
       })
 
-      // Build prompt
-      const prompt = buildDashboardNarrativePrompt({
-        contextString,
-        timeWindow,
-        hasData: currentData?.hasData ?? true,
-      })
+      // Build prompt. Parent page can provide an override builder via the
+      // buildPrompt prop — HeartbeatPage uses this to call its
+      // buildHeartbeatNarrativePrompt, which is tuned for schedule-vs-
+      // actuals analysis rather than a generic dashboard read.
+      const prompt = buildPrompt
+        ? buildPrompt({ contextString, timeWindow, currentData })
+        : buildDashboardNarrativePrompt({
+            contextString,
+            timeWindow,
+            hasData: currentData?.hasData ?? true,
+          })
 
       // Call Claude (matching the existing /api/claude pattern in admin)
       const response = await fetch('/api/claude', {

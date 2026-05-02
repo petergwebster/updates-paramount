@@ -289,6 +289,52 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
     hasData: hasRealData,
   })
 
+  // Real Heartbeat data payload for ClaudeReadBlock → contextBuilder. The
+  // Heartbeat branch in formatCurrentWindow consumes this shape and renders
+  // it as structured sections (Plant Pulse, per-category, BNY mix, top jobs,
+  // scorecards). Without this, the narrative fell back to business_facts
+  // legacy seed data and hallucinated stale numbers like "114 unallocated /
+  // 7,024 yards" that haven't been true in months.
+  //
+  // contextScope='minimal' (passed below) skips historical summaries + prior
+  // narratives + section comments — Heartbeat is about THIS WEEK, not the
+  // tiered weekly/monthly/quarterly recap layers.
+  const heartbeatCurrentData = {
+    hasData: hasRealData,
+    plant: plantYards,
+    passaic: {
+      byCategory: categoryData.map(cat => {
+        const sched1 = cat.shiftAgg?.['1st']?.plannedYards || 0
+        const sched2 = cat.shiftAgg?.['2nd']?.plannedYards || 0
+        const act1   = cat.shiftAgg?.['1st']?.actualYards  || 0
+        const act2   = cat.shiftAgg?.['2nd']?.actualYards  || 0
+        return {
+          name: cat.name,
+          tableRange: cat.tableRange,
+          tableCount: cat.tableCount,
+          activeTables: parseInt(cat.utilDetail) || 0,
+          scheduledYards: sched1 + sched2,
+          actualYards:    act1 + act2,
+          budgetYards:    cat.budgetYards,
+          bottleneck:     cat.bottleneck,
+          shiftAgg:       cat.shiftAgg,
+        }
+      }),
+      shift1: { scheduled: njShift1Agg.plannedYards, actual: njShift1Agg.actualYards },
+      shift2: { scheduled: njShift2Agg.plannedYards, actual: njShift2Agg.actualYards },
+      activeTables: njActiveTables,
+    },
+    bny: {
+      totalScheduled: bnyAgg.plannedYards,
+      totalActual:    bnyAgg.actualYards,
+      byBucket:       Object.fromEntries(mix.filter(b => b.yards > 0).map(b => [b.label, b.yards])),
+      machinesActive: bnyActiveMachines,
+      machinesTotal:  19,
+    },
+    topJobs:    topJobs,
+    scorecards: operatorScorecards,
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className={styles.page}>
@@ -532,6 +578,8 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
           weekStart={weekStart}
           timeWindow="heartbeat"
           buildPrompt={buildPrompt}
+          currentData={heartbeatCurrentData}
+          contextScope="minimal"
           currentUser={currentUser}
           userId={userId}
         />

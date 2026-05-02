@@ -382,18 +382,149 @@ export async function buildDashboardContext({ weekStart, timeWindow, currentData
 /**
  * Formats the current time window's data as Claude-readable context.
  * "Today" / "Week" / "Month" each get the same shape but different scope.
+ *
+ * Two formatting modes:
+ *   1. Heartbeat-specific shape — when currentData has `plant` or `passaic`
+ *      keys, format as structured Heartbeat sections (Plant Pulse, per-
+ *      category Passaic, BNY mix, top jobs, operator scorecards). This gives
+ *      the heartbeat narrative real numbers to work from.
+ *   2. Generic shape — when currentData has actuals/expected/gaps keys,
+ *      format as the original three-section layout. Used by Recap, Run Rate,
+ *      and other dashboard pages.
  */
 function formatCurrentWindow(timeWindow, weekStart, currentData) {
   if (!currentData) return ''
 
   const windowLabel = {
-    today: `Today (${format(new Date(), 'MMMM d, yyyy')})`,
-    week:  `This week (week of ${format(weekStart, 'MMMM d, yyyy')})`,
-    month: `This month (${format(weekStart, 'MMMM yyyy')})`,
+    today:     `Today (${format(new Date(), 'MMMM d, yyyy')})`,
+    week:      `This week (week of ${format(weekStart, 'MMMM d, yyyy')})`,
+    month:     `This month (${format(weekStart, 'MMMM yyyy')})`,
+    heartbeat: `This week (heartbeat — week of ${format(weekStart, 'MMMM d, yyyy')})`,
+    recap:     `Last week (recap — week of ${format(weekStart, 'MMMM d, yyyy')})`,
   }[timeWindow] || timeWindow
 
   const lines = [`## Current period: ${windowLabel}`, '']
 
+  // ── Heartbeat-shaped payload ─────────────────────────────────────────────
+  // HeartbeatPage passes a structured object with plant/passaic/bny/etc.
+  // keys. Format it as named sections so Claude sees the budget/scheduled/
+  // actual three-layer story plus per-category breakdown.
+  const isHeartbeatShape = currentData.plant || currentData.passaic || currentData.bny
+
+  if (isHeartbeatShape) {
+    // Plant Pulse — three layers + shift split
+    if (currentData.plant) {
+      const p = currentData.plant
+      lines.push('### Plant Pulse — yards')
+      lines.push(`- Budget (annual plan, weekly): ${fmt(p.budget)} yds`)
+      lines.push(`- Scheduled (Wendy + Chandler this week): ${fmt(p.scheduled)} yds`)
+      lines.push(`- Actual (Live Ops to date): ${fmt(p.actual)} yds`)
+      if (p.shift1 || p.shift2) {
+        const s1s = p.shift1?.scheduled || 0
+        const s1a = p.shift1?.actual || 0
+        const s2s = p.shift2?.scheduled || 0
+        const s2a = p.shift2?.actual || 0
+        if (s2s > 0 || s2a > 0) {
+          lines.push(`- 1st shift (6:30a-3p): ${fmt(s1s)} sched · ${fmt(s1a)} actual`)
+          lines.push(`- 2nd shift (3p-11p, Passaic only): ${fmt(s2s)} sched · ${fmt(s2a)} actual`)
+        }
+      }
+      lines.push('')
+    }
+
+    // Per-category Passaic
+    if (currentData.passaic?.byCategory?.length) {
+      lines.push('### Passaic — per category')
+      for (const cat of currentData.passaic.byCategory) {
+        const parts = [`- ${cat.name} (${cat.tableRange}):`]
+        parts.push(`${fmt(cat.scheduledYards || 0)} sched / ${fmt(cat.actualYards || 0)} actual`)
+        if (cat.budgetYards) parts.push(`vs ${fmt(cat.budgetYards)} budget`)
+        if (cat.activeTables != null && cat.tableCount != null) {
+          parts.push(`${cat.activeTables}/${cat.tableCount} tables active`)
+        }
+        if (cat.bottleneck?.label) parts.push(`bottleneck: ${cat.bottleneck.label}`)
+        // Shift split if 2nd shift active for this category
+        if (cat.shiftAgg?.['2nd']?.plannedYards > 0 || cat.shiftAgg?.['2nd']?.actualYards > 0) {
+          parts.push(
+            `(1st: ${fmt(cat.shiftAgg['1st'].plannedYards)} sched/${fmt(cat.shiftAgg['1st'].actualYards)} actual; ` +
+            `2nd: ${fmt(cat.shiftAgg['2nd'].plannedYards)} sched/${fmt(cat.shiftAgg['2nd'].actualYards)} actual)`
+          )
+        }
+        lines.push(parts.join(' '))
+      }
+      lines.push('')
+    }
+
+    // BNY summary
+    if (currentData.bny) {
+      const b = currentData.bny
+      lines.push('### Brooklyn (BNY) digital')
+      if (b.totalScheduled != null || b.totalActual != null) {
+        lines.push(`- Total: ${fmt(b.totalScheduled || 0)} sched / ${fmt(b.totalActual || 0)} actual yds`)
+      }
+      if (b.byBucket && Object.keys(b.byBucket).length) {
+        const bucketLines = Object.entries(b.byBucket)
+          .filter(([, yards]) => yards > 0)
+          .map(([bucket, yards]) => `${bucket}: ${fmt(yards)}`)
+        if (bucketLines.length) lines.push(`- By bucket: ${bucketLines.join(', ')}`)
+      }
+      if (b.machinesActive != null && b.machinesTotal != null) {
+        lines.push(`- ${b.machinesActive}/${b.machinesTotal} machines active`)
+      }
+      lines.push('')
+    }
+
+    // Top complexity jobs (Passaic, planned_cy desc)
+    if (currentData.topJobs?.length) {
+      lines.push('### Top complexity jobs (Passaic, by color-yards)')
+      for (const j of currentData.topJobs.slice(0, 5)) {
+        const cy = j.planned_cy ? `${fmt(j.planned_cy)} cy` : ''
+        const yd = j.planned_yards ? `${fmt(j.planned_yards)} yd` : ''
+        const colors = j.colors_count ? `${j.colors_count}c` : ''
+        const where = j.table_code || ''
+        const desc = j.line_description || j.po_number || ''
+        lines.push(`- ${desc} · ${[where, yd, cy, colors].filter(Boolean).join(' · ')}`)
+      }
+      lines.push('')
+    }
+
+    // Operator scorecards (rolled up — top performers and laggards)
+    if (currentData.scorecards) {
+      const sc = currentData.scorecards
+      const summary = []
+      if (sc.brooklyn_1st?.length) summary.push(`Brooklyn 1st: ${sc.brooklyn_1st.length} operators`)
+      if (sc.passaic_1st?.length)  summary.push(`Passaic 1st: ${sc.passaic_1st.length} operators`)
+      if (sc.passaic_2nd?.length)  summary.push(`Passaic 2nd: ${sc.passaic_2nd.length} operators (independent crew)`)
+      if (summary.length) {
+        lines.push('### Operator scorecards')
+        lines.push(`- ${summary.join(' · ')}`)
+        // List top 3 by Target across each shift bucket
+        for (const [key, label] of [['passaic_1st','Passaic 1st'], ['passaic_2nd','Passaic 2nd'], ['brooklyn_1st','Brooklyn 1st']]) {
+          const list = sc[key] || []
+          if (!list.length) continue
+          const top = list.slice(0, 3).map(op => {
+            const tgt = op.targetYards ? fmt(op.targetYards) : '0'
+            const act = op.actualYards ? fmt(op.actualYards) : '—'
+            const pct = op.targetYards > 0 ? Math.round((op.actualYards / op.targetYards) * 100) : null
+            return `${op.name} (${tgt} target, ${act} actual${pct != null ? `, ${pct}%` : ''})`
+          })
+          lines.push(`- ${label} top 3: ${top.join('; ')}`)
+        }
+        lines.push('')
+      }
+    }
+
+    // High-signal flags — surface things Claude should notice
+    if (currentData.flags?.length) {
+      lines.push('### Notable flags')
+      for (const flag of currentData.flags) lines.push(`- ${flag}`)
+      lines.push('')
+    }
+
+    return lines.join('\n')
+  }
+
+  // ── Generic actuals/expected/gaps shape (legacy callers) ─────────────────
   if (currentData.actuals) {
     lines.push('### Actuals so far')
     Object.entries(currentData.actuals).forEach(([k, v]) => {
@@ -418,6 +549,13 @@ function formatCurrentWindow(timeWindow, weekStart, currentData) {
   }
 
   return lines.join('\n')
+}
+
+// Local helper for formatting numbers in this module (top of file imports
+// don't include one and this section uses many numeric formats).
+function fmt(n) {
+  if (n == null || isNaN(n)) return '0'
+  return Math.round(Number(n)).toLocaleString()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
