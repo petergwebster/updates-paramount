@@ -550,14 +550,14 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
-  // Responsive card grid. Each card claims at least 280px (enough for the
+  // Responsive card grid. Each card claims at least 360px (enough for the
   // CrewStrip CREW column to fully render two-operator names like
-  // "Romer O. / Daniel R." without truncation), then fills the remaining
-  // row width via 1fr. The browser packs as many cards into a row as it
-  // can, then wraps. This sidesteps the "guess the right number per row"
-  // problem — the layout now responds to actual container width rather
-  // than a hardcoded count.
-  const cardMin = compact ? 220 : 280
+  // "Humberto G. / Jeremy D." without truncation), then fills the
+  // remaining row width via 1fr. The browser packs as many cards into a
+  // row as it can, then wraps. Per Peter 5/2/2026 — 280px was still too
+  // tight; 360px gives the CREW column ~150px which fits two short-form
+  // names cleanly.
+  const cardMin = compact ? 260 : 360
   const gridStyle = {
     display: 'grid',
     gridTemplateColumns: `repeat(auto-fit, minmax(${cardMin}px, 1fr))`,
