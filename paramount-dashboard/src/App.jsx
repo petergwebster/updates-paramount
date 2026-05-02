@@ -66,16 +66,18 @@ const PERFORMANCE_TABS = [
   { id: 'inventory',  label: 'Inventory', isNew: true },
 ]
 
+// Operations tab order reflects the actual flow:
+// WIP (the universe) → Scheduler (commit the week) → Live Ops (capture execution).
 const OPERATIONS_TABS = [
-  { id: 'liveops',   label: 'Live Ops'  },
+  { id: 'wip',       label: 'WIP'       },
   { id: 'scheduler', label: 'Scheduler' },
-  { id: 'wip',       label: 'WIP', isNew: true },
+  { id: 'liveops',   label: 'Live Ops'  },
 ]
 
-// QA users get a stripped-down Operations tab list
+// QA users get a stripped-down Operations tab list (no WIP — Sami's role doesn't need the universe view)
 const QA_OPERATIONS_TABS = [
-  { id: 'liveops',   label: 'Live Ops'  },
   { id: 'scheduler', label: 'Scheduler' },
+  { id: 'liveops',   label: 'Live Ops'  },
 ]
 
 // Heartbeat is a single-page deep view, so no tab strip is shown.
@@ -89,7 +91,7 @@ const HEARTBEAT_TABS = [
  */
 function defaultTabFor(destination, role) {
   if (destination === 'performance') return 'dashboard'
-  if (destination === 'operations')  return 'liveops'
+  if (destination === 'operations')  return role === 'qa' ? 'scheduler' : 'wip'
   if (destination === 'heartbeat')   return 'pulse'
   return null
 }
