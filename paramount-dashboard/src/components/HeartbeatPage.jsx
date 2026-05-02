@@ -151,11 +151,11 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         const [assignRes, opsRes, wipRollupRes, wipFactsRes, wipRowsRes] = await Promise.all([
           supabase
             .from('sched_assignments')
-            .select('site, po_number, product_type, table_code, day_of_week, shift, planned_yards, planned_cy, status')
+            .select('site, po_number, product_type, table_code, day_of_week, shift, planned_yards, planned_cy, status, operator')
             .eq('week_start', weekKey),
           supabase
             .from('sched_daily_ops')
-            .select('site, table_code, day_of_week, shift, actual_yards, waste_yards, operator_1, operator_2')
+            .select('site, table_code, day_of_week, shift, planned_yards, actual_yards, waste_yards, operator_1, operator_2')
             .eq('week_start', weekKey),
           supabase
             .from('v_current_wip_rollup')
@@ -445,34 +445,60 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
               Print Operator Scorecard
             </div>
             <div className={styles.sectionDesc}>
-              Yards produced this week — by physical location, ranked. 50/50 credit when two operators worked the same shift. Color-yards interpolated from planned ratio for hand-screen sessions.
+              Target vs Actual yards by operator — by physical location and shift, ranked. 50/50 credit when two operators paired on Passaic. Color-yards interpolated from planned ratio for hand-screen.
             </div>
           </div>
         </div>
 
         {loading ? (
           <div className={styles.loading}>Loading…</div>
-        ) : !hasActuals ? (
-          <div className={styles.loading}>
-            Operator scorecards populate as Sami and Chandler enter actuals in Live Ops.
-          </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <OperatorScorecard
-              label="Brooklyn"
-              sublabel="Digital · 7 machines"
-              accent={PP_COLORS.saffron}
-              operators={operatorScorecards.brooklyn}
-              showColorYards={false}
-            />
-            <OperatorScorecard
-              label="Passaic"
-              sublabel="Hand-screen 17 tables + 12 small digitals"
-              accent={PP_COLORS.crimson}
-              operators={operatorScorecards.passaic}
-              showColorYards={true}
-            />
-          </div>
+          (() => {
+            const has1st = operatorScorecards.brooklyn_1st.length > 0
+                       || operatorScorecards.passaic_1st.length > 0
+            const has2nd = operatorScorecards.passaic_2nd.length > 0
+            const showAny = has1st || has2nd
+
+            if (!showAny) {
+              return (
+                <div className={styles.loading}>
+                  Operator scorecards populate as Sami, Wendy, and Chandler enter operator names in Scheduler or Live Ops.
+                </div>
+              )
+            }
+
+            // Layout: two cards side-by-side when no 2nd shift, three when 2nd
+            // shift exists. Brooklyn always shows even if empty (so the
+            // structure is predictable for users).
+            const cols = has2nd ? '1fr 1fr 1fr' : '1fr 1fr'
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 16 }}>
+                <OperatorScorecard
+                  label="Brooklyn · 1st"
+                  sublabel="Digital · 7 machines · 6:30a–3p"
+                  accent={PP_COLORS.saffron}
+                  operators={operatorScorecards.brooklyn_1st}
+                  showColorYards={false}
+                />
+                <OperatorScorecard
+                  label="Passaic · 1st"
+                  sublabel="Hand-screen 17 tables + 12 digitals · 6:30a–3p"
+                  accent={PP_COLORS.crimson}
+                  operators={operatorScorecards.passaic_1st}
+                  showColorYards={true}
+                />
+                {has2nd && (
+                  <OperatorScorecard
+                    label="Passaic · 2nd"
+                    sublabel="Hand-screen · 3p–11p · independent crew"
+                    accent={PP_COLORS.crimson}
+                    operators={operatorScorecards.passaic_2nd}
+                    showColorYards={true}
+                  />
+                )}
+              </div>
+            )
+          })()
         )}
       </div>
 
@@ -1326,7 +1352,8 @@ function buildOperatorScorecards(dailyOps, assignments) {
   BNY_MACHINES.forEach(m => bnyLocation.set(norm(m.table_code), m.location))
 
   // Build a planned-cy ratio map for hand-screen color-yards interpolation.
-  // Key: table|day|shift (Passaic only).
+  // Key: table|day|shift (Passaic only). Used to interpolate cy from
+  // planned_yards on both target and actual sides.
   const ratioByCell = new Map()
   assignments.forEach(a => {
     if (a.site !== 'passaic') return
@@ -1337,30 +1364,101 @@ function buildOperatorScorecards(dailyOps, assignments) {
     ratioByCell.set(key, prev)
   })
 
-  const byLocation = { brooklyn: new Map(), passaic: new Map() }
+  // Aggregator keyed by (location, shift) → Map<operatorName, stats>.
+  // Per Peter 5/2/2026: Passaic 1st and 2nd shifts are independent crews,
+  // not a flexing single team. So each shift gets its own scorecard rather
+  // than a combined view. Brooklyn is 1st-only (digital, single shift).
+  const buckets = {
+    brooklyn_1st: new Map(),
+    passaic_1st:  new Map(),
+    passaic_2nd:  new Map(),
+  }
+  const upsert = (bucketKey, name, patch) => {
+    const map = buckets[bucketKey]
+    const existing = map.get(name) || {
+      name, targetYards: 0, targetColorYards: 0, actualYards: 0, actualColorYards: 0,
+    }
+    map.set(name, {
+      ...existing,
+      targetYards:      existing.targetYards      + (patch.targetYards      || 0),
+      targetColorYards: existing.targetColorYards + (patch.targetColorYards || 0),
+      actualYards:      existing.actualYards      + (patch.actualYards      || 0),
+      actualColorYards: existing.actualColorYards + (patch.actualColorYards || 0),
+    })
+  }
 
+  // ── PASSAIC TARGETS (1st and 2nd shift, separate buckets) ──────────────
+  // Wendy sets per-shift targets via CrewModal — same row writes
+  // planned_yards + operator_1 + operator_2 to sched_daily_ops. Each named
+  // operator gets credit for their share (50/50 if paired). Color-yards
+  // interpolated from the matching assignment cell's planned ratio.
+  dailyOps.forEach(o => {
+    if (o.site !== 'passaic') return
+    const planned = num(o.planned_yards)
+    if (planned <= 0) return
+    const ops = [o.operator_1, o.operator_2].filter(Boolean)
+    if (ops.length === 0) return
+    const shift = o.shift || '1st'
+    const bucketKey = shift === '2nd' ? 'passaic_2nd' : 'passaic_1st'
+
+    const yardsPerOp = planned / ops.length
+    let cyPerOp = 0
+    const cellKey = `${o.table_code}|${o.day_of_week}|${shift}`
+    const ratio = ratioByCell.get(cellKey)
+    if (ratio && ratio.yards > 0) {
+      cyPerOp = ((planned / ratio.yards) * ratio.cy) / ops.length
+    }
+
+    ops.forEach(name => {
+      upsert(bucketKey, name, { targetYards: yardsPerOp, targetColorYards: cyPerOp })
+    })
+  })
+
+  // ── BNY TARGETS (1st shift only — digital is single-shift) ─────────────
+  // Schema asymmetry: BNY uses a single `operator` column on
+  // sched_assignments (Chandler picks one op per machine assignment).
+  // Each assignment row already represents a single operator's slice — no
+  // splitting needed. Bucket by physical machine location (Brooklyn vs the
+  // 12 Passaic-physical small digitals). The Passaic-physical BNY work
+  // joins the Passaic 1st-shift bucket since it's the same physical floor
+  // and same physical crew.
+  assignments.forEach(a => {
+    if (a.site !== 'bny') return
+    const name = a.operator
+    if (!name) return
+    const planned = num(a.planned_yards)
+    if (planned <= 0) return
+    const physLoc = bnyLocation.get(norm(a.table_code)) || 'brooklyn'
+    // BNY runs 1st shift only — both locations land in their *_1st bucket.
+    const bucketKey = physLoc === 'passaic' ? 'passaic_1st' : 'brooklyn_1st'
+    upsert(bucketKey, name, { targetYards: planned })
+  })
+
+  // ── ACTUALS (Passaic 1st/2nd, BNY routed by physical location) ─────────
   dailyOps.forEach(o => {
     const yd = num(o.actual_yards)
     if (yd <= 0) return
     const ops = [o.operator_1, o.operator_2].filter(Boolean)
     if (ops.length === 0) return
+    const shift = o.shift || '1st'
 
-    // Determine PHYSICAL location of this work
-    let location
+    let bucketKey
     if (o.site === 'passaic') {
-      location = 'passaic'
+      bucketKey = shift === '2nd' ? 'passaic_2nd' : 'passaic_1st'
     } else if (o.site === 'bny') {
-      location = bnyLocation.get(norm(o.table_code)) || 'brooklyn'
+      const physLoc = bnyLocation.get(norm(o.table_code)) || 'brooklyn'
+      // BNY actuals always land in 1st-shift bucket regardless of shift
+      // value (digital is single-shift; if someone wrote '2nd' it's likely
+      // a data-entry edge case — treat it as 1st).
+      bucketKey = physLoc === 'passaic' ? 'passaic_1st' : 'brooklyn_1st'
     } else {
       return
     }
 
     const yardsPerOp = yd / ops.length
-
-    // Color-yards interpolation — only meaningful on Passaic hand-screen
     let cyPerOp = 0
     if (o.site === 'passaic') {
-      const cellKey = `${o.table_code}|${o.day_of_week}|${o.shift || '1st'}`
+      const cellKey = `${o.table_code}|${o.day_of_week}|${shift}`
       const ratio = ratioByCell.get(cellKey)
       if (ratio && ratio.yards > 0) {
         cyPerOp = ((yd / ratio.yards) * ratio.cy) / ops.length
@@ -1368,18 +1466,17 @@ function buildOperatorScorecards(dailyOps, assignments) {
     }
 
     ops.forEach(name => {
-      const map = byLocation[location]
-      const existing = map.get(name) || { name, yards: 0, colorYards: 0 }
-      existing.yards += yardsPerOp
-      existing.colorYards += cyPerOp
-      map.set(name, existing)
+      upsert(bucketKey, name, { actualYards: yardsPerOp, actualColorYards: cyPerOp })
     })
   })
 
-  const sortByYards = (a, b) => b.yards - a.yards
+  // Sort each bucket by target desc (so people with the biggest assignments
+  // lead) — falling back to actuals when no targets are set.
+  const sortFn = (a, b) => (b.targetYards || b.actualYards) - (a.targetYards || a.actualYards)
   return {
-    brooklyn: Array.from(byLocation.brooklyn.values()).sort(sortByYards),
-    passaic:  Array.from(byLocation.passaic.values()).sort(sortByYards),
+    brooklyn_1st: Array.from(buckets.brooklyn_1st.values()).sort(sortFn),
+    passaic_1st:  Array.from(buckets.passaic_1st.values()).sort(sortFn),
+    passaic_2nd:  Array.from(buckets.passaic_2nd.values()).sort(sortFn),
   }
 }
 
@@ -1516,18 +1613,27 @@ function wipLabelMap() {
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   OperatorScorecard — ranked operator-yards card, used by the Operator
-   Performance section. One per physical location (Brooklyn, Passaic).
+   OperatorScorecard — per-operator Target/Actual leaderboard with progress
+   bars. One per (location, shift) bucket. Per Peter 5/2/2026 the Passaic
+   1st and 2nd shifts are independent crews, so each gets its own card.
+
+   Concept:
+     - TARGET column = sum of planned_yards Wendy/Chandler assigned to
+                       this operator (50/50 if paired on Passaic)
+     - ACTUAL column = sum of actual_yards entered against this operator
+     - PROGRESS bar  = actual / target, color tone follows variance scale
+     - Color-yards line below each row for Passaic (digital is single-pass,
+       color-yards is meaningless there)
    ═════════════════════════════════════════════════════════════════════════ */
 
 function OperatorScorecard({ label, sublabel, accent, operators, showColorYards }) {
-  const cols = showColorYards ? '24px 1fr 80px 80px' : '24px 1fr 80px'
   const rankColor = (i) => {
     if (i === 0) return PP_COLORS.emerald
     if (i === 1) return PP_COLORS.saffron
     if (i === 2) return '#a16207'
     return PP_COLORS.muted
   }
+
   return (
     <div style={{
       background: '#fff',
@@ -1547,13 +1653,14 @@ function OperatorScorecard({ label, sublabel, accent, operators, showColorYards 
 
       {operators.length === 0 ? (
         <div style={{ fontSize: 12, color: PP_COLORS.muted, fontStyle: 'italic', padding: '8px 0' }}>
-          No actuals attributed yet this week.
+          No operators assigned for this shift yet.
         </div>
       ) : (
         <div>
+          {/* Header row */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: cols,
+            gridTemplateColumns: '24px 1fr 70px 70px 50px',
             gap: 8,
             fontSize: 9,
             fontWeight: 700,
@@ -1565,48 +1672,127 @@ function OperatorScorecard({ label, sublabel, accent, operators, showColorYards 
           }}>
             <span></span>
             <span>Operator</span>
-            <span style={{ textAlign: 'right' }}>Yards</span>
-            {showColorYards && <span style={{ textAlign: 'right' }}>Color-Yds</span>}
+            <span style={{ textAlign: 'right' }}>Target</span>
+            <span style={{ textAlign: 'right' }}>Actual</span>
+            <span style={{ textAlign: 'right' }}>%</span>
           </div>
+
           {operators.map((op, i) => (
-            <div key={op.name} style={{
-              display: 'grid',
-              gridTemplateColumns: cols,
-              gap: 8,
-              fontSize: 12,
-              padding: '8px 0',
-              borderBottom: i < operators.length - 1 ? `1px dashed ${PP_COLORS.linen}` : 'none',
-              alignItems: 'center',
-            }}>
-              <span style={{
-                fontFamily: 'Georgia,serif',
-                color: rankColor(i),
-                fontWeight: i < 3 ? 700 : 600,
-              }}>
-                {i + 1}
-              </span>
-              <span style={{ color: PP_COLORS.ink, fontWeight: i === 0 ? 700 : 500 }}>
-                {op.name}
-              </span>
-              <span style={{
-                textAlign: 'right',
-                color: PP_COLORS.ink,
-                fontWeight: 600,
-                fontFamily: 'Georgia,serif',
-              }}>
-                {fmt(op.yards)}
-              </span>
-              {showColorYards && (
-                <span style={{
-                  textAlign: 'right',
-                  color: op.colorYards > 0 ? PP_COLORS.ink : PP_COLORS.muted,
-                  fontFamily: 'Georgia,serif',
-                }}>
-                  {op.colorYards > 0 ? fmt(op.colorYards) : '—'}
-                </span>
-              )}
-            </div>
+            <OperatorRow
+              key={op.name}
+              op={op}
+              rank={i}
+              isLast={i === operators.length - 1}
+              rankColor={rankColor(i)}
+              showColorYards={showColorYards}
+            />
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OperatorRow({ op, rank, isLast, rankColor, showColorYards }) {
+  const hasTarget = op.targetYards > 0
+  const hasActual = op.actualYards > 0
+  const pct = hasTarget ? Math.round((op.actualYards / op.targetYards) * 100) : null
+  const tone = !hasTarget        ? 'neutral'
+            : !hasActual         ? 'pending'
+            : pct >= 95          ? 'emerald'
+            : pct >= 75          ? 'saffron'
+            :                       'crimson'
+  const barColor = tone === 'emerald'   ? PP_COLORS.emerald
+                : tone === 'saffron'   ? '#E89A1E'
+                : tone === 'crimson'   ? PP_COLORS.crimson
+                :                        PP_COLORS.linenDark
+  const pctColor = tone === 'emerald'   ? PP_COLORS.emerald
+                : tone === 'saffron'   ? '#A66A0F'
+                : tone === 'crimson'   ? PP_COLORS.crimson
+                :                        PP_COLORS.muted
+
+  // Bar fill: cap at 100% visually so a 110% over-performer doesn't blow
+  // the layout. The text label preserves the true % in those cases.
+  const barFillPct = hasTarget ? Math.min(100, (op.actualYards / op.targetYards) * 100) : 0
+
+  return (
+    <div style={{
+      padding: '10px 0',
+      borderBottom: isLast ? 'none' : `1px dashed ${PP_COLORS.linen}`,
+    }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '24px 1fr 70px 70px 50px',
+        gap: 8,
+        fontSize: 12,
+        alignItems: 'center',
+      }}>
+        <span style={{
+          fontFamily: 'Georgia,serif',
+          color: rankColor,
+          fontWeight: rank < 3 ? 700 : 600,
+        }}>
+          {rank + 1}
+        </span>
+        <span style={{ color: PP_COLORS.ink, fontWeight: rank === 0 ? 700 : 500 }}>
+          {op.name}
+        </span>
+        <span style={{
+          textAlign: 'right',
+          color: hasTarget ? PP_COLORS.ink : PP_COLORS.muted,
+          fontFamily: 'Georgia,serif',
+        }}>
+          {hasTarget ? fmt(op.targetYards) : '—'}
+        </span>
+        <span style={{
+          textAlign: 'right',
+          color: hasActual ? PP_COLORS.ink : PP_COLORS.muted,
+          fontFamily: 'Georgia,serif',
+          fontWeight: 600,
+        }}>
+          {hasActual ? fmt(op.actualYards) : '—'}
+        </span>
+        <span style={{
+          textAlign: 'right',
+          fontSize: 11,
+          fontWeight: 700,
+          color: pctColor,
+        }}>
+          {pct == null ? '—' : `${pct}%`}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      {hasTarget && (
+        <div style={{
+          marginTop: 5,
+          marginLeft: 32, // align under name column
+          height: 4,
+          background: PP_COLORS.linen,
+          borderRadius: 2,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${barFillPct}%`,
+            height: '100%',
+            background: barColor,
+            transition: 'width 0.3s ease',
+          }} />
+        </div>
+      )}
+
+      {/* Color-yards sub-line — Passaic only */}
+      {showColorYards && (op.targetColorYards > 0 || op.actualColorYards > 0) && (
+        <div style={{
+          marginTop: 4,
+          marginLeft: 32,
+          fontSize: 10,
+          color: PP_COLORS.muted,
+          fontStyle: 'italic',
+        }}>
+          {op.targetColorYards > 0 && <>target {fmt(Math.round(op.targetColorYards))} cyds</>}
+          {op.targetColorYards > 0 && op.actualColorYards > 0 && ' · '}
+          {op.actualColorYards > 0 && <>actual {fmt(Math.round(op.actualColorYards))} cyds</>}
         </div>
       )}
     </div>
