@@ -186,6 +186,65 @@ function statusRenderOrder(statuses) {
   return [...known, ...rest]
 }
 
+// ─── Per-site product categories ──────────────────────────────────────────
+//
+// Passaic categorizes by product_type substring (matches the existing
+// PassaicScheduler classifier — grass, fabric, wallpaper). BNY categorizes
+// by bny_bucket (one of seven canonical buckets the parser populates).
+// Procurement isn't categorized — it's pass-through.
+
+const PASSAIC_CATEGORIES = [
+  { id: 'grass',     label: 'Grasscloth', match: pt => pt.includes('grass') },
+  { id: 'fabric',    label: 'Fabric',     match: pt => pt.includes('fabric') || pt.includes('strike-off') },
+  { id: 'wallpaper', label: 'Wallpaper',  match: pt => pt.includes('paper') || pt.includes('panel') },
+]
+
+// BNY canonical 7 buckets, Scheduler-chip order
+const BNY_CATEGORIES = [
+  { id: 'Replen',    label: 'Replen' },
+  { id: 'NEW GOODS', label: 'NEW Goods' },
+  { id: 'Custom',    label: 'Custom' },
+  { id: 'MTO',       label: 'MTO' },
+  { id: 'HOS',       label: 'HOS' },
+  { id: 'Memo',      label: 'Memo' },
+  { id: '3P',        label: '3P' },
+]
+
+function categoryMatchPassaic(row, catId) {
+  const cat = PASSAIC_CATEGORIES.find(c => c.id === catId)
+  if (!cat) return false
+  return cat.match((row.product_type || '').toLowerCase())
+}
+function categoryMatchBny(row, catId) {
+  // BNY rows have bny_bucket set by parser; match by exact equality.
+  return (row.bny_bucket || '') === catId
+}
+
+// ─── Age buckets ──────────────────────────────────────────────────────────
+//
+// Five buckets: Current (< 30 days), 30, 60, 90, 90+. age_days is computed
+// at parse time from order_created. The parser also writes age_bucket as
+// a string ('Current', '30', '60', '90', '90+') but we recompute defensively
+// here in case parser logic ever drifts.
+
+const AGE_BUCKETS = [
+  { id: 'current', label: 'Current', sub: '< 30d',  test: d => d < 30 },
+  { id: '30',      label: '30 days', sub: '30–59d', test: d => d >= 30 && d < 60 },
+  { id: '60',      label: '60 days', sub: '60–89d', test: d => d >= 60 && d < 90 },
+  { id: '90',      label: '90 days', sub: '90–119d',test: d => d >= 90 && d < 120 },
+  { id: '90plus',  label: '90+ days',sub: '120d+',  test: d => d >= 120 },
+]
+
+function ageBucketFor(row) {
+  const d = Number(row.age_days || 0)
+  if (d < 30) return 'current'
+  if (d < 60) return '30'
+  if (d < 90) return '60'
+  if (d < 120) return '90'
+  return '90plus'
+}
+
+
 export default function WIPTab() {
   const [snapshot, setSnapshot] = useState(null)
   const [wipRows, setWipRows] = useState([])
@@ -193,7 +252,14 @@ export default function WIPTab() {
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
   const [error, setError] = useState(null)
-  const [customerFilter, setCustomerFilter] = useState('all') // all | schumacher | thirdparty
+  // Site toggle — mirrors the NEW Goods pattern. Each site gets its own
+  // scoped view: filters, aging cards, division pivot all reflect this.
+  const [site, setSite] = useState('passaic')  // 'passaic' | 'bny' | 'procurement'
+  // Filter state — these apply to the active site's view.
+  const [customerFilter, setCustomerFilter] = useState('all')   // all | schumacher | thirdparty
+  const [excludeNewGoods, setExcludeNewGoods] = useState(false) // Passaic/BNY only
+  const [categoryFilters, setCategoryFilters] = useState(new Set()) // multi-select OR
+  const [ageBucketFilters, setAgeBucketFilters] = useState(new Set()) // multi-select OR — clickable aging cards
   const fileInputRef = useRef(null)
 
   async function loadLatest() {
@@ -218,7 +284,7 @@ export default function WIPTab() {
       while (true) {
         const { data, error: re } = await supabase
           .from('sched_wip_rows')
-          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, order_status, yards_written, qty_invoiced, income_written')
+          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, line_description, order_status, yards_written, qty_invoiced, income_written, age_days, age_bucket')
           .eq('snapshot_id', snap.id)
           .range(from, from + pageSize - 1)
         if (re) throw re
@@ -317,19 +383,121 @@ export default function WIPTab() {
     return { total, ...bySite }
   }, [wipRows])
 
-  const customerCounts = useMemo(() => {
+  // ── Site-scoped row pipeline ────────────────────────────────────────
+  // 1. Filter to active site
+  // 2. Apply customer filter
+  // 3. Apply NG-exclude toggle (only for passaic/bny — Procurement skips)
+  // 4. Apply category filter (multi-select OR — only for passaic/bny)
+  // 5. Apply age bucket filter (multi-select OR — only for passaic/bny)
+  // The result feeds BOTH the aging cards AND the division pivot below.
+
+  const siteRows = useMemo(() => {
+    return wipRows.filter(r => r.site === site)
+  }, [wipRows, site])
+
+  // Customer counts on the unfiltered site rows — drives the customer pill counts
+  const customerCountsForSite = useMemo(() => {
     let sch = 0, tp = 0, other = 0
-    for (const r of wipRows) {
+    for (const r of siteRows) {
       const k = customerKeyFor(r)
       if      (k === 'schumacher')  sch++
       else if (k === 'thirdparty')  tp++
       else                          other++
     }
-    return { sch, tp, other, all: wipRows.length }
-  }, [wipRows])
+    return { sch, tp, other, all: siteRows.length }
+  }, [siteRows])
 
-  const pivots = useMemo(() => buildDivisionPivots(wipRows, customerFilter), [wipRows, customerFilter])
-  const divisionsToRender = divisionRenderOrder(Object.keys(pivots))
+  // Apply all OTHER filters (everything except the age-bucket filter) to get
+  // the row set for the aging visualization. The aging cards show counts
+  // that would result if you weren't already filtering by age — clicking
+  // a card narrows the rest of the page, but the cards themselves should
+  // reflect the broader picture so you can see why you're filtering.
+  const rowsBeforeAge = useMemo(() => {
+    let out = siteRows
+    if (customerFilter !== 'all') out = out.filter(r => customerKeyFor(r) === customerFilter)
+    if (excludeNewGoods && site !== 'procurement') out = out.filter(r => !r.is_new_goods)
+    if (categoryFilters.size > 0 && site !== 'procurement') {
+      const matchFn = site === 'passaic' ? categoryMatchPassaic : categoryMatchBny
+      out = out.filter(r => {
+        for (const cat of categoryFilters) {
+          if (matchFn(r, cat)) return true
+        }
+        return false
+      })
+    }
+    return out
+  }, [siteRows, customerFilter, excludeNewGoods, categoryFilters, site])
+
+  // Final filtered rows — apply age bucket filter on top of rowsBeforeAge.
+  // This is what feeds the Division pivot below.
+  const filteredRows = useMemo(() => {
+    if (ageBucketFilters.size === 0) return rowsBeforeAge
+    return rowsBeforeAge.filter(r => ageBucketFilters.has(ageBucketFor(r)))
+  }, [rowsBeforeAge, ageBucketFilters])
+
+  // Aging breakdown — count POs distinct, yards, income per bucket.
+  // Built from rowsBeforeAge (NOT filteredRows) so the cards always show the
+  // full age picture for the current customer/category/NG filter set.
+  const agingByBucket = useMemo(() => {
+    const out = {}
+    for (const b of AGE_BUCKETS) {
+      out[b.id] = { poSet: new Set(), yards: 0, income: 0 }
+    }
+    for (const r of rowsBeforeAge) {
+      const bucket = ageBucketFor(r)
+      const poKey = (r.po_number && String(r.po_number).trim())
+                  || (r.order_number && String(r.order_number).trim())
+      if (poKey) out[bucket].poSet.add(poKey)
+      out[bucket].yards  += Number(r.yards_written || 0)
+      out[bucket].income += Number(r.income_written || 0)
+    }
+    // Resolve sets to counts
+    const resolved = {}
+    for (const b of AGE_BUCKETS) {
+      resolved[b.id] = {
+        orders: out[b.id].poSet.size,
+        yards:  out[b.id].yards,
+        income: out[b.id].income,
+      }
+    }
+    return resolved
+  }, [rowsBeforeAge])
+
+  // Division pivot for active site only — built from filteredRows.
+  // We pass an array containing just one site's rows so buildDivisionPivots
+  // emits one division entry. Customer filter is already applied so we pass 'all'.
+  const sitePivots = useMemo(() => buildDivisionPivots(filteredRows, 'all'), [filteredRows])
+  const divisionsToRender = divisionRenderOrder(Object.keys(sitePivots))
+
+  // Helpers to toggle pill filters
+  function toggleCategory(catId) {
+    setCategoryFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(catId)) next.delete(catId)
+      else next.add(catId)
+      return next
+    })
+  }
+  function toggleAgeBucket(bucketId) {
+    setAgeBucketFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(bucketId)) next.delete(bucketId)
+      else next.add(bucketId)
+      return next
+    })
+  }
+  function clearAllFilters() {
+    setCustomerFilter('all')
+    setExcludeNewGoods(false)
+    setCategoryFilters(new Set())
+    setAgeBucketFilters(new Set())
+  }
+  // When site changes, reset filters that don't apply (categories, NG exclude
+  // are site-specific and would carry over confusingly).
+  useEffect(() => {
+    setCategoryFilters(new Set())
+    setAgeBucketFilters(new Set())
+  }, [site])
 
   return (
     <div style={{ background: C.cream, minHeight: '100vh', padding: '0 0 48px', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
@@ -384,14 +552,41 @@ export default function WIPTab() {
           {/* ── Connection note ───────────────────────────────────────── */}
           <ConnectionNote />
 
-          {/* ── Customer filter ───────────────────────────────────────── */}
-          <CustomerFilter
-            value={customerFilter}
-            counts={customerCounts}
-            onChange={setCustomerFilter}
+          {/* ── Site toggle ───────────────────────────────────────────── */}
+          <SiteToggle site={site} onChange={setSite} summary={summary} />
+
+          {/* ── Scoped filter row ─────────────────────────────────────── */}
+          <FilterRow
+            site={site}
+            customerFilter={customerFilter}
+            customerCounts={customerCountsForSite}
+            onCustomerChange={setCustomerFilter}
+            excludeNewGoods={excludeNewGoods}
+            onExcludeNewGoodsChange={setExcludeNewGoods}
+            categoryFilters={categoryFilters}
+            onToggleCategory={toggleCategory}
+            ageBucketFilters={ageBucketFilters}
+            hasActiveFilters={
+              customerFilter !== 'all' ||
+              excludeNewGoods ||
+              categoryFilters.size > 0 ||
+              ageBucketFilters.size > 0
+            }
+            onClearAll={clearAllFilters}
+            visibleCount={filteredRows.length}
+            totalCount={siteRows.length}
           />
 
-          {/* ── Division pivots ───────────────────────────────────────── */}
+          {/* ── Aging cards (Passaic/BNY only — Procurement is pass-through) ── */}
+          {site !== 'procurement' && (
+            <AgingCards
+              buckets={agingByBucket}
+              activeFilters={ageBucketFilters}
+              onToggle={toggleAgeBucket}
+            />
+          )}
+
+          {/* ── Division pivot for active site ────────────────────────── */}
           {divisionsToRender.length === 0 ? (
             <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
               No rows match the current filter.
@@ -401,7 +596,7 @@ export default function WIPTab() {
               <DivisionPivot
                 key={div}
                 division={div}
-                agg={pivots[div]}
+                agg={sitePivots[div]}
               />
             ))
           )}
@@ -472,40 +667,6 @@ function ConnectionNote() {
       to the New Goods view instead. Statuses past the printer (Mixing, In Packing, Ready to
       Ship, Shipped) are not in the pool. Procurement isn't scheduled — it's pass-through.
       Each section header below shows total POs and how many are in that site's Scheduler pool.
-    </div>
-  )
-}
-
-// ─── Customer filter pill ──────────────────────────────────────────────────
-
-function CustomerFilter({ value, counts, onChange }) {
-  const opts = [
-    { v: 'all',         l: 'All',         n: counts.all },
-    { v: 'schumacher',  l: 'Schumacher',  n: counts.sch },
-    { v: 'thirdparty',  l: '3rd Party',   n: counts.tp  },
-  ]
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginRight: 4 }}>
-        Customer:
-      </span>
-      {opts.map(o => {
-        const active = value === o.v
-        return (
-          <button key={o.v} onClick={() => onChange(o.v)}
-            style={{
-              padding: '6px 14px', fontSize: 12,
-              fontWeight: active ? 700 : 500,
-              borderRadius: 16,
-              border: `1px solid ${active ? C.ink : C.border}`,
-              background: active ? C.ink : 'transparent',
-              color: active ? '#fff' : C.inkMid,
-              cursor: 'pointer',
-            }}>
-            {o.l} <span style={{ opacity: 0.7, marginLeft: 4 }}>({fmt(o.n)})</span>
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -590,6 +751,211 @@ function DivisionPivot({ division, agg }) {
         <span style={{ textAlign: 'right' }}>{fmt(totals.yards)}</span>
         <span style={{ textAlign: 'right' }}>{totals.qtyInvoiced > 0 ? fmt(totals.qtyInvoiced) : '—'}</span>
         <span style={{ textAlign: 'right' }}>{fmtD(totals.income)}</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Site toggle ──────────────────────────────────────────────────────────
+//
+// Three-button row: Passaic / Brooklyn / Procurement. Mirrors the NEW Goods
+// pattern — active site renders highlighted, count shown for active site.
+// Procurement gets a lighter view (no aging, no category filter).
+
+const SITE_TOGGLE_OPTS = [
+  { id: 'passaic',     label: 'Passaic',     sub: 'Screen Print' },
+  { id: 'bny',         label: 'Brooklyn',    sub: 'Digital'      },
+  { id: 'procurement', label: 'Procurement', sub: 'Pass-Through' },
+]
+
+function SiteToggle({ site, onChange, summary }) {
+  const counts = {
+    passaic:     summary?.passaic     ?? 0,
+    bny:         summary?.bny         ?? 0,
+    procurement: summary?.procurement ?? 0,
+  }
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      {SITE_TOGGLE_OPTS.map(s => {
+        const active = site === s.id
+        const sub = active ? `${fmt(counts[s.id])} items` : s.sub
+        return (
+          <button key={s.id} onClick={() => onChange(s.id)}
+            style={{
+              padding: '12px 20px',
+              background: active ? C.ink : '#fff',
+              color: active ? '#fff' : C.inkMid,
+              border: `1px solid ${active ? C.ink : C.border}`,
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: active ? 700 : 500,
+              cursor: 'pointer',
+              textAlign: 'left',
+              minWidth: 140,
+            }}>
+            <div style={{ fontFamily: 'Georgia,serif', fontSize: 15 }}>{s.label}</div>
+            <div style={{ fontSize: 10, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{sub}</div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Unified filter row ───────────────────────────────────────────────────
+//
+// Customer pills (always shown) + Exclude NEW Goods checkbox (Passaic/BNY
+// only) + Category pills (Passaic/BNY only, site-specific). Plus a clear-all
+// shortcut when any filter is active. Procurement gets only Customer.
+
+function FilterRow({
+  site, customerFilter, customerCounts, onCustomerChange,
+  excludeNewGoods, onExcludeNewGoodsChange,
+  categoryFilters, onToggleCategory,
+  ageBucketFilters,
+  hasActiveFilters, onClearAll,
+  visibleCount, totalCount,
+}) {
+  const customerOpts = [
+    { v: 'all',         l: 'All',         n: customerCounts.all },
+    { v: 'schumacher',  l: 'FSCO',        n: customerCounts.sch },
+    { v: 'thirdparty',  l: '3rd Party',   n: customerCounts.tp  },
+  ]
+  const categories = site === 'passaic' ? PASSAIC_CATEGORIES
+                   : site === 'bny'     ? BNY_CATEGORIES
+                   : []
+
+  return (
+    <div style={{
+      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
+      padding: '12px 16px', marginBottom: 16,
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      {/* Top row: customer + NG exclude + count + clear */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight }}>
+          Customer:
+        </span>
+        {customerOpts.map(o => {
+          const active = customerFilter === o.v
+          return (
+            <button key={o.v} onClick={() => onCustomerChange(o.v)}
+              style={{
+                padding: '5px 12px', fontSize: 11,
+                fontWeight: active ? 700 : 500,
+                borderRadius: 14,
+                border: `1px solid ${active ? C.ink : C.border}`,
+                background: active ? C.ink : 'transparent',
+                color: active ? '#fff' : C.inkMid,
+                cursor: 'pointer',
+              }}>
+              {o.l} <span style={{ opacity: 0.7, marginLeft: 4 }}>({fmt(o.n)})</span>
+            </button>
+          )
+        })}
+        {site !== 'procurement' && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkMid, cursor: 'pointer', marginLeft: 8 }}>
+            <input type="checkbox" checked={excludeNewGoods} onChange={e => onExcludeNewGoodsChange(e.target.checked)} />
+            Exclude NEW Goods
+          </label>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: C.inkLight }}>
+          {fmt(visibleCount)} of {fmt(totalCount)} rows
+        </span>
+        {hasActiveFilters && (
+          <button onClick={onClearAll}
+            style={{
+              padding: '4px 10px', fontSize: 11, fontWeight: 500,
+              background: 'transparent', color: C.inkLight,
+              border: 'none', cursor: 'pointer', textDecoration: 'underline',
+            }}>
+            clear all
+          </button>
+        )}
+      </div>
+
+      {/* Category pills (site-specific) — only shown when site has categories */}
+      {categories.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginRight: 4 }}>
+            Category:
+          </span>
+          {categories.map(cat => {
+            const active = categoryFilters.has(cat.id)
+            return (
+              <button key={cat.id} onClick={() => onToggleCategory(cat.id)}
+                style={{
+                  padding: '5px 12px', fontSize: 11,
+                  fontWeight: active ? 700 : 500,
+                  borderRadius: 14,
+                  border: `1px solid ${active ? C.ink : C.border}`,
+                  background: active ? C.ink : 'transparent',
+                  color: active ? '#fff' : C.inkMid,
+                  cursor: 'pointer',
+                }}>
+                {cat.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Aging cards ──────────────────────────────────────────────────────────
+//
+// Five horizontal cards: Current / 30 / 60 / 90 / 90+. Each shows distinct
+// PO count + yards + income. Click a card to toggle that bucket as a
+// filter — multi-select OR. Active cards visually highlight; inactive
+// cards stay quiet. Color severity grows from neutral (current) → red (90+).
+
+const AGE_BUCKET_TONES = {
+  current: { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC', accent: '#9DCAB1' },
+  '30':    { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC', accent: '#E5C883' },
+  '60':    { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883', accent: '#E89A1E' },
+  '90':    { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0', accent: '#D33A28' },
+  '90plus':{ bg: '#FCE2DE', fg: '#C12B1A', border: '#C12B1A', accent: '#C12B1A' },
+}
+
+function AgingCards({ buckets, activeFilters, onToggle }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 8 }}>
+        Aging · click a card to filter
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(140px, 1fr))`, gap: 8 }}>
+        {AGE_BUCKETS.map(b => {
+          const data = buckets[b.id] || { orders: 0, yards: 0, income: 0 }
+          const active = activeFilters.has(b.id)
+          const tone = AGE_BUCKET_TONES[b.id]
+          return (
+            <button key={b.id} onClick={() => onToggle(b.id)}
+              style={{
+                padding: '14px 16px',
+                background: active ? tone.bg : '#fff',
+                border: `1px solid ${active ? tone.accent : C.border}`,
+                borderLeft: `4px solid ${tone.accent}`,
+                borderRadius: 8,
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.15s',
+              }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: active ? tone.fg : C.inkMid }}>
+                  {b.label}
+                </span>
+                <span style={{ fontSize: 9, color: C.inkLight }}>{b.sub}</span>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: active ? tone.fg : C.ink, fontFamily: 'Georgia,serif', lineHeight: 1.1 }}>
+                {fmt(data.orders)}
+              </div>
+              <div style={{ fontSize: 10, color: C.inkLight, marginTop: 4 }}>
+                {fmt(data.yards)} yds · {fmtD(data.income)}
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
