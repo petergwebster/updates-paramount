@@ -2,6 +2,7 @@ import React from 'react'
 import WIPStatusBar from './WIPStatusBar'
 import styles from './PassaicSection.module.css'
 import {
+  C,
   ACCENT_TEAL,
   STATUS_BAD,
   STATUS_GOOD,
