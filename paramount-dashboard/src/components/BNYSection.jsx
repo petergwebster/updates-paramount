@@ -122,11 +122,15 @@ function MachineLocationBlock({ label, sublabel, machines }) {
  */
 function MachineCard({ m }) {
   const ratio = m.target > 0 ? m.actual / m.target : 0
+  // Idle = no actuals and no target (no production scheduled this week).
+  // Mirrors Passaic's idle table treatment so dimmed cells across both sites
+  // consistently mean "not running this week."
+  const isIdle = (m.actual || 0) === 0 && (m.target || 0) === 0
   let tone = 'emerald'
   if (ratio < 0.85)      tone = 'crimson'
   else if (ratio < 0.92) tone = 'saffron'
   return (
-    <div className={`${styles.machineCard} ${styles[`m_${m.kind}`]}`}>
+    <div className={`${styles.machineCard} ${styles[`m_${m.kind}`]} ${isIdle ? styles.idle : ''}`}>
       <div className={styles.machineHead}>
         <div className={styles.machineName}>{m.name}</div>
         <div className={styles.machineKind}>{m.kind}</div>
