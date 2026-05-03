@@ -15,6 +15,7 @@ import FinancialTab from './components/FinancialTab'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
+import NewGoodsTab from './components/NewGoodsTab'
 import SchedulerTab from './components/SchedulerTab'
 import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
@@ -69,9 +70,10 @@ const PERFORMANCE_TABS = [
 // Operations tab order reflects the actual flow:
 // WIP (the universe) → Scheduler (commit the week) → Live Ops (capture execution).
 const OPERATIONS_TABS = [
-  { id: 'wip',       label: 'WIP'       },
-  { id: 'scheduler', label: 'Scheduler' },
-  { id: 'liveops',   label: 'Live Ops'  },
+  { id: 'wip',       label: 'WIP'        },
+  { id: 'newgoods',  label: 'NEW Goods'  },
+  { id: 'scheduler', label: 'Scheduler'  },
+  { id: 'liveops',   label: 'Live Ops'   },
 ]
 
 // QA users get a stripped-down Operations tab list (no WIP — Sami's role doesn't need the universe view)
@@ -604,6 +606,9 @@ export default function App() {
                 )}
                 {destination === 'operations' && activeTab==='wip' && (
                   <WIPTab weekStart={currentWeek} />
+                )}
+                {destination === 'operations' && activeTab==='newgoods' && (
+                  <NewGoodsTab currentUser={userProfile?.full_name} />
                 )}
 
                 {/* Heartbeat · The deep operational view */}
