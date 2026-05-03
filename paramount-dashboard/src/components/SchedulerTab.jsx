@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { C, SITES, isoDate, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { C, SITES, isoDate, defaultSchedulerWeek, STATUS_BAD_BORDER } from '../lib/scheduleUtils'
 import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
 
@@ -108,7 +108,7 @@ export default function SchedulerTab() {
           </div>
         </div>
         {error && (
-          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '8px 12px' }}>{error}</div>
+          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: `1px solid ${STATUS_BAD_BORDER}`, borderRadius: 6, padding: '8px 12px' }}>{error}</div>
         )}
       </div>
 

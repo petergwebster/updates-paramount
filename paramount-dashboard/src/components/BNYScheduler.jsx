@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek, STATUS_BAD_BORDER } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { BNY_BUDGET, weeklyBudgetYards } from '../lib/budgets'
 
@@ -1331,7 +1331,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
           <MessageBubble key={i} message={m} onApplyProposals={applyProposals} applying={applying} />
         ))}
         {error && (
-          <div style={{ background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
+          <div style={{ background: C.roseBg, border: `1px solid ${STATUS_BAD_BORDER}`, borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
             Error: {error}. Try again.
           </div>
         )}

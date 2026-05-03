@@ -5,7 +5,8 @@ import {
   weekLabel,
   DAY_NAMES_FULL, dayOfWeekFiscal,
   PASSAIC_OPERATORS, BNY_OPERATORS_BROOKLYN, BNY_OPERATORS_PASSAIC_DIGITAL,
-} from '../lib/scheduleUtils'
+
+  STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
@@ -691,7 +692,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
               </div>
               {assignedTo && noteStatus && (
                 <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 12, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', flexShrink: 0,
-                  background: noteStatus === 'resolved' ? '#2D5A3D' : '#8B6914',
+                  background: noteStatus === 'resolved' ? STATUS_GOOD : STATUS_WARN,
                   color: '#fff',
                 }}>
                   {noteStatus === 'resolved' ? '✓ Resolved' : '○ Open'}

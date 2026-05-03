@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT } from '../lib/scheduleUtils'
+import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT,
+  STATUS_BAD_BORDER,
+} from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards, PASSAIC_BUDGET } from '../lib/budgets'
 
@@ -729,7 +731,7 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
                 fontWeight: 700,
                 letterSpacing: '0.04em',
                 color: isSecondShift ? C.gold : C.inkLight,
-                background: isSecondShift ? '#FFF8EE' : 'transparent',
+                background: isSecondShift ? C.parchment : 'transparent',
                 padding: isSecondShift ? '1px 4px' : '0',
                 borderRadius: 2,
               }}>
@@ -1395,7 +1397,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
           <MessageBubble key={i} message={m} onApplyProposals={applyProposals} applying={applying} />
         ))}
         {error && (
-          <div style={{ background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
+          <div style={{ background: C.roseBg, border: '1px solid ${STATUS_BAD_BORDER}', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
             Error: {error}. Try again.
           </div>
         )}

@@ -51,6 +51,16 @@ import styles from './HeartbeatPage.module.css'
 
 import { PASSAIC_BUDGET, BNY_BUDGET } from '../lib/budgets'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
+import {
+  ACCENT_DEEP_TEAL,
+  ACCENT_TEAL,
+  STATUS_BAD,
+  STATUS_BAD_BG,
+  STATUS_GOOD,
+  STATUS_GOOD_BG,
+  STATUS_WARN
+} from '../lib/scheduleUtils'
+
 
 // ─── Targets sourced from src/lib/budgets.js (canonical FY2026 plan) ──────
 // Single source of truth — same values everywhere (Recap / Live Ops / Heartbeat
@@ -385,7 +395,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
 
       {error && (
         <div className={styles.section}>
-          <div className={styles.loading} style={{ color: '#a16207' }}>{error}</div>
+          <div className={styles.loading} style={{ color: STATUS_WARN }}>{error}</div>
         </div>
       )}
 
@@ -721,20 +731,20 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
    ═════════════════════════════════════════════════════════════════════════ */
 
 const PP_COLORS = {
-  ink:       '#101218',
-  paper:     '#F9F8F4',
-  linen:     '#E8E5DC',
-  linenDark: '#D8D3C5',
-  emerald:   '#0F7A4E',
-  crimson:   '#C12B1A',
-  saffron:   '#E89A1E',
-  muted:     '#6b6b6b',
+  ink:       C.ink,
+  paper:     C.cream,
+  linen:     C.border,
+  linenDark: C.border,
+  emerald:   STATUS_GOOD,
+  crimson:   STATUS_BAD,
+  saffron:   ACCENT_DEEP_TEAL,
+  muted:     C.inkLight,
 }
 
 const PP_PILL_TONES = {
-  on:      { background: '#E0F0E5', color: PP_COLORS.emerald },
-  ahead:   { background: '#E0F0E5', color: PP_COLORS.emerald },
-  behind:  { background: '#FAE2DE', color: PP_COLORS.crimson },
+  on:      { background: STATUS_GOOD_BG, color: PP_COLORS.emerald },
+  ahead:   { background: STATUS_GOOD_BG, color: PP_COLORS.emerald },
+  behind:  { background: STATUS_BAD_BG, color: PP_COLORS.crimson },
   pending: { background: PP_COLORS.linen, color: PP_COLORS.muted },
 }
 
@@ -876,7 +886,7 @@ function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds
 
   // Scheduled bar tone — ink-mid neutral; it's neither good nor bad on its
   // own, just shows where Wendy's plan lands relative to budget.
-  const scheduledFill = '#7d7f86'
+  const scheduledFill = C.inkLight
 
   return (
     <div style={PP_STYLES.card}>
@@ -1000,16 +1010,16 @@ function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds
    ═════════════════════════════════════════════════════════════════════════ */
 
 const SP_COLORS = {
-  ink:     '#101218',
-  paper:   '#F9F8F4',
-  linen:   '#E8E5DC',
-  bny:     '#E89A1E',
-  passaic: '#D33A28',
-  emerald: '#0F7A4E',
-  crimson: '#C12B1A',
-  saffron: '#E89A1E',
-  royal:   '#1E4FA8',
-  muted:   '#6b6b6b',
+  ink:     C.ink,
+  paper:   C.cream,
+  linen:   C.border,
+  bny:     ACCENT_DEEP_TEAL,
+  passaic: ACCENT_TEAL,
+  emerald: STATUS_GOOD,
+  crimson: STATUS_BAD,
+  saffron: ACCENT_DEEP_TEAL,
+  royal:   ACCENT_TEAL,
+  muted:   C.inkLight,
 }
 
 const SP_STYLES = {
@@ -1108,9 +1118,9 @@ const SP_STYLES = {
 }
 
 const SP_VAR_TONES = {
-  on:      { background: '#E0F0E5', color: SP_COLORS.emerald },
-  ahead:   { background: '#E0F0E5', color: SP_COLORS.emerald },
-  behind:  { background: '#FAE2DE', color: SP_COLORS.crimson },
+  on:      { background: STATUS_GOOD_BG, color: SP_COLORS.emerald },
+  ahead:   { background: STATUS_GOOD_BG, color: SP_COLORS.emerald },
+  behind:  { background: STATUS_BAD_BG, color: SP_COLORS.crimson },
   pending: { background: SP_COLORS.linen, color: SP_COLORS.muted },
   neutral: { background: SP_COLORS.linen, color: SP_COLORS.muted },
 }
@@ -1895,7 +1905,7 @@ function OperatorScorecard({ label, sublabel, accent, operators, showColorYards 
   const rankColor = (i) => {
     if (i === 0) return PP_COLORS.emerald
     if (i === 1) return PP_COLORS.saffron
-    if (i === 2) return '#a16207'
+    if (i === 2) return STATUS_WARN
     return PP_COLORS.muted
   }
 
@@ -1968,11 +1978,11 @@ function OperatorRow({ op, rank, isLast, rankColor, showColorYards }) {
             : pct >= 75          ? 'saffron'
             :                       'crimson'
   const barColor = tone === 'emerald'   ? PP_COLORS.emerald
-                : tone === 'saffron'   ? '#E89A1E'
+                : tone === 'saffron'   ? ACCENT_DEEP_TEAL
                 : tone === 'crimson'   ? PP_COLORS.crimson
                 :                        PP_COLORS.linenDark
   const pctColor = tone === 'emerald'   ? PP_COLORS.emerald
-                : tone === 'saffron'   ? '#A66A0F'
+                : tone === 'saffron'   ? STATUS_WARN
                 : tone === 'crimson'   ? PP_COLORS.crimson
                 :                        PP_COLORS.muted
 
@@ -2113,14 +2123,14 @@ function plannedForDayGridCell(site, tableCode, day, ops, assignments, shift = n
 
 function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
   const isPassaic = site === 'passaic'
-  const dgInk     = '#212029'
-  const dgInkMid  = '#5b5762'
-  const dgInkLite = '#8a8694'
-  const dgLinen   = '#e8e3da'
-  const dgPaper   = '#fbf8f1'
-  const dgSage    = '#3F704D'
-  const dgGold    = '#A87A2E'
-  const dgRose    = '#A8413B'
+  const dgInk     = C.ink
+  const dgInkMid  = C.inkMid
+  const dgInkLite = C.inkLight
+  const dgLinen   = C.border
+  const dgPaper   = C.parchment
+  const dgSage    = STATUS_GOOD
+  const dgGold    = STATUS_WARN
+  const dgRose    = ACCENT_TEAL
 
   // Build rows: 1st shift always; 2nd shift only when there's any data
   // anywhere in the week for that Passaic table.
@@ -2235,13 +2245,13 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
 const RN_DAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 
 function RecentNotes({ dailyOps }) {
-  const rnInk     = '#212029'
-  const rnInkMid  = '#5b5762'
-  const rnInkLite = '#8a8694'
-  const rnLinen   = '#e8e3da'
-  const rnPaper   = '#fbf8f1'
-  const rnRoyal   = '#1E4FA8'
-  const rnSaffron = '#E89A1E'
+  const rnInk     = C.ink
+  const rnInkMid  = C.inkMid
+  const rnInkLite = C.inkLight
+  const rnLinen   = C.border
+  const rnPaper   = C.parchment
+  const rnRoyal   = ACCENT_TEAL
+  const rnSaffron = ACCENT_DEEP_TEAL
 
   const notes = (dailyOps || [])
     .filter(r => r.notes && String(r.notes).trim().length > 0)

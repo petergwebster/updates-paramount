@@ -1,6 +1,14 @@
 import React from 'react'
 import WIPStatusBar from './WIPStatusBar'
 import styles from './PassaicSection.module.css'
+import {
+  ACCENT_TEAL,
+  STATUS_BAD,
+  STATUS_GOOD,
+  STATUS_GOOD_BG,
+  STATUS_WARN
+} from '../lib/scheduleUtils'
+
 
 /**
  * PassaicSection — the main detail block for Heartbeat.
@@ -148,10 +156,10 @@ function CategoryRow({ cat, wipData }) {
         {/* Headline yards — "300 / 3,615 yd" with source pill */}
         <div className={styles.yardsBig}>
           {cat.yards.toLocaleString()}
-          {hasBudget && <span style={{ fontSize: '0.55em', fontWeight: 400, color: '#6b6b6b', marginLeft: 4 }}>
+          {hasBudget && <span style={{ fontSize: '0.55em', fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>
             / {cat.budgetYards.toLocaleString()}
           </span>}
-          <span style={{ fontSize: '0.55em', fontWeight: 400, color: '#6b6b6b', marginLeft: 4 }}>yd</span>
+          <span style={{ fontSize: '0.55em', fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yd</span>
         </div>
         {/* Source + budget % */}
         {hasYards && (
@@ -160,11 +168,11 @@ function CategoryRow({ cat, wipData }) {
             {yardsPctOfBudget != null && (
               <span style={{
                 fontWeight: 600,
-                color: yardsTone === 'emerald'   ? '#0F7A4E'
-                     : yardsTone === 'saffron'   ? '#A66A0F'
-                     : yardsTone === 'crimson'   ? '#C12B1A'
-                     : yardsTone === 'scheduled' ? '#1E4FA8'
-                     : '#6b6b6b',
+                color: yardsTone === 'emerald'   ? STATUS_GOOD
+                     : yardsTone === 'saffron'   ? STATUS_WARN
+                     : yardsTone === 'crimson'   ? STATUS_BAD
+                     : yardsTone === 'scheduled' ? ACCENT_TEAL
+                     : C.inkLight,
               }}>
                 {yardsPctOfBudget}% of budget
               </span>
@@ -176,13 +184,13 @@ function CategoryRow({ cat, wipData }) {
           {hasColorYds ? (
             <>
               {cat.colorYds.toLocaleString()}
-              {cat.budgetColorYards > 0 && <span style={{ color: '#8a8a8a' }}> / {cat.budgetColorYards.toLocaleString()}</span>}
+              {cat.budgetColorYards > 0 && <span style={{ color: C.inkLight }}> / {cat.budgetColorYards.toLocaleString()}</span>}
               {' color-yds'}
-              {cyPctOfBudget != null && <span style={{ color: '#6b6b6b' }}> · {cyPctOfBudget}%</span>}
-              {cat.avgColors > 0 && <span style={{ color: '#6b6b6b' }}> · avg {cat.avgColors.toFixed(1)} colors</span>}
+              {cyPctOfBudget != null && <span style={{ color: C.inkLight }}> · {cyPctOfBudget}%</span>}
+              {cat.avgColors > 0 && <span style={{ color: C.inkLight }}> · avg {cat.avgColors.toFixed(1)} colors</span>}
             </>
           ) : (
-            <span style={{ color: '#8a8a8a', fontStyle: 'italic' }}>
+            <span style={{ color: C.inkLight, fontStyle: 'italic' }}>
               {cat.budgetColorYards > 0 ? `0 / ${cat.budgetColorYards.toLocaleString()} color-yds` : '—'}
             </span>
           )}
@@ -194,22 +202,22 @@ function CategoryRow({ cat, wipData }) {
           <div style={{
             marginTop: 6,
             paddingTop: 6,
-            borderTop: '1px dashed #DBDCDE',
+            borderTop: `1px dashed ${C.border}`,
             fontSize: 11,
-            color: '#4A4D57',
+            color: C.inkMid,
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: 8,
           }}>
             <span>
-              <strong style={{ color: '#101218' }}>1st:</strong>{' '}
+              <strong style={{ color: C.ink }}>1st:</strong>{' '}
               {cat.shiftAgg['1st'].plannedYards.toLocaleString()} sched
               {cat.shiftAgg['1st'].actualYards > 0 && (
                 <> · {cat.shiftAgg['1st'].actualYards.toLocaleString()} actual</>
               )}
             </span>
             <span>
-              <strong style={{ color: '#101218' }}>2nd:</strong>{' '}
+              <strong style={{ color: C.ink }}>2nd:</strong>{' '}
               {cat.shiftAgg['2nd'].plannedYards.toLocaleString()} sched
               {cat.shiftAgg['2nd'].actualYards > 0 && (
                 <> · {cat.shiftAgg['2nd'].actualYards.toLocaleString()} actual</>
@@ -244,7 +252,7 @@ function SourcePill({ source }) {
       <span style={{
         fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
         padding: '2px 6px', borderRadius: 3,
-        background: '#E0F0E5', color: '#0A4F33',
+        background: STATUS_GOOD_BG, color: STATUS_GOOD,
       }}>Actual</span>
     )
   }
@@ -253,7 +261,7 @@ function SourcePill({ source }) {
       <span style={{
         fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
         padding: '2px 6px', borderRadius: 3,
-        background: '#E5EBF6', color: '#14376E',
+        background: C.parchment, color: ACCENT_TEAL,
       }}>Scheduled</span>
     )
   }

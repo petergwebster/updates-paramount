@@ -1,4 +1,5 @@
 import React from 'react'
+import { C } from '../lib/scheduleUtils'
 import styles from './BNYSection.module.css'
 
 /**
@@ -84,20 +85,20 @@ function MachineLocationBlock({ label, sublabel, machines }) {
         gap: 14,
         paddingBottom: 10,
         marginBottom: 14,
-        borderBottom: '1px solid #DBDCDE',
+        borderBottom: `1px solid ${C.border}`,
       }}>
         <div style={{
           fontFamily: 'Georgia, "Times New Roman", serif',
           fontSize: 18,
           fontWeight: 700,
-          color: '#101218',
+          color: C.ink,
           letterSpacing: '-0.01em',
         }}>
           {label}
         </div>
         <div style={{
           fontSize: 11,
-          color: '#4A4D57',
+          color: C.inkMid,
           fontStyle: 'italic',
           fontFamily: 'Georgia, serif',
         }}>
