@@ -16,12 +16,13 @@
 import type { Config, Context } from "https://edge.netlify.com"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-const MODEL = 'claude-opus-4-7'
-const MAX_OUTPUT_TOKENS = 1500
+const MODEL = 'claude-sonnet-4-6'
+const MAX_OUTPUT_TOKENS = 2000
 
-// Build a compact, structured prompt from items. Claude doesn't need every
-// item — just enough to spot patterns. We send group counts, late/blocked
-// items in detail, and category breakdowns.
+// Build a structured prompt from items. Claude sees the full dataset —
+// every item, every group — so it can comment on completed work, dropped
+// patterns, and concentration risk across the entire pipeline. Compact
+// per-line format keeps token usage reasonable even at 600+ items.
 function buildPrompt(site: string, items: any[]): string {
   // Group items
   const byGroup: Record<string, any[]> = {}
@@ -34,15 +35,8 @@ function buildPrompt(site: string, items: any[]): string {
     Object.entries(byGroup).map(([g, arr]) => [g, arr.length])
   )
 
-  // Pull "in-progress only" items — exclude APPROVED + DROPPED for the
-  // detailed read. Those are noise for observations.
-  const excludeFromDetail = new Set([
-    'APPROVED', 'Approved', 'DROPPED', 'Dropped',
-  ])
-  const inFlight = items.filter(i => !excludeFromDetail.has(i.group_label || ''))
-
-  // For each in-flight item, send a compact line
-  const itemLines = inFlight.map(i => {
+  // Per-item compact line. Skip null fields to keep prompt tight.
+  const itemLine = (i: any) => {
     const parts = [
       `[${i.group_label}]`,
       i.item_name || '?',
@@ -58,21 +52,31 @@ function buildPrompt(site: string, items: any[]): string {
       i.trials_due ? `trials=${i.trials_due}` : null,
     ].filter(Boolean)
     return parts.join(' · ')
-  })
+  }
 
   // Note: timeline/pipeline columns may be swapped in stored data depending
   // on Monday board column order. The component handles this at render time.
   // Here we just send what we have — Claude can infer.
   const siteLabel = site === 'passaic' ? 'Passaic (hand-screen)' : 'Brooklyn (digital)'
 
+  // Build the items section group-by-group so Claude can see the structure
+  // mirrored in the prompt itself.
+  const itemsByGroup = Object.entries(byGroup)
+    .map(([group, arr]) => {
+      const lines = arr.map(itemLine).join('\n')
+      return `### ${group} (${arr.length} items)\n${lines}`
+    })
+    .join('\n\n')
+
   return `You are reading the NEW Goods pre-production pipeline for Paramount Prints, ${siteLabel}.
 
 PIPELINE STRUCTURE:
 ${Object.entries(groupSummary).map(([g, n]) => `  • ${g}: ${n} items`).join('\n')}
-Total: ${items.length} items (${inFlight.length} in-flight, ${items.length - inFlight.length} approved/dropped)
+Total: ${items.length} items
 
-IN-FLIGHT ITEMS (excluding Approved + Dropped):
-${itemLines.join('\n')}
+ALL ITEMS (organized by group):
+
+${itemsByGroup}
 
 YOUR JOB:
 Give Peter (Paramount President) a useful operational read. Organize the read by group/category — one short paragraph per group that has notable signal. Skip groups with nothing worth saying.
@@ -83,13 +87,14 @@ For each group, look for:
   • Late risk — items with timeline=Late or May be late, especially with near launch dates
   • Concentration — does one approver own a disproportionate share? One development type dominating?
   • Things worth celebrating — clear progress, items moving well, recent wins worth flagging
+  • For Approved/Dropped groups — comment briefly only if there's a meaningful pattern (e.g. high drop rate, concentration of drops on one approver/type)
 
 Style:
   • Conversational, not a report. Peter reads carefully and prefers dense prose.
   • Specific over vague. Reference item names when you mention something.
   • If you don't see notable signal in a group, say so briefly or skip it. Don't pad.
   • Use Markdown. **Bold** group names as section headers. Don't use H1/H2.
-  • 400-600 words total. Be tight.
+  • 400-700 words total. Be tight.
   • End with a "Bottom line" paragraph — 2-3 sentences synthesizing the read.
 
 Don't:

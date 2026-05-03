@@ -153,7 +153,27 @@ export async function generateObservations({ site, snapshotId, forceRegenerate =
       generated_by: generatedBy,
     }),
   })
-  const json = await resp.json()
+
+  // Defensive parse: edge function timeouts return HTML (Netlify error page),
+  // not JSON. Detect by content-type and surface a useful error instead of
+  // a confusing JSON parse error like "Unexpected token 'h'".
+  const contentType = resp.headers.get('content-type') || ''
+  let json
+  if (contentType.includes('application/json')) {
+    try {
+      json = await resp.json()
+    } catch (e) {
+      throw new Error(`Server returned malformed JSON (HTTP ${resp.status})`)
+    }
+  } else {
+    // Non-JSON response — almost certainly a gateway error page
+    const body = await resp.text().catch(() => '')
+    if (resp.status === 504 || /timeout|timed out|edge function/i.test(body)) {
+      throw new Error(`Edge function timed out — try again (Sonnet should handle the full payload, but if this keeps happening let's check the logs)`)
+    }
+    throw new Error(`Server error (HTTP ${resp.status}): ${body.slice(0, 200) || 'no body'}`)
+  }
+
   if (!resp.ok || !json.ok) {
     throw new Error(json.error || `Observations call failed (HTTP ${resp.status})`)
   }
