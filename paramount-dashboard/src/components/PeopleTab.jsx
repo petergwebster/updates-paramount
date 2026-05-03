@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../supabase'
 import CommentButton from './CommentButton'
+import { C, ACCENT_TEAL, STATUS_WARN, STATUS_BAD } from '../lib/scheduleUtils'
 import styles from './PeopleTab.module.css'
 
 export default function PeopleTab({ weekStart, readOnly = true, currentUser, onCommentPosted }) {
@@ -336,9 +337,9 @@ function TrailingCharts({ weekStart }) {
     )
 
     const mkDatasets = (regData, otData, ptoData) => ([
-      { label: 'Reg hours', data: regData, backgroundColor: '#378ADD', stack: 'a' },
-      { label: 'PTO',       data: ptoData, backgroundColor: '#EF9F27', stack: 'a' },
-      { label: 'OT',        data: otData,  backgroundColor: '#E24B4A', stack: 'a' },
+      { label: 'Reg hours', data: regData, backgroundColor: ACCENT_TEAL, stack: 'a' },
+      { label: 'PTO',       data: ptoData, backgroundColor: STATUS_WARN, stack: 'a' },
+      { label: 'OT',        data: otData,  backgroundColor: STATUS_BAD, stack: 'a' },
     ])
 
     const chartOpts = {
@@ -351,8 +352,8 @@ function TrailingCharts({ weekStart }) {
           tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} hrs` } }
         },
         scales: {
-          x: { stacked: true, ticks: { font: { size: 11 }, color: '#888780' } },
-          y: { stacked: true, ticks: { font: { size: 11 }, color: '#888780', callback: v => v.toLocaleString() }, grid: { color: 'rgba(128,128,128,0.1)' } }
+          x: { stacked: true, ticks: { font: { size: 11 }, color: C.inkLight } },
+          y: { stacked: true, ticks: { font: { size: 11 }, color: C.inkLight, callback: v => v.toLocaleString() }, grid: { color: 'rgba(128,128,128,0.1)' } }
         }
       }
     }
@@ -381,17 +382,17 @@ function TrailingCharts({ weekStart }) {
     <>
       <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>4-week trailing hours – Passaic</p>
       <div className={styles.chartLegend}>
-        <span><span className={styles.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
-        <span><span className={styles.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
-        <span><span className={styles.legendDot} style={{ background: '#E24B4A' }} />OT</span>
+        <span><span className={styles.legendDot} style={{ background: ACCENT_TEAL }} />Reg hours</span>
+        <span><span className={styles.legendDot} style={{ background: STATUS_WARN }} />PTO</span>
+        <span><span className={styles.legendDot} style={{ background: STATUS_BAD }} />OT</span>
       </div>
       <div className={styles.chartWrap}><canvas ref={njRef} /></div>
 
       <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>4-week trailing hours – BNY</p>
       <div className={styles.chartLegend}>
-        <span><span className={styles.legendDot} style={{ background: '#378ADD' }} />Reg hours</span>
-        <span><span className={styles.legendDot} style={{ background: '#EF9F27' }} />PTO</span>
-        <span><span className={styles.legendDot} style={{ background: '#E24B4A' }} />OT</span>
+        <span><span className={styles.legendDot} style={{ background: ACCENT_TEAL }} />Reg hours</span>
+        <span><span className={styles.legendDot} style={{ background: STATUS_WARN }} />PTO</span>
+        <span><span className={styles.legendDot} style={{ background: STATUS_BAD }} />OT</span>
       </div>
       <div className={styles.chartWrap}><canvas ref={bnyRef} /></div>
     </>

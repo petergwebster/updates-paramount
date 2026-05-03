@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { getFiscalInfo } from '../fiscalCalendar'
 import { supabase } from '../supabase'
+import { C, STATUS_GOOD, STATUS_WARN, STATUS_BAD, STATUS_BAD_BG } from '../lib/scheduleUtils'
 import styles from './FinancialTab.module.css'
 
 const BU_NJ      = '610'
@@ -189,7 +190,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {/* Current month badge */}
           {currentPeriod && (
-            <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: '#1C1C1E', color: '#fff' }}>
+            <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: C.ink, color: '#fff' }}>
               {periodLabel(currentPeriod)}
             </span>
           )}
@@ -354,9 +355,9 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 {label:'Paramount Balance', val:fmtAP(para?.total),  sub:`Past due: ${fmtAP(para?.past_due)}`},
                 {label:'BNY Balance',       val:fmtAP(bny?.total),   sub:`Past due: ${fmtAP(bny?.past_due)}`},
               ].map(c=>(
-                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?'1px solid #fecaca':undefined}}>
+                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?`1px solid ${STATUS_BAD_BG}`:undefined}}>
                   <div className={styles.cardLabel}>{c.label}</div>
-                  <div className={styles.cardVal} style={{color:c.alert?'#b91c1c':undefined}}>{c.val}</div>
+                  <div className={styles.cardVal} style={{color:c.alert?STATUS_BAD:undefined}}>{c.val}</div>
                   <div className={styles.cardSplit}>{c.sub}</div>
                 </div>
               ))}
@@ -375,7 +376,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                       {[d.total,d.current,d.days1_7,d.days8_14,d.days15_30,d.days31_45,d.days45plus].map((v,i)=>(
                         <td key={i} className={styles.val}>{fmtAP(v)}</td>
                       ))}
-                      <td className={`${styles.val} ${styles.combined}`} style={{color:d.past_due>0?'#b91c1c':'#15803d',fontWeight:600}}>{fmtAP(d.past_due)}</td>
+                      <td className={`${styles.val} ${styles.combined}`} style={{color:d.past_due>0?STATUS_BAD:STATUS_GOOD,fontWeight:600}}>{fmtAP(d.past_due)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -390,7 +391,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                       <tr key={i}>
                         <td className={styles.vendorName}>{v.name?.slice(0,30)}</td>
                         <td className={styles.vendorAmt}>{fmtAP(v.balance)}</td>
-                        {v.pastDue>0&&<td style={{fontSize:11,color:'#b91c1c',paddingLeft:8}}>({fmtAP(v.pastDue)} overdue)</td>}
+                        {v.pastDue>0&&<td style={{fontSize:11,color:STATUS_BAD,paddingLeft:8}}>({fmtAP(v.pastDue)} overdue)</td>}
                       </tr>
                     ))}
                   </tbody></table>
@@ -413,9 +414,9 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 {label:'Current',           val:fmtAR(arData.aging_current),     sub:'Not yet due'},
                 {label:'Total Past Due',    val:fmtAR(arData.total_past_due),    sub:'1–30d through 91d+', alert:arData.total_past_due>0},
               ].map(c=>(
-                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?'1px solid #fecaca':undefined}}>
+                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?`1px solid ${STATUS_BAD_BG}`:undefined}}>
                   <div className={styles.cardLabel}>{c.label}</div>
-                  <div className={styles.cardVal} style={{color:c.alert?'#b91c1c':undefined}}>{c.val}</div>
+                  <div className={styles.cardVal} style={{color:c.alert?STATUS_BAD:undefined}}>{c.val}</div>
                   <div className={styles.cardSplit}>{c.sub}</div>
                 </div>
               ))}
@@ -425,7 +426,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                 .map(([label,val,isPast],i,arr)=>(
                 <div key={label} style={{flex:1,padding:'12px 8px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none',background:'var(--cream)'}}>
                   <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{label}</div>
-                  <div style={{fontSize:16,fontWeight:700,color:!isPast?'#15803d':val>50000?'#b91c1c':'#b45309'}}>{fmtAR(val)}</div>
+                  <div style={{fontSize:16,fontWeight:700,color:!isPast?STATUS_GOOD:val>50000?STATUS_BAD:STATUS_WARN}}>{fmtAR(val)}</div>
                 </div>
               ))}
             </div>
@@ -446,7 +447,7 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
                           <td className={styles.rowLabel} style={{fontWeight:500}}>{a.name}</td>
                           <td className={styles.val}>{fmtAR(a.unapplied)}</td>
                           <td className={styles.val}>{fmtAR(a.current)}</td>
-                          <td className={`${styles.val} ${styles.combined}`} style={{color:a.pastDue>0?'#b91c1c':'inherit',fontWeight:a.pastDue>0?600:400}}>{fmtAR(a.pastDue)}</td>
+                          <td className={`${styles.val} ${styles.combined}`} style={{color:a.pastDue>0?STATUS_BAD:'inherit',fontWeight:a.pastDue>0?600:400}}>{fmtAR(a.pastDue)}</td>
                           <td style={{padding:'6px 12px',fontSize:12,color:'var(--ink-60)'}}>{a.notes?.slice(0,80)}</td>
                         </tr>
                       ))}
