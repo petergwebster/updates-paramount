@@ -105,3 +105,57 @@ export function inProgressOnly(items) {
   const exclude = new Set(['APPROVED', 'Approved', 'DROPPED', 'Dropped'])
   return items.filter(i => !exclude.has(i.group_label || ''))
 }
+
+// ─── Claude Observations ──────────────────────────────────────────────────
+
+/**
+ * Get the most recent observation for (site, snapshot_id), if any.
+ * Used to power the "Last run: ..." timestamp on the Observations button
+ * AND to show stale observations when the snapshot has refreshed since.
+ *
+ * Returns null when no observation exists (or only ones for older snapshots).
+ *
+ * @param {object} opts
+ * @param {'passaic'|'bny'} opts.site
+ * @param {string} [opts.snapshotId] — if provided, only matches that snapshot.
+ *   if omitted, returns the most recent observation for the site regardless
+ *   of snapshot (useful for showing stale-but-still-readable content).
+ */
+export async function getObservation({ site, snapshotId = null }) {
+  if (!site) throw new Error('getObservation requires { site }')
+  let q = supabase.from('mng_observations').select('*').eq('site', site)
+  if (snapshotId) q = q.eq('snapshot_id', snapshotId)
+  q = q.order('generated_at', { ascending: false }).limit(1)
+  const { data, error } = await q.maybeSingle()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Generate (or fetch cached) observations for one site + snapshot.
+ *
+ * @param {object} opts
+ * @param {'passaic'|'bny'} opts.site
+ * @param {string} opts.snapshotId
+ * @param {boolean} [opts.forceRegenerate] — true = ignore cache, re-run Claude.
+ * @param {string|null} [opts.generatedBy] — user UUID for audit.
+ * @returns {Promise<object>} { ok, cached, observations_md, generated_at, item_count, group_summary, duration_ms }
+ */
+export async function generateObservations({ site, snapshotId, forceRegenerate = false, generatedBy = null }) {
+  if (!site || !snapshotId) throw new Error('generateObservations requires { site, snapshotId }')
+  const resp = await fetch('/api/monday-newgoods-observations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      site,
+      snapshot_id: snapshotId,
+      force_regenerate: forceRegenerate,
+      generated_by: generatedBy,
+    }),
+  })
+  const json = await resp.json()
+  if (!resp.ok || !json.ok) {
+    throw new Error(json.error || `Observations call failed (HTTP ${resp.status})`)
+  }
+  return json
+}
