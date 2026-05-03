@@ -365,11 +365,13 @@ function PassaicItemTable({ items }) {
           </tr>
         </thead>
         <tbody>
-          {items.map(item => (
+          {items.map(item => {
+            const { timeline, pipeline } = resolveStatuses(item)
+            return (
             <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
               <Td><strong style={{ color: C.ink }}>{item.item_name || '—'}</strong></Td>
-              <Td><StatusPill value={item.status_timeline} /></Td>
-              <Td><PipelinePill value={item.status_pipeline} /></Td>
+              <Td><StatusPill value={timeline} /></Td>
+              <Td><PipelinePill value={pipeline} /></Td>
               <Td>{item.customer || '—'}</Td>
               <Td>{item.development_type || '—'}</Td>
               <Td>{item.product_type || '—'}</Td>
@@ -379,7 +381,8 @@ function PassaicItemTable({ items }) {
               <Td>{fmtDate(item.trials_due)}</Td>
               <Td>{item.launch_date_text || '—'}</Td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -406,11 +409,13 @@ function BNYItemTable({ items }) {
           </tr>
         </thead>
         <tbody>
-          {items.map(item => (
+          {items.map(item => {
+            const { timeline, pipeline } = resolveStatuses(item)
+            return (
             <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
               <Td><strong style={{ color: C.ink }}>{item.item_name || '—'}</strong></Td>
-              <Td><StatusPill value={item.status_timeline} /></Td>
-              <Td><PipelinePill value={item.status_pipeline} /></Td>
+              <Td><StatusPill value={timeline} /></Td>
+              <Td><PipelinePill value={pipeline} /></Td>
               <Td>{item.development_type || '—'}</Td>
               <Td>{item.approver || '—'}</Td>
               <Td>{item.waiting_on || '—'}</Td>
@@ -422,7 +427,8 @@ function BNYItemTable({ items }) {
               <Td>{item.launch_date_text || '—'}</Td>
               <Td>{fmtDate(item.cfa_due)}</Td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -440,7 +446,7 @@ function Td({ children }) {
 
 function StatusPill({ value }) {
   if (!value) return <span style={{ color: C.inkLight }}>—</span>
-  const tone = TIMELINE_STATUS_TONES[value] || { bg: C.parchment, fg: C.inkMid, border: C.border }
+  const tone = TIMELINE_TONES[value] || PIPELINE_TONES.neutral
   return (
     <span style={{
       display: 'inline-block',
@@ -456,23 +462,87 @@ function StatusPill({ value }) {
 
 function PipelinePill({ value }) {
   if (!value) return <span style={{ color: C.inkLight }}>—</span>
+  const tone = PIPELINE_TONES[pipelineBucket(value)]
   return (
     <span style={{
       display: 'inline-block',
       padding: '2px 8px',
-      fontSize: 10, fontWeight: 600,
-      background: '#fff',
-      color: C.inkMid,
-      border: `1px solid ${C.border}`,
-      borderRadius: 3,
+      fontSize: 10, fontWeight: 700,
+      background: tone.bg, color: tone.fg,
+      border: `1px solid ${tone.border}`,
+      borderRadius: 3, letterSpacing: '0.04em',
+      textTransform: 'uppercase',
     }}>{value}</span>
   )
 }
 
-const TIMELINE_STATUS_TONES = {
-  'On time':       { bg: '#E6F2EA', fg: '#0F7A4E', border: '#9DCAB1' },
-  'May be late':   { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883' },
-  'Late':          { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0' },
+// Unified color tones — Couture palette (matches Heartbeat's emerald /
+// saffron / crimson references). Used by both StatusPill and PipelinePill.
+const TIMELINE_TONES = {
+  'On time':     { bg: '#E6F2EA', fg: '#0F7A4E', border: '#9DCAB1' },
+  'May be late': { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883' },
+  'Late':        { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0' },
+}
+const PIPELINE_TONES = {
+  green:   { bg: '#E6F2EA', fg: '#0F7A4E', border: '#9DCAB1' },
+  yellow:  { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883' },
+  red:     { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0' },
+  neutral: { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC' },
+}
+
+// ─── Status resolution ─────────────────────────────────────────────────────
+//
+// Both Monday boards have TWO columns titled "Status" — one captures
+// timeline status (small vocab) and the other captures pipeline status
+// (open-ended). Column order differs between boards: BNY stores
+// timeline-first, Passaic stores pipeline-first. The edge function reads
+// them in column-order so the two fields end up swapped on Passaic.
+//
+// Fix at read time: detect by value. Timeline status has exactly 3 known
+// values; anything else is pipeline. Self-correcting regardless of which
+// column came first or whether Monday reorders columns later.
+
+const TIMELINE_VALUES = new Set(['On time', 'May be late', 'Late'])
+
+function resolveStatuses(item) {
+  const a = item.status_timeline
+  const b = item.status_pipeline
+  if (TIMELINE_VALUES.has(a)) return { timeline: a, pipeline: b }
+  if (TIMELINE_VALUES.has(b)) return { timeline: b, pipeline: a }
+  // Neither field looks like a timeline status — render whichever has data
+  // as a pipeline pill, leave timeline empty.
+  return { timeline: null, pipeline: a || b || null }
+}
+
+// Pipeline status → color bucket. Case + whitespace insensitive match.
+// New / unknown values fall through to neutral gray (signals "needs
+// classification" without breaking render).
+const PIPELINE_GREEN = new Set([
+  'approved',
+  'screens ready',
+  's/o done - awaiting feedback',
+  's/o done',
+])
+const PIPELINE_YELLOW = new Set([
+  'awaiting feedback',
+  'awaiting fabric/plates',
+  'eng file in progress',
+  'eng - in queue',
+  'in progress',
+  'engraving approval',
+])
+const PIPELINE_RED = new Set([
+  'on hold',
+  'dropped',
+])
+
+function pipelineBucket(value) {
+  if (!value) return 'neutral'
+  const norm = String(value).trim().toLowerCase().replace(/\s+/g, ' ')
+  if (PIPELINE_GREEN.has(norm))  return 'green'
+  if (PIPELINE_YELLOW.has(norm)) return 'yellow'
+  if (PIPELINE_RED.has(norm))    return 'red'
+  return 'neutral'
 }
 
 function fmtDate(iso) {
