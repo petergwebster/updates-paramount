@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { parseLiftWorkbook } from '../liftParser'
-import { C, fmt, fmtD } from '../lib/scheduleUtils'
+import { C, fmt, fmtD,
+  STATUS_GOOD, STATUS_GOOD_BG, STATUS_GOOD_BORDER,
+  STATUS_WARN, STATUS_WARN_BG, STATUS_WARN_BORDER,
+  STATUS_BAD,  STATUS_BAD_BG,  STATUS_BAD_BORDER,
+} from '../lib/scheduleUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WIPTab — single source of truth for WIP across the dashboard.
@@ -527,7 +531,7 @@ export default function WIPTab() {
           <div style={{ marginTop: 12, fontSize: 12, color: C.inkMid, background: C.goldBg, border: `1px solid ${C.warm}`, borderRadius: 6, padding: '8px 12px' }}>{uploadStatus}</div>
         )}
         {error && (
-          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '8px 12px' }}>{error}</div>
+          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: `1px solid ${STATUS_BAD_BORDER}`, borderRadius: 6, padding: '8px 12px' }}>{error}</div>
         )}
       </div>
 
@@ -910,12 +914,16 @@ function FilterRow({
 // filter — multi-select OR. Active cards visually highlight; inactive
 // cards stay quiet. Color severity grows from neutral (current) → red (90+).
 
+// Aging cards stay LOUD — Path A directive: operational signals (aging,
+// status, misses) preserve green/amber/red even though the rest of the
+// palette goes Cosmic. The severity gradient runs neutral (Current) →
+// neutral (30) → amber (60) → red (90) → fully red (90+).
 const AGE_BUCKET_TONES = {
-  current: { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC', accent: '#9DCAB1' },
-  '30':    { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC', accent: '#E5C883' },
-  '60':    { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883', accent: '#E89A1E' },
-  '90':    { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0', accent: '#D33A28' },
-  '90plus':{ bg: '#FCE2DE', fg: '#C12B1A', border: '#C12B1A', accent: '#C12B1A' },
+  current: { bg: C.parchment,    fg: C.inkMid,    border: C.border,           accent: STATUS_GOOD_BORDER },
+  '30':    { bg: C.parchment,    fg: C.inkMid,    border: C.border,           accent: STATUS_WARN_BORDER },
+  '60':    { bg: STATUS_WARN_BG, fg: STATUS_WARN, border: STATUS_WARN_BORDER, accent: STATUS_WARN        },
+  '90':    { bg: STATUS_BAD_BG,  fg: STATUS_BAD,  border: STATUS_BAD_BORDER,  accent: STATUS_BAD         },
+  '90plus':{ bg: STATUS_BAD_BG,  fg: STATUS_BAD,  border: STATUS_BAD,         accent: STATUS_BAD         },
 }
 
 function AgingCards({ buckets, activeFilters, onToggle }) {

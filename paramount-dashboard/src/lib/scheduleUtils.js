@@ -21,16 +21,79 @@
 // ============================================================================
 
 // ─── Palette ───────────────────────────────────────────────────────────────
+// Path A · Pure Cosmic (locked May 3, 2026, replacing Couture).
+//
+// Design intent:
+//   • Warm light-gray base, near-black navy text, single teal accent.
+//   • Site identity collapses — Heartbeat / Operations / Performance all
+//     read as variations on a teal/slate theme rather than distinct colors.
+//   • EXCEPTION: status colors stay loud — green/yellow/red preserved for
+//     aging cards, Plant Pulse misses, status pills, anywhere operational
+//     clarity matters more than aesthetic cohesion.
+//
+// The C export contract is unchanged — every existing key (cream, parchment,
+// warm, border, ink, inkMid, inkLight, gold, navy, amber, sage, rose, slate
+// + Bg/Light variants) still resolves. Hex values are remapped to Cosmic.
+// This lets every consumer keep its existing `import { C } from '...'` line.
+//
+// New named exports (ACCENT_*, STATUS_*) are also provided for components
+// that previously hardcoded inline hex values. Those components should
+// migrate to the named tokens.
+
 export const C = {
-  cream:'#FAF7F2', parchment:'#F2EDE4', warm:'#E8DDD0', border:'#DDD4C8',
-  ink:'#2C2420', inkMid:'#5C4F47', inkLight:'#9C8F87',
-  gold:'#B8860B', goldLight:'#D4A843', goldBg:'#FDF8EC',
-  navy:'#1E3A5F', navyLight:'#E8EEF5',
-  amber:'#C17F24', amberBg:'#FEF3E2',
-  sage:'#4A6741', sageBg:'#EEF3EC',
-  rose:'#8B3A3A', roseBg:'#F9EDED',
-  slate:'#4A5568', slateBg:'#EDF2F7',
+  // ── Base surfaces ──────────────────────────────────────────────────────
+  cream:     '#D3D9D4',  // page background (was #FAF7F2)
+  parchment: '#E8EBE9',  // card / section backgrounds (was #F2EDE4)
+  warm:      '#BDC4BF',  // disabled buttons / muted fills (was #E8DDD0)
+  border:    '#A6AEA8',  // card borders, dividers (was #DDD4C8)
+
+  // ── Text ───────────────────────────────────────────────────────────────
+  ink:       '#212A31',  // primary text + active state backgrounds (was #2C2420)
+  inkMid:    '#2E3944',  // secondary text, subheaders (was #5C4F47)
+  inkLight:  '#748D92',  // tertiary text, captions (was #9C8F87)
+
+  // ── Accent slots — REMAPPED to single-teal Cosmic identity ────────────
+  // Pre-Path-A these were distinct colors per destination. Now all destination
+  // accents resolve to teal variants. Status loudness is preserved separately.
+  navy:        '#124E66',   // Performance/scheduled (was #1E3A5F royal blue)
+  navyLight:   '#D9E2E5',   // light teal-tinted bg (was #E8EEF5)
+  gold:        '#2E3944',   // Operations chrome — collapsed to slate (was #B8860B)
+  goldLight:   '#748D92',   // (was #D4A843)
+  goldBg:      '#E8EBE9',   // (was #FDF8EC) — soft Cosmic parchment
+  slate:       '#2E3944',   // unchanged purpose, Cosmic-aligned (was #4A5568)
+  slateBg:     '#E8EBE9',   // (was #EDF2F7)
+
+  // ── Status colors — kept LOUD per design directive ─────────────────────
+  // These power aging cards (60/90/90+), Plant Pulse miss bars, status pills,
+  // and anywhere operational signal matters more than visual cohesion.
+  // Hex values match prior Couture so behavior in status contexts is identical.
+  sage:    '#0F7A4E', sageBg:  '#E6F2EA',   // emerald — Ready / on-track / good
+  amber:   '#A87A2E', amberBg: '#FCF3DC',   // amber — May be late / awaiting / warn
+  rose:    '#C12B1A', roseBg:  '#FCE2DE',   // crimson — Late / on hold / misses / bad
 }
+
+// ─── Named accent exports ─────────────────────────────────────────────────
+// New tokens for components that previously hardcoded inline hex. Importing
+// from these names (rather than C.X) makes intent explicit at the call site.
+
+// Destination accents — single-teal Cosmic identity
+export const ACCENT_PERF       = '#124E66'   // Performance — deep teal
+export const ACCENT_HEART      = '#0E3D52'   // Heartbeat   — darker teal (distinguishable)
+export const ACCENT_OPS        = '#2E3944'   // Operations  — charcoal slate
+export const ACCENT_TEAL       = '#124E66'   // generic accent alias
+export const ACCENT_DEEP_TEAL  = '#0E3D52'   // generic deep alias
+
+// Status loudness tokens — same hex as C.sage / C.amber / C.rose, named for intent
+export const STATUS_GOOD       = '#0F7A4E'   // emerald
+export const STATUS_GOOD_BG    = '#E6F2EA'
+export const STATUS_GOOD_BORDER= '#9DCAB1'
+export const STATUS_WARN       = '#A87A2E'   // amber
+export const STATUS_WARN_BG    = '#FCF3DC'
+export const STATUS_WARN_BORDER= '#E5C883'
+export const STATUS_BAD        = '#C12B1A'   // crimson
+export const STATUS_BAD_BG     = '#FCE2DE'
+export const STATUS_BAD_BORDER = '#E8A0A0'
+
 
 // ─── Number / money formatters ─────────────────────────────────────────────
 export const fmt  = n => (n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })
@@ -107,10 +170,15 @@ export function yesterday() {
 }
 
 // ─── Cross-site constants ──────────────────────────────────────────────────
+// Site `color` is the destination accent used in modals, headers, and
+// site-identity contexts. Path A collapses these to teal/slate variants —
+// they distinguish but harmonize. The slight differences (mid-teal vs
+// deep-teal vs slate) preserve enough visual distinction for users to know
+// which site they're on without breaking palette cohesion.
 export const SITES = [
-  { key: 'passaic',     label: 'Passaic',     sub: 'Screen Print',  color: C.navy },
-  { key: 'bny',         label: 'Brooklyn',    sub: 'Digital',       color: C.amber },
-  { key: 'procurement', label: 'Procurement', sub: 'Pass-through',  color: C.slate },
+  { key: 'passaic',     label: 'Passaic',     sub: 'Screen Print',  color: ACCENT_TEAL      },  // #124E66 mid teal
+  { key: 'bny',         label: 'Brooklyn',    sub: 'Digital',       color: ACCENT_DEEP_TEAL },  // #0E3D52 deep teal
+  { key: 'procurement', label: 'Procurement', sub: 'Pass-through',  color: ACCENT_OPS       },  // #2E3944 charcoal slate
 ]
 
 // ─── Passaic operator roster (42 screen-print operators from Employees sheet) ─

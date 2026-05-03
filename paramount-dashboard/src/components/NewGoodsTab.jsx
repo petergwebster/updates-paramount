@@ -1,5 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { C, fmt } from '../lib/scheduleUtils'
+import {
+  C, fmt,
+  ACCENT_TEAL, ACCENT_DEEP_TEAL,
+  STATUS_GOOD, STATUS_GOOD_BG, STATUS_GOOD_BORDER,
+  STATUS_WARN, STATUS_WARN_BG, STATUS_WARN_BORDER,
+  STATUS_BAD,  STATUS_BAD_BG,  STATUS_BAD_BORDER,
+} from '../lib/scheduleUtils'
 import {
   getCurrentSnapshot,
   getNewGoodsItems,
@@ -244,7 +250,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
           <div style={{ marginTop: 12, fontSize: 12, color: C.inkMid, background: C.goldBg, border: `1px solid ${C.warm}`, borderRadius: 6, padding: '8px 12px' }}>{refreshStatus}</div>
         )}
         {error && (
-          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: '1px solid #E8A0A0', borderRadius: 6, padding: '8px 12px' }}>{error}</div>
+          <div style={{ marginTop: 12, fontSize: 12, color: C.rose, background: C.roseBg, border: `1px solid ${STATUS_BAD_BORDER}`, borderRadius: 6, padding: '8px 12px' }}>{error}</div>
         )}
       </div>
 
@@ -337,9 +343,9 @@ export default function NewGoodsTab({ currentUser } = {}) {
                   padding: '5px 12px', fontSize: 11,
                   fontWeight: lateOnly ? 700 : 600,
                   borderRadius: 14,
-                  border: `1px solid ${lateOnly ? '#C12B1A' : C.border}`,
-                  background: lateOnly ? '#FCE2DE' : '#fff',
-                  color: lateOnly ? '#C12B1A' : C.inkMid,
+                  border: `1px solid ${lateOnly ? STATUS_BAD : C.border}`,
+                  background: lateOnly ? STATUS_BAD_BG : '#fff',
+                  color: lateOnly ? STATUS_BAD : C.inkMid,
                   cursor: 'pointer',
                 }}>
                 ⚠ Late only
@@ -452,7 +458,7 @@ function PipelineSummary({ site, groups, observation, snapshot, onOpenObservatio
 
   const groupNames = orderGroupsForSite(Array.from(groups.keys()), site)
   const total = Array.from(groups.values()).reduce((s, arr) => s + arr.length, 0)
-  const accent = site === 'passaic' ? '#D33A28' : '#E89A1E'  // blood orange / saffron
+  const accent = site === 'passaic' ? ACCENT_TEAL : ACCENT_DEEP_TEAL  // Path A: site identity collapses to teal
 
   // "Last run" status. Three cases:
   //   • Observation exists for current snapshot → "Last run: time"
@@ -480,7 +486,7 @@ function PipelineSummary({ site, groups, observation, snapshot, onOpenObservatio
           <span style={{ fontSize: 11, color: C.inkLight }}>{fmt(total)} items total</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 10, color: isStaleObs ? '#A87A2E' : C.inkLight, textAlign: 'right' }}>
+          <span style={{ fontSize: 10, color: isStaleObs ? STATUS_WARN : C.inkLight, textAlign: 'right' }}>
             {lastRunLabel}
             {isStaleObs && <span style={{ display: 'block' }}>(data has refreshed since)</span>}
           </span>
@@ -689,15 +695,15 @@ function PipelinePill({ value }) {
 // Unified color tones — Couture palette (matches Heartbeat's emerald /
 // saffron / crimson references). Used by both StatusPill and PipelinePill.
 const TIMELINE_TONES = {
-  'On time':     { bg: '#E6F2EA', fg: '#0F7A4E', border: '#9DCAB1' },
-  'May be late': { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883' },
-  'Late':        { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0' },
+  'On time':     { bg: STATUS_GOOD_BG, fg: STATUS_GOOD, border: STATUS_GOOD_BORDER },
+  'May be late': { bg: STATUS_WARN_BG, fg: STATUS_WARN, border: STATUS_WARN_BORDER },
+  'Late':        { bg: STATUS_BAD_BG,  fg: STATUS_BAD,  border: STATUS_BAD_BORDER  },
 }
 const PIPELINE_TONES = {
-  green:   { bg: '#E6F2EA', fg: '#0F7A4E', border: '#9DCAB1' },
-  yellow:  { bg: '#FCF3DC', fg: '#A87A2E', border: '#E5C883' },
-  red:     { bg: '#FCE2DE', fg: '#C12B1A', border: '#E8A0A0' },
-  neutral: { bg: '#FBF8F1', fg: '#5b5762', border: '#E8E5DC' },
+  green:   { bg: STATUS_GOOD_BG, fg: STATUS_GOOD, border: STATUS_GOOD_BORDER },
+  yellow:  { bg: STATUS_WARN_BG, fg: STATUS_WARN, border: STATUS_WARN_BORDER },
+  red:     { bg: STATUS_BAD_BG,  fg: STATUS_BAD,  border: STATUS_BAD_BORDER  },
+  neutral: { bg: C.parchment,    fg: C.inkMid,    border: C.border           },
 }
 
 // ─── Status resolution ─────────────────────────────────────────────────────
@@ -785,8 +791,10 @@ function fmtDate(iso) {
 // Generate or Re-run burns ~$0.05-0.10 in Claude API tokens.
 
 function ObservationsModal({ site, snapshot, observation, loading, error, onClose, onGenerate, onRerun }) {
-  const accent = site === 'passaic' ? '#D33A28' : '#E89A1E'
-  const accentBg = site === 'passaic' ? '#FCE2DE' : '#FCF3DC'
+  const accent = site === 'passaic' ? ACCENT_TEAL : ACCENT_DEEP_TEAL
+  // Light teal-tinted background for the stale banner — harmonizes with
+  // the accent color regardless of which site is showing.
+  const accentBg = '#D9E2E5'
   const siteLabel = site === 'passaic' ? 'Passaic' : 'Brooklyn'
 
   // Determine state
@@ -798,7 +806,7 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(16, 18, 24, 0.55)',
+        background: 'rgba(33, 42, 49, 0.55)',
         zIndex: 1000,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20,
@@ -841,9 +849,9 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, color: '#212029', fontSize: 14, lineHeight: 1.6 }}>
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, color: C.ink, fontSize: 14, lineHeight: 1.6 }}>
           {error && (
-            <div style={{ background: '#FCE2DE', color: '#C12B1A', border: '1px solid #E8A0A0', borderRadius: 6, padding: '10px 14px', fontSize: 12, marginBottom: 16 }}>
+            <div style={{ background: STATUS_BAD_BG, color: STATUS_BAD, border: `1px solid ${STATUS_BAD_BORDER}`, borderRadius: 6, padding: '10px 14px', fontSize: 12, marginBottom: 16 }}>
               {error}
             </div>
           )}
@@ -864,9 +872,9 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
           {/* No observation yet — prompt to generate */}
           {!hasObs && !loading && (
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-              <div style={{ fontSize: 14, color: '#5b5762', marginBottom: 16, lineHeight: 1.6 }}>
+              <div style={{ fontSize: 14, color: C.inkMid, marginBottom: 16, lineHeight: 1.6 }}>
                 Claude will read the {siteLabel} pre-production pipeline and give you a useful operational read — organized by group, focusing on aging concerns, blockers, and items at risk.
-                <div style={{ marginTop: 8, fontSize: 12, color: '#8a8694' }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: C.inkLight }}>
                   Generation takes 5-10 seconds and costs roughly $0.05-0.10 in API tokens.
                 </div>
               </div>
@@ -890,7 +898,7 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
 
           {/* Loading state */}
           {loading && (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: '#8a8694', fontSize: 13, fontStyle: 'italic' }}>
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
               <div style={{ fontSize: 24, marginBottom: 12 }}>✦</div>
               Claude is reading the pipeline…
             </div>
@@ -900,12 +908,12 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
         {/* Footer */}
         {(hasObs || isStaleObs) && !loading && (
           <div style={{
-            borderTop: '1px solid #E8E5DC',
+            borderTop: `1px solid ${C.border}`,
             padding: '12px 20px',
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            background: '#FBF8F1',
+            background: C.parchment,
           }}>
-            <div style={{ fontSize: 11, color: '#8a8694' }}>
+            <div style={{ fontSize: 11, color: C.inkLight }}>
               {observation?.generated_at && (
                 <>Generated {new Date(observation.generated_at).toLocaleString()}</>
               )}
@@ -917,8 +925,8 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
               <button onClick={onClose}
                 style={{
                   padding: '7px 14px',
-                  background: 'transparent', color: '#5b5762',
-                  border: '1px solid #E8E5DC', borderRadius: 6,
+                  background: 'transparent', color: C.inkMid,
+                  border: `1px solid ${C.border}`, borderRadius: 6,
                   fontSize: 12, fontWeight: 500,
                   cursor: 'pointer',
                 }}>
