@@ -1,0 +1,89 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   PATH A · COSMIC PALETTE TOKENS
+   Single source of truth for all dashboard colors.
+   
+   This file defines every CSS custom property used across .module.css files.
+   Update this file to update palette globally. Match scheduleUtils.js exports
+   for inline-styled JSX components (the values must stay in sync).
+   
+   IMPORT ORDER MATTERS: this file must be imported AFTER any other global
+   stylesheet that previously defined these variables (App.css / index.css).
+   Later definitions win in CSS cascade.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ─── Cosmic palette base — warm grays, no beige ──────────────────── */
+  --paper:        #D3D9D4;   /* main app background */
+  --paper-light:  #E8EBE9;   /* lighter wash */
+  --paper-soft:   #BDC4BF;   /* deeper wash for headers / sections */
+  --cream:        #D3D9D4;   /* alias for --paper */
+  --cream-dark:   #BDC4BF;   /* alias for --paper-soft */
+  --linen:        #BDC4BF;   /* inactive bar / track surface */
+  --surface:      #FFFFFF;   /* card surface — stays white in Cosmic */
+
+  /* ─── Ink scale (text + line work) ────────────────────────────────── */
+  --ink:     #212A31;   /* near-black navy — primary text */
+  --ink-90:  #2A323A;   /* pressed-state / dark variants */
+  --ink-80:  #2E3944;   /* charcoal slate */
+  --ink-70:  #353F4A;   /* deep secondary */
+  --ink-60:  #4A5660;   /* body text — most common usage */
+  --ink-50:  #5C6770;   /* secondary text / muted body */
+  --ink-40:  #748D92;   /* muted text / labels */
+  --ink-30:  #8E9A9F;   /* chart axis / very muted */
+  --ink-20:  #A6AEA8;   /* heavy borders / disabled */
+  --ink-10:  #C5CCC8;   /* dividers / standard borders */
+  --ink-05:  #DCE0DD;   /* faint dividers */
+  --ink-5:   #E8EBE9;   /* page-tint surface (hover bg, panels) */
+  --ink-3:   #F4F5F4;   /* very subtle surface tint */
+
+  /* ─── Borders ─────────────────────────────────────────────────────── */
+  --border:        #A6AEA8;
+  --border-light:  #C5CCC8;
+
+  /* ─── Destination accents — three-tone Path A ─────────────────────── */
+  /* Performance / royal: mid teal */
+  --royal:               #124E66;
+  --royal-deep:          #0A3A4C;
+  --royal-light:         #DCE7EA;
+
+  /* Heartbeat / blood-orange: deep teal */
+  --blood-orange:        #0E3D52;
+  --blood-orange-deep:   #08293A;
+  --blood-orange-light:  #C7D2D5;
+
+  /* Operations / saffron: charcoal slate */
+  --saffron:             #2E3944;
+  --saffron-deep:        #1A2128;
+  --saffron-light:       #D4D8DA;
+
+  /* ─── Status colors — kept LOUD (per directive) ───────────────────── */
+  --emerald:        #0F7A4E;
+  --emerald-deep:   #0A4F33;
+  --emerald-light:  #E6F2EA;
+  --crimson:        #C12B1A;
+  --crimson-deep:   #831A0E;
+  --crimson-light:  #FCE2DE;
+  --green:          #0F7A4E;
+  --green-light:    #E6F2EA;
+  --red:            #C12B1A;
+  --red-light:      #FCE2DE;
+  --amber:          #A87A2E;
+  --amber-light:    #FCF3DC;
+  --gray:           #748D92;
+  --gray-light:     #E8EBE9;
+
+  /* ─── Generic accent (links, primary buttons, focus rings) ────────── */
+  --accent:         #124E66;
+  --accent-light:   #DCE7EA;
+  --accent-mid:     #5085A5;
+
+  /* ─── Layout ──────────────────────────────────────────────────────── */
+  --radius:     6px;
+  --radius-lg:  10px;
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.08);
+
+  /* ─── Typography ──────────────────────────────────────────────────── */
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
+}

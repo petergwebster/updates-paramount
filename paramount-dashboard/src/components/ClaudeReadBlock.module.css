@@ -20,7 +20,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #C0623A; /* burnt orange — Claude's accent */
+  background: var(--accent); /* burnt orange — Claude's accent */
   color: white;
   display: flex;
   align-items: center;
@@ -72,7 +72,7 @@
   white-space: nowrap;
 }
 .actionBtn:hover {
-  background: var(--cream-dark, #F5F0EA);
+  background: var(--cream-dark, #BDC4BF);
   color: var(--ink);
 }
 .actionBtn:disabled {
@@ -109,7 +109,7 @@
 
 .errorState {
   font-size: 13px;
-  color: var(--red, #B0533C);
+  color: var(--red, var(--red));
   padding: 8px 0;
 }
 
@@ -122,7 +122,7 @@
 .linkBtn {
   background: transparent;
   border: none;
-  color: #C0623A;
+  color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
   font-size: inherit;
@@ -149,7 +149,7 @@
   padding: 12px 14px;
   border: 1px solid var(--ink-20);
   border-radius: 6px;
-  background: #FCFBF8;
+  background: var(--paper-light);
   resize: vertical;
   min-height: 180px;
   box-sizing: border-box;
@@ -191,15 +191,15 @@
   border: 1px solid var(--ink);
   color: var(--cream);
 }
-.saveBtn:hover { background: #333; }
+.saveBtn:hover { background: var(--ink-80); }
 .saveBtn:disabled { opacity: 0.5; cursor: default; }
 
 .dangerBtn {
-  background: #B0533C;
-  border: 1px solid #B0533C;
+  background: var(--red);
+  border: 1px solid var(--red);
   color: white;
 }
-.dangerBtn:hover { background: #993E29; border-color: #993E29; }
+.dangerBtn:hover { background: var(--red-deep, var(--red)); border-color: var(--red-deep, var(--red)); }
 
 /* ── Footer ──────────────────────────────────────────────────────────── */
 .footer {

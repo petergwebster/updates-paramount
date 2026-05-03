@@ -17,7 +17,7 @@
   gap: 40px;
   margin-bottom: 36px;
   padding: 8px 0 28px;
-  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  border-bottom: 1px solid var(--ink-10, #C5CCC8);
   position: relative;
 }
 
@@ -26,7 +26,7 @@
   font-weight: 800;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--blood-orange, #D33A28);
+  color: var(--blood-orange, #0E3D52);
   margin-bottom: 14px;
   display: inline-flex;
   align-items: center;
@@ -35,7 +35,7 @@
 .pulseDot {
   width: 12px;
   height: 12px;
-  background: var(--blood-orange, #D33A28);
+  background: var(--blood-orange, #0E3D52);
   border-radius: 50%;
   position: relative;
   box-shadow: 0 0 0 4px rgba(211, 58, 40, 0.18);
@@ -56,7 +56,7 @@
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 48px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin: 0 0 12px;
   line-height: 1.05;
   letter-spacing: -0.025em;
@@ -65,7 +65,7 @@
   font-family: Georgia, serif;
   font-style: italic;
   font-size: 16px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   max-width: 680px;
   line-height: 1.55;
   margin: 0;
@@ -80,19 +80,19 @@
   font-family: Georgia, serif;
   font-size: 18px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   letter-spacing: -0.01em;
 }
 .pageMetaSub {
   font-size: 12px;
-  color: #4A4D57;
+  color: var(--ink-60);
   font-style: italic;
   font-family: Georgia, serif;
   margin-top: 4px;
 }
 .pageMetaUpdated {
   font-size: 9px;
-  color: #4A4D57;
+  color: var(--ink-60);
   margin-top: 12px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
@@ -107,7 +107,7 @@
   height: 5px;
   background: var(--emerald, #0F7A4E);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--emerald-light, #D2EBDC);
+  box-shadow: 0 0 0 2px var(--emerald-light, #E6F2EA);
 }
 
 /* ─── Section ─── */
@@ -120,14 +120,14 @@
 .sectionHeader {
   margin-bottom: 20px;
   padding-bottom: 14px;
-  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  border-bottom: 1px solid var(--ink-10, #C5CCC8);
 }
 .sectionEyebrow {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #3D404A;
+  color: var(--ink-70);
   margin-bottom: 10px;
 }
 .sectionTitle {
@@ -143,7 +143,7 @@
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 26px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   letter-spacing: -0.02em;
 }
 
@@ -161,15 +161,15 @@
   font-family: -apple-system, sans-serif;
   box-shadow: 0 1px 2px rgba(16,18,24,0.05), 0 2px 6px rgba(16,18,24,0.04);
 }
-.pillPlant   { background: linear-gradient(135deg, var(--ink, #101218), var(--ink-90, #1F2128)); }
-.pillPassaic { background: linear-gradient(135deg, var(--blood-orange-deep, #94251B), var(--blood-orange, #D33A28)); }
-.pillBny     { background: linear-gradient(135deg, var(--saffron-deep, #A66A0F), var(--saffron, #E89A1E)); }
-.pillRead    { background: linear-gradient(135deg, var(--royal-deep, #14376E), var(--royal, #1E4FA8)); }
+.pillPlant   { background: linear-gradient(135deg, var(--ink, #212A31), var(--ink-90, #2A323A)); }
+.pillPassaic { background: linear-gradient(135deg, var(--blood-orange-deep, #08293A), var(--blood-orange, #0E3D52)); }
+.pillBny     { background: linear-gradient(135deg, var(--saffron-deep, #1A2128), var(--saffron, #2E3944)); }
+.pillRead    { background: linear-gradient(135deg, var(--royal-deep, #0A3A4C), var(--royal, #124E66)); }
 
 .sectionDesc {
   font-size: 12px;
   font-style: italic;
-  color: #4A4D57;
+  color: var(--ink-60);
   font-family: Georgia, serif;
   text-align: right;
   max-width: 380px;
@@ -182,8 +182,8 @@
   padding: 48px 24px;
   font-family: Georgia, serif;
   font-style: italic;
-  color: #3D404A;
+  color: var(--ink-70);
   background: white;
   border-radius: 12px;
-  border: 1px solid var(--ink-10, #DBDCDE);
+  border: 1px solid var(--ink-10, #C5CCC8);
 }

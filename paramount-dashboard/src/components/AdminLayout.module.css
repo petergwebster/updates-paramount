@@ -90,7 +90,7 @@
 }
 
 .sidebarItem:hover {
-  background: var(--cream-dark, #F5F0EA);
+  background: var(--cream-dark, #BDC4BF);
 }
 
 .sidebarItemActive {
@@ -105,7 +105,7 @@
 
 .sidebarBadge {
   display: inline-block;
-  background: #C0623A;
+  background: var(--accent);
   color: white;
   font-size: 9px;
   font-weight: 700;
@@ -191,8 +191,8 @@
   flex-shrink: 0;
 }
 
-.systemDot_ok    { background: #4F8A4B; }
-.systemDot_error { background: #B0533C; }
+.systemDot_ok    { background: var(--green); }
+.systemDot_error { background: var(--red); }
 .systemDot_info  { background: var(--ink-30); }
 
 /* ── Responsive: collapse sidebar on narrow screens ──────────────────────── */

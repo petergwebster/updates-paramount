@@ -22,9 +22,9 @@
   transition: border-color 0.15s ease;
 }
 
-.card_green  { border-left: 3px solid #4F8A4B; }
-.card_amber  { border-left: 3px solid #C49A2A; }
-.card_red    { border-left: 3px solid #B0533C; }
+.card_green  { border-left: 3px solid var(--green); }
+.card_amber  { border-left: 3px solid var(--amber); }
+.card_red    { border-left: 3px solid var(--red); }
 .card_neutral { border-left: 3px solid var(--ink-20); }
 
 .label {
@@ -68,7 +68,7 @@
   border-top: 1px solid var(--ink-05, rgba(31, 27, 22, 0.05));
 }
 
-.delta_green   { color: #4F8A4B; }
-.delta_amber   { color: #C49A2A; }
-.delta_red     { color: #B0533C; }
+.delta_green   { color: var(--green); }
+.delta_amber   { color: var(--amber); }
+.delta_red     { color: var(--red); }
 .delta_neutral { color: var(--ink-40); }

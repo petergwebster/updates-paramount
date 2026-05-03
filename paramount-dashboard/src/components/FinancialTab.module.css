@@ -74,7 +74,7 @@
 /* Badges */
 .facilityBadge {
   display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px;
-  font-weight: 700; background: #1C1C1E; color: #fff; vertical-align: middle;
+  font-weight: 700; background: var(--ink); color: #fff; vertical-align: middle;
 }
 .badgeBNY { background: #78350F; }
 .badgeSH  { background: #4338CA; }

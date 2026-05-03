@@ -10,7 +10,7 @@
   border-radius: 14px;
   padding: 22px 24px;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   position: relative;
   overflow: hidden;
 }
@@ -19,18 +19,18 @@
   position: absolute;
   top: 0; bottom: 0; left: 0;
   width: 4px;
-  background: var(--ink-20, #B5B7BD);
+  background: var(--ink-20, #A6AEA8);
 }
 .card.emerald::before { background: var(--emerald, #0F7A4E); }
-.card.saffron::before { background: var(--saffron, #E89A1E); }
-.card.crimson::before { background: var(--crimson, #C12B1A); }
+.card.saffron::before { background: var(--amber); }
+.card.crimson::before { background: var(--red); }
 
 .label {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 16px;
   display: flex;
   justify-content: space-between;
@@ -45,10 +45,10 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.chip_emerald { background: var(--emerald-light, #D2EBDC); color: var(--emerald-deep, #0A4F33); }
-.chip_saffron { background: var(--saffron-light, #FBEFD0); color: var(--saffron-deep, #A66A0F); }
-.chip_crimson { background: var(--crimson-light, #F8DDD8); color: var(--crimson-deep, #831A0E); }
-.chip_neutral { background: var(--linen, #E8E5DC); color: var(--ink-70, #353841); }
+.chip_emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+.chip_saffron { background: var(--amber-light); color: var(--amber); }
+.chip_crimson { background: var(--red-light); color: var(--red); }
+.chip_neutral { background: var(--linen, #BDC4BF); color: var(--ink-70, #353F4A); }
 
 .layerRow {
   display: grid;
@@ -61,7 +61,7 @@
 .layerRow:last-of-type { margin-bottom: 0; }
 
 .layerLabel {
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   font-weight: 800;
   font-size: 9px;
   letter-spacing: 0.12em;
@@ -70,7 +70,7 @@
 
 .layerBar {
   height: 9px;
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   border-radius: 5px;
   position: relative;
   overflow: hidden;
@@ -82,16 +82,16 @@
   border-radius: 5px;
   transition: width 0.4s ease;
 }
-.layer_budget    .layerBarFill { background: var(--ink-20, #B5B7BD); }
+.layer_budget    .layerBarFill { background: var(--ink-20, #A6AEA8); }
 .layer_actualOk    .layerBarFill { background: var(--emerald, #0F7A4E); }
-.layer_actualWarn  .layerBarFill { background: var(--saffron, #E89A1E); }
-.layer_actualMiss  .layerBarFill { background: var(--crimson, #C12B1A); }
+.layer_actualWarn  .layerBarFill { background: var(--amber); }
+.layer_actualMiss  .layerBarFill { background: var(--red); }
 
 .layerVal {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 15px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   white-space: nowrap;
   text-align: right;
   min-width: 80px;
@@ -101,15 +101,15 @@
 .footnote {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
   font-size: 11px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   font-family: Georgia, serif;
   font-style: italic;
   line-height: 1.5;
 }
 .footnote strong {
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   font-style: normal;
   font-weight: 700;
   font-family: -apple-system, sans-serif;

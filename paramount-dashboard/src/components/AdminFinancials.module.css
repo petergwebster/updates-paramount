@@ -31,7 +31,7 @@
   font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 4px; margin-right: 8px;
 }
 .replaceBadge {
-  display: inline-block; background: var(--amber-light, #FEF3C7); color: #92400E;
+  display: inline-block; background: var(--amber-light, #FEF3C7); color: var(--amber);
   font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 4px;
 }
 .notesLabel { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase;

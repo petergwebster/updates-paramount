@@ -47,7 +47,7 @@
 .narrativeBlockSub { font-size: 12px; color: var(--ink-60); margin-top: 2px; }
 .narrativeTextarea { width: 100%; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); resize: vertical; background: white; }
 .generateBtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 12px; font-weight: 500; background: var(--ink); color: var(--cream); border: none; border-radius: var(--radius); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
-.generateBtn:hover:not(:disabled) { background: #333; }
+.generateBtn:hover:not(:disabled) { background: var(--ink-80); }
 .generateBtn:disabled { opacity: 0.5; cursor: default; }
 .generateBtnLoading { background: var(--ink-60); }
 .genError { color: var(--red); font-size: 13px; margin-top: 6px; }
@@ -55,9 +55,9 @@
 /* KPI inputs */
 .kpiInputList { display: flex; flex-direction: column; gap: 6px; }
 .kpiInputCard { background: var(--ink-5); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; transition: border-color 0.15s; }
-.kpiCard_green { border-left: 3px solid #1a7a3c; }
-.kpiCard_amber { border-left: 3px solid #e69500; }
-.kpiCard_red { border-left: 3px solid #d92020; }
+.kpiCard_green { border-left: 3px solid var(--green); }
+.kpiCard_amber { border-left: 3px solid var(--amber); }
+.kpiCard_red { border-left: 3px solid var(--red); }
 .kpiCard_gray { border-left: 3px solid var(--border); }
 .kpiInputTop { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; }
 .kpiInputTop:hover { background: var(--ink-10); }
@@ -73,9 +73,9 @@
 .statusPicker { display: flex; gap: 6px; flex-wrap: wrap; }
 .statusBtn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 12px; border-radius: var(--radius); border: 1px solid var(--border); background: white; cursor: pointer; transition: all 0.15s; color: var(--ink-60); }
 .statusBtn:hover { border-color: var(--ink-30); color: var(--ink); }
-.statusActive_green { background: #e8f5ed; border-color: #1a7a3c; color: #1a7a3c; font-weight: 500; }
-.statusActive_amber { background: #fef7e0; border-color: #e69500; color: #8a6200; font-weight: 500; }
-.statusActive_red { background: #fde8e8; border-color: #d92020; color: #d92020; font-weight: 500; }
+.statusActive_green { background: var(--green-light); border-color: var(--green); color: var(--green); font-weight: 500; }
+.statusActive_amber { background: var(--amber-light); border-color: var(--amber); color: var(--amber); font-weight: 500; }
+.statusActive_red { background: var(--red-light); border-color: var(--red); color: var(--red); font-weight: 500; }
 .statusActive_gray { background: var(--ink-10); border-color: var(--ink-30); color: var(--ink-60); font-weight: 500; }
 
 /* Weekly log */

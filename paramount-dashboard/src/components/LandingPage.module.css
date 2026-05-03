@@ -6,7 +6,7 @@
 .page {
   min-height: calc(100vh - 80px);
   background:
-    radial-gradient(ellipse 80% 60% at 50% 0%, var(--paper-light, #FCFBF8) 0%, var(--paper, #F9F8F4) 50%, var(--paper-soft, #F2F0EA) 100%);
+    radial-gradient(ellipse 80% 60% at 50% 0%, var(--paper-light, var(--paper-light)) 0%, var(--paper, #D3D9D4) 50%, var(--paper-soft, #BDC4BF) 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 
@@ -27,14 +27,14 @@
   height: 50px;
   pointer-events: none;
   opacity: 0.5;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
 }
 .heroEyebrow {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.32em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 24px;
   display: inline-flex;
   align-items: center;
@@ -46,21 +46,21 @@
   content: '';
   width: 28px;
   height: 1px;
-  background: var(--ink-30, #8E919A);
+  background: var(--ink-30, #8E9A9F);
   display: inline-block;
 }
 .heroTitle {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 64px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin: 0 0 18px;
   line-height: 1.05;
   letter-spacing: -0.025em;
 }
 .accent {
   font-style: italic;
-  background: linear-gradient(135deg, var(--royal, #1E4FA8), var(--blood-orange, #D33A28));
+  background: linear-gradient(135deg, var(--royal, #124E66), var(--blood-orange, #0E3D52));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -70,7 +70,7 @@
   font-family: Georgia, serif;
   font-size: 19px;
   font-style: italic;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin: 0;
   line-height: 1.5;
   max-width: 520px;
@@ -104,7 +104,7 @@
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   text-align: left;
   font-family: inherit;
   color: inherit;
@@ -120,13 +120,13 @@
   transition: opacity 0.25s ease;
 }
 .tile.performance::before {
-  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--royal-light, #DCE6F5) 0%, transparent 80%);
+  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--royal-light, #DCE7EA) 0%, transparent 80%);
 }
 .tile.operations::before {
-  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--saffron-light, #FBEFD0) 0%, transparent 80%);
+  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--saffron-light, #D4D8DA) 0%, transparent 80%);
 }
 .tile.heartbeat::before {
-  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--blood-orange-light, #FBE5DF) 0%, transparent 80%);
+  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--blood-orange-light, #C7D2D5) 0%, transparent 80%);
 }
 .tile::after {
   content: '';
@@ -135,9 +135,9 @@
   height: 5px;
   transition: height 0.25s ease;
 }
-.tile.performance::after { background: linear-gradient(90deg, var(--royal-deep, #14376E), var(--royal, #1E4FA8)); }
-.tile.operations::after  { background: linear-gradient(90deg, var(--saffron-deep, #A66A0F), var(--saffron, #E89A1E)); }
-.tile.heartbeat::after   { background: linear-gradient(90deg, var(--blood-orange-deep, #94251B), var(--blood-orange, #D33A28)); }
+.tile.performance::after { background: linear-gradient(90deg, var(--royal-deep, #0A3A4C), var(--royal, #124E66)); }
+.tile.operations::after  { background: linear-gradient(90deg, var(--saffron-deep, #1A2128), var(--saffron, #2E3944)); }
+.tile.heartbeat::after   { background: linear-gradient(90deg, var(--blood-orange-deep, #08293A), var(--blood-orange, #0E3D52)); }
 
 .tile:hover {
   transform: translateY(-6px);
@@ -151,7 +151,7 @@
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 28px;
   display: flex;
   align-items: center;
@@ -166,10 +166,10 @@
   display: inline-block;
   box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
 }
-.performance .dot { background: var(--royal, #1E4FA8); }
-.operations  .dot { background: var(--saffron, #E89A1E); }
+.performance .dot { background: var(--royal, #124E66); }
+.operations  .dot { background: var(--saffron, #2E3944); }
 .heartbeat   .dot {
-  background: var(--blood-orange, #D33A28);
+  background: var(--blood-orange, #0E3D52);
   animation: heartPulse 1.6s ease-in-out infinite;
 }
 @keyframes heartPulse {
@@ -181,7 +181,7 @@
   font-family: Georgia, serif;
   font-size: 30px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin: 0 0 12px;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -192,7 +192,7 @@
   font-family: Georgia, serif;
   font-size: 14px;
   font-style: italic;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin: 0 0 28px;
   line-height: 1.55;
   position: relative;
@@ -200,7 +200,7 @@
 }
 .tileBody {
   flex: 1;
-  border-top: 1px solid var(--ink-10, #DBDCDE);
+  border-top: 1px solid var(--ink-10, #C5CCC8);
   padding-top: 18px;
   position: relative;
   z-index: 1;
@@ -210,7 +210,7 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 14px;
   display: flex;
   align-items: center;
@@ -220,7 +220,7 @@
   content: '';
   width: 4px;
   height: 4px;
-  background: var(--ink-30, #8E919A);
+  background: var(--ink-30, #8E9A9F);
   border-radius: 50%;
 }
 .pulseList {
@@ -233,7 +233,7 @@
 }
 .pulseList li {
   font-size: 13px;
-  color: var(--ink-90, #1F2128);
+  color: var(--ink-90, #2A323A);
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -251,15 +251,15 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-.pulseChip.saffron { background: var(--saffron-light, #FBEFD0); color: var(--saffron-deep, #A66A0F); }
-.pulseChip.crimson { background: var(--crimson-light, #F8DDD8); color: var(--crimson-deep, #831A0E); }
-.pulseChip.emerald { background: var(--emerald-light, #D2EBDC); color: var(--emerald-deep, #0A4F33); }
-.pulseChip.neutral { background: var(--linen, #E8E5DC); color: var(--ink-70, #353841); }
+.pulseChip.saffron { background: var(--saffron-light, #D4D8DA); color: var(--saffron-deep, #1A2128); }
+.pulseChip.crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+.pulseChip.emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+.pulseChip.neutral { background: var(--linen, #BDC4BF); color: var(--ink-70, #353F4A); }
 
 .tileFooter {
   margin-top: 22px;
   padding-top: 18px;
-  border-top: 1px solid var(--ink-10, #DBDCDE);
+  border-top: 1px solid var(--ink-10, #C5CCC8);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -269,7 +269,7 @@
 .tileEnter {
   font-size: 11px;
   font-weight: 800;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   text-transform: uppercase;
   letter-spacing: 0.16em;
   display: inline-flex;
@@ -283,7 +283,7 @@
 .tile:hover .arrow { transform: translateX(6px); }
 .tileAccess {
   font-size: 10px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-style: italic;
   font-family: Georgia, serif;
   text-align: right;
@@ -293,7 +293,7 @@
 /* ─── Footnote + no-access state ─── */
 .footnote {
   text-align: center;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-size: 12px;
   font-style: italic;
   font-family: Georgia, serif;
@@ -308,12 +308,12 @@
   margin: 32px auto 64px;
   padding: 24px 28px;
   background: white;
-  border: 1px solid var(--saffron-light, #FBEFD0);
-  border-left: 3px solid var(--saffron, #E89A1E);
+  border: 1px solid var(--saffron-light, #D4D8DA);
+  border-left: 3px solid var(--saffron, #2E3944);
   border-radius: 8px;
   font-family: Georgia, serif;
   font-style: italic;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   font-size: 14px;
   line-height: 1.6;
   text-align: center;

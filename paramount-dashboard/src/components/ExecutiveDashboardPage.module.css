@@ -74,7 +74,7 @@
   align-items: center;
   gap: 24px;
   padding: 12px 16px;
-  background: var(--cream-dark, #F5F0EA);
+  background: var(--cream-dark, #BDC4BF);
   border-radius: 8px;
   margin-bottom: 28px;
   flex-wrap: wrap;
@@ -127,8 +127,8 @@
 
 /* ── Concerns block ──────────────────────────────────────────────── */
 .concernsBlock {
-  background: #FFF8F0;
-  border: 1px solid #FFE4C0;
+  background: var(--amber-light);
+  border: 1px solid var(--amber-light);
   border-radius: 8px;
   padding: 16px 20px;
   font-size: 14px;

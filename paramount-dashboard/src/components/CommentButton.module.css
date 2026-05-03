@@ -14,7 +14,7 @@
   background: transparent;
   cursor: pointer;
   font-size: 12px;
-  color: #888;
+  color: var(--ink-50);
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -25,13 +25,13 @@
 
 .triggerActive {
   border-color: rgba(0,0,0,0.2);
-  color: #444;
+  color: var(--ink-70);
 }
 
 .badge {
   font-size: 11px;
   font-weight: 500;
-  color: #444;
+  color: var(--ink-70);
   background: rgba(0,0,0,0.07);
   border-radius: 10px;
   padding: 0 5px;
@@ -74,12 +74,12 @@
 .panelTitle {
   font-size: 13px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--ink);
 }
 
 .panelCount {
   font-size: 11px;
-  color: #888;
+  color: var(--ink-50);
   background: rgba(0,0,0,0.06);
   border-radius: 10px;
   padding: 1px 7px;
@@ -89,14 +89,14 @@
   background: none;
   border: none;
   font-size: 18px;
-  color: #aaa;
+  color: var(--ink-40);
   cursor: pointer;
   line-height: 1;
   padding: 0;
   margin: 0;
 }
 
-.closeBtn:hover { color: #555; }
+.closeBtn:hover { color: var(--ink-60); }
 
 /* ── Comment list ── */
 .commentList {
@@ -110,7 +110,7 @@
 
 .empty {
   font-size: 13px;
-  color: #bbb;
+  color: var(--ink-30);
   text-align: center;
   padding: 16px 0;
   margin: 0;
@@ -144,7 +144,7 @@
   justify-content: center;
   font-size: 11px;
   font-weight: 500;
-  color: #555;
+  color: var(--ink-60);
   flex-shrink: 0;
 }
 
@@ -169,36 +169,36 @@
 .authorName {
   font-size: 12px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--ink);
 }
 
 .commentTime {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ink-40);
 }
 
 .deleteBtn {
   background: none;
   border: none;
   font-size: 11px;
-  color: #ccc;
+  color: var(--ink-30);
   cursor: pointer;
   padding: 0;
   margin-left: auto;
   line-height: 1;
 }
 
-.deleteBtn:hover { color: #e24b4a; }
+.deleteBtn:hover { color: var(--red); }
 
 .notified {
   font-size: 11px;
-  color: #888;
+  color: var(--ink-50);
   font-style: italic;
 }
 
 .commentText {
   font-size: 13px;
-  color: #333;
+  color: var(--ink-80);
   margin: 0 0 4px 36px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -208,13 +208,13 @@
   background: none;
   border: none;
   font-size: 11px;
-  color: #aaa;
+  color: var(--ink-40);
   cursor: pointer;
   padding: 0;
   margin-left: 36px;
 }
 
-.replyBtn:hover { color: #555; }
+.replyBtn:hover { color: var(--ink-60); }
 
 /* ── Replies ── */
 .replyList {
@@ -253,7 +253,7 @@
   border: 0.5px solid rgba(0,0,0,0.2);
   cursor: pointer;
   background: transparent;
-  color: #555;
+  color: var(--ink-60);
 }
 
 /* ── New comment form ── */
@@ -268,11 +268,11 @@
 
 .authorDisplay {
   font-size: 12px;
-  color: #aaa;
+  color: var(--ink-40);
 }
 
 .authorDisplay strong {
-  color: #555;
+  color: var(--ink-60);
   font-weight: 500;
 }
 
@@ -284,8 +284,8 @@
   font-size: 13px;
   font-family: inherit;
   resize: none;
-  color: #1a1a1a;
-  background: #fafaf8;
+  color: var(--ink);
+  background: var(--ink-3);
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
@@ -306,7 +306,7 @@
 
 .notifyLabel {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ink-40);
   padding-top: 4px;
   white-space: nowrap;
 }
@@ -323,7 +323,7 @@
   border-radius: 20px;
   border: 0.5px solid rgba(0,0,0,0.15);
   background: transparent;
-  color: #888;
+  color: var(--ink-50);
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
   font-family: inherit;
@@ -331,13 +331,13 @@
 
 .pill:hover {
   background: rgba(0,0,0,0.05);
-  color: #444;
+  color: var(--ink-70);
 }
 
 .pillActive {
-  background: #1a1a1a;
+  background: var(--ink);
   color: #fff;
-  border-color: #1a1a1a;
+  border-color: var(--ink);
 }
 
 /* ── Post button ── */
@@ -346,7 +346,7 @@
   padding: 7px 16px;
   font-size: 13px;
   font-weight: 500;
-  background: #1a1a1a;
+  background: var(--ink);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -366,23 +366,23 @@
 
 /* ── Dark mode ── */
 @media (prefers-color-scheme: dark) {
-  .trigger        { border-color: rgba(255,255,255,0.15); color: #888; }
+  .trigger        { border-color: rgba(255,255,255,0.15); color: var(--ink-50); }
   .trigger:hover  { background: rgba(255,255,255,0.06); }
-  .badge          { color: #ccc; background: rgba(255,255,255,0.1); }
-  .panel          { background: #1e1e1e; border-color: rgba(255,255,255,0.12); }
+  .badge          { color: var(--ink-30); background: rgba(255,255,255,0.1); }
+  .panel          { background: var(--ink); border-color: rgba(255,255,255,0.12); }
   .panelHeader    { border-bottom-color: rgba(255,255,255,0.08); }
-  .panelTitle     { color: #f0f0f0; }
-  .panelCount     { background: rgba(255,255,255,0.08); color: #888; }
-  .closeBtn       { color: #666; }
-  .avatar         { background: rgba(255,255,255,0.1); color: #aaa; }
-  .authorName     { color: #f0f0f0; }
-  .commentText    { color: #ccc; }
+  .panelTitle     { color: var(--ink-5); }
+  .panelCount     { background: rgba(255,255,255,0.08); color: var(--ink-50); }
+  .closeBtn       { color: var(--ink-60); }
+  .avatar         { background: rgba(255,255,255,0.1); color: var(--ink-40); }
+  .authorName     { color: var(--ink-5); }
+  .commentText    { color: var(--ink-30); }
   .replyList      { border-left-color: rgba(255,255,255,0.08); }
   .form           { border-top-color: rgba(255,255,255,0.08); }
-  .textInput      { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); color: #f0f0f0; }
+  .textInput      { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.15); color: var(--ink-5); }
   .textInput:focus { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); }
-  .pill           { border-color: rgba(255,255,255,0.15); color: #888; }
-  .pill:hover     { background: rgba(255,255,255,0.08); color: #ccc; }
-  .pillActive     { background: #f0f0f0; color: #1a1a1a; border-color: #f0f0f0; }
-  .postBtn        { background: #f0f0f0; color: #1a1a1a; }
+  .pill           { border-color: rgba(255,255,255,0.15); color: var(--ink-50); }
+  .pill:hover     { background: rgba(255,255,255,0.08); color: var(--ink-30); }
+  .pillActive     { background: var(--ink-5); color: var(--ink); border-color: var(--ink-5); }
+  .postBtn        { background: var(--ink-5); color: var(--ink); }
 }

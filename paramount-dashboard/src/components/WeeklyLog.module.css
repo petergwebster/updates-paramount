@@ -98,9 +98,9 @@
   border-color: transparent;
 }
 .statusBtn:hover { border-color: var(--border); background: var(--ink-5); }
-.statusActive_green { background: var(--green-light) !important; color: var(--green) !important; border-color: #a8d5b8 !important; }
-.statusActive_amber { background: var(--amber-light) !important; color: var(--amber) !important; border-color: #e8d070 !important; }
-.statusActive_red { background: var(--red-light) !important; color: var(--red) !important; border-color: #f0b0b0 !important; }
+.statusActive_green { background: var(--green-light) !important; color: var(--green) !important; border-color: var(--green-light) !important; }
+.statusActive_amber { background: var(--amber-light) !important; color: var(--amber) !important; border-color: var(--amber-light) !important; }
+.statusActive_red { background: var(--red-light) !important; color: var(--red) !important; border-color: var(--red-light) !important; }
 .statusActive_gray { background: var(--gray-light) !important; color: var(--gray) !important; border-color: var(--ink-30) !important; }
 
 .dayTextarea {

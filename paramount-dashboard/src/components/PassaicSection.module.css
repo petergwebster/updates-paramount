@@ -7,22 +7,22 @@
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   margin-bottom: 24px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .catRow {
   display: grid;
   grid-template-columns: 130px 1fr 1fr 1.2fr 1.1fr;
-  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  border-bottom: 1px solid var(--ink-10, #C5CCC8);
 }
 .catRow:last-child { border-bottom: none; }
 .catRow.headerRow {
-  background: linear-gradient(180deg, var(--paper-soft, #F2F0EA), var(--linen, #E8E5DC));
+  background: linear-gradient(180deg, var(--paper-soft, #BDC4BF), var(--linen, #BDC4BF));
 }
 .catCell {
   padding: 18px 20px;
-  border-right: 1px solid var(--ink-10, #DBDCDE);
+  border-right: 1px solid var(--ink-10, #C5CCC8);
   font-size: 13px;
 }
 .catCell:last-child { border-right: none; }
@@ -31,7 +31,7 @@
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-70, #353841);
+  color: var(--ink-70, #353F4A);
   padding: 11px 20px;
 }
 
@@ -39,36 +39,36 @@
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 18px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin-bottom: 3px;
   letter-spacing: -0.015em;
 }
 .catSubtext {
   font-size: 11px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-style: italic;
   font-family: Georgia, serif;
 }
 .catTablesCount {
   font-size: 10px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-top: 8px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   padding-top: 6px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
 }
 
 .utilLabel {
   font-size: 11px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 6px;
   font-weight: 700;
 }
 .utilBar {
   height: 9px;
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   border-radius: 5px;
   position: relative;
   overflow: hidden;
@@ -80,11 +80,11 @@
   border-radius: 5px;
 }
 .util_emerald { background: var(--emerald, #0F7A4E); }
-.util_saffron { background: var(--saffron, #E89A1E); }
-.util_crimson { background: var(--crimson, #C12B1A); }
+.util_saffron { background: var(--amber); }
+.util_crimson { background: var(--red); }
 .utilDetail {
   font-size: 10px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-style: italic;
   margin-top: 6px;
   font-family: Georgia, serif;
@@ -94,44 +94,44 @@
   font-family: Georgia, serif;
   font-weight: 700;
   font-size: 22px;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   letter-spacing: -0.025em;
   line-height: 1;
 }
 .colorYdsLine {
   font-size: 11px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-top: 4px;
 }
 .pacingNote {
   font-size: 10px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   margin-top: 8px;
   font-style: italic;
   font-family: Georgia, serif;
   padding-top: 6px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
 }
 
 .bottleneck {
-  background: var(--blood-orange-light, #FBE5DF);
-  border-left: 3px solid var(--blood-orange, #D33A28);
+  background: var(--red-light);
+  border-left: 3px solid var(--red);
   padding: 10px 12px;
   border-radius: 0 6px 6px 0;
   font-size: 11px;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   line-height: 1.5;
 }
 .bottleneck_saffron {
-  background: var(--saffron-light, #FBEFD0);
-  border-left-color: var(--saffron, #E89A1E);
+  background: var(--amber-light);
+  border-left-color: var(--amber);
 }
 .bottleneck_royal {
-  background: var(--royal-light, #DCE6F5);
-  border-left-color: var(--royal, #1E4FA8);
+  background: var(--royal-light, #DCE7EA);
+  border-left-color: var(--royal, #124E66);
 }
 .bottleneck_emerald {
-  background: var(--emerald-light, #D2EBDC);
+  background: var(--emerald-light, #E6F2EA);
   border-left-color: var(--emerald, #0F7A4E);
 }
 .bottleneck strong {
@@ -145,7 +145,7 @@
 
 .wipMissing {
   font-size: 11px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-style: italic;
 }
 
@@ -158,20 +158,20 @@
   padding: 24px 24px 20px;
   margin-bottom: 24px;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .floorTitle {
   font-family: Georgia, serif;
   font-size: 18px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin: 0 0 4px;
   letter-spacing: -0.015em;
 }
 .floorSub {
   font-size: 12px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-style: italic;
   font-family: Georgia, serif;
   margin: 0 0 22px;
@@ -179,9 +179,9 @@
 .floorSection {
   margin-bottom: 16px;
   padding: 14px 16px 16px;
-  background: linear-gradient(180deg, var(--paper-light, #FCFBF8), var(--paper, #F9F8F4));
+  background: linear-gradient(180deg, var(--paper-light, var(--paper-light)), var(--paper, #D3D9D4));
   border-radius: 10px;
-  border: 1px solid var(--ink-10, #DBDCDE);
+  border: 1px solid var(--ink-10, #C5CCC8);
 }
 .floorSection:last-of-type { margin-bottom: 12px; }
 .floorSectionLabel {
@@ -189,7 +189,7 @@
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
@@ -197,7 +197,7 @@
 }
 .floorMeta {
   font-size: 10px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: none;
@@ -224,7 +224,7 @@
   transition: all 0.15s ease;
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--ink-10, #DBDCDE);
+  border: 1px solid var(--ink-10, #C5CCC8);
 }
 .tCell:hover {
   transform: translateY(-2px);
@@ -236,11 +236,11 @@
   top: 0; left: 0; right: 0;
   height: 3px;
 }
-.t_gc::before  { background: var(--royal, #1E4FA8); }
-.t_fab::before { background: var(--saffron, #E89A1E); }
-.t_wp::before  { background: var(--blood-orange, #D33A28); }
+.t_gc::before  { background: var(--royal, #124E66); }
+.t_fab::before { background: var(--saffron, #2E3944); }
+.t_wp::before  { background: var(--blood-orange, #0E3D52); }
 .tCell.idle {
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.03);
   opacity: 0.65;
 }
@@ -248,18 +248,18 @@
   font-family: Georgia, serif;
   font-size: 16px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   line-height: 1;
   letter-spacing: -0.025em;
 }
 .tStatus {
   font-size: 8px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
-.tCell.idle .tStatus { color: var(--ink-30, #8E919A); }
+.tCell.idle .tStatus { color: var(--ink-30, #8E9A9F); }
 .tDot {
   position: absolute;
   bottom: 6px;
@@ -270,8 +270,8 @@
   box-shadow: 0 0 0 2px white;
 }
 .tDot_running { background: var(--emerald, #0F7A4E); animation: subtleBlink 2.4s ease-in-out infinite; }
-.tDot_idle    { background: var(--ink-20, #B5B7BD); box-shadow: 0 0 0 2px var(--linen, #E8E5DC); }
-.tDot_attention { background: var(--saffron, #E89A1E); }
+.tDot_idle    { background: var(--ink-20, #A6AEA8); box-shadow: 0 0 0 2px var(--linen, #BDC4BF); }
+.tDot_attention { background: var(--amber); }
 
 @keyframes subtleBlink {
   0%, 100% { opacity: 1; }
@@ -282,9 +282,9 @@
   display: flex;
   gap: 18px;
   font-size: 10px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   padding-top: 14px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
   flex-wrap: wrap;
   align-items: center;
   margin-top: 6px;
@@ -298,8 +298,8 @@
   display: inline-block;
 }
 .dotRunning { background: var(--emerald, #0F7A4E); }
-.dotIdle { background: var(--ink-20, #B5B7BD); }
-.dotAttention { background: var(--saffron, #E89A1E); }
+.dotIdle { background: var(--ink-20, #A6AEA8); }
+.dotAttention { background: var(--amber); }
 
 /* ═════════════════════════════════════════════════════════════════
    Watch cards
@@ -315,7 +315,7 @@
   border-radius: 14px;
   padding: 22px 24px;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .watchLabel {
@@ -323,7 +323,7 @@
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 14px;
   display: flex;
   justify-content: space-between;
@@ -331,8 +331,8 @@
 }
 .watchBadge {
   font-size: 9px;
-  background: var(--linen, #E8E5DC);
-  color: var(--ink-50, #5C5F69);
+  background: var(--linen, #BDC4BF);
+  color: var(--ink-50, #5C6770);
   padding: 3px 9px;
   border-radius: 100px;
   font-weight: 600;
@@ -348,17 +348,17 @@
   line-height: 1;
   margin-bottom: 4px;
   letter-spacing: -0.025em;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
 }
 .watchHeadlineSmall {
   font-size: 16px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-weight: 400;
   font-style: italic;
 }
 .watchSub {
   font-size: 12px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 18px;
   font-style: italic;
   font-family: Georgia, serif;
@@ -371,10 +371,10 @@
   gap: 12px;
   font-size: 11px;
 }
-.watchBarLabel { color: var(--ink-50, #5C5F69); font-weight: 800; }
+.watchBarLabel { color: var(--ink-50, #5C6770); font-weight: 800; }
 .watchBarBg {
   height: 9px;
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   border-radius: 5px;
   position: relative;
   overflow: hidden;
@@ -386,22 +386,22 @@
   border-radius: 5px;
 }
 .watchBar_low  { background: var(--emerald, #0F7A4E); }
-.watchBar_mid  { background: var(--saffron, #E89A1E); }
-.watchBar_high { background: var(--blood-orange, #D33A28); }
+.watchBar_mid  { background: var(--amber); }
+.watchBar_high { background: var(--red); }
 .watchPctVal {
   font-family: Georgia, serif;
   font-weight: 700;
   text-align: right;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   font-size: 14px;
   letter-spacing: -0.01em;
 }
 .watchBox {
   font-size: 11px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-top: 18px;
   padding-top: 14px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
   font-family: Georgia, serif;
   font-style: italic;
   line-height: 1.55;
@@ -416,13 +416,13 @@
   margin: 14px 0 24px;
 }
 .curveBar {
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   border-radius: 3px 3px 0 0;
   position: relative;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
 }
 .curveBarNow {
-  background: linear-gradient(180deg, #F2AD3A, var(--saffron, #E89A1E));
+  background: linear-gradient(180deg, var(--amber), var(--amber));
   box-shadow: 0 -1px 8px rgba(232,154,30,0.35);
 }
 .curveLabel {
@@ -432,22 +432,22 @@
   right: 0;
   text-align: center;
   font-size: 9px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-weight: 700;
 }
-.curveBarNow .curveLabel { color: var(--ink, #101218); font-weight: 900; }
+.curveBarNow .curveLabel { color: var(--ink, #212A31); font-weight: 900; }
 .curveAxis {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   padding-top: 8px;
-  border-top: 1px dashed var(--ink-10, #DBDCDE);
+  border-top: 1px dashed var(--ink-10, #C5CCC8);
   font-style: italic;
   font-family: Georgia, serif;
 }
 .curveAxis strong {
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   font-weight: 800;
   font-style: normal;
   font-family: -apple-system, sans-serif;
@@ -462,14 +462,14 @@
   padding: 22px 24px 16px;
   margin-bottom: 18px;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
-  border: 1px solid var(--ink-05, #E8E9EB);
+  border: 1px solid var(--ink-05, #DCE0DD);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .jobsTitle {
   font-family: Georgia, serif;
   font-size: 18px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   margin-bottom: 16px;
   display: flex;
   justify-content: space-between;
@@ -478,7 +478,7 @@
 }
 .jobsTitleSmall {
   font-size: 11px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   font-weight: 400;
   font-style: italic;
   font-family: Georgia, serif;
@@ -489,20 +489,20 @@
   gap: 16px;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  border-bottom: 1px solid var(--ink-10, #C5CCC8);
   font-size: 12px;
 }
 .jobItem:last-child { border-bottom: none; }
 .jobName {
   font-family: Georgia, serif;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   font-size: 14px;
   letter-spacing: -0.01em;
 }
 .jobMeta {
   font-size: 11px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   display: block;
   font-style: italic;
   font-family: Georgia, serif;
@@ -514,23 +514,23 @@
   padding: 3px 10px;
   border-radius: 100px;
   font-weight: 800;
-  background: var(--saffron-light, #FBEFD0);
-  color: var(--saffron-deep, #A66A0F);
+  background: var(--amber-light);
+  color: var(--amber);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-.jobBadge_crimson { background: var(--crimson-light, #F8DDD8); color: var(--crimson-deep, #831A0E); }
-.jobBadge_neutral { background: var(--linen, #E8E5DC); color: var(--ink-50, #5C5F69); }
+.jobBadge_crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+.jobBadge_neutral { background: var(--linen, #BDC4BF); color: var(--ink-50, #5C6770); }
 .jobNum {
   font-family: Georgia, serif;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   font-size: 15px;
   letter-spacing: -0.015em;
 }
 .jobNumLabel {
   font-size: 9px;
-  color: var(--ink-30, #8E919A);
+  color: var(--ink-30, #8E9A9F);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 800;

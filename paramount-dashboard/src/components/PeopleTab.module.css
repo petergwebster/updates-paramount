@@ -1,24 +1,24 @@
 .wrap {
   padding: 1.5rem 0;
-  color: var(--color-text, #1a1a1a);
+  color: var(--color-text, var(--ink));
 }
 
 .empty {
   padding: 3rem 0;
   text-align: center;
-  color: #888;
+  color: var(--ink-50);
   font-size: 14px;
 }
 
 .emptyHint {
   font-size: 13px;
-  color: #aaa;
+  color: var(--ink-40);
   margin-top: 8px;
 }
 
 .emptyCard {
   font-size: 13px;
-  color: #aaa;
+  color: var(--ink-40);
   margin: 0;
   padding: 4px 0;
 }
@@ -29,7 +29,7 @@
   font-weight: 500;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: #888780;
+  color: var(--ink-40);
   margin: 0 0 10px;
 }
 
@@ -46,14 +46,14 @@
 }
 
 .mc {
-  background: #f5f5f3;
+  background: var(--ink-5);
   border-radius: 8px;
   padding: 14px 16px;
 }
 
 .mcLabel {
   font-size: 12px;
-  color: #888;
+  color: var(--ink-50);
   margin: 0 0 4px;
 }
 
@@ -65,7 +65,7 @@
 
 .mcSub {
   font-size: 11px;
-  color: #aaa;
+  color: var(--ink-40);
   margin: 4px 0 0;
 }
 
@@ -96,10 +96,10 @@
 
 .badge {
   font-size: 11px;
-  background: #f5f5f3;
+  background: var(--ink-5);
   border-radius: 8px;
   padding: 3px 8px;
-  color: #888;
+  color: var(--ink-50);
   font-weight: 400;
 }
 
@@ -113,14 +113,14 @@
 
 .stat {
   font-size: 12px;
-  color: #888;
+  color: var(--ink-50);
 }
 
 .stat strong {
   display: block;
   font-size: 16px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--ink);
 }
 
 /* ── Pills ── */
@@ -145,17 +145,17 @@
   white-space: nowrap;
 }
 
-.pillOt  { background: #FAEEDA; color: #854F0B; }
-.pillPto { background: #E6F1FB; color: #185FA5; }
-.pillBon { background: #EAF3DE; color: #3B6D11; }
-.pillLow { background: #FCEBEB; color: #A32D2D; }
+.pillOt  { background: var(--amber-light); color: var(--amber); }
+.pillPto { background: var(--royal-light); color: var(--royal); }
+.pillBon { background: var(--green-light); color: var(--green); }
+.pillLow { background: var(--red-light); color: var(--red); }
 .pillLv  { background: #EEEDFE; color: #534AB7; }
-.pillOk  { background: #f5f5f3; color: #888; }
+.pillOk  { background: var(--ink-5); color: var(--ink-50); }
 
 /* ── Alert items (leaves, roles) ── */
 .alertItem {
   font-size: 12px;
-  color: #888;
+  color: var(--ink-50);
   padding: 5px 0;
   border-bottom: 0.5px solid rgba(0,0,0,0.08);
   display: flex;
@@ -177,7 +177,7 @@
 .bonusLabel {
   font-size: 11px;
   font-weight: 500;
-  color: #888;
+  color: var(--ink-50);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0 0 8px;
@@ -188,7 +188,7 @@
   display: flex;
   gap: 16px;
   font-size: 11px;
-  color: #888;
+  color: var(--ink-50);
   margin-bottom: 8px;
 }
 
@@ -230,13 +230,13 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--ink);
   text-align: left;
   transition: background 0.15s;
 }
 
 .rosterToggle:hover {
-  background: #f9f9f8;
+  background: var(--ink-3);
 }
 
 .rosterToggleOpen {
@@ -246,7 +246,7 @@
 
 .toggleCount {
   font-weight: 400;
-  color: #aaa;
+  color: var(--ink-40);
 }
 
 .toggleRight {
@@ -258,7 +258,7 @@
 
 .toggleArrow {
   font-size: 14px;
-  color: #aaa;
+  color: var(--ink-40);
   transition: transform 0.2s;
   display: inline-block;
   margin-left: 4px;
@@ -282,7 +282,7 @@
   grid-template-columns: 2fr 2fr 65px 55px 55px 75px 110px;
   gap: 6px;
   font-size: 11px;
-  color: #aaa;
+  color: var(--ink-40);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -305,7 +305,7 @@
 }
 
 .muted {
-  color: #888;
+  color: var(--ink-50);
 }
 
 /* ── HR Notes ── */
@@ -315,7 +315,7 @@
 
 .hrNotes {
   font-size: 13px;
-  color: #555;
+  color: var(--ink-60);
   line-height: 1.6;
   margin: 0;
 }
@@ -323,25 +323,25 @@
 /* ── Dark mode ── */
 @media (prefers-color-scheme: dark) {
   .mc           { background: rgba(255,255,255,0.06); }
-  .mcLabel      { color: #aaa; }
-  .mcSub        { color: #777; }
+  .mcLabel      { color: var(--ink-40); }
+  .mcSub        { color: var(--ink-50); }
   .card         { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
-  .badge        { background: rgba(255,255,255,0.08); color: #aaa; }
-  .stat         { color: #aaa; }
-  .stat strong  { color: #f0f0f0; }
-  .alertItem    { color: #aaa; border-bottom-color: rgba(255,255,255,0.08); }
-  .rosterToggle { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #f0f0f0; }
+  .badge        { background: rgba(255,255,255,0.08); color: var(--ink-40); }
+  .stat         { color: var(--ink-40); }
+  .stat strong  { color: var(--ink-5); }
+  .alertItem    { color: var(--ink-40); border-bottom-color: rgba(255,255,255,0.08); }
+  .rosterToggle { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: var(--ink-5); }
   .rosterToggle:hover { background: rgba(255,255,255,0.07); }
   .rosterToggleOpen   { border-color: rgba(255,255,255,0.1); border-bottom-color: transparent; }
   .rosterBody   { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
-  .rosterHead   { color: #777; border-bottom-color: rgba(255,255,255,0.08); }
+  .rosterHead   { color: var(--ink-50); border-bottom-color: rgba(255,255,255,0.08); }
   .rosterRow    { border-bottom-color: rgba(255,255,255,0.05); }
-  .muted        { color: #777; }
-  .chartLegend  { color: #888; }
-  .toggleCount  { color: #666; }
-  .toggleArrow  { color: #666; }
-  .eyebrow      { color: #666; }
-  .bonusLabel   { color: #666; }
-  .emptyCard    { color: #666; }
-  .hrNotes      { color: #aaa; }
+  .muted        { color: var(--ink-50); }
+  .chartLegend  { color: var(--ink-50); }
+  .toggleCount  { color: var(--ink-60); }
+  .toggleArrow  { color: var(--ink-60); }
+  .eyebrow      { color: var(--ink-60); }
+  .bonusLabel   { color: var(--ink-60); }
+  .emptyCard    { color: var(--ink-60); }
+  .hrNotes      { color: var(--ink-40); }
 }

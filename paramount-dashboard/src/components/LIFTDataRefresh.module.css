@@ -5,7 +5,7 @@
 .pageHeader {
   margin-bottom: 24px;
   padding-bottom: 18px;
-  border-bottom: 1px solid var(--ink-10, #DBDCDE);
+  border-bottom: 1px solid var(--ink-10, #C5CCC8);
 }
 
 .eyebrow {
@@ -13,14 +13,14 @@
   font-weight: 800;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   margin-bottom: 8px;
 }
 .title {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 32px;
   font-weight: 700;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   letter-spacing: -0.025em;
   margin: 0 0 8px;
   line-height: 1.1;
@@ -29,7 +29,7 @@
   font-family: Georgia, serif;
   font-style: italic;
   font-size: 14px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   max-width: 720px;
   line-height: 1.55;
   margin: 0;
@@ -40,19 +40,19 @@
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  background: linear-gradient(180deg, var(--royal-light, #DCE6F5), #C9D9F0);
-  border: 1px solid #A8BDDF;
+  background: linear-gradient(180deg, var(--royal-light, #DCE7EA), var(--royal-light));
+  border: 1px solid var(--royal-light);
   border-radius: 11px;
   padding: 14px 18px;
   margin-bottom: 22px;
   font-size: 12px;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
   line-height: 1.5;
 }
 .bannerIcon {
   font-size: 22px;
   font-weight: 900;
-  color: var(--royal, #1E4FA8);
+  color: var(--royal, #124E66);
   line-height: 1;
   margin-top: 1px;
   width: 28px;
@@ -69,14 +69,14 @@
 .bannerText strong {
   display: block;
   font-weight: 800;
-  color: var(--royal-deep, #14376E);
+  color: var(--royal-deep, #0A3A4C);
   margin-bottom: 3px;
   font-size: 12px;
   letter-spacing: 0.01em;
 }
 .bannerText span {
   font-style: italic;
-  color: var(--ink-70, #353841);
+  color: var(--ink-70, #353F4A);
   font-family: Georgia, serif;
 }
 
@@ -93,12 +93,12 @@
 
 /* ─── Footer note ─── */
 .footerNote {
-  background: var(--paper-light, #FCFBF8);
-  border: 1px solid var(--ink-10, #DBDCDE);
+  background: var(--paper-light, var(--paper-light));
+  border: 1px solid var(--ink-10, #C5CCC8);
   border-radius: 10px;
   padding: 18px 22px;
   font-size: 12px;
-  color: var(--ink-50, #5C5F69);
+  color: var(--ink-50, #5C6770);
   line-height: 1.55;
 }
 .footerNote strong {
@@ -106,7 +106,7 @@
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-70, #353841);
+  color: var(--ink-70, #353F4A);
   font-weight: 800;
   margin-bottom: 8px;
 }
@@ -119,8 +119,8 @@
   font-family: 'Courier New', monospace;
   font-size: 11px;
   font-style: normal;
-  background: var(--linen, #E8E5DC);
+  background: var(--linen, #BDC4BF);
   padding: 1px 6px;
   border-radius: 4px;
-  color: var(--ink, #101218);
+  color: var(--ink, #212A31);
 }

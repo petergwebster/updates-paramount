@@ -30,9 +30,9 @@
   transition: border-color 0.15s;
 }
 .kpiCard:hover { border-color: var(--ink-30); }
-.kpiCard_green { border-left: 3px solid #2d5a3d; }
-.kpiCard_amber { border-left: 3px solid #8a6200; }
-.kpiCard_red { border-left: 3px solid #8b2020; }
+.kpiCard_green { border-left: 3px solid var(--green-deep, var(--green)); }
+.kpiCard_amber { border-left: 3px solid var(--amber); }
+.kpiCard_red { border-left: 3px solid var(--red); }
 .kpiCard_gray { border-left: 3px solid var(--ink-30); }
 .kpiCardExpanded { border-color: var(--ink-30); box-shadow: var(--shadow-sm); }
 
@@ -104,9 +104,9 @@
   border-color: transparent;
 }
 .statusBtn:hover { border-color: var(--border); background: var(--ink-5); }
-.statusActive_green { background: var(--green-light) !important; color: var(--green) !important; border-color: #a8d5b8 !important; }
-.statusActive_amber { background: var(--amber-light) !important; color: var(--amber) !important; border-color: #e8d070 !important; }
-.statusActive_red { background: var(--red-light) !important; color: var(--red) !important; border-color: #f0b0b0 !important; }
+.statusActive_green { background: var(--green-light) !important; color: var(--green) !important; border-color: var(--green-light) !important; }
+.statusActive_amber { background: var(--amber-light) !important; color: var(--amber) !important; border-color: var(--amber-light) !important; }
+.statusActive_red { background: var(--red-light) !important; color: var(--red) !important; border-color: var(--red-light) !important; }
 .statusActive_gray { background: var(--gray-light) !important; color: var(--gray) !important; border-color: var(--ink-30) !important; }
 
 /* Narrative section */
@@ -286,16 +286,16 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.memoScoreDot_green { background: #4ade80; }
-.memoScoreDot_amber { background: #fbbf24; }
-.memoScoreDot_red { background: #f87171; }
+.memoScoreDot_green { background: var(--green); }
+.memoScoreDot_amber { background: var(--amber); }
+.memoScoreDot_red { background: var(--red); }
 .memoScoreDot_gray { background: rgba(255,255,255,0.3); }
 .memoScoreLabel { display: flex; flex-direction: column; gap: 1px; }
 .memoScoreText { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
 .memoScoreValue { font-size: 14px; font-weight: 500; color: white; }
-.memoScoreValue_green { color: #4ade80; }
-.memoScoreValue_amber { color: #fbbf24; }
-.memoScoreValue_red { color: #f87171; }
+.memoScoreValue_green { color: var(--green); }
+.memoScoreValue_amber { color: var(--amber); }
+.memoScoreValue_red { color: var(--red); }
 .memoScoreValue_gray { color: rgba(255,255,255,0.6); }
 
 /* Empty state */

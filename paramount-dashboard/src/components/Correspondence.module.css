@@ -187,4 +187,4 @@
   border-radius: var(--radius);
   background: var(--accent-light);
 }
-.fileLink:hover { background: #edddd0; }
+.fileLink:hover { background: var(--blood-orange-light); }

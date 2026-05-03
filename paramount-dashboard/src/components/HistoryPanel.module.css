@@ -21,9 +21,9 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
-.weekCard_green { border-left: 3px solid #2d5a3d; }
-.weekCard_amber { border-left: 3px solid #8a6200; }
-.weekCard_red { border-left: 3px solid #8b2020; }
+.weekCard_green { border-left: 3px solid var(--green-deep, var(--green)); }
+.weekCard_amber { border-left: 3px solid var(--amber); }
+.weekCard_red { border-left: 3px solid var(--red); }
 .weekCard_gray { border-left: 3px solid var(--ink-30); }
 
 .weekTop {
@@ -47,7 +47,7 @@
   border-color: var(--accent-light);
   background: var(--accent-light);
 }
-.openBtn:hover { background: #edddd0; }
+.openBtn:hover { background: var(--blood-orange-light); }
 .chevron { font-size: 9px; color: var(--ink-60); }
 
 .weekExpanded {
