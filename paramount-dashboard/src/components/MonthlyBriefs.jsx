@@ -2,48 +2,49 @@
 // MonthlyBriefs.jsx — Admin section for generating Mid-Month / End-of-Month
 // briefs for FSCO leadership.
 // ============================================================================
-// Two buttons:
-//   • Mid-Month Brief — halftime check, forward-looking framing
-//   • End-of-Month Brief — month-closed retrospective framing
+// Flow:
+//   1) Pick month + phase, click Generate
+//   2) Data gathers, Claude drafts, preview renders inline
+//   3) Edit the executive summary in the editable textarea
+//   4) Save Brief — writes to monthly_briefs table with data snapshot
+//   5) Download PDF — uses current narrative state
 //
-// Flow on click:
-//   1) Gather data via gatherMonthlyBriefData (production, financials,
-//      people, WIP for the selected month)
-//   2) Build prompt via buildMonthlyBriefPrompt
-//   3) Call /api/claude (model claude-sonnet-4-20250514)
-//   4) Render preview: header card, executive-summary textarea (editable),
-//      MTD tracking table, people, WIP
-//   5) Download PDF button → generateMonthlyBriefPdf
+// The History panel shows previously-saved briefs for the current
+// (month, phase) — click any to load it back into the editor.
 //
-// Month selector defaults to the chrome week's month, but Peter can pick
-// any past or current month from a dropdown — useful for backfill.
-//
-// Narratives are NOT cached for v1. Each generate call fires Claude.
-// Future: cache to a `monthly_briefs` table keyed on (month_key, phase).
+// Visual layout mirrors the April Mid-Month PDF reference exactly:
+//   - Editorial header (PARAMOUNT PRINTS / period overline / serif title)
+//   - Gold rule under EXECUTIVE SUMMARY
+//   - Two-column production cards with stacked PRODUCED / INVOICED YDS / OPEX
+//   - MTD tracking table with target shown ("76% of 17,220"), Revenue
+//     MTD highlighted, COGS row showing "pending" before the 10th
+//   - People one-liner: "Headcount: 49 total (13 BNY · 36 NJ)"
+//   - WIP with em-dash placeholders when data missing
 // ============================================================================
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { format, subMonths, startOfMonth } from 'date-fns'
-import { gatherMonthlyBriefData } from '../lib/monthlyBriefData'
+import {
+  gatherMonthlyBriefData,
+  saveMonthlyBrief,
+  listSavedBriefs,
+  loadSavedBrief,
+} from '../lib/monthlyBriefData'
 import { buildMonthlyBriefPrompt } from '../lib/monthlyBriefNarrative'
 import { generateMonthlyBriefPdf } from '../lib/monthlyBriefPdf'
 import styles from './MonthlyBriefs.module.css'
 
-// Build a list of selectable months — current month + 11 prior
+// 12 most recent months as picker options (current month first)
 function buildMonthOptions(anchor = new Date()) {
   const opts = []
   for (let i = 0; i < 12; i++) {
     const d = subMonths(startOfMonth(anchor), i)
-    opts.push({
-      key: format(d, 'yyyy-MM'),
-      label: format(d, 'MMMM yyyy'),
-    })
+    opts.push({ key: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy') })
   }
   return opts
 }
 
-export default function MonthlyBriefs({ weekStart }) {
-  // Month options, defaulting to chrome-week's month
+export default function MonthlyBriefs({ weekStart, authUser }) {
   const monthOptions = useMemo(() => buildMonthOptions(), [])
   const defaultMonthKey = useMemo(() => {
     const anchor = weekStart instanceof Date ? weekStart : new Date()
@@ -51,33 +52,55 @@ export default function MonthlyBriefs({ weekStart }) {
   }, [weekStart])
 
   const [monthKey, setMonthKey] = useState(defaultMonthKey)
-  const [phase, setPhase] = useState(null)             // 'mid' | 'end' | null
-  const [stage, setStage] = useState('idle')           // idle | gathering | drafting | ready | error
+  const [phase, setPhase] = useState(null)
+  const [stage, setStage] = useState('idle')          // idle | gathering | drafting | ready | error | saving
   const [error, setError] = useState(null)
   const [briefData, setBriefData] = useState(null)
   const [narrative, setNarrative] = useState('')
   const [pdfFilename, setPdfFilename] = useState(null)
 
+  // Save state
+  const [savedHistory, setSavedHistory] = useState([])
+  const [loadedFromId, setLoadedFromId] = useState(null)
+  const [unsavedChanges, setUnsavedChanges] = useState(false)
+  const [lastSaveAt, setLastSaveAt] = useState(null)
+
   const monthLabel = monthOptions.find(m => m.key === monthKey)?.label || monthKey
+
+  // Refresh saved history whenever month or phase changes
+  const refreshHistory = useCallback(async () => {
+    if (!phase) {
+      setSavedHistory([])
+      return
+    }
+    const rows = await listSavedBriefs({ monthKey, phase })
+    setSavedHistory(rows)
+  }, [monthKey, phase])
+
+  useEffect(() => { refreshHistory() }, [refreshHistory])
+
+  // Mark narrative changes as unsaved (after initial load)
+  useEffect(() => {
+    if (stage === 'ready' && narrative) setUnsavedChanges(true)
+  }, [narrative]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Generate flow ─────────────────────────────────────────────────────
   async function generate(selectedPhase) {
     setError(null)
     setBriefData(null)
     setNarrative('')
+    setLoadedFromId(null)
+    setLastSaveAt(null)
+    setUnsavedChanges(false)
     setPhase(selectedPhase)
     setStage('gathering')
 
     try {
-      // 1) Gather data
       const data = await gatherMonthlyBriefData({ monthKey, phase: selectedPhase })
       setBriefData(data)
       setStage('drafting')
 
-      // 2) Build prompt
       const prompt = buildMonthlyBriefPrompt({ data })
-
-      // 3) Call Claude
       const response = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,20 +110,63 @@ export default function MonthlyBriefs({ weekStart }) {
           messages: [{ role: 'user', content: prompt }],
         }),
       })
-
-      if (!response.ok) {
-        throw new Error(`Claude API returned ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`Claude API returned ${response.status}`)
 
       const result = await response.json()
       const text = result.content?.find(c => c.type === 'text')?.text?.trim()
       if (!text) throw new Error('Claude returned no narrative text')
 
       setNarrative(text)
+      // Allow the unsaved-changes effect to flip from initial load
+      setTimeout(() => setUnsavedChanges(false), 50)
       setStage('ready')
     } catch (e) {
       console.error('MonthlyBriefs.generate:', e)
       setError(e.message || 'Generation failed')
+      setStage('error')
+    }
+  }
+
+  // ── Save flow ─────────────────────────────────────────────────────────
+  async function saveBrief() {
+    if (!briefData || !narrative || !phase) return
+    setStage('saving')
+    try {
+      const saved = await saveMonthlyBrief({
+        monthKey,
+        phase,
+        narrative,
+        dataSnapshot: briefData,
+        authUser,
+      })
+      setLastSaveAt(saved.saved_at)
+      setLoadedFromId(saved.id)
+      setUnsavedChanges(false)
+      setStage('ready')
+      await refreshHistory()
+    } catch (e) {
+      console.error('MonthlyBriefs.saveBrief:', e)
+      setError('Save failed: ' + (e.message || 'unknown'))
+      setStage('ready')
+    }
+  }
+
+  // ── Load saved brief ──────────────────────────────────────────────────
+  async function loadSaved(id) {
+    setError(null)
+    setStage('gathering')
+    try {
+      const row = await loadSavedBrief(id)
+      setBriefData(row.data_snapshot)
+      setNarrative(row.narrative)
+      setPhase(row.phase)
+      setLoadedFromId(row.id)
+      setLastSaveAt(row.saved_at)
+      setUnsavedChanges(false)
+      setStage('ready')
+    } catch (e) {
+      console.error('MonthlyBriefs.loadSaved:', e)
+      setError('Load failed: ' + (e.message || 'unknown'))
       setStage('error')
     }
   }
@@ -123,18 +189,21 @@ export default function MonthlyBriefs({ weekStart }) {
     setBriefData(null)
     setNarrative('')
     setPdfFilename(null)
+    setLoadedFromId(null)
+    setLastSaveAt(null)
+    setUnsavedChanges(false)
   }
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className={styles.container}>
-      {/* Header */}
       <div className={styles.header}>
         <h2 className={styles.title}>Monthly Briefs</h2>
         <p className={styles.subtitle}>
-          Generate the Mid-Month or End-of-Month brief that goes to FSCO leadership.
-          Claude drafts the executive summary from the month's production, financial,
-          people, and WIP data. You can edit the narrative before downloading the PDF.
+          Generate the Mid-Month or End-of-Month brief for FSCO leadership.
+          Claude drafts the executive summary from the month's production,
+          financial, people, and WIP data. Edit the narrative, save the version,
+          and download the PDF — saved versions stay in history for reference.
         </p>
       </div>
 
@@ -146,7 +215,7 @@ export default function MonthlyBriefs({ weekStart }) {
             className={styles.monthSelect}
             value={monthKey}
             onChange={e => { setMonthKey(e.target.value); reset() }}
-            disabled={stage === 'gathering' || stage === 'drafting'}
+            disabled={stage === 'gathering' || stage === 'drafting' || stage === 'saving'}
           >
             {monthOptions.map(m => (
               <option key={m.key} value={m.key}>{m.label}</option>
@@ -158,7 +227,7 @@ export default function MonthlyBriefs({ weekStart }) {
           <button
             className={`${styles.btn} ${styles.btnMid} ${phase === 'mid' && stage === 'ready' ? styles.btnActive : ''}`}
             onClick={() => generate('mid')}
-            disabled={stage === 'gathering' || stage === 'drafting'}
+            disabled={stage === 'gathering' || stage === 'drafting' || stage === 'saving'}
           >
             <div className={styles.btnLabel}>Mid-Month Brief</div>
             <div className={styles.btnSub}>Halftime · forward-looking</div>
@@ -167,7 +236,7 @@ export default function MonthlyBriefs({ weekStart }) {
           <button
             className={`${styles.btn} ${styles.btnEnd} ${phase === 'end' && stage === 'ready' ? styles.btnActive : ''}`}
             onClick={() => generate('end')}
-            disabled={stage === 'gathering' || stage === 'drafting'}
+            disabled={stage === 'gathering' || stage === 'drafting' || stage === 'saving'}
           >
             <div className={styles.btnLabel}>End-of-Month Brief</div>
             <div className={styles.btnSub}>Closed · retrospective</div>
@@ -179,7 +248,7 @@ export default function MonthlyBriefs({ weekStart }) {
       {stage === 'gathering' && (
         <div className={styles.status}>
           <div className={styles.spinner} />
-          Gathering {monthLabel} data — production, financials, people, WIP…
+          {loadedFromId ? `Loading saved brief…` : `Gathering ${monthLabel} data — production, financials, people, WIP…`}
         </div>
       )}
       {stage === 'drafting' && (
@@ -188,22 +257,43 @@ export default function MonthlyBriefs({ weekStart }) {
           Claude is drafting the executive summary…
         </div>
       )}
+      {stage === 'saving' && (
+        <div className={styles.status}>
+          <div className={styles.spinner} />
+          Saving brief…
+        </div>
+      )}
       {stage === 'error' && (
-        <div className={styles.error}>
-          <strong>Generation failed.</strong> {error}
+        <div className={styles.errorBanner}>
+          <strong>Action failed.</strong> {error}
           <button className={styles.btnLink} onClick={reset}>Try again</button>
         </div>
       )}
 
+      {/* Saved history list — visible whenever a phase is selected */}
+      {phase && (
+        <SavedHistoryList
+          items={savedHistory}
+          monthLabel={monthLabel}
+          phase={phase}
+          loadedFromId={loadedFromId}
+          onLoad={loadSaved}
+        />
+      )}
+
       {/* Preview */}
-      {stage === 'ready' && briefData && (
+      {(stage === 'ready' || stage === 'saving') && briefData && (
         <BriefPreview
           data={briefData}
           phase={phase}
           narrative={narrative}
           onNarrativeChange={setNarrative}
           onDownload={downloadPdf}
+          onSave={saveBrief}
           pdfFilename={pdfFilename}
+          unsavedChanges={unsavedChanges}
+          lastSaveAt={lastSaveAt}
+          isSaving={stage === 'saving'}
         />
       )}
     </div>
@@ -211,31 +301,118 @@ export default function MonthlyBriefs({ weekStart }) {
 }
 
 // =============================================================================
-// Preview block — renders the brief inline so Peter can review/edit before PDF
+// SavedHistoryList — shows previous saves for the current (month, phase)
 // =============================================================================
 
-function BriefPreview({ data, phase, narrative, onNarrativeChange, onDownload, pdfFilename }) {
+function SavedHistoryList({ items, monthLabel, phase, loadedFromId, onLoad }) {
+  const phaseLabel = phase === 'mid' ? 'Mid-Month' : 'End-of-Month'
+
+  if (items.length === 0) {
+    return (
+      <div className={styles.historyEmpty}>
+        <div className={styles.historyEmptyLabel}>SAVED VERSIONS</div>
+        <div className={styles.historyEmptyText}>
+          No saved versions yet for {monthLabel} {phaseLabel}. Generate a brief and click Save to create one.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.historyPanel}>
+      <div className={styles.historyHeader}>
+        <span className={styles.historyLabel}>SAVED VERSIONS · {monthLabel} {phaseLabel}</span>
+        <span className={styles.historyCount}>{items.length} {items.length === 1 ? 'version' : 'versions'}</span>
+      </div>
+      <ul className={styles.historyList}>
+        {items.map(item => {
+          const isLoaded = loadedFromId === item.id
+          const ts = item.saved_at ? new Date(item.saved_at) : null
+          return (
+            <li
+              key={item.id}
+              className={`${styles.historyItem} ${isLoaded ? styles.historyItemActive : ''}`}
+              onClick={() => onLoad(item.id)}
+            >
+              <div className={styles.historyTime}>
+                {ts ? format(ts, 'MMM d, yyyy · h:mm a') : '—'}
+                {isLoaded && <span className={styles.historyBadge}>VIEWING</span>}
+              </div>
+              <div className={styles.historyMeta}>
+                {item.saved_by_email || 'unknown user'}
+              </div>
+              <div className={styles.historyPreview}>
+                {item.narrative ? item.narrative.slice(0, 140).replace(/\s+/g, ' ').trim() + (item.narrative.length > 140 ? '…' : '') : ''}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+// =============================================================================
+// BriefPreview — mirrors PDF layout for in-app review/edit
+// =============================================================================
+
+function BriefPreview({
+  data, phase, narrative, onNarrativeChange, onDownload, onSave,
+  pdfFilename, unsavedChanges, lastSaveAt, isSaving,
+}) {
   const phaseLabel = phase === 'mid' ? 'Mid-Month Brief' : 'End-of-Month Brief'
   const cogsAvail = data.financials.cogsAvailable
 
   const fByUnit = data.financials.byUnit || {}
-  const njRev = fByUnit.NJ?.revenue || fByUnit.Passaic?.revenue || 0
-  const bnyRev = fByUnit.BNY?.revenue || 0
-  const njOpex = fByUnit.NJ?.opex || fByUnit.Passaic?.opex || 0
-  const bnyOpex = fByUnit.BNY?.opex || 0
-  const njCogs = fByUnit.NJ?.cogsTotal || fByUnit.Passaic?.cogsTotal || 0
-  const bnyCogs = fByUnit.BNY?.cogsTotal || 0
+  const njRev   = data.production.njRevenue || 0
+  const bnyRev  = data.production.bnyRevenue || 0
+  const njOpex  = fByUnit.nj?.opex || 0
+  const bnyOpex = fByUnit.bny?.opex || 0
+  const njCogs  = fByUnit.nj?.cogsTotal || 0
+  const bnyCogs = fByUnit.bny?.cogsTotal || 0
+  const njInvP  = fByUnit.nj?.invPurchases || 0
+  const bnyInvP = fByUnit.bny?.invPurchases || 0
+
+  const bnyTargetMtd = data.targets?.expectedBnyMtd || 0
+  const njTargetMtd  = data.targets?.expectedNjMtd  || 0
+  const combinedTargetMtd = bnyTargetMtd + njTargetMtd
+
+  const njVsTargetText  = `${pct(data.production.njVsTargetPct)} of ${fmt(njTargetMtd)}`
+  const bnyVsTargetText = `${pct(data.production.bnyVsTargetPct)} of ${fmt(bnyTargetMtd)}`
+  const combVsTargetText = `${pct(data.production.combVsTargetPct)} of ${fmt(combinedTargetMtd)}`
 
   return (
     <div className={styles.preview}>
+      {/* Editorial header bar */}
       <div className={styles.previewHeader}>
         <div>
-          <div className={styles.previewCrumb}>{phaseLabel}</div>
-          <h3 className={styles.previewTitle}>{data.pacing.monthLabel}</h3>
+          <div className={styles.previewCrumb}>PARAMOUNT PRINTS</div>
+          <div className={styles.previewOverline}>{data.pacing.monthLabel.toUpperCase()}</div>
+          <h3 className={styles.previewTitle}>{phaseLabel}</h3>
+          <div className={styles.previewSubline}>
+            {data.pacing.monthLabel}
+            {phase === 'mid' ? ` · ${data.pacing.weeksElapsed}-week mark` : ' · period closed'}
+            {data.pacing.fiscalQuarter ? ` · Fiscal ${data.pacing.fiscalQuarter}` : ''}
+          </div>
         </div>
-        <button className={styles.downloadBtn} onClick={onDownload}>
-          Download PDF
-        </button>
+        <div className={styles.previewHeaderActions}>
+          <div className={styles.savedStatus}>
+            {isSaving ? 'Saving…' :
+             unsavedChanges ? <span className={styles.unsaved}>Unsaved changes</span> :
+             lastSaveAt ? <span className={styles.saved}>Saved {format(new Date(lastSaveAt), 'h:mm a')}</span> :
+             <span className={styles.draft}>Draft</span>}
+          </div>
+          <button
+            className={`${styles.saveBtn} ${unsavedChanges ? styles.saveBtnPending : ''}`}
+            onClick={onSave}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving…' : 'Save Brief'}
+          </button>
+          <button className={styles.downloadBtn} onClick={onDownload}>
+            Download PDF
+          </button>
+        </div>
       </div>
 
       {pdfFilename && (
@@ -244,62 +421,97 @@ function BriefPreview({ data, phase, narrative, onNarrativeChange, onDownload, p
         </div>
       )}
 
-      {/* Executive Summary — editable */}
+      {/* Executive Summary — gold rule + editable */}
       <section className={styles.section}>
-        <div className={styles.sectionLabel}>EXECUTIVE SUMMARY · editable</div>
+        <div className={styles.sectionLabelEditorial}>EXECUTIVE SUMMARY</div>
+        <div className={styles.goldRule} />
         <textarea
           className={styles.narrativeEditor}
           value={narrative}
           onChange={e => onNarrativeChange(e.target.value)}
-          rows={Math.max(8, narrative.split('\n').length + 2)}
+          rows={Math.max(10, narrative.split('\n').length + 2)}
           spellCheck
         />
         <div className={styles.helperText}>
-          Edit freely — your changes flow into the PDF when you click Download.
+          Edit freely — Save Brief stores this version with a timestamp; Download PDF uses the current text.
         </div>
       </section>
 
-      {/* Production MTD two-column */}
+      {/* Production — Month-to-Date (two-column with stacked blocks) */}
       <section className={styles.section}>
-        <div className={styles.sectionLabel}>PRODUCTION MTD</div>
+        <div className={styles.sectionLabelEditorial}>PRODUCTION — MONTH-TO-DATE</div>
+        <div className={styles.thinRule} />
+
         <div className={styles.twoCol}>
-          <SiteCard
-            title="Brooklyn (Digital)"
-            accent="forest"
-            rows={[
-              ['Produced',     `${fmt(data.production.bnyYards)} yds`],
-              ['% to pace',    pct(data.production.bnyVsTargetPct), paceClass(data.production.bnyVsTargetPct)],
-              ['Target MTD',   `${fmt(data.targets.expectedBnyMtd)} yds`],
-              ['Revenue',      money(bnyRev)],
-              ['OpEx',         money(bnyOpex)],
-              ['Inv. purch.',  money(fByUnit.BNY?.invPurchases)],
-            ]}
-          />
-          <SiteCard
-            title="Passaic (Hand-Screen)"
-            accent="brick"
-            rows={[
-              ['Produced',     `${fmt(data.production.njYards)} yds`],
-              ['% to pace',    pct(data.production.njVsTargetPct), paceClass(data.production.njVsTargetPct)],
-              ['Color-yards',  fmt(data.production.njColorYards)],
-              ['Waste %',      pct1(data.production.njWastePct)],
-              ['Revenue',      money(njRev)],
-              ['OpEx',         money(njOpex)],
-            ]}
-          />
+          {/* BNY column */}
+          <div className={styles.siteCol}>
+            <div className={styles.siteTitle}>BNY — BROOKLYN DIGITAL</div>
+            <ProdBlock
+              label="PRODUCED"
+              main={`${fmt(data.production.bnyYards)} yds`}
+              sub={`${pct(data.production.bnyVsTargetPct)} of ${fmt(bnyTargetMtd)} target`}
+              subClass={paceClass(data.production.bnyVsTargetPct)}
+            />
+            <ProdBlock
+              label="INVOICED YDS"
+              main={`${fmt(data.production.bnyInvoicedYds)} yds`}
+              sub={[
+                `Revenue: ${moneyForce(bnyRev)}`,
+                data.production.bnyMiscRevenue > 0 ? `Misc: ${money(data.production.bnyMiscRevenue)}` : null,
+                data.production.bnyProcurement > 0 ? `Procurement: ${money(data.production.bnyProcurement)}` : null,
+              ].filter(Boolean).join(' · ')}
+            />
+            <ProdBlock
+              label="OPEX MTD"
+              main={moneyForce(bnyOpex)}
+              sub={cogsAvail
+                ? `Inv Purchases: ${money(bnyInvP)}  ·  COGS: ${money(bnyCogs)}`
+                : `Inv Purchases: ${money(bnyInvP)}`
+              }
+            />
+          </div>
+
+          {/* NJ column */}
+          <div className={styles.siteCol}>
+            <div className={styles.siteTitle}>NJ — PASSAIC SCREEN PRINT</div>
+            <ProdBlock
+              label="PRODUCED"
+              main={`${fmt(data.production.njYards)} yds`}
+              sub={`${pct(data.production.njVsTargetPct)} of ${fmt(njTargetMtd)} target`}
+              subClass={paceClass(data.production.njVsTargetPct)}
+            />
+            <ProdBlock
+              label="INVOICED YDS"
+              main={`${fmt(data.production.njInvoicedYds)} yds`}
+              sub={[
+                `Revenue: ${moneyForce(njRev)}`,
+                data.production.njMiscRevenue > 0 ? `Misc: ${money(data.production.njMiscRevenue)}` : null,
+                data.production.njProcurement > 0 ? `Procurement: ${money(data.production.njProcurement)}` : null,
+              ].filter(Boolean).join(' · ')}
+            />
+            <ProdBlock
+              label="OPEX MTD"
+              main={moneyForce(njOpex)}
+              sub={[
+                data.production.njWastePct != null ? `Waste: ${pct1(data.production.njWastePct)}` : null,
+                `Inv: ${money(njInvP)}`,
+                cogsAvail && njCogs ? `COGS: ${money(njCogs)}` : null,
+              ].filter(Boolean).join(' · ')}
+            />
+          </div>
         </div>
       </section>
 
-      {/* MTD tracking table */}
+      {/* Production summary — MTD tracking table */}
       <section className={styles.section}>
-        <div className={styles.sectionLabel}>MTD TRACKING — NJ · BNY · COMBINED</div>
+        <div className={styles.sectionLabelEditorial}>PRODUCTION SUMMARY — MTD TRACKING</div>
         <table className={styles.dataTable}>
           <thead>
             <tr>
-              <th className={styles.thLeft}>Metric</th>
-              <th>NJ</th>
-              <th>BNY</th>
-              <th>Combined</th>
+              <th className={styles.thLeft}>METRIC</th>
+              <th>PARAMOUNT NJ</th>
+              <th>BNY BROOKLYN</th>
+              <th>COMBINED</th>
             </tr>
           </thead>
           <tbody>
@@ -307,43 +519,43 @@ function BriefPreview({ data, phase, narrative, onNarrativeChange, onDownload, p
               <td className={styles.tdLabel}>Produced MTD</td>
               <td>{fmt(data.production.njYards)} yds</td>
               <td>{fmt(data.production.bnyYards)} yds</td>
-              <td>{fmt(data.production.combinedYards)} yds</td>
+              <td className={styles.tdBold}>{fmt(data.production.combinedYards)} yds</td>
             </tr>
-            <tr>
+            <tr className={styles.subtleRow}>
               <td className={styles.tdLabel}>vs Target</td>
-              <td className={paceClass(data.production.njVsTargetPct)}>{pct(data.production.njVsTargetPct)}</td>
-              <td className={paceClass(data.production.bnyVsTargetPct)}>{pct(data.production.bnyVsTargetPct)}</td>
-              <td className={paceClass(data.production.combVsTargetPct)}>{pct(data.production.combVsTargetPct)}</td>
+              <td className={styles[paceClass(data.production.njVsTargetPct)]}>{njVsTargetText}</td>
+              <td className={styles[paceClass(data.production.bnyVsTargetPct)]}>{bnyVsTargetText}</td>
+              <td className={styles[paceClass(data.production.combVsTargetPct)]}>{combVsTargetText}</td>
             </tr>
             <tr>
-              <td className={styles.tdLabel}>Revenue MTD</td>
-              <td>{money(njRev)}</td>
-              <td>{money(bnyRev)}</td>
-              <td>{money(data.financials.revenue)}</td>
+              <td className={styles.tdLabel}>Invoiced YDS</td>
+              <td>{fmt(data.production.njInvoicedYds)} yds</td>
+              <td>{fmt(data.production.bnyInvoicedYds)} yds</td>
+              <td className={styles.tdBold}>{fmt(data.production.combinedInvoicedYds)} yds</td>
+            </tr>
+            <tr className={styles.highlightRow}>
+              <td className={`${styles.tdLabel} ${styles.tdBold}`}>Revenue MTD</td>
+              <td className={styles.tdBold}>{moneyForce(njRev)}</td>
+              <td className={styles.tdBold}>{moneyForce(bnyRev)}</td>
+              <td className={styles.tdBold}>{moneyForce(data.production.combinedRevenue)}</td>
             </tr>
             <tr>
               <td className={styles.tdLabel}>OpEx MTD</td>
-              <td>{money(njOpex)}</td>
-              <td>{money(bnyOpex)}</td>
-              <td>{money(data.financials.opex)}</td>
+              <td>{moneyForce(njOpex)}</td>
+              <td>{moneyForce(bnyOpex)}</td>
+              <td className={styles.tdBold}>{moneyForce(data.financials.opex)}</td>
             </tr>
             <tr className={cogsAvail ? '' : styles.pendingRow}>
               <td className={styles.tdLabel}>COGS MTD</td>
               <td>{cogsAvail ? money(njCogs) : 'pending'}</td>
               <td>{cogsAvail ? money(bnyCogs) : 'pending'}</td>
-              <td>{cogsAvail ? money(data.financials.cogsTotal) : 'pending'}</td>
+              <td className={cogsAvail ? styles.tdBold : ''}>{cogsAvail ? money(data.financials.cogsTotal) : 'pending'}</td>
             </tr>
-            <tr>
-              <td className={styles.tdLabel}>Inv. Purchases</td>
-              <td>{money(fByUnit.NJ?.invPurchases || fByUnit.Passaic?.invPurchases)}</td>
-              <td>{money(fByUnit.BNY?.invPurchases)}</td>
-              <td>{money(data.financials.invPurchases)}</td>
-            </tr>
-            <tr>
+            <tr className={styles.subtleRow}>
               <td className={styles.tdLabel}>NJ Waste %</td>
               <td>{pct1(data.production.njWastePct)}</td>
               <td>—</td>
-              <td>{pct1(data.production.njWastePct)}</td>
+              <td>—</td>
             </tr>
           </tbody>
         </table>
@@ -354,67 +566,70 @@ function BriefPreview({ data, phase, narrative, onNarrativeChange, onDownload, p
         )}
       </section>
 
-      {/* People */}
-      {data.people && data.people.bny && (
-        <section className={styles.section}>
-          <div className={styles.sectionLabel}>PEOPLE MTD</div>
-          <div className={styles.peopleGrid}>
-            <div>
-              <div className={styles.peopleLabel}>BNY</div>
-              <div className={styles.peopleValue}>
-                {data.people.bny.headcount} active · {fmt(data.people.bny.hours)} hrs · {money(data.people.bny.pay)}
-              </div>
-            </div>
-            <div>
-              <div className={styles.peopleLabel}>Passaic</div>
-              <div className={styles.peopleValue}>
-                {data.people.nj.headcount} active · {fmt(data.people.nj.hours)} hrs · {money(data.people.nj.pay)}
-              </div>
-            </div>
-            <div>
-              <div className={styles.peopleLabel}>Combined</div>
-              <div className={styles.peopleValue}>
-                {data.people.combined.headcount} headcount · {money(data.people.combined.pay)} payroll MTD
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* WIP */}
-      {data.wip && data.wip.available && (
-        <section className={styles.section}>
-          <div className={styles.sectionLabel}>WIP SNAPSHOT</div>
-          <div className={styles.wipGrid}>
-            <div>
-              <div className={styles.peopleLabel}>Active orders</div>
-              <div className={styles.peopleValue}>
-                {data.wip.totalActive} · {fmt(data.wip.activeYards)} yds · {fmt(data.wip.activeColorYards)} color-yds
-              </div>
-            </div>
-            <div>
-              <div className={styles.peopleLabel}>Age</div>
-              <div className={styles.peopleValue}>
-                &lt;30d {data.wip.ageBuckets.lt30} · 30-60d {data.wip.ageBuckets.b30_60} ·
-                60-90d {data.wip.ageBuckets.b60_90} · 90+d {data.wip.ageBuckets.gt90}
-              </div>
-            </div>
-            {Object.keys(data.wip.byProductType).length > 0 && (
-              <div>
-                <div className={styles.peopleLabel}>By category</div>
-                <div className={styles.peopleValue}>
-                  {Object.entries(data.wip.byProductType)
-                    .map(([k, v]) => `${k} ${v.count} (${fmt(v.yards)})`)
-                    .join(' · ')}
+      {/* People + WIP — two columns */}
+      <section className={styles.section}>
+        <div className={styles.twoCol}>
+          <div>
+            <div className={styles.sectionLabelEditorial}>PEOPLE</div>
+            {data.people && data.people.bny ? (
+              <>
+                <div className={styles.peopleLine}>
+                  Headcount: <strong>{data.people.combined.headcount} total</strong> ({data.people.bny.headcount} BNY · {data.people.nj.headcount} NJ)
                 </div>
-              </div>
+                {data.people.combined.pay > 0 && (
+                  <div className={styles.peopleSubline}>
+                    Payroll MTD: {money(data.people.combined.pay)} · BNY {money(data.people.bny.pay)} · NJ {money(data.people.nj.pay)}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className={styles.peopleLineEmpty}>Headcount: — total (— BNY · — NJ)</div>
             )}
           </div>
-        </section>
-      )}
 
-      {/* Download CTA repeats at bottom for long previews */}
+          <div>
+            <div className={styles.sectionLabelEditorial}>WIP SNAPSHOT</div>
+            {data.wip && data.wip.available ? (
+              <>
+                <div className={styles.peopleLine}>
+                  Active: <strong>{data.wip.totalActive} orders</strong> · {fmt(data.wip.activeYards)} yds
+                </div>
+                <div className={styles.peopleSubline}>
+                  Age: 0-30d {data.wip.ageBuckets.lt30} · 31-60d {data.wip.ageBuckets.b30_60} · 61-90d {data.wip.ageBuckets.b60_90} · 90d+ {data.wip.ageBuckets.gt90}
+                </div>
+                {Object.keys(data.wip.byProductType).length > 0 && (
+                  <div className={styles.peopleSubline}>
+                    {Object.entries(data.wip.byProductType)
+                      .map(([k, v]) => `${capitalize(k)} ${v.count}`)
+                      .join(' · ')}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className={styles.peopleLineEmpty}>Active: — orders · — yds</div>
+                <div className={styles.peopleSublineEmpty}>Age: 0-30d — · 31-60d — · 61-90d — · 90d+ —</div>
+                <div className={styles.peopleSublineEmpty}>Wallpaper — · Grasscloth — · Fabric —</div>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom action row mirrors top */}
       <div className={styles.bottomActions}>
+        <div className={styles.savedStatus}>
+          {unsavedChanges
+            ? <span className={styles.unsaved}>Unsaved changes</span>
+            : lastSaveAt ? <span className={styles.saved}>Saved {format(new Date(lastSaveAt), 'MMM d, h:mm a')}</span> : null}
+        </div>
+        <button
+          className={`${styles.saveBtn} ${unsavedChanges ? styles.saveBtnPending : ''}`}
+          onClick={onSave}
+          disabled={isSaving}
+        >
+          {isSaving ? 'Saving…' : 'Save Brief'}
+        </button>
         <button className={styles.downloadBtn} onClick={onDownload}>
           Download PDF
         </button>
@@ -424,33 +639,35 @@ function BriefPreview({ data, phase, narrative, onNarrativeChange, onDownload, p
 }
 
 // =============================================================================
-// Sub-components and helpers
+// Sub-components & helpers
 // =============================================================================
 
-function SiteCard({ title, accent, rows }) {
+function ProdBlock({ label, main, sub, subClass }) {
   return (
-    <div className={`${styles.siteCard} ${styles['accent_' + accent]}`}>
-      <div className={styles.siteCardTitle}>{title}</div>
-      <div className={styles.siteCardRows}>
-        {rows.map(([k, v, klass]) => (
-          <div key={k} className={styles.siteCardRow}>
-            <span className={styles.siteCardKey}>{k}</span>
-            <span className={`${styles.siteCardVal} ${klass ? styles[klass] : ''}`}>{v}</span>
-          </div>
-        ))}
-      </div>
+    <div className={styles.prodBlock}>
+      <div className={styles.prodBlockLabel}>{label}</div>
+      <div className={styles.prodBlockMain}>{main}</div>
+      {sub && (
+        <div className={`${styles.prodBlockSub} ${subClass ? styles[subClass] : ''}`}>{sub}</div>
+      )}
     </div>
   )
 }
 
-const fmt   = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString()
-const money = n => (n == null || isNaN(n)) ? '—' : '$' + Math.round(n).toLocaleString()
-const pct   = n => (n == null || isNaN(n)) ? '—' : n.toFixed(0) + '%'
-const pct1  = n => (n == null || isNaN(n)) ? '—' : n.toFixed(1) + '%'
+const fmt        = n => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString()
+const money      = n => (n == null || isNaN(n) || n === 0) ? '—' : '$' + Math.round(n).toLocaleString()
+const moneyForce = n => (n == null || isNaN(n)) ? '$0' : '$' + Math.round(n).toLocaleString()
+const pct        = n => (n == null || isNaN(n)) ? '—' : Math.round(n) + '%'
+const pct1       = n => (n == null || isNaN(n)) ? '—' : n.toFixed(1) + '%'
 
 function paceClass(p) {
   if (p == null) return ''
   if (p >= 95) return 'paceGreen'
   if (p >= 75) return 'paceAmber'
   return 'paceRed'
+}
+
+function capitalize(s) {
+  if (!s) return ''
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }

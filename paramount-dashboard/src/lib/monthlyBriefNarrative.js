@@ -10,13 +10,20 @@
 //   phase: 'end' — book closing. Reflective. "Here's what landed, what
 //                  didn't, what carries into next month." Hindsight stance.
 //
-// The brief audience is FSCO leadership: Timur, Antonella, Emily, Abigail
-// (plus Peter and Brynn). It's the SAME audience as weekly recap but
-// monthly cadence and a more reflective register. Should read like a
-// COO's monthly note — sharp, evidence-based, no filler.
+// ── Output structure (per Peter, May 4 2026) ───────────────────────────
+//   Para 1: Brief overall picture (1-2 sentences). The headline.
+//   Para 2: BNY (3-4 sentences) — yards produced, invoiced/shipped,
+//           revenue, machine notes if relevant, capacity.
+//   Para 3: NJ (3-4 sentences) — yards, color-yards, waste, mixing,
+//           categories where relevant.
+//   Para 4: Cost / financial picture — opex vs budget pace, inventory
+//           purchases, AP/AR/cash signals. COGS pending guidance.
+//   Para 5 (end-of-month only, optional): WIP carrying into next month
+//           and 1-2 watch items.
 //
-// Keep voice consistent with the weeklyRecapNarrative voice — these
-// briefs are more polished/durable than the live Heartbeat read.
+// Audience is FSCO leadership (Timur, Antonella, Emily, Abigail) plus
+// Peter and Brynn. Same audience as weekly recap, monthly cadence, more
+// reflective register.
 // ============================================================================
 
 import { format } from 'date-fns'
@@ -27,7 +34,6 @@ import { format } from 'date-fns'
 
 function formatBriefContext(data) {
   const { pacing, targets, production: p, financials: f, ap, ar, cash, people, wip } = data
-
   const lines = []
 
   // Header
@@ -38,56 +44,80 @@ function formatBriefContext(data) {
   lines.push(`Fiscal: ${pacing.fiscalQuarter || 'unknown'} · ${pacing.weeksInMonth}-week month · ${pacing.weeksElapsed} weeks of data`)
   lines.push('')
 
-  // Production
-  lines.push('## Production MTD')
-  lines.push(`BNY (digital): ${fmt(p.bnyYards)} yards produced · target ${fmt(targets.expectedBnyMtd)} · ${pct(p.bnyVsTargetPct)} of pace`)
-  lines.push(`Passaic (NJ hand-screen): ${fmt(p.njYards)} yards · ${fmt(p.njColorYards)} color-yards · target ${fmt(targets.expectedNjMtd)} · ${pct(p.njVsTargetPct)} of pace`)
-  lines.push(`  Waste: ${fmt(p.njWaste)} yards (${p.njWastePct != null ? p.njWastePct.toFixed(1) + '%' : 'n/a'})`)
-  lines.push(`Combined: ${fmt(p.combinedYards)} yards · ${pct(p.combVsTargetPct)} of MTD pace · monthly target ${fmt(targets.monthCombinedTarget)}`)
+  // Production — by site, then combined
+  lines.push('## BNY (Brooklyn digital)')
+  lines.push(`Produced: ${fmt(p.bnyYards)} yards (${pct(p.bnyVsTargetPct)} of expected MTD pace, target ${fmt(targets.expectedBnyMtd)} of monthly ${fmt(targets.monthBnyTarget)})`)
+  lines.push(`Invoiced/Shipped: ${fmt(p.bnyInvoicedYds)} yards`)
+  lines.push(`Revenue: ${money(p.bnyRevenue)}${p.bnyMiscRevenue ? `  ·  Misc: ${money(p.bnyMiscRevenue)}` : ''}${p.bnyProcurement ? `  ·  Procurement: ${money(p.bnyProcurement)}` : ''}`)
+  if (Object.keys(p.weekRows[0]?.bnyByBucket || {}).length) {
+    const buckets = {}
+    for (const w of p.weekRows) {
+      for (const [b, v] of Object.entries(w.bnyByBucket || {})) {
+        if (!buckets[b]) buckets[b] = { yards: 0, revenue: 0 }
+        buckets[b].yards += v.yards
+        buckets[b].revenue += v.revenue
+      }
+    }
+    lines.push(`By bucket: ${Object.entries(buckets).map(([k, v]) => `${k} ${fmt(v.yards)} yds / ${money(v.revenue)}`).join(' · ')}`)
+  }
+  lines.push('')
+
+  lines.push('## NJ (Passaic hand-screen)')
+  lines.push(`Produced: ${fmt(p.njYards)} yards (${pct(p.njVsTargetPct)} of expected MTD pace, target ${fmt(targets.expectedNjMtd)} of monthly ${fmt(targets.monthNjTarget)})`)
+  lines.push(`Color-yards: ${fmt(p.njColorYards)} (the labor unit — 1 color-yard = 1 yard × 1 color)`)
+  lines.push(`Waste: ${fmt(p.njWaste)} yards (${p.njWastePct != null ? p.njWastePct.toFixed(1) + '% waste rate' : 'rate unavailable'})`)
+  lines.push(`Invoiced/Shipped: ${fmt(p.njInvoicedYds)} yards`)
+  lines.push(`Revenue: ${money(p.njRevenue)}${p.njMiscRevenue ? `  ·  Misc: ${money(p.njMiscRevenue)}` : ''}${p.njProcurement ? `  ·  Procurement: ${money(p.njProcurement)}` : ''}`)
+
+  if (p.weekRows.length) {
+    const catTotals = { fabric: 0, grass: 0, paper: 0 }
+    const catWaste  = { fabric: 0, grass: 0, paper: 0 }
+    const catColorYds = { fabric: 0, grass: 0, paper: 0 }
+    for (const w of p.weekRows) {
+      for (const [c, v] of Object.entries(w.njByCategory || {})) {
+        catTotals[c]    = (catTotals[c]    || 0) + (v.yards || 0)
+        catWaste[c]     = (catWaste[c]     || 0) + (v.waste || 0)
+        catColorYds[c]  = (catColorYds[c]  || 0) + (v.colorYards || 0)
+      }
+    }
+    if (Object.values(catTotals).some(v => v > 0)) {
+      const cats = Object.entries(catTotals)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k} ${fmt(v)} yds (${fmt(catColorYds[k])} cy, ${fmt(catWaste[k])} waste)`)
+        .join(' · ')
+      lines.push(`By category: ${cats}`)
+    }
+  }
+  lines.push('')
+
+  lines.push('## Combined')
+  lines.push(`Produced: ${fmt(p.combinedYards)} of ${fmt(targets.expectedCombMtd)} expected (${pct(p.combVsTargetPct)} of pace, monthly target ${fmt(targets.monthCombinedTarget)})`)
+  lines.push(`Invoiced/Shipped: ${fmt(p.combinedInvoicedYds)} yards`)
+  lines.push(`Revenue: ${money(p.combinedRevenue)}${p.combinedMiscRevenue ? ` (+ ${money(p.combinedMiscRevenue)} misc)` : ''}`)
   lines.push('')
 
   if (p.weekRows.length) {
     lines.push('Week-by-week:')
     for (const w of p.weekRows) {
-      lines.push(`  ${w.weekLabel} (${w.weekStart}): BNY ${fmt(w.bnyYards)} · Passaic ${fmt(w.njYards)} (${fmt(w.njColorYards)} color-yds, ${fmt(w.njWaste)} waste)`)
+      lines.push(`  ${w.weekLabel} (${w.weekStart}): BNY ${fmt(w.bnyYards)} yds / ${money(w.bnyRevenue)} · Passaic ${fmt(w.njYards)} yds / ${fmt(w.njColorYards)} cy / ${fmt(w.njWaste)} waste / ${money(w.njRevenue)}`)
     }
     lines.push('')
   }
 
-  if (p.weekRows.length && Object.keys(p.weekRows[0].njByCategory || {}).length) {
-    const catTotals = { fabric: 0, grass: 0, paper: 0 }
-    for (const w of p.weekRows) {
-      for (const c of Object.keys(w.njByCategory || {})) {
-        catTotals[c] = (catTotals[c] || 0) + (w.njByCategory[c]?.yards || 0)
-      }
-    }
-    lines.push(`Passaic by category MTD: ${Object.entries(catTotals).filter(([, v]) => v).map(([k, v]) => `${k} ${fmt(v)}`).join(' · ')}`)
-    lines.push('')
-  }
-
-  // Financials
-  lines.push('## Financials MTD')
-  lines.push(`Revenue: ${money(f.revenue)}`)
-  lines.push(`OpEx: ${money(f.opex)}`)
-  lines.push(`Inventory purchases: ${money(f.invPurchases)}`)
+  // Financials — operating cost story
+  lines.push('## Cost / financial picture')
+  lines.push(`OpEx total: ${money(f.opex)}  ·  by unit:  NJ ${money(f.byUnit?.nj?.opex)}  ·  BNY ${money(f.byUnit?.bny?.opex)}  ·  Shared ${money(f.byUnit?.shared?.opex)}`)
+  lines.push(`Inventory purchases total: ${money(f.invPurchases)}  ·  NJ ${money(f.byUnit?.nj?.invPurchases)}  ·  BNY ${money(f.byUnit?.bny?.invPurchases)}  ·  Shared ${money(f.byUnit?.shared?.invPurchases)}`)
   if (f.cogsAvailable) {
     lines.push(`COGS total: ${money(f.cogsTotal)} (Material ${money(f.cogsMaterial)}, Labor ${money(f.cogsLabor)}, Other ${money(f.cogsOther)})`)
-    lines.push(`Gross profit: ${money(f.grossProfit)} · ${f.revenue > 0 ? (100 * f.grossProfit / f.revenue).toFixed(1) + '%' : 'n/a'} margin`)
   } else {
     lines.push(`COGS: PENDING — ${f.cogsPendingNote}`)
-    lines.push(`Do NOT speculate about gross profit or margin in the narrative — finance hasn't released COGS yet.`)
-  }
-  if (Object.keys(f.byUnit).length) {
-    lines.push('By business unit:')
-    for (const [u, v] of Object.entries(f.byUnit)) {
-      lines.push(`  ${u}: revenue ${money(v.revenue)} · opex ${money(v.opex)} · inv purchases ${money(v.invPurchases)}`)
-    }
   }
   lines.push('')
 
   if (ap || ar || cash) {
     lines.push('## Working capital')
-    if (ap) lines.push(`AP (${ap.period}): ${money(ap.total)} total · ${money(ap.pastDue)} past due`)
+    if (ap) lines.push(`AP (${ap.period}): ${money(ap.total)} total · ${money(ap.pastDue)} past due · ${money(ap.current)} current`)
     if (ar) lines.push(`AR (${ar.period}): ${money(ar.totalOutstanding)} outstanding · ${money(ar.aging91Plus)} over 90 days`)
     if (cash && cash.total != null) lines.push(`Cash (${cash.period}): ${money(cash.total)}`)
     lines.push('')
@@ -96,8 +126,8 @@ function formatBriefContext(data) {
   // People
   if (people && people.bny) {
     lines.push('## People MTD')
-    lines.push(`BNY: ${people.bny.headcount} active · ${fmt(people.bny.hours)} hours · ${money(people.bny.pay)} payroll · ${people.bny.otPct != null ? people.bny.otPct.toFixed(1) + '%' : 'n/a'} OT`)
-    lines.push(`Passaic: ${people.nj.headcount} active · ${fmt(people.nj.hours)} hours · ${money(people.nj.pay)} payroll · ${people.nj.otPct != null ? people.nj.otPct.toFixed(1) + '%' : 'n/a'} OT`)
+    lines.push(`BNY: ${people.bny.headcount} active · ${fmt(people.bny.hours)} hours · ${money(people.bny.pay)} payroll · ${people.bny.otPct != null ? people.bny.otPct.toFixed(1) + '% OT' : 'no OT data'}`)
+    lines.push(`Passaic: ${people.nj.headcount} active · ${fmt(people.nj.hours)} hours · ${money(people.nj.pay)} payroll · ${people.nj.otPct != null ? people.nj.otPct.toFixed(1) + '% OT' : 'no OT data'}`)
     lines.push(`Combined headcount: ${people.combined.headcount} · combined payroll MTD ${money(people.combined.pay)}`)
     lines.push('')
   }
@@ -120,18 +150,9 @@ function formatBriefContext(data) {
   return lines.join('\n')
 }
 
-function fmt(n) {
-  if (n == null || isNaN(n)) return '—'
-  return Math.round(n).toLocaleString()
-}
-function money(n) {
-  if (n == null || isNaN(n)) return '—'
-  return '$' + Math.round(n).toLocaleString()
-}
-function pct(n) {
-  if (n == null || isNaN(n)) return '—'
-  return n.toFixed(0) + '%'
-}
+function fmt(n)   { return (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString() }
+function money(n) { return (n == null || isNaN(n)) ? '—' : '$' + Math.round(n).toLocaleString() }
+function pct(n)   { return (n == null || isNaN(n)) ? '—' : n.toFixed(0) + '%' }
 
 // ---------------------------------------------------------------------------
 // Main prompt builder
@@ -142,64 +163,98 @@ export function buildMonthlyBriefPrompt({ data }) {
   const monthLabel = data.pacing.monthLabel
   const contextString = formatBriefContext(data)
 
+  // Detect data sufficiency so Claude doesn't fabricate when production is empty
+  const hasProduction = data.production.combinedYards > 0
+  const hasRevenue = data.production.combinedRevenue > 0
+  const hasFinancials = data.financials.opex > 0 || data.financials.invPurchases > 0
+
   const phaseFraming = phase === 'mid'
     ? `This is a **mid-month** brief. The month is still in flight. Audience is FSCO \
 leadership reading at the halftime mark — they want a confident read of where we \
 sit, an honest call on whether we're on track to land the month, and a short list \
 of what to watch in the back half. Tone: confident but not premature. Don't \
-declare victory or defeat — name the trajectory.`
+declare victory or defeat — name the trajectory. Verbs are present-tense ("we're \
+tracking"), forward-looking where appropriate.`
     : `This is an **end-of-month** brief. The month has closed. Audience is FSCO \
 leadership reading on the first or second working day of the new month — they \
 want a clean retrospective: what landed, what didn't, what it means for the next \
-period. Tone: reflective, evidence-based, slightly more polished than the live \
-floor read. This is the durable monthly memo.`
+period. Tone: reflective, evidence-based. Verbs are past-tense ("April closed"), \
+with a short forward-look in the closing.`
 
   const cogsGuidance = data.financials.cogsAvailable
     ? `COGS is available — discuss it directly. Reference gross profit and margin \
 where relevant.`
     : `**COGS is NOT available yet.** Finance does not release COGS until after \
 the 10th of the following month. Do NOT speculate about gross profit, margin, or \
-profitability. You can discuss revenue against the prior month or against budget, \
-and you can discuss OpEx against budget pace. If asked-or-tempted to read the \
-month's profitability, plainly state that COGS is pending and the picture is \
-incomplete on that dimension. Move on. Do not invent numbers.`
+profitability. Discuss revenue against budget pace, and OpEx against budget pace. \
+If tempted to read the month's profitability, plainly state that COGS is pending \
+and the picture is incomplete on that dimension. Move on. Do not invent numbers.`
+
+  // Build a data-completeness block so Claude doesn't read missing data as zero
+  const completenessNotes = []
+  if (!hasProduction) {
+    completenessNotes.push(`PRODUCTION DATA APPEARS EMPTY. Production has not been filled in for this month. \
+Do NOT write a narrative claiming we produced zero yards. Note that production data entry is incomplete and \
+that what IS visible (financials, people, WIP) suggests an active operation. Recommend the team finish their \
+entries before the next read.`)
+  }
+  if (!hasRevenue && hasProduction) {
+    completenessNotes.push(`REVENUE IS ZERO despite production showing yards. The invoiced-yards / income-by-bucket \
+fields weren't filled in. Note this as a data-entry gap, not as an actual zero-revenue month.`)
+  }
+  if (!hasFinancials) {
+    completenessNotes.push(`FINANCIALS APPEAR EMPTY for this month. The GP report may not be uploaded yet. \
+Note this gap rather than treating zero OpEx as truth.`)
+  }
+  const completenessBlock = completenessNotes.length
+    ? '\n## Data completeness — read carefully before writing\n\n' + completenessNotes.join('\n\n')
+    : ''
 
   const phaseStructure = phase === 'mid' ? `
-## Structure (3-4 paragraphs, ~250 words total)
+## Structure — mid-month, ~250-350 words total
 
-1. **Headline + halftime read.** Open with the most important signal at the \
-halfway mark. Are we tracking to land the month? Lead with the combined yardage \
-vs pace number. Name the dominant driver (BNY pulling, Passaic dragging — or \
-inverse).
+**Paragraph 1 — Headline (1-2 sentences):**
+Open with the cleanest read of where we sit at halftime. Lead with the combined pace number \
+and the dominant driver in one sentence. Match the model: "We're tracking 113% to target MTD \
+with 46,577 yards combined, driven entirely by Brooklyn's monster performance while Passaic \
+continues to drag." Two sentences max.
 
-2. **Production picture by site.** BNY and Passaic separately. Cite specific \
-yards, % to pace, color-yards on the Passaic side, waste% if notable. Honor \
-the BNY/Passaic accounting convention.
+**Paragraph 2 — BNY (3-4 sentences):**
+What's happening at Brooklyn. Yards produced and what % to target. Yards invoiced / shipped \
+and revenue. One observation about machine utilization, capacity, mix shifts, or noteworthy \
+buckets. If inventory purchases are notable, mention them here.
 
-3. **Financial pace + working capital.** Revenue, OpEx, inventory purchases. \
-COGS guidance above. Note any AP/AR signal worth surfacing.
+**Paragraph 3 — NJ (3-4 sentences):**
+What's happening at Passaic. Yards, color-yards, and what % to target. Waste% and what it \
+implies. Yards invoiced and revenue. One observation about category mix, mixing queue, \
+ready-to-print, or staffing if relevant.
 
-4. **Watch items for the back half.** 2-3 specific things execs should track. \
-Tied to data, not generic.
+**Paragraph 4 — Cost / financial picture (3-4 sentences):**
+OpEx vs pace. Inventory purchases. AP / AR / cash signals if material. Apply the COGS \
+pending guidance — if pending, say so plainly and don't speculate about margin.
 `.trim() : `
-## Structure (4-5 paragraphs, ~350 words total)
+## Structure — end-of-month, ~300-400 words total
 
-1. **Headline + month verdict.** Open with the cleanest read of how the month \
-landed. Cite the combined number and how it compared to plan. If revenue \
-landed materially over or under, name it in sentence one.
+**Paragraph 1 — Headline (1-2 sentences):**
+Open with the cleanest read of how the month landed. Lead with the combined number and the \
+dominant story. If revenue landed materially over or under, name it.
 
-2. **Production retrospective.** BNY and Passaic separately. What worked, \
-what didn't. Reference specific weeks if one was an outlier. Color-yards story \
-on Passaic. Waste%.
+**Paragraph 2 — BNY (3-4 sentences):**
+What happened at Brooklyn. Yards produced and final % to target. Yards invoiced / shipped \
+and revenue. One observation about machine utilization, capacity, or mix shifts.
 
-3. **Financials.** Revenue and OpEx vs pace. COGS guidance above — if pending, \
-say so plainly and don't speculate. Inventory purchases. Working capital signals.
+**Paragraph 3 — NJ (3-4 sentences):**
+What happened at Passaic. Yards, color-yards, and final % to target. Waste% and what it \
+implies. Yards invoiced and revenue. One observation about category mix, mixing queue, or \
+staffing.
 
-4. **WIP and what's carrying into next month.** Active orders, age buckets, NEW \
-Goods activity. What's queued up for the next month from where we sit today.
+**Paragraph 4 — Cost / financial picture (3-4 sentences):**
+OpEx vs budget pace. Inventory purchases. AP / AR / cash signals. Apply the COGS pending \
+guidance — if pending, say so plainly. Do not speculate about margin.
 
-5. **Watch items / what shaped the month / what to take forward.** \
-Forward-looking close. 2-3 specific things.
+**Paragraph 5 — WIP and what's carrying forward (2-3 sentences):**
+Active orders carrying into next month. Notable age-bucket signals. NEW Goods activity. \
+One short forward-look item.
 `.trim()
 
   return `You are an internal analyst at Paramount Prints writing the **${monthLabel} ${phase === 'mid' ? 'Mid-Month' : 'End-of-Month'} Brief** for FSCO leadership. \
@@ -210,12 +265,11 @@ ${phaseFraming}
 
 This brief gets distributed as a PDF and quoted in conversations with the \
 broader FSCO team. It should read like a sharp internal monthly memo — the \
-kind a competent COO would write summarizing the period.
+kind a competent COO writes summarizing the period.
 
 ---
 
 ${contextString}
-
 ---
 
 ## Critical guidance
@@ -232,18 +286,26 @@ metrics that matter. Use "Paramount" or "we" — not "the company."
 Be direct. Avoid hedge words ("appears," "going forward"). Avoid filler ("as \
 expected," "best in class"). Avoid corporate boilerplate.
 
-If a section has nothing notable, write one sentence and move on. Do not \
+If a section has nothing notable, write one short sentence and move on. Do not \
 manufacture significance.
+
+**REALITY CHECK on numbers.** Sanity-check every figure before writing. \
+Paramount produces on the order of thousands of yards per week, not millions \
+or billions. Monthly revenue is on the order of hundreds of thousands to low \
+millions. If any number looks like trillions, sextillions, or other absurdly \
+large values, it is a data-entry or pipeline bug, not real production. \
+Surface as a data-entry concern — never report extraordinary volumes as real.${completenessBlock}
 
 ${phaseStructure}
 
 ## Output format
 
 - Prose only. No bullets, no headers, no title line.
-- Specific numbers throughout.
+- Specific numbers throughout, drawn from the data block above.
 - Numbers must come from the data above. Do not invent.
 - Begin with your first sentence. No preamble. No "Here is the brief" framing.
 - No closing valediction or sign-off.
+- Use single blank lines between paragraphs.
 
 Begin now.`
 }
