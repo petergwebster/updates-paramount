@@ -188,24 +188,11 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
           <p className={styles.sub}>Month-to-date COGS, operating expenses &amp; inventory purchases</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Current month badge */}
+          {/* Current period badge — driven by the chrome week selector at top of page */}
           {currentPeriod && (
             <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: C.ink, color: '#fff' }}>
               {periodLabel(currentPeriod)}
             </span>
-          )}
-          {/* Browse history — only show if there are past months with data */}
-          {periods.length > 0 && (
-            <select
-              value={selected || ''}
-              onChange={e => setSelected(e.target.value)}
-              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--ink-60)', background: 'transparent', cursor: 'pointer' }}
-            >
-              {currentPeriod && <option value={currentPeriod}>{periodLabel(currentPeriod)}{!currentPeriodHasData ? ' (no data)' : ''}</option>}
-              {periods.filter(p => p.period !== currentPeriod).map(p => (
-                <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>
-              ))}
-            </select>
           )}
         </div>
       </div>
