@@ -1,11 +1,20 @@
-import React from 'react'
-import { format, addDays } from 'date-fns'
+import React, { useState, useEffect } from 'react'
+import { format, addDays, subDays } from 'date-fns'
 import { getFiscalLabel } from '../fiscalCalendar'
+import { supabase } from '../supabase'
 import KPIScorecard from './KPIScorecard'
 import ProductionDashboard from './ProductionDashboard'
 import ClaudeReadBlock from './ClaudeReadBlock'
 import { buildWeeklyRecapNarrativePrompt } from '../lib/prompts/weeklyRecapNarrative'
 import styles from './ExecutiveDashboardPage.module.css'
+
+// Coerce JSON values to finite numbers — production JSONB stores yards
+// as strings (input type=number returns strings). Same helper used in
+// historicalSummaries / contextBuilder / monthlyBriefData.
+const num = v => {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  return Number.isFinite(n) ? n : 0
+}
 
 /**
  * ExecutiveDashboardPage — the weekly recap view for FSCO leadership.
@@ -56,9 +65,49 @@ export default function ExecutiveDashboardPage({
   const weekEnd = addDays(weekStart, 4)
   const dateRange = `${format(weekStart, 'MMM d')}–${format(weekEnd, 'd, yyyy')}`
 
-  // Determine if there's enough production data for Claude's recap
-  // (so the prompt can adjust tone if data hasn't been entered yet)
-  const hasData = !!(weekData && (weekData.kpis || weekData.executive_narrative))
+  // hasData reflects whether PRODUCTION data is entered for the week —
+  // not whether KPIs or the executive narrative have been filled in.
+  // Production is the actual signal Claude needs.
+  //
+  // We query the `production` table for any row matching either weekStart
+  // (Monday convention) or weekStart-1 day (Sunday convention) — the
+  // May 2 migration shifted production rows back one day, so different
+  // historical weeks may use either keying. Range covers both safely.
+  const [hasData, setHasData] = useState(false)
+  useEffect(() => {
+    let mounted = true
+    async function checkProduction() {
+      if (!weekStart) {
+        if (mounted) setHasData(false)
+        return
+      }
+      const monday = format(weekStart, 'yyyy-MM-dd')
+      const sunday = format(subDays(weekStart, 1), 'yyyy-MM-dd')
+
+      const { data, error } = await supabase
+        .from('production')
+        .select('bny_data, nj_data')
+        .in('week_start', [monday, sunday])
+
+      if (!mounted) return
+      if (error || !data || data.length === 0) {
+        setHasData(false)
+        return
+      }
+
+      // Sum yards across any returned row(s). hasData = any non-zero yards.
+      let totalYds = 0
+      for (const row of data) {
+        const b = row.bny_data || {}
+        const n = row.nj_data || {}
+        totalYds += num(b.replen) + num(b.mto) + num(b.hos) + num(b.memo) + num(b.contract)
+        totalYds += num(n.fabric?.yards) + num(n.grass?.yards) + num(n.paper?.yards)
+      }
+      setHasData(totalYds > 0)
+    }
+    checkProduction()
+    return () => { mounted = false }
+  }, [weekStart])
 
   return (
     <div className={styles.page}>
