@@ -96,23 +96,29 @@ function formatRecentWeeksDetail(weekRows) {
     return '(No detailed weekly data available for the last 4 weeks.)'
   }
 
+  // Coerce JSON values to finite numbers — production fields are strings
+  const num = v => {
+    const n = typeof v === 'number' ? v : parseFloat(v)
+    return Number.isFinite(n) ? n : 0
+  }
+
   const lines = weekRows.map(w => {
     const weekLabel = format(new Date(w.week_start + 'T00:00:00'), 'MMM d, yyyy')
     const parts = [`### Week of ${weekLabel}`]
 
-    // BNY production summary
+    // BNY production summary — bny.replen / bny.mto / etc. are direct values,
+    // NOT bny.replen.actual. Earlier code read .actual which was always undefined.
     if (w.bny_data) {
       const bny = w.bny_data
-      const totalActual = (bny.replen?.actual || 0) + (bny.mto?.actual || 0) +
-                          (bny.hos?.actual || 0) + (bny.memo?.actual || 0) + (bny.contract?.actual || 0)
+      const totalActual = num(bny.replen) + num(bny.mto) + num(bny.hos) + num(bny.memo) + num(bny.contract)
       parts.push(`- BNY: ${totalActual.toLocaleString()} yards produced`)
     }
 
-    // Passaic production summary
+    // Passaic production summary — values are strings, must num()-coerce.
     if (w.nj_data) {
       const nj = w.nj_data
-      const totalActual = (nj.fabric?.yards || 0) + (nj.grass?.yards || 0) + (nj.paper?.yards || 0)
-      const totalWaste  = (nj.fabric?.waste || 0) + (nj.grass?.waste || 0) + (nj.paper?.waste || 0)
+      const totalActual = num(nj.fabric?.yards) + num(nj.grass?.yards) + num(nj.paper?.yards)
+      const totalWaste  = num(nj.fabric?.waste) + num(nj.grass?.waste) + num(nj.paper?.waste)
       parts.push(`- Passaic: ${totalActual.toLocaleString()} yards produced, ${totalWaste.toLocaleString()} waste`)
     }
 

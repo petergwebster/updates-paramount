@@ -27,6 +27,15 @@ import {
 import { supabase } from '../supabase'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Helper — coerce JSON values to finite numbers (production fields are strings)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function num(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper — sum a week's production into a flat structure
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -40,22 +49,25 @@ function summarizeWeekProduction(productionRow) {
     net_yards: 0,
   }
 
+  // BNY shape: bny_data.{replen,mto,hos,memo,contract} = string number directly.
+  // (Earlier code read b.replen?.actual which was always undefined.)
   if (productionRow?.bny_data) {
     const b = productionRow.bny_data
     result.bny_yards =
-      (b.replen?.actual || 0) + (b.mto?.actual || 0) +
-      (b.hos?.actual || 0)    + (b.memo?.actual || 0) +
-      (b.contract?.actual || 0)
+      num(b.replen) + num(b.mto) + num(b.hos) + num(b.memo) + num(b.contract)
   }
 
+  // NJ shape: nj_data.{fabric,grass,paper}.{yards,colorYards,waste}
+  // Values are strings — must num()-coerce or else `0 + "9483"` becomes "09483"
+  // and accumulates as a string for the entire month, blowing up on display.
   if (productionRow?.nj_data) {
     const n = productionRow.nj_data
     result.passaic_yards =
-      (n.fabric?.yards || 0) + (n.grass?.yards || 0) + (n.paper?.yards || 0)
+      num(n.fabric?.yards) + num(n.grass?.yards) + num(n.paper?.yards)
     result.color_yards =
-      (n.fabric?.colorYards || 0) + (n.grass?.colorYards || 0) + (n.paper?.colorYards || 0)
+      num(n.fabric?.colorYards) + num(n.grass?.colorYards) + num(n.paper?.colorYards)
     result.waste_yards =
-      (n.fabric?.waste || 0) + (n.grass?.waste || 0) + (n.paper?.waste || 0)
+      num(n.fabric?.waste) + num(n.grass?.waste) + num(n.paper?.waste)
   }
 
   result.total_yards = result.bny_yards + result.passaic_yards
