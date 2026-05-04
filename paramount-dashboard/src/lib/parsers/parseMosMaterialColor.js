@@ -1,61 +1,19 @@
 // src/lib/parsers/parseMosMaterialColor.js
 //
 // Parses the "MOS Material - Color" sheet from API_Dashboard_MOS_3_0.xlsx.
-// Headers live on row 7 (1-indexed). The "Order Type Screen All Together"
-// column groups SKUs into buckets — the column is sparse (forward-fill required)
-// and contains subtotal rows ("Schumacher Total", "Screen Print Total", etc.)
-// plus a "Grand Total" footer that we filter out.
+// Self-contained — does not depend on parserHelpers.js. Returns the
+// { sheet_key: rows } shape that persistSnapshot.js expects.
 //
-// Returns { source_type, rows } ready to hand to persistSnapshot().
+// Headers live ~row 7 (1-indexed). The "Order Type Screen All Together"
+// column groups SKUs into buckets — sparse pivot column needs forward-fill.
+// Filters out subtotal rows ("Schumacher Total", "Grand Total", etc.).
 // ----------------------------------------------------------------------------
 
-import {
-  readWorkbook,
-  findHeaderRow,
-  isSubtotalRow,
-  forwardFill,
-  toNumber,
-  toInt,
-  toStr,
-  toDateISO,
-  buildColumnMap,
-  buildRawRow,
-} from './parserHelpers.js';
+import * as XLSX from 'xlsx';
 
 const SHEET_NAME = 'MOS Material - Color';
 
-// Map between sheet column header (left) and DB column (right)
-const COLUMN_MAP = {
-  'Order Type Screen All Together':       { col: 'order_type',                         type: 'str'   },
-  'Replacement Ground':                   { col: 'replacement_ground',                 type: 'str'   },
-
-  'PO Open Qty':                          { col: 'po_open_qty',                        type: 'num'   },
-  'Min Due Date':                         { col: 'min_due_date',                       type: 'date'  },
-  'Max Due Date':                         { col: 'max_due_date',                       type: 'date'  },
-  'CountD Open PO Dates':                 { col: 'countd_open_po_dates',               type: 'int'   },
-
-  'On Hand Qty':                          { col: 'on_hand_qty',                        type: 'num'   },
-  'WIP Ground':                           { col: 'wip_ground',                         type: 'num'   },
-  'WIP Yards':                            { col: 'wip_yards',                          type: 'num'   },
-  'WIP Total':                            { col: 'wip_total',                          type: 'num'   },
-  'Curr Available NO Ground':             { col: 'curr_available_no_ground',           type: 'num'   },
-  'Curr Available On Hand':               { col: 'curr_available_on_hand',             type: 'num'   },
-  'Available On Hand With Open POs':      { col: 'available_on_hand_with_open_pos',    type: 'num'   },
-
-  'Ground Written Last 6 Months':         { col: 'ground_written_last_6_months',       type: 'num'   },
-  'Avg Monthly Last 6 Months':            { col: 'avg_monthly_last_6_months',          type: 'num'   },
-  'Avg Monthly Last 12 Months':           { col: 'avg_monthly_last_12_months',         type: 'num'   },
-  'Avg Last 6 & 12 Monthly Yards':        { col: 'avg_last_6_12_monthly_yards',        type: 'num'   },
-  'Yards Written Last 30 Days':           { col: 'yards_written_last_30_days',         type: 'num'   },
-
-  'MOS Based on Last 6 & 12 Month Sales': { col: 'mos_based_on_6_12',                  type: 'num'   },
-  'Calc Buy in Yards +2 Months':          { col: 'calc_buy_yards_plus_2_months',       type: 'num'   },
-  'Months of Lead Time':                  { col: 'months_of_lead_time',                type: 'num'   },
-  'Target MOS +2 Month':                  { col: 'target_mos_plus_2',                  type: 'num'   },
-  'Var MOS vs Target +2':                 { col: 'var_mos_vs_target_plus_2',           type: 'num'   },
-};
-
-// Subtotal/footer rows we filter out (keyed on order_type or replacement_ground)
+const VALID_BUCKETS = new Set(['Schumacher', 'Screen Print', 'Digital']);
 const SUBTOTAL_VALUES = new Set([
   'Grand Total',
   'Schumacher Total',
@@ -63,82 +21,155 @@ const SUBTOTAL_VALUES = new Set([
   'Digital Total',
 ]);
 
-const VALID_BUCKETS = new Set(['Schumacher', 'Screen Print', 'Digital']);
+// Header → DB column mapping
+const COLUMN_MAP = {
+  'Order Type Screen All Together':       { col: 'order_type',                         type: 'str'  },
+  'Replacement Ground':                   { col: 'replacement_ground',                 type: 'str'  },
+  'PO Open Qty':                          { col: 'po_open_qty',                        type: 'num'  },
+  'Min Due Date':                         { col: 'min_due_date',                       type: 'date' },
+  'Max Due Date':                         { col: 'max_due_date',                       type: 'date' },
+  'CountD Open PO Dates':                 { col: 'countd_open_po_dates',               type: 'int'  },
+  'On Hand Qty':                          { col: 'on_hand_qty',                        type: 'num'  },
+  'WIP Ground':                           { col: 'wip_ground',                         type: 'num'  },
+  'WIP Yards':                            { col: 'wip_yards',                          type: 'num'  },
+  'WIP Total':                            { col: 'wip_total',                          type: 'num'  },
+  'Curr Available NO Ground':             { col: 'curr_available_no_ground',           type: 'num'  },
+  'Curr Available On Hand':               { col: 'curr_available_on_hand',             type: 'num'  },
+  'Available On Hand With Open POs':      { col: 'available_on_hand_with_open_pos',    type: 'num'  },
+  'Ground Written Last 6 Months':         { col: 'ground_written_last_6_months',       type: 'num'  },
+  'Avg Monthly Last 6 Months':            { col: 'avg_monthly_last_6_months',          type: 'num'  },
+  'Avg Monthly Last 12 Months':           { col: 'avg_monthly_last_12_months',         type: 'num'  },
+  'Avg Last 6 & 12 Monthly Yards':        { col: 'avg_last_6_12_monthly_yards',        type: 'num'  },
+  'Yards Written Last 30 Days':           { col: 'yards_written_last_30_days',         type: 'num'  },
+  'MOS Based on Last 6 & 12 Month Sales': { col: 'mos_based_on_6_12',                  type: 'num'  },
+  'Calc Buy in Yards +2 Months':          { col: 'calc_buy_yards_plus_2_months',       type: 'num'  },
+  'Months of Lead Time':                  { col: 'months_of_lead_time',                type: 'num'  },
+  'Target MOS +2 Month':                  { col: 'target_mos_plus_2',                  type: 'num'  },
+  'Var MOS vs Target +2':                 { col: 'var_mos_vs_target_plus_2',           type: 'num'  },
+};
 
-function castValue(raw, type) {
-  if (raw === null || raw === undefined || raw === '') return null;
-  switch (type) {
-    case 'str':  return toStr(raw);
-    case 'num':  return toNumber(raw);
-    case 'int':  return toInt(raw);
-    case 'date': return toDateISO(raw);
-    default:     return raw;
+// ---------- inlined helpers ----------
+function toStr(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+}
+function toNum(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const n = Number(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+function toInt(v) {
+  const n = toNum(v);
+  return n == null ? null : Math.round(n);
+}
+function toDateISO(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return null;
+    return v.toISOString().slice(0, 10);
   }
+  // Excel serial date number
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const ms = (v - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
+function findHeaderRow(aoa, requiredHeaders) {
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i] || [];
+    if (requiredHeaders.every(h => row.includes(h))) return i;
+  }
+  return -1;
+}
+
+function forwardFillColumn(rows, colIdx) {
+  let last = null;
+  const out = [];
+  for (const r of rows) {
+    const copy = [...r];
+    const v = copy[colIdx];
+    if (v != null && v !== '') {
+      last = v;
+    } else {
+      copy[colIdx] = last;
+    }
+    out.push(copy);
+  }
+  return out;
+}
+
+// ---------- main ----------
 /**
- * Parse the MOS Material - Color sheet from a workbook (already loaded via SheetJS).
- *
+ * Parse the MOS Material - Color sheet.
  * @param {object} workbook  SheetJS workbook
- * @returns {{ source_type: string, rows: Array<object> }}
+ * @returns {{ material_color: Array<object> }}  shape that persistSnapshot expects
  */
 export function parseMosMaterialColor(workbook) {
-  const sheet = workbook.Sheets[SHEET_NAME];
+  const sheet = workbook?.Sheets?.[SHEET_NAME];
   if (!sheet) {
     throw new Error(`Sheet "${SHEET_NAME}" not found in workbook`);
   }
 
-  // Sheet is a pivot — first 6 rows are filter dropdowns. Headers on row 7.
-  // findHeaderRow scans for the row containing both 'Order Type Screen All Together'
-  // and 'Replacement Ground' to be resilient if rows shift.
-  const aoa = readWorkbook(sheet, { header: 1, defval: null, raw: true });
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  if (!Array.isArray(aoa) || aoa.length === 0) {
+    throw new Error(`Sheet "${SHEET_NAME}" is empty`);
+  }
+
   const headerRowIdx = findHeaderRow(aoa, ['Order Type Screen All Together', 'Replacement Ground']);
   if (headerRowIdx === -1) {
-    throw new Error(`Could not locate header row in "${SHEET_NAME}"`);
+    throw new Error(`Header row not found in "${SHEET_NAME}".`);
   }
 
   const headers = aoa[headerRowIdx];
+  const orderTypeIdx = headers.indexOf('Order Type Screen All Together');
+  const skuIdx       = headers.indexOf('Replacement Ground');
+
+  const headerIdx = {};
+  for (const headerName of Object.keys(COLUMN_MAP)) {
+    headerIdx[headerName] = headers.indexOf(headerName);
+  }
+
   const dataRows = aoa.slice(headerRowIdx + 1);
-
-  // Forward-fill the bucket column — pivot table leaves it blank between rows
-  const orderTypeColIdx = headers.indexOf('Order Type Screen All Together');
-  const filledRows = forwardFill(dataRows, orderTypeColIdx);
-
-  const colMap = buildColumnMap(headers, COLUMN_MAP);
+  const filled = forwardFillColumn(dataRows, orderTypeIdx);
 
   const rows = [];
-  for (const r of filledRows) {
-    const orderTypeRaw = r[orderTypeColIdx];
-    const replacementGround = r[headers.indexOf('Replacement Ground')];
+  for (const r of filled) {
+    const orderType = toStr(r[orderTypeIdx]);
+    const sku       = toStr(r[skuIdx]);
 
-    // Skip subtotal/footer rows
-    if (isSubtotalRow(orderTypeRaw, SUBTOTAL_VALUES) || isSubtotalRow(replacementGround, SUBTOTAL_VALUES)) {
-      continue;
-    }
-
-    // Skip if no SKU on the row (blank line)
-    if (!replacementGround) continue;
-
-    // Skip if bucket isn't one we recognize (defensive — pivot might add "Other")
-    if (!VALID_BUCKETS.has(toStr(orderTypeRaw))) continue;
+    if (!sku) continue;
+    if (SUBTOTAL_VALUES.has(orderType) || SUBTOTAL_VALUES.has(sku)) continue;
+    if (!VALID_BUCKETS.has(orderType)) continue;
 
     const out = {};
     for (const [headerName, def] of Object.entries(COLUMN_MAP)) {
-      const idx = colMap[headerName];
+      const idx = headerIdx[headerName];
       const raw = idx >= 0 ? r[idx] : null;
-      out[def.col] = castValue(raw, def.type);
+      switch (def.type) {
+        case 'str':  out[def.col] = toStr(raw);     break;
+        case 'num':  out[def.col] = toNum(raw);     break;
+        case 'int':  out[def.col] = toInt(raw);     break;
+        case 'date': out[def.col] = toDateISO(raw); break;
+        default:     out[def.col] = raw;
+      }
     }
 
-    // Stash the raw row for fallback / future fields
-    out.raw_row = buildRawRow(headers, r);
+    const raw_row = {};
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i]) raw_row[headers[i]] = r[i];
+    }
+    out.raw_row = raw_row;
 
     rows.push(out);
   }
 
-  return {
-    source_type: 'mos_material_color',
-    rows,
-  };
+  return { material_color: rows };
 }
 
 export default parseMosMaterialColor;

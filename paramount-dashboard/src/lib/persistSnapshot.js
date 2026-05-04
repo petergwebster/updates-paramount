@@ -49,6 +49,12 @@ const CHILD_TABLE_MAP = {
     pos_shipped:  'inv_pos_shipped',
     schu_on_hand: 'inv_schu_on_hand',
   },
+  // Phase 1 of Inventory tab — single-sheet uploads of "MOS Material - Color"
+  // from API_Dashboard_MOS_3_0.xlsx. Phase 1B will likely fold this into the
+  // 'mos' file_kind once we add a sheet handler to parseMosFile.js.
+  mos_material_color: {
+    material_color: 'mos_material_color',
+  },
 }
 
 /**

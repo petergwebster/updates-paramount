@@ -97,30 +97,44 @@ export default function InventoryTab({ profile }) {
     try {
       setUploadState({ stage: 'reading', filename: file.name });
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
 
       setUploadState({ stage: 'parsing', filename: file.name });
+      const parseStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
       const parsed = parseMosMaterialColor(wb);
+      const parseDurationMs = Math.round(
+        (typeof performance !== 'undefined' ? performance.now() : Date.now()) - parseStart
+      );
 
-      if (!parsed.rows.length) {
+      const rowCount = parsed.material_color?.length || 0;
+      if (rowCount === 0) {
         setUploadState({ stage: 'error', message: 'No rows parsed — check sheet name "MOS Material - Color"' });
         return;
       }
 
-      setUploadState({ stage: 'persisting', filename: file.name, count: parsed.rows.length });
-      // NOTE: persistSnapshot() arg shape may need adjustment to match the existing
-      // helper. Schema has file_kind / source_file / uploaded_by_email columns —
-      // if the upload errors with a NULL constraint on file_kind, the helper
-      // doesn't accept this argument name and needs a small tweak.
+      setUploadState({ stage: 'persisting', filename: file.name, count: rowCount });
+
+      // Get current auth user for the persistSnapshot call
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
       const result = await persistSnapshot({
         fileKind: 'mos_material_color',
         sourceFile: file.name,
-        uploadedBy: profile?.full_name || profile?.email || 'unknown',
-        targetTable: 'mos_material_color',
-        rows: parsed.rows,
+        fileSizeBytes: file.size,
+        source: 'manual_upload',
+        authUser: authUser ? { id: authUser.id, email: authUser.email } : null,
+        parsedData: parsed,
+        errors: {},
+        parseDurationMs,
       });
 
-      setUploadState({ stage: 'success', filename: file.name, count: result.row_count || parsed.rows.length });
+      if (!result.ok) {
+        setUploadState({ stage: 'error', message: result.error || 'Upload failed' });
+        return;
+      }
+
+      const written = result.rows_written?.material_color ?? rowCount;
+      setUploadState({ stage: 'success', filename: file.name, count: written });
       await loadInventory();
     } catch (err) {
       console.error('[Inventory upload]', err);
