@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { format } from 'date-fns'
+import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalInfo } from '../fiscalCalendar'
 import AdminFinancials from './AdminFinancials'
@@ -254,6 +254,28 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   const [activeSection, setActiveSection] = useState('production')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(null) // 'production' | 'kpis' | 'log'
+  const [saveError, setSaveError] = useState(null)
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Week selector — source of truth for ALL four tabs while in admin.
+  // Initializes from the incoming weekStart prop (whatever week the chrome
+  // nav was on), but lets the user override without leaving admin.
+  // Sunday-start to match the rest of the app (date-fns weekStartsOn: 0).
+  // ─────────────────────────────────────────────────────────────────────
+  const [effectiveWeek, setEffectiveWeek] = useState(() =>
+    weekStart ? startOfWeek(weekStart, { weekStartsOn: 0 }) : startOfWeek(new Date(), { weekStartsOn: 0 })
+  )
+
+  // If the parent week prop changes (e.g., user navigated away & back),
+  // re-sync only when it differs significantly — but the picker takes
+  // priority once the user has used it.
+  useEffect(() => {
+    if (weekStart) {
+      const norm = startOfWeek(weekStart, { weekStartsOn: 0 })
+      setEffectiveWeek(norm)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart && format(weekStart, 'yyyy-MM-dd')])
 
   // Production state
   const [njData, setNjData] = useState(emptyNJ())
@@ -272,8 +294,8 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   const [concerns, setConcerns] = useState('')
   const [activeDay, setActiveDay] = useState('Monday')
 
-  const weekKey = format(weekStart, 'yyyy-MM-dd')
-  const fiscalInfo = getFiscalInfo(weekStart)
+  const weekKey = format(effectiveWeek, 'yyyy-MM-dd')
+  const fiscalInfo = getFiscalInfo(effectiveWeek)
   const weeksInMonth = fiscalInfo?.weeksInMonth || 4
   const procurementMonthlyTarget = getProcurementMonthlyTarget(weeksInMonth)
 
@@ -290,7 +312,7 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
       }
     }
     loadProduction()
-  }, [weekStart])
+  }, [effectiveWeek])
 
   // Load KPI + log data from weekData
   useEffect(() => {
@@ -322,8 +344,18 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
 
   async function saveProduction() {
     setSaving(true)
-    await supabase.from('production').upsert({ week_start: weekKey, nj_data: njData, bny_data: bnyData, updated_at: new Date().toISOString() }, { onConflict: 'week_start' })
+    setSaveError(null)
+    const { error } = await supabase.from('production').upsert(
+      { week_start: weekKey, nj_data: njData, bny_data: bnyData, updated_at: new Date().toISOString() },
+      { onConflict: 'week_start' }
+    )
     setSaving(false)
+    if (error) {
+      console.error('[AdminPanel saveProduction]', error)
+      setSaveError(`Save failed: ${error.message}`)
+      setTimeout(() => setSaveError(null), 6000)
+      return
+    }
     setSaved('production')
     setTimeout(() => setSaved(null), 2500)
   }
@@ -347,7 +379,7 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   async function generateNarrative() {
     setGenerating(true)
     setGenError(null)
-    const weekLabel = format(weekStart, 'MMMM d, yyyy')
+    const weekLabel = format(effectiveWeek, 'MMMM d, yyyy')
     const kpiSummary = KPIS.map(k => {
       const d = kpis[k.id]
       if (!d || d.status === 'gray') return null
@@ -410,9 +442,132 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         <div className={styles.topRow}>
           <div>
             <h2 className={styles.pageTitle}>Admin Panel</h2>
-            <p className={styles.pageSub}>Week of {format(weekStart, 'MMMM d, yyyy')} · Data entry & management</p>
+            <p className={styles.pageSub}>Week of {format(effectiveWeek, 'MMMM d, yyyy')} · Data entry & management</p>
           </div>
         </div>
+      )}
+
+      {/* ── Persistent week picker — applies to ALL four tabs ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 16px',
+        marginBottom: 16,
+        background: 'var(--paper-soft, #EBE6D9)',
+        border: '1px solid var(--border-light, #D5D7DA)',
+        borderRadius: 8,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{
+          fontSize: 11,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          color: 'var(--ink-50, #6B7280)',
+          fontWeight: 600,
+        }}>Entering data for week of</span>
+
+        <button
+          type="button"
+          onClick={() => setEffectiveWeek(prev => subWeeks(prev, 1))}
+          style={{
+            padding: '4px 10px',
+            background: 'white',
+            border: '1px solid var(--border-light, #D5D7DA)',
+            borderRadius: 4,
+            fontSize: 13,
+            cursor: 'pointer',
+            fontWeight: 600,
+            color: 'var(--ink, #3A3F45)',
+          }}
+          title="Previous week"
+        >←</button>
+
+        <input
+          type="date"
+          value={format(effectiveWeek, 'yyyy-MM-dd')}
+          onChange={e => {
+            if (!e.target.value) return
+            // Normalize to Sunday-start for whichever date the user picks
+            const picked = new Date(e.target.value + 'T00:00:00')
+            setEffectiveWeek(startOfWeek(picked, { weekStartsOn: 0 }))
+          }}
+          style={{
+            padding: '4px 8px',
+            border: '1px solid var(--border-light, #D5D7DA)',
+            borderRadius: 4,
+            fontSize: 13,
+            fontFamily: 'inherit',
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={() => setEffectiveWeek(prev => addWeeks(prev, 1))}
+          style={{
+            padding: '4px 10px',
+            background: 'white',
+            border: '1px solid var(--border-light, #D5D7DA)',
+            borderRadius: 4,
+            fontSize: 13,
+            cursor: 'pointer',
+            fontWeight: 600,
+            color: 'var(--ink, #3A3F45)',
+          }}
+          title="Next week"
+        >→</button>
+
+        <span style={{
+          fontFamily: 'Georgia, serif',
+          fontSize: 16,
+          color: 'var(--ink, #3A3F45)',
+          fontWeight: 500,
+        }}>
+          {format(effectiveWeek, 'MMMM d, yyyy')}
+          {fiscalInfo && (
+            <span style={{
+              fontSize: 12,
+              color: 'var(--ink-50, #6B7280)',
+              marginLeft: 8,
+              fontFamily: 'inherit',
+              fontWeight: 400,
+            }}>
+              · FY{fiscalInfo.fiscalYear} W{fiscalInfo.fiscalWeek}
+            </span>
+          )}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => setEffectiveWeek(startOfWeek(new Date(), { weekStartsOn: 0 }))}
+          style={{
+            marginLeft: 'auto',
+            padding: '4px 12px',
+            background: 'transparent',
+            border: '1px solid var(--accent, #2E5043)',
+            color: 'var(--accent, #2E5043)',
+            borderRadius: 4,
+            fontSize: 12,
+            cursor: 'pointer',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >This week</button>
+      </div>
+
+      {/* Save error banner — surfaces silent failures */}
+      {saveError && (
+        <div style={{
+          padding: '10px 14px',
+          marginBottom: 12,
+          background: 'var(--red-light, #F2DCD6)',
+          border: '1px solid var(--red, #A8362C)',
+          borderRadius: 6,
+          color: 'var(--red, #A8362C)',
+          fontSize: 13,
+          fontWeight: 600,
+        }}>{saveError}</div>
       )}
 
       {/* Section tabs */}
@@ -640,7 +795,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
       {/* ── FINANCIAL DATA ── */}
       {activeSection === 'financials' && (
         <div className={styles.panel}>
-          <AdminFinancials weekStart={weekStart} />
+          <AdminFinancials weekStart={effectiveWeek} />
         </div>
       )}
 
