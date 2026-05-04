@@ -373,6 +373,15 @@ function BriefPreview({
   const njInvP  = fByUnit.nj?.invPurchases || 0
   const bnyInvP = fByUnit.bny?.invPurchases || 0
 
+  // Operating revenue & total inflows for budget reconciliation
+  const njOpRev    = data.production.njOperatingRevenue    || 0
+  const bnyOpRev   = data.production.bnyOperatingRevenue   || 0
+  const combOpRev  = data.production.combinedOperatingRevenue || 0
+  const njInflows  = data.production.njTotalInflows        || 0
+  const bnyInflows = data.production.bnyTotalInflows       || 0
+  const combInflows = data.production.combinedTotalInflows || 0
+  const combProc   = data.production.combinedProcurement   || 0
+
   const bnyTargetMtd = data.targets?.expectedBnyMtd || 0
   const njTargetMtd  = data.targets?.expectedNjMtd  || 0
   const combinedTargetMtd = bnyTargetMtd + njTargetMtd
@@ -421,6 +430,37 @@ function BriefPreview({
         </div>
       )}
 
+      {/* Hero KPI strip — at-a-glance summary above the narrative */}
+      <div className={styles.kpiStrip}>
+        <KpiCell
+          label="PRODUCTION"
+          main={`${fmt(data.production.combinedYards)}`}
+          unit="yds"
+          sub={`${pct(data.production.combVsTargetPct)} of pace`}
+          subClass={paceClass(data.production.combVsTargetPct)}
+        />
+        <KpiCell
+          label="OPERATING REVENUE"
+          main={moneyForce(combOpRev)}
+          sub={combProc > 0 ? `+ ${money(combProc)} pass-through` : 'no pass-through'}
+          subItalic={combProc > 0}
+        />
+        <KpiCell
+          label="OPEX MTD"
+          main={moneyForce(data.financials.opex)}
+          sub={data.financials.invPurchases > 0
+            ? `+ ${money(data.financials.invPurchases)} inv purch`
+            : 'no inv purch'}
+        />
+        <KpiCell
+          label="HEADCOUNT"
+          main={data.people?.combined?.headcount ? String(data.people.combined.headcount) : '—'}
+          sub={data.people?.bny && data.people?.nj
+            ? `${data.people.bny.headcount} BNY · ${data.people.nj.headcount} NJ`
+            : '— BNY · — NJ'}
+        />
+      </div>
+
       {/* Executive Summary — gold rule + editable */}
       <section className={styles.section}>
         <div className={styles.sectionLabelEditorial}>EXECUTIVE SUMMARY</div>
@@ -451,15 +491,22 @@ function BriefPreview({
               main={`${fmt(data.production.bnyYards)} yds`}
               sub={`${pct(data.production.bnyVsTargetPct)} of ${fmt(bnyTargetMtd)} target`}
               subClass={paceClass(data.production.bnyVsTargetPct)}
+              paceBarPct={data.production.bnyVsTargetPct}
             />
             <ProdBlock
               label="INVOICED YDS"
               main={`${fmt(data.production.bnyInvoicedYds)} yds`}
-              sub={[
-                `Revenue: ${moneyForce(bnyRev)}`,
-                data.production.bnyMiscRevenue > 0 ? `Misc: ${money(data.production.bnyMiscRevenue)}` : null,
-                data.production.bnyProcurement > 0 ? `Procurement: ${money(data.production.bnyProcurement)}` : null,
-              ].filter(Boolean).join(' · ')}
+              subLines={[
+                {
+                  text: data.production.bnyMiscRevenue > 0
+                    ? `Revenue: ${moneyForce(bnyRev)}  ·  Misc: ${money(data.production.bnyMiscRevenue)}`
+                    : `Revenue: ${moneyForce(bnyRev)}`,
+                },
+                data.production.bnyProcurement > 0 ? {
+                  text: `Procurement: ${money(data.production.bnyProcurement)} (pass-through)`,
+                  italic: true,
+                } : null,
+              ].filter(Boolean)}
             />
             <ProdBlock
               label="OPEX MTD"
@@ -479,15 +526,22 @@ function BriefPreview({
               main={`${fmt(data.production.njYards)} yds`}
               sub={`${pct(data.production.njVsTargetPct)} of ${fmt(njTargetMtd)} target`}
               subClass={paceClass(data.production.njVsTargetPct)}
+              paceBarPct={data.production.njVsTargetPct}
             />
             <ProdBlock
               label="INVOICED YDS"
               main={`${fmt(data.production.njInvoicedYds)} yds`}
-              sub={[
-                `Revenue: ${moneyForce(njRev)}`,
-                data.production.njMiscRevenue > 0 ? `Misc: ${money(data.production.njMiscRevenue)}` : null,
-                data.production.njProcurement > 0 ? `Procurement: ${money(data.production.njProcurement)}` : null,
-              ].filter(Boolean).join(' · ')}
+              subLines={[
+                {
+                  text: data.production.njMiscRevenue > 0
+                    ? `Revenue: ${moneyForce(njRev)}  ·  Misc: ${money(data.production.njMiscRevenue)}`
+                    : `Revenue: ${moneyForce(njRev)}`,
+                },
+                data.production.njProcurement > 0 ? {
+                  text: `Procurement: ${money(data.production.njProcurement)} (pass-through)`,
+                  italic: true,
+                } : null,
+              ].filter(Boolean)}
             />
             <ProdBlock
               label="OPEX MTD"
@@ -534,10 +588,22 @@ function BriefPreview({
               <td className={styles.tdBold}>{fmt(data.production.combinedInvoicedYds)} yds</td>
             </tr>
             <tr className={styles.highlightRow}>
-              <td className={`${styles.tdLabel} ${styles.tdBold}`}>Revenue MTD</td>
-              <td className={styles.tdBold}>{moneyForce(njRev)}</td>
-              <td className={styles.tdBold}>{moneyForce(bnyRev)}</td>
-              <td className={styles.tdBold}>{moneyForce(data.production.combinedRevenue)}</td>
+              <td className={`${styles.tdLabel} ${styles.tdBold}`}>Revenue MTD <span className={styles.subLabel}>(operating)</span></td>
+              <td className={styles.tdBold}>{moneyForce(njOpRev)}</td>
+              <td className={styles.tdBold}>{moneyForce(bnyOpRev)}</td>
+              <td className={styles.tdBold}>{moneyForce(combOpRev)}</td>
+            </tr>
+            <tr className={styles.italicRow}>
+              <td className={styles.tdLabel}>Procurement <span className={styles.subLabel}>(pass-through)</span></td>
+              <td>{data.production.njProcurement > 0 ? money(data.production.njProcurement) : '—'}</td>
+              <td>{data.production.bnyProcurement > 0 ? money(data.production.bnyProcurement) : '—'}</td>
+              <td>{combProc > 0 ? money(combProc) : '—'}</td>
+            </tr>
+            <tr className={styles.totalRow}>
+              <td className={`${styles.tdLabel} ${styles.tdBold}`}>Total Inflows <span className={styles.subLabel}>(vs budget)</span></td>
+              <td className={styles.tdBold}>{moneyForce(njInflows)}</td>
+              <td className={styles.tdBold}>{moneyForce(bnyInflows)}</td>
+              <td className={styles.tdBold}>{moneyForce(combInflows)}</td>
             </tr>
             <tr>
               <td className={styles.tdLabel}>OpEx MTD</td>
@@ -642,7 +708,7 @@ function BriefPreview({
 // Sub-components & helpers
 // =============================================================================
 
-function ProdBlock({ label, main, sub, subClass }) {
+function ProdBlock({ label, main, sub, subClass, subLines, paceBarPct }) {
   return (
     <div className={styles.prodBlock}>
       <div className={styles.prodBlockLabel}>{label}</div>
@@ -650,6 +716,38 @@ function ProdBlock({ label, main, sub, subClass }) {
       {sub && (
         <div className={`${styles.prodBlockSub} ${subClass ? styles[subClass] : ''}`}>{sub}</div>
       )}
+      {subLines && subLines.map((line, i) => (
+        <div
+          key={i}
+          className={`${styles.prodBlockSub} ${line.italic ? styles.prodBlockSubItalic : ''}`}
+        >
+          {line.text}
+        </div>
+      ))}
+      {paceBarPct != null && (
+        <div className={styles.paceBarTrack}>
+          <div
+            className={`${styles.paceBarFill} ${styles[paceClass(paceBarPct)]}`}
+            style={{ width: `${Math.min(100, Math.max(2, paceBarPct))}%` }}
+          />
+          <div className={styles.paceBarTargetTick} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KpiCell({ label, main, unit, sub, subClass, subItalic }) {
+  return (
+    <div className={styles.kpiCell}>
+      <div className={styles.kpiLabel}>{label}</div>
+      <div className={styles.kpiMain}>
+        {main}
+        {unit && <span className={styles.kpiUnit}>{unit}</span>}
+      </div>
+      <div className={`${styles.kpiSub} ${subClass ? styles[subClass] : ''} ${subItalic ? styles.kpiSubItalic : ''}`}>
+        {sub}
+      </div>
     </div>
   )
 }

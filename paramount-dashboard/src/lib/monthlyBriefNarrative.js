@@ -48,7 +48,11 @@ function formatBriefContext(data) {
   lines.push('## BNY (Brooklyn digital)')
   lines.push(`Produced: ${fmt(p.bnyYards)} yards (${pct(p.bnyVsTargetPct)} of expected MTD pace, target ${fmt(targets.expectedBnyMtd)} of monthly ${fmt(targets.monthBnyTarget)})`)
   lines.push(`Invoiced/Shipped: ${fmt(p.bnyInvoicedYds)} yards`)
-  lines.push(`Revenue: ${money(p.bnyRevenue)}${p.bnyMiscRevenue ? `  ·  Misc: ${money(p.bnyMiscRevenue)}` : ''}${p.bnyProcurement ? `  ·  Procurement: ${money(p.bnyProcurement)}` : ''}`)
+  lines.push(`Operating revenue: ${money(p.bnyRevenue)}${p.bnyMiscRevenue ? ` (+${money(p.bnyMiscRevenue)} misc fees → ${money(p.bnyOperatingRevenue)} operating total)` : ''}`)
+  if (p.bnyProcurement) {
+    lines.push(`Procurement (PASS-THROUGH, not operating revenue): ${money(p.bnyProcurement)}`)
+    lines.push(`Total inflows BNY (for budget reconciliation): ${money(p.bnyTotalInflows)}`)
+  }
   if (Object.keys(p.weekRows[0]?.bnyByBucket || {}).length) {
     const buckets = {}
     for (const w of p.weekRows) {
@@ -67,7 +71,10 @@ function formatBriefContext(data) {
   lines.push(`Color-yards: ${fmt(p.njColorYards)} (the labor unit — 1 color-yard = 1 yard × 1 color)`)
   lines.push(`Waste: ${fmt(p.njWaste)} yards (${p.njWastePct != null ? p.njWastePct.toFixed(1) + '% waste rate' : 'rate unavailable'})`)
   lines.push(`Invoiced/Shipped: ${fmt(p.njInvoicedYds)} yards`)
-  lines.push(`Revenue: ${money(p.njRevenue)}${p.njMiscRevenue ? `  ·  Misc: ${money(p.njMiscRevenue)}` : ''}${p.njProcurement ? `  ·  Procurement: ${money(p.njProcurement)}` : ''}`)
+  lines.push(`Operating revenue: ${money(p.njRevenue)}${p.njMiscRevenue ? ` (+${money(p.njMiscRevenue)} misc fees → ${money(p.njOperatingRevenue)} operating total)` : ''}`)
+  if (p.njProcurement) {
+    lines.push(`Procurement (PASS-THROUGH, not operating revenue): ${money(p.njProcurement)}`)
+  }
 
   if (p.weekRows.length) {
     const catTotals = { fabric: 0, grass: 0, paper: 0 }
@@ -93,7 +100,11 @@ function formatBriefContext(data) {
   lines.push('## Combined')
   lines.push(`Produced: ${fmt(p.combinedYards)} of ${fmt(targets.expectedCombMtd)} expected (${pct(p.combVsTargetPct)} of pace, monthly target ${fmt(targets.monthCombinedTarget)})`)
   lines.push(`Invoiced/Shipped: ${fmt(p.combinedInvoicedYds)} yards`)
-  lines.push(`Revenue: ${money(p.combinedRevenue)}${p.combinedMiscRevenue ? ` (+ ${money(p.combinedMiscRevenue)} misc)` : ''}`)
+  lines.push(`Operating revenue: ${money(p.combinedOperatingRevenue)}  (revenue ${money(p.combinedRevenue)} + misc ${money(p.combinedMiscRevenue)})`)
+  if (p.combinedProcurement) {
+    lines.push(`Procurement (PASS-THROUGH): ${money(p.combinedProcurement)}`)
+    lines.push(`Total inflows for budget reconciliation: ${money(p.combinedTotalInflows)}`)
+  }
   lines.push('')
 
   if (p.weekRows.length) {
@@ -275,6 +286,20 @@ ${contextString}
 ## Critical guidance
 
 ${cogsGuidance}
+
+**Procurement revenue is a PASS-THROUGH, not operating revenue.** When BNY (or \
+NJ) shows procurement, it means Paramount executed a purchase on FSCO's behalf \
+— FSCO sells to the end customer, Paramount takes no margin. Discuss procurement \
+SEPARATELY from operating revenue. Never lump procurement with "miscellaneous \
+income" or operating revenue. Misc fees are operating; procurement is not. \
+Three distinct things:
+  - Operating revenue = invoice revenue + misc fees (drives margin)
+  - Procurement = pass-through (does NOT drive margin, but is real cash flowing)
+  - Total inflows = operating + procurement (reconciles to top-line budget)
+
+In the cost paragraph, name the operating revenue figure first, then call out \
+procurement as a separate pass-through line, then note the total inflows for \
+budget reconciliation if procurement is meaningful (>$10k).
 
 Honor the BNY/Passaic accounting convention: when Passaic ran digital work, \
 BNY gets the revenue and production credit. Don't misattribute Passaic-run \

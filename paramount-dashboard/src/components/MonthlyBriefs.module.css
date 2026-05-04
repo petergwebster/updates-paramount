@@ -1,10 +1,10 @@
 /* ============================================================================
-   MonthlyBriefs.module.css — Admin section for monthly brief generation.
-   Matches the Paper & Ink palette via tokens.css custom properties.
+   MonthlyBriefs.module.css — Editorial styling matching the April Mid-Month
+   PDF reference exactly.
    ============================================================================ */
 
 .container {
-  max-width: 980px;
+  max-width: 1040px;
   margin: 0;
   padding: 0;
   font-family: var(--font-body);
@@ -33,7 +33,7 @@
   color: var(--ink-50);
   margin: 0;
   max-width: 720px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 /* ── Controls row ─────────────────────────────────────────────────────── */
@@ -119,12 +119,8 @@
   font-weight: 600;
 }
 
-.btnMid {
-  border-left: 3px solid var(--accent);
-}
-.btnEnd {
-  border-left: 3px solid var(--blood-orange);
-}
+.btnMid { border-left: 3px solid var(--accent); }
+.btnEnd { border-left: 3px solid var(--blood-orange); }
 .btnActive {
   background: var(--accent-light);
   border-color: var(--accent);
@@ -146,7 +142,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 14px 18px;
   background: var(--accent-light);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
@@ -154,22 +150,17 @@
   color: var(--ink);
   margin-bottom: 16px;
 }
-
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 16px; height: 16px;
   border: 2px solid var(--accent);
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   flex-shrink: 0;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error {
+.errorBanner {
   padding: 14px 18px;
   background: var(--red-light);
   border-left: 3px solid var(--red);
@@ -196,41 +187,207 @@
   border-radius: 3px;
 }
 
+/* ── Saved history list ──────────────────────────────────────────────── */
+
+.historyEmpty {
+  padding: 14px 18px;
+  background: var(--paper);
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius);
+  margin-bottom: 18px;
+}
+.historyEmptyLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-40);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.historyEmptyText {
+  font-size: 13px;
+  color: var(--ink-50);
+  font-style: italic;
+}
+
+.historyPanel {
+  background: var(--paper);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 18px;
+}
+.historyHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+.historyLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  font-weight: 600;
+}
+.historyCount {
+  font-size: 11px;
+  color: var(--ink-40);
+}
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.historyItem {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.12s;
+  border: 1px solid transparent;
+  margin-bottom: 4px;
+}
+.historyItem:hover {
+  background: var(--surface);
+  border-color: var(--border-light);
+}
+.historyItemActive {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+.historyItemActive:hover {
+  background: var(--accent-light);
+}
+.historyTime {
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 600;
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.historyBadge {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 2px 6px;
+  background: var(--accent);
+  color: white;
+  border-radius: 3px;
+  font-weight: 700;
+}
+.historyMeta {
+  font-size: 11px;
+  color: var(--ink-40);
+  margin-bottom: 4px;
+}
+.historyPreview {
+  font-size: 12px;
+  color: var(--ink-50);
+  font-style: italic;
+  line-height: 1.4;
+  font-family: var(--font-display);
+}
+
 /* ── Preview block ────────────────────────────────────────────────────── */
 
 .preview {
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 28px 32px;
+  padding: 32px 36px;
   box-shadow: var(--shadow-sm);
 }
 
 .previewHeader {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--border-light);
   margin-bottom: 24px;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
 .previewCrumb {
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent);
+  letter-spacing: 0.16em;
+  color: var(--ink-40);
   font-weight: 600;
-  margin-bottom: 6px;
 }
-
+.previewOverline {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-50);
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
 .previewTitle {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 400;
-  color: var(--ink);
-  margin: 0;
+  color: var(--ink-deep, var(--ink));
+  margin: 0 0 6px 0;
   letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.previewSubline {
+  font-size: 12px;
+  color: var(--ink-50);
+}
+
+.previewHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons (save / download) ────────────────────────────────────────── */
+
+.savedStatus {
+  font-size: 11px;
+  color: var(--ink-40);
+  margin-right: 4px;
+  font-style: italic;
+}
+.unsaved { color: var(--amber); font-weight: 600; font-style: normal; }
+.saved   { color: var(--emerald); font-weight: 600; font-style: normal; }
+.draft   { color: var(--ink-40); }
+
+.saveBtn {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 9px 18px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  letter-spacing: 0.02em;
+  transition: all 0.15s;
+}
+.saveBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.saveBtnPending {
+  border-color: var(--amber);
+  background: rgba(176, 122, 45, 0.08);
+  color: var(--amber);
+}
+.saveBtnPending:hover:not(:disabled) {
+  background: rgba(176, 122, 45, 0.18);
+  color: var(--ink);
 }
 
 .downloadBtn {
@@ -246,37 +403,50 @@
   letter-spacing: 0.02em;
   transition: background 0.15s;
 }
-.downloadBtn:hover {
-  background: var(--accent-mid);
-}
+.downloadBtn:hover { background: var(--accent-mid, var(--accent)); }
 
-/* ── Sections inside preview ──────────────────────────────────────────── */
+/* ── Editorial section labels ─────────────────────────────────────────── */
 
 .section {
-  margin-bottom: 28px;
+  margin-bottom: 32px;
 }
 
-.sectionLabel {
+.sectionLabelEditorial {
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 12px;
+  letter-spacing: 0.16em;
+  color: var(--ink-40);
+  font-weight: 700;
+  margin-bottom: 6px;
 }
+
+.goldRule {
+  height: 1.5px;
+  background: linear-gradient(to right, #B88E34 0%, #B88E34 100%);
+  margin-bottom: 14px;
+  width: 100%;
+}
+
+.thinRule {
+  height: 1px;
+  background: var(--border-light);
+  margin-bottom: 16px;
+}
+
+/* ── Narrative editor ─────────────────────────────────────────────────── */
 
 .narrativeEditor {
   width: 100%;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 14.5px;
   line-height: 1.65;
   color: var(--ink);
   background: var(--paper);
   border: 1px solid var(--border-light);
   border-radius: var(--radius);
-  padding: 16px;
+  padding: 18px 20px;
   resize: vertical;
-  min-height: 160px;
+  min-height: 180px;
   box-sizing: border-box;
 }
 .narrativeEditor:focus {
@@ -289,64 +459,72 @@
   font-size: 11px;
   color: var(--ink-40);
   font-style: italic;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-/* ── Two-column site cards ────────────────────────────────────────────── */
+/* ── Two-column production layout ─────────────────────────────────────── */
 
 .twoCol {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 32px;
 }
 
-.siteCard {
-  background: var(--paper);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 18px;
-  position: relative;
-  overflow: hidden;
-}
-.siteCard::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-}
-.accent_forest::before { background: var(--accent); }
-.accent_brick::before  { background: var(--blood-orange); }
-
-.siteCardTitle {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--ink-50);
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-.siteCardRows {
+.siteCol {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.siteCardRow {
-  display: flex;
-  justify-content: space-between;
+.siteTitle {
+  font-family: var(--font-body);
   font-size: 13px;
-}
-
-.siteCardKey {
-  color: var(--ink-50);
-}
-
-.siteCardVal {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ── Production blocks (PRODUCED / INVOICED YDS / OPEX MTD) ──────────── */
+
+.prodBlock {
+  padding: 12px 0 14px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.prodBlock:last-child {
+  border-bottom: none;
+}
+
+.prodBlockLabel {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-40);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.prodBlockMain {
+  font-family: var(--font-body);
+  font-size: 24px;
+  font-weight: 400;
+  color: var(--ink-deep, var(--ink));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.prodBlockSub {
+  font-size: 11.5px;
+  color: var(--ink-50);
+  margin-top: 6px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Pace coloring used inline in the prodBlockSub */
+.paceGreen { color: var(--emerald); font-weight: 700; }
+.paceAmber { color: var(--amber);   font-weight: 700; }
+.paceRed   { color: var(--red);     font-weight: 700; }
 
 /* ── Tracking table ──────────────────────────────────────────────────── */
 
@@ -361,32 +539,34 @@
 }
 
 .dataTable thead th {
-  background: var(--linen);
+  background: #28272A;
   text-align: right;
-  padding: 10px 14px;
+  padding: 12px 16px;
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-50);
+  letter-spacing: 0.12em;
+  color: white;
   font-weight: 700;
-  border-bottom: 1px solid var(--border);
 }
 .dataTable thead th.thLeft { text-align: left; }
 
 .dataTable tbody td {
   text-align: right;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border-light);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 .dataTable tbody td.tdLabel {
   text-align: left;
-  font-weight: 600;
-  color: var(--ink-80);
+  font-weight: 500;
+  color: var(--ink);
 }
-.dataTable tbody tr:nth-child(even) { background: rgba(255,255,255,0.4); }
+.dataTable tbody td.tdBold { font-weight: 700; }
 .dataTable tbody tr:last-child td { border-bottom: none; }
+
+.subtleRow td { background: rgba(245, 241, 232, 0.55); }
+.highlightRow td { background: var(--cream-highlight, #F8F4E9); }
 
 .pendingRow td:not(.tdLabel) {
   color: var(--ink-40);
@@ -397,48 +577,30 @@
   font-size: 11px;
   color: var(--ink-40);
   font-style: italic;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
-/* Pace coloring on % cells */
-.paceGreen { color: var(--emerald); font-weight: 700; }
-.paceAmber { color: var(--amber);   font-weight: 700; }
-.paceRed   { color: var(--red);     font-weight: 700; }
+/* ── People + WIP lines ──────────────────────────────────────────────── */
 
-/* ── People + WIP grids ──────────────────────────────────────────────── */
-
-.peopleGrid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  background: var(--paper);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 14px 18px;
+.peopleLine {
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 6px;
 }
-
-.wipGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  background: var(--paper);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius);
-  padding: 14px 18px;
-}
-
-.peopleLabel {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.peopleLineEmpty {
+  font-size: 14px;
   color: var(--ink-40);
-  font-weight: 600;
+  margin-bottom: 6px;
+}
+.peopleSubline {
+  font-size: 12px;
+  color: var(--ink-50);
   margin-bottom: 4px;
 }
-.peopleValue {
-  font-size: 13px;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
+.peopleSublineEmpty {
+  font-size: 12px;
+  color: var(--ink-40);
+  margin-bottom: 4px;
 }
 
 /* ── Bottom actions ──────────────────────────────────────────────────── */
@@ -446,14 +608,142 @@
 .bottomActions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 24px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
   padding-top: 20px;
   border-top: 1px solid var(--border-light);
 }
 
-/* Responsive */
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
 @media (max-width: 760px) {
   .controls { flex-direction: column; align-items: stretch; }
-  .twoCol { grid-template-columns: 1fr; }
-  .peopleGrid { grid-template-columns: 1fr; }
+  .twoCol { grid-template-columns: 1fr; gap: 20px; }
+  .previewHeader { flex-direction: column; align-items: stretch; }
+  .preview { padding: 24px 20px; }
+}
+
+/* ── Hero KPI strip (above narrative) ─────────────────────────────────── */
+
+.kpiStrip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.kpiCell {
+  background: var(--paper);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kpiLabel {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-40);
+  font-weight: 700;
+}
+
+.kpiMain {
+  font-family: var(--font-body);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink-deep, var(--ink));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+
+.kpiUnit {
+  font-size: 11px;
+  color: var(--ink-40);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.kpiSub {
+  font-size: 11px;
+  color: var(--ink-50);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiSubItalic {
+  font-style: italic;
+  color: var(--ink-40);
+}
+
+/* ── Pace bar visualization ──────────────────────────────────────────── */
+
+.paceBarTrack {
+  position: relative;
+  height: 4px;
+  background: var(--border-light);
+  border-radius: 2px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  width: 60%;
+  overflow: visible;
+}
+
+.paceBarFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.paceBarFill.paceGreen { background: var(--emerald); }
+.paceBarFill.paceAmber { background: var(--amber); }
+.paceBarFill.paceRed   { background: var(--red); }
+
+.paceBarTargetTick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 100%;
+  width: 1px;
+  background: var(--ink-40);
+  margin-left: -1px;
+}
+
+/* ── Procurement / total inflows rows in MTD table ────────────────────── */
+
+.italicRow td {
+  background: rgba(245, 241, 232, 0.4);
+  font-style: italic;
+  color: var(--ink-50);
+}
+
+.totalRow td {
+  background: var(--linen);
+  border-top: 1.5px solid var(--border) !important;
+  font-weight: 600;
+}
+
+.subLabel {
+  font-size: 10px;
+  color: var(--ink-40);
+  font-weight: 400;
+  font-style: italic;
+  margin-left: 4px;
+}
+
+/* ── Procurement subline within prod blocks ──────────────────────────── */
+
+.prodBlockSubItalic {
+  font-style: italic;
+  color: var(--ink-40);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ── Responsive: collapse KPI strip on narrow ────────────────────────── */
+
+@media (max-width: 760px) {
+  .kpiStrip { grid-template-columns: 1fr 1fr; }
 }

@@ -426,6 +426,19 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end' }) {
   prod.combinedProcurement = prod.bnyProcurement + prod.njProcurement
   prod.njWastePct = prod.njYards > 0 ? (100 * prod.njWaste / prod.njYards) : null
 
+  // ── Revenue ladder for budget reconciliation ────────────────────────
+  // Operating revenue = invoice rev + misc fees (drives margin).
+  // Procurement = pass-through to FSCO (NOT operating revenue, but counts
+  // toward total cash in and reconciles to top-line budget).
+  // Total inflows = operating + procurement (matches budget).
+  prod.bnyOperatingRevenue  = prod.bnyRevenue + prod.bnyMiscRevenue
+  prod.njOperatingRevenue   = prod.njRevenue  + prod.njMiscRevenue
+  prod.combinedOperatingRevenue = prod.bnyOperatingRevenue + prod.njOperatingRevenue
+
+  prod.bnyTotalInflows = prod.bnyOperatingRevenue + prod.bnyProcurement
+  prod.njTotalInflows  = prod.njOperatingRevenue  + prod.njProcurement
+  prod.combinedTotalInflows = prod.bnyTotalInflows + prod.njTotalInflows
+
   // Targets — weeks that exist in this month from fiscal calendar
   const weeksInMonth = weekRows[0] ? (getFiscalInfo(weekRows[0].weekStart)?.weeksInMonth || 4) : 4
   const monthBnyTarget = safeWeeklyBudget('bny') * weeksInMonth

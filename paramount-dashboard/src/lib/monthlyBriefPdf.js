@@ -172,9 +172,14 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   doc.text(dateStr, PAGE_W - MX, y, { align: 'right' })
   y += 14
 
+  // ── HERO KPI STRIP ──────────────────────────────────────────────────
+  // Four stat cells across the top — at-a-glance summary above the prose.
+  y += 14
+  drawHeroKpiStrip(doc, MX, y, CW, data)
+  y += 64
+
   // ── EXECUTIVE SUMMARY ───────────────────────────────────────────────
   // Gold accent rule directly under the section label
-  y += 10
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(8.5)
   doc.setTextColor(...COLOR.inkMid)
@@ -236,13 +241,14 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   const bnyInvP  = fByUnit.bny?.invPurchases || 0
 
   // Block helper:
-  //   drawProdBlock(x, y, label, mainText, subText, mainColor)
+  //   drawProdBlock(x, y, label, mainText, subText, mainColor, options)
   //   - label: "PRODUCED" / "INVOICED YDS" / "OPEX MTD"
   //   - mainText: "33,557 yds" / "$240,896" etc.
-  //   - subText: "140% of 24,000 target" or "Revenue: $240,896" or "Inv Purchases: $134,795"
-  //   - mainColor: optional accent color for the sub line (used on PRODUCED for pace %)
+  //   - subText: subtitle string OR array of [{ text, color, italic }]
+  //   - subColor: accent color when subText is a single string
+  //   - options.paceBar: { pct } to draw a thin colored pace bar below
   //
-  function drawProdBlock(x, blockY, label, mainText, subText, subColor) {
+  function drawProdBlock(x, blockY, label, mainText, subText, subColor, options = {}) {
     // Label
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
@@ -253,18 +259,48 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
     doc.setFontSize(20)
     doc.setTextColor(...COLOR.inkDeep)
     doc.text(mainText, x, blockY + 22)
-    // Subtitle
-    if (subText) {
+    // Subtitle — supports string OR array of {text,color,italic}
+    let cursorY = blockY + 38
+    if (Array.isArray(subText)) {
+      for (const line of subText) {
+        if (!line || !line.text) continue
+        doc.setFont('helvetica', line.italic ? 'italic' : 'normal')
+        doc.setFontSize(line.italic ? 8.5 : 9)
+        doc.setTextColor(...(line.color || COLOR.inkMid))
+        doc.text(line.text, x, cursorY)
+        cursorY += line.italic ? 10 : 12
+      }
+    } else if (subText) {
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       doc.setTextColor(...(subColor || COLOR.inkMid))
-      doc.text(subText, x, blockY + 38)
+      doc.text(subText, x, cursorY)
+      cursorY += 12
+    }
+    // Optional pace bar — thin horizontal indicator showing % to target
+    if (options.paceBar && options.paceBar.pct != null) {
+      const barY = cursorY
+      const barW = 110
+      const barH = 3
+      const pct = options.paceBar.pct
+      const fillW = Math.min(barW, Math.max(2, (pct / 100) * barW * 0.9)) // cap at ~111% visually
+      // Background track
+      doc.setFillColor(...COLOR.borderHair)
+      doc.rect(x, barY, barW, barH, 'F')
+      // Fill — pace-colored
+      doc.setFillColor(...paceColor(pct))
+      doc.rect(x, barY, fillW, barH, 'F')
+      // Target tick at 100%
+      const tickX = x + (barW * 0.9)
+      doc.setDrawColor(...COLOR.inkSoft)
+      doc.setLineWidth(0.4)
+      doc.line(tickX, barY - 1, tickX, barY + barH + 1)
     }
   }
 
-  const blockH = 56  // height per block (label 8 + gap + number 22 + sub 38 → ~50, +6 spacing)
+  const blockH = 64  // height per block — accommodates pace bar on PRODUCED row
 
-  // PRODUCED row — both columns
+  // PRODUCED row — both columns, with thin pace bar
   const bnyTargetMtd = data.targets.expectedBnyMtd
   const njTargetMtd  = data.targets.expectedNjMtd
   drawProdBlock(
@@ -272,31 +308,65 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
     fmtY(data.production.bnyYards),
     `${pct(data.production.bnyVsTargetPct)} of ${fmt(bnyTargetMtd)} target`,
     paceColor(data.production.bnyVsTargetPct),
+    { paceBar: { pct: data.production.bnyVsTargetPct } },
   )
   drawProdBlock(
     rightX, y, 'PRODUCED',
     fmtY(data.production.njYards),
     `${pct(data.production.njVsTargetPct)} of ${fmt(njTargetMtd)} target`,
     paceColor(data.production.njVsTargetPct),
+    { paceBar: { pct: data.production.njVsTargetPct } },
   )
   y += blockH
+  // Hairline separator between PRODUCED and INVOICED YDS
+  doc.setDrawColor(...COLOR.borderHair)
+  doc.setLineWidth(0.4)
+  doc.line(leftX, y - 4, leftX + colW, y - 4)
+  doc.line(rightX, y - 4, rightX + colW, y - 4)
   // Hairline separator between row 1 and row 2
   doc.setDrawColor(...COLOR.borderHair)
   doc.setLineWidth(0.4)
   doc.line(leftX, y - 4, leftX + colW, y - 4)
   doc.line(rightX, y - 4, rightX + colW, y - 4)
 
-  // INVOICED YDS row — revenue + misc subtitle
-  const bnySubParts = [`Revenue: ${moneyForce(data.production.bnyRevenue)}`]
-  if (data.production.bnyMiscRevenue > 0) bnySubParts.push(`Misc: ${money(data.production.bnyMiscRevenue)}`)
-  if (data.production.bnyProcurement > 0) bnySubParts.push(`Procurement: ${money(data.production.bnyProcurement)}`)
+  // INVOICED YDS row — operating revenue on line 1, procurement italic on line 2
+  function buildInvoicedSubLines(operatingRev, miscRev, procurement) {
+    const lines = []
+    // Line 1: operating revenue (revenue + misc)
+    if (miscRev > 0) {
+      lines.push({ text: `Revenue: ${moneyForce(operatingRev - miscRev)}  ·  Misc: ${money(miscRev)}` })
+    } else {
+      lines.push({ text: `Revenue: ${moneyForce(operatingRev)}` })
+    }
+    // Line 2: procurement (italic, dimmed) — only if present
+    if (procurement > 0) {
+      lines.push({
+        text: `Procurement: ${money(procurement)} (pass-through)`,
+        italic: true,
+        color: COLOR.inkSoft,
+      })
+    }
+    return lines
+  }
 
-  const njSubParts = [`Revenue: ${moneyForce(data.production.njRevenue)}`]
-  if (data.production.njMiscRevenue > 0) njSubParts.push(`Misc: ${money(data.production.njMiscRevenue)}`)
-  if (data.production.njProcurement > 0) njSubParts.push(`Procurement: ${money(data.production.njProcurement)}`)
-
-  drawProdBlock(leftX,  y, 'INVOICED YDS', fmtY(data.production.bnyInvoicedYds), bnySubParts.join(' · '))
-  drawProdBlock(rightX, y, 'INVOICED YDS', fmtY(data.production.njInvoicedYds),  njSubParts.join(' · '))
+  drawProdBlock(
+    leftX, y, 'INVOICED YDS',
+    fmtY(data.production.bnyInvoicedYds),
+    buildInvoicedSubLines(
+      data.production.bnyOperatingRevenue,
+      data.production.bnyMiscRevenue,
+      data.production.bnyProcurement,
+    ),
+  )
+  drawProdBlock(
+    rightX, y, 'INVOICED YDS',
+    fmtY(data.production.njInvoicedYds),
+    buildInvoicedSubLines(
+      data.production.njOperatingRevenue,
+      data.production.njMiscRevenue,
+      data.production.njProcurement,
+    ),
+  )
   y += blockH
   doc.line(leftX, y - 4, leftX + colW, y - 4)
   doc.line(rightX, y - 4, rightX + colW, y - 4)
@@ -347,8 +417,16 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
       ] },
     { label: 'Invoiced YDS',
       cells: [fmtY(data.production.njInvoicedYds), fmtY(data.production.bnyInvoicedYds), fmtY(data.production.combinedInvoicedYds)] },
-    { label: 'Revenue MTD', highlight: true, bold: true,
-      cells: [moneyForce(data.production.njRevenue), moneyForce(data.production.bnyRevenue), moneyForce(data.production.combinedRevenue)] },
+    { label: 'Revenue MTD (operating)', highlight: true, bold: true,
+      cells: [moneyForce(data.production.njOperatingRevenue), moneyForce(data.production.bnyOperatingRevenue), moneyForce(data.production.combinedOperatingRevenue)] },
+    { label: 'Procurement (pass-through)', italic: true, subtle: true,
+      cells: [
+        data.production.njProcurement > 0  ? money(data.production.njProcurement)  : '—',
+        data.production.bnyProcurement > 0 ? money(data.production.bnyProcurement) : '—',
+        data.production.combinedProcurement > 0 ? money(data.production.combinedProcurement) : '—',
+      ] },
+    { label: 'Total Inflows (vs budget)', bold: true, totalRow: true,
+      cells: [moneyForce(data.production.njTotalInflows), moneyForce(data.production.bnyTotalInflows), moneyForce(data.production.combinedTotalInflows)] },
     { label: 'OpEx MTD',
       cells: [moneyForce(njOpex), moneyForce(bnyOpex), moneyForce(data.financials.opex)] },
     { label: 'COGS MTD', pending: !cogsAvail,
@@ -491,6 +569,13 @@ function drawTable(doc, x, y, w, rows) {
       // Cream highlight for Revenue MTD
       doc.setFillColor(...COLOR.cream)
       doc.rect(x, ry, w, rowH, 'F')
+    } else if (row.totalRow) {
+      // Subtle linen band + thicker top border for Total Inflows
+      doc.setFillColor(...COLOR.linen)
+      doc.rect(x, ry, w, rowH, 'F')
+      doc.setDrawColor(...COLOR.border)
+      doc.setLineWidth(0.8)
+      doc.line(x, ry, x + w, ry)
     } else if (row.subtle) {
       // Subtle band for vs Target / NJ Waste %
       doc.setFillColor(250, 248, 244)
@@ -515,7 +600,7 @@ function drawTable(doc, x, y, w, rows) {
       let weight = 'normal'
 
       if (isLabel) {
-        color = COLOR.inkDeep
+        color = row.italic ? COLOR.inkSoft : COLOR.inkDeep
         weight = row.bold ? 'bold' : 'normal'
       } else if (row.cellColors && row.cellColors[c - 1]) {
         color = row.cellColors[c - 1]
@@ -523,10 +608,14 @@ function drawTable(doc, x, y, w, rows) {
       } else if (row.bold) {
         color = COLOR.inkDeep
         weight = 'bold'
+      } else if (row.italic) {
+        color = COLOR.inkSoft
       }
 
       if (row.pending) {
         color = COLOR.inkSoft
+        doc.setFont('helvetica', 'italic')
+      } else if (row.italic) {
         doc.setFont('helvetica', 'italic')
       } else {
         doc.setFont('helvetica', weight)
@@ -550,4 +639,100 @@ function drawTable(doc, x, y, w, rows) {
 function capitalize(s) {
   if (!s) return ''
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// ---------------------------------------------------------------------------
+// Hero KPI strip — at-a-glance summary above the executive summary
+// ---------------------------------------------------------------------------
+// Four equal-width cells:
+//   1. PRODUCTION  — combined yards / % to pace, color-coded
+//   2. REVENUE     — combined operating revenue (rev + misc, NOT procurement)
+//   3. OPEX        — combined OpEx
+//   4. HEADCOUNT   — total active people
+// ---------------------------------------------------------------------------
+
+function drawHeroKpiStrip(doc, x, y, w, data) {
+  const cellGap = 12
+  const cellW = (w - cellGap * 3) / 4
+  const cellH = 56
+
+  const cells = [
+    {
+      label: 'PRODUCTION',
+      main: data.production.combinedYards != null ? Math.round(data.production.combinedYards).toLocaleString() : '—',
+      sub: data.production.combVsTargetPct != null
+        ? `${Math.round(data.production.combVsTargetPct)}% of pace`
+        : 'pace n/a',
+      subColor: paceColor(data.production.combVsTargetPct),
+      unit: 'yds',
+    },
+    {
+      label: 'OPERATING REVENUE',
+      main: data.production.combinedOperatingRevenue != null
+        ? '$' + Math.round(data.production.combinedOperatingRevenue).toLocaleString()
+        : '—',
+      sub: data.production.combinedProcurement > 0
+        ? `+ $${Math.round(data.production.combinedProcurement).toLocaleString()} pass-through`
+        : 'no pass-through',
+      subColor: COLOR.inkSoft,
+      subItalic: data.production.combinedProcurement > 0,
+    },
+    {
+      label: 'OPEX MTD',
+      main: data.financials.opex != null
+        ? '$' + Math.round(data.financials.opex).toLocaleString()
+        : '—',
+      sub: data.financials.invPurchases > 0
+        ? `+ $${Math.round(data.financials.invPurchases).toLocaleString()} inv purch`
+        : 'no inv purch',
+      subColor: COLOR.inkSoft,
+    },
+    {
+      label: 'HEADCOUNT',
+      main: data.people?.combined?.headcount ? String(data.people.combined.headcount) : '—',
+      sub: data.people?.bny && data.people?.nj
+        ? `${data.people.bny.headcount} BNY · ${data.people.nj.headcount} NJ`
+        : '— BNY · — NJ',
+      subColor: COLOR.inkSoft,
+    },
+  ]
+
+  for (let i = 0; i < cells.length; i++) {
+    const cx = x + i * (cellW + cellGap)
+    const cell = cells[i]
+
+    // Card background — subtle paper tone
+    doc.setFillColor(...COLOR.paper)
+    doc.setDrawColor(...COLOR.borderLt)
+    doc.setLineWidth(0.5)
+    doc.roundedRect(cx, y, cellW, cellH, 3, 3, 'FD')
+
+    // Label
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(...COLOR.inkSoft)
+    doc.text(cell.label, cx + 12, y + 14, { charSpace: 1.2 })
+
+    // Main number
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(18)
+    doc.setTextColor(...COLOR.inkDeep)
+    let mainText = cell.main
+    if (cell.unit) {
+      // Render number then small unit label
+      doc.text(mainText, cx + 12, y + 34)
+      const numW = doc.getTextWidth(mainText)
+      doc.setFontSize(10)
+      doc.setTextColor(...COLOR.inkSoft)
+      doc.text(cell.unit, cx + 12 + numW + 3, y + 34)
+    } else {
+      doc.text(mainText, cx + 12, y + 34)
+    }
+
+    // Sub
+    doc.setFont('helvetica', cell.subItalic ? 'italic' : 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...(cell.subColor || COLOR.inkSoft))
+    doc.text(cell.sub, cx + 12, y + 48)
+  }
 }
