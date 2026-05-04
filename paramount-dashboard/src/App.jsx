@@ -19,6 +19,7 @@ import NewGoodsTab from './components/NewGoodsTab'
 import SchedulerTab from './components/SchedulerTab'
 import LiveOpsTab from './components/LiveOpsTab'
 import StubPage from './components/StubPage'
+import InventoryTab from './components/InventoryTab'
 import DashboardPage from './components/DashboardPage'
 import ExecutiveDashboardPage from './components/ExecutiveDashboardPage'
 import HeartbeatPage from './components/HeartbeatPage'
@@ -589,12 +590,7 @@ export default function App() {
                   <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
                 )}
                 {destination === 'performance' && activeTab==='inventory' && (
-                  <StubPage
-                    title="Inventory"
-                    eyebrow="Performance · Inventory"
-                    description="Three-zone inventory: Paramount Buy, Pass-Through, FSCO Watchlist with audit log + reorder cart."
-                    note="Pending Brynn's review of the v5 mockup. Coming in Phase 3."
-                  />
+                  <InventoryTab profile={userProfile} />
                 )}
 
                 {/* Operations · Live Ops, Scheduler, WIP */}
