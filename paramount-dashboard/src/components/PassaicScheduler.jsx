@@ -225,7 +225,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         site: 'passaic', po_number: po.po_number,
         line_description: po.line_description, product_type: po.product_type,
         table_code: tableCode, week_start: isoDate(weekStart),
-        day_of_week: null, planned_yards: yards, planned_cy: cy,
+        day_of_week: null, shift: '1st', planned_yards: yards, planned_cy: cy,
         assigned_by: null, notes: null, status: 'planned',
       })
       if (ie) throw ie
@@ -404,6 +404,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
               table_code: p.table_code,
               week_start: isoDate(weekStart),
               day_of_week: null,
+              shift: '1st',
               planned_yards: p.planned_yards,
               planned_cy: p.planned_cy || null,
               assigned_by: 'claude',
