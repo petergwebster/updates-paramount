@@ -13,6 +13,15 @@ const MONTH_NAMES = {
   '07':'July','08':'August','09':'September','10':'October','11':'November','12':'December'
 }
 
+// Period key derivation — MUST match AdminFinancials.derivePeriod() exactly,
+// otherwise reads miss writes. Calendar-day-of-month / 7, capped at W5.
+function derivePeriod(ws) {
+  if (!ws) return ''
+  const d  = typeof ws === 'string' ? new Date(ws + 'T12:00:00') : ws
+  const yr = d.getFullYear(), mo = d.getMonth() + 1
+  return `${yr}-${String(mo).padStart(2,'0')}-W${Math.min(Math.ceil(d.getDate()/7),5)}`
+}
+
 function fmtD(v, opts = {}) {
   if (v === null || v === undefined || v === '') return '—'
   const n = parseFloat(v) || 0
@@ -52,14 +61,11 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
   const [arData,  setArData]      = useState(null)
   const [cashData, setCashData]   = useState(null)
 
-  // Period key includes fiscal week: "2026-01-W2"
+  // Period key uses same derivation as AdminFinancials write side:
+  // "2026-04-W4" for April 26, 2026. Reads must match writes.
   const currentPeriod = React.useMemo(() => {
-    if (currentPeriodProp && weekStart) {
-      const fi = getFiscalInfo(weekStart)
-      return fi ? `${currentPeriodProp}-W${fi.weekInMonth}` : currentPeriodProp
-    }
-    return currentPeriodProp || null
-  }, [currentPeriodProp, weekStart])
+    return weekStart ? derivePeriod(weekStart) : null
+  }, [weekStart])
 
   // Load on mount and whenever weekStart changes
   useEffect(() => {
@@ -188,11 +194,24 @@ export default function FinancialTab({ weekStart, currentPeriod: currentPeriodPr
           <p className={styles.sub}>Month-to-date COGS, operating expenses &amp; inventory purchases</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Current period badge — driven by the chrome week selector at top of page */}
+          {/* Current month badge */}
           {currentPeriod && (
             <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: C.ink, color: '#fff' }}>
               {periodLabel(currentPeriod)}
             </span>
+          )}
+          {/* Browse history — only show if there are past months with data */}
+          {periods.length > 0 && (
+            <select
+              value={selected || ''}
+              onChange={e => setSelected(e.target.value)}
+              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--ink-60)', background: 'transparent', cursor: 'pointer' }}
+            >
+              {currentPeriod && <option value={currentPeriod}>{periodLabel(currentPeriod)}{!currentPeriodHasData ? ' (no data)' : ''}</option>}
+              {periods.filter(p => p.period !== currentPeriod).map(p => (
+                <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>
+              ))}
+            </select>
           )}
         </div>
       </div>

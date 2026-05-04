@@ -3,6 +3,7 @@ import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from '../supabase'
 import { getFiscalInfo } from '../fiscalCalendar'
 import AdminFinancials from './AdminFinancials'
+import AdminPeople from './AdminPeople'
 import styles from './AdminPanel.module.css'
 
 // ── KPI definitions ──────────────────────────────────────────────────────────
@@ -110,19 +111,6 @@ function emptyBNY() {
 }
 function getDefaultDays() {
   return Object.fromEntries(DAYS.map(d => [d, { text: '', status: 'gray' }]))
-}
-
-function emptyPeople() {
-  return {
-    bny_headcount: '', nj_headcount: '',
-    bny_reg_hrs:   '', nj_reg_hrs:   '',
-    bny_ot_hrs:    '', nj_ot_hrs:    '',
-    bny_pto_hrs:   '', nj_pto_hrs:   '',
-    bny_total_hrs: '', nj_total_hrs: '',
-    bny_total_pay: '', nj_total_pay: '',
-    bny_bonus_total: '', nj_bonus_total: '',
-    notes: '',
-  }
 }
 
 function NumberInput({ label, value, onChange, placeholder, readOnly }) {
@@ -307,9 +295,6 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   const [concerns, setConcerns] = useState('')
   const [activeDay, setActiveDay] = useState('Monday')
 
-  // People state — payroll/HR weekly entry
-  const [peopleData, setPeopleData] = useState(emptyPeople())
-
   const weekKey = format(effectiveWeek, 'yyyy-MM-dd')
   const fiscalInfo = getFiscalInfo(effectiveWeek)
   const weeksInMonth = fiscalInfo?.weeksInMonth || 4
@@ -328,37 +313,6 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
       }
     }
     loadProduction()
-  }, [effectiveWeek])
-
-  // Load people_weekly data
-  useEffect(() => {
-    async function loadPeople() {
-      const { data } = await supabase.from('people_weekly')
-        .select('*').eq('week_start', weekKey).maybeSingle()
-      if (data) {
-        // Pull only the scalar entry fields; leave nested arrays (employees, leaves, open_roles) untouched
-        setPeopleData({
-          bny_headcount:   data.bny_headcount   ?? '',
-          nj_headcount:    data.nj_headcount    ?? '',
-          bny_reg_hrs:     data.bny_reg_hrs     ?? '',
-          nj_reg_hrs:      data.nj_reg_hrs      ?? '',
-          bny_ot_hrs:      data.bny_ot_hrs      ?? '',
-          nj_ot_hrs:       data.nj_ot_hrs       ?? '',
-          bny_pto_hrs:     data.bny_pto_hrs     ?? '',
-          nj_pto_hrs:      data.nj_pto_hrs      ?? '',
-          bny_total_hrs:   data.bny_total_hrs   ?? '',
-          nj_total_hrs:    data.nj_total_hrs    ?? '',
-          bny_total_pay:   data.bny_total_pay   ?? '',
-          nj_total_pay:    data.nj_total_pay    ?? '',
-          bny_bonus_total: data.bny_bonus_total ?? '',
-          nj_bonus_total:  data.nj_bonus_total  ?? '',
-          notes:           data.notes           ?? '',
-        })
-      } else {
-        setPeopleData(emptyPeople())
-      }
-    }
-    loadPeople()
   }, [effectiveWeek])
 
   // Load KPI + log data from weekData
@@ -420,42 +374,6 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
     await onSave({ days, concerns })
     setSaving(false)
     setSaved('log')
-    setTimeout(() => setSaved(null), 2500)
-  }
-
-  async function savePeople() {
-    setSaving(true)
-    setSaveError(null)
-    // Convert empty strings to null so DB gets clean numerics where appropriate
-    const numOrNull = v => (v === '' || v == null) ? null : Number(v)
-    const payload = {
-      week_start:      weekKey,
-      bny_headcount:   numOrNull(peopleData.bny_headcount),
-      nj_headcount:    numOrNull(peopleData.nj_headcount),
-      bny_reg_hrs:     numOrNull(peopleData.bny_reg_hrs),
-      nj_reg_hrs:      numOrNull(peopleData.nj_reg_hrs),
-      bny_ot_hrs:      numOrNull(peopleData.bny_ot_hrs),
-      nj_ot_hrs:       numOrNull(peopleData.nj_ot_hrs),
-      bny_pto_hrs:     numOrNull(peopleData.bny_pto_hrs),
-      nj_pto_hrs:      numOrNull(peopleData.nj_pto_hrs),
-      bny_total_hrs:   numOrNull(peopleData.bny_total_hrs),
-      nj_total_hrs:    numOrNull(peopleData.nj_total_hrs),
-      bny_total_pay:   numOrNull(peopleData.bny_total_pay),
-      nj_total_pay:    numOrNull(peopleData.nj_total_pay),
-      bny_bonus_total: numOrNull(peopleData.bny_bonus_total),
-      nj_bonus_total:  numOrNull(peopleData.nj_bonus_total),
-      notes:           peopleData.notes || null,
-    }
-    const { error } = await supabase.from('people_weekly')
-      .upsert(payload, { onConflict: 'week_start' })
-    setSaving(false)
-    if (error) {
-      console.error('[AdminPanel savePeople]', error)
-      setSaveError(`Save failed: ${error.message}`)
-      setTimeout(() => setSaveError(null), 6000)
-      return
-    }
-    setSaved('people')
     setTimeout(() => setSaved(null), 2500)
   }
 
@@ -881,107 +799,10 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         </div>
       )}
 
-      {/* ── PEOPLE (payroll / HR) ── */}
+      {/* ── PEOPLE (payroll / HR upload) ── */}
       {activeSection === 'people' && (
         <div className={styles.panel}>
-          <div className={styles.panelActions}>
-            {saved === 'people' && <span className={styles.savedMsg}>✓ Saved</span>}
-            <button className="primary" onClick={savePeople} disabled={saving}>
-              {saving ? 'Saving…' : 'Save People Data'}
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 12 }}>
-
-            {/* Passaic / NJ side */}
-            <div>
-              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 500, margin: '0 0 12px', color: 'var(--ink, #3A3F45)' }}>
-                Passaic — Screen Print
-              </h3>
-              <NumberInput label="Headcount"
-                value={peopleData.nj_headcount}
-                onChange={v => setPeopleData(p => ({ ...p, nj_headcount: v }))}
-                placeholder="0" />
-              <NumberInput label="Regular hours"
-                value={peopleData.nj_reg_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, nj_reg_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Overtime hours"
-                value={peopleData.nj_ot_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, nj_ot_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="PTO hours"
-                value={peopleData.nj_pto_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, nj_pto_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Total hours"
-                value={peopleData.nj_total_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, nj_total_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Total gross payroll ($)"
-                value={peopleData.nj_total_pay}
-                onChange={v => setPeopleData(p => ({ ...p, nj_total_pay: v }))}
-                placeholder="0" />
-              <NumberInput label="Bonus total ($)"
-                value={peopleData.nj_bonus_total}
-                onChange={v => setPeopleData(p => ({ ...p, nj_bonus_total: v }))}
-                placeholder="0" />
-            </div>
-
-            {/* Brooklyn / BNY side */}
-            <div>
-              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 500, margin: '0 0 12px', color: 'var(--ink, #3A3F45)' }}>
-                Brooklyn — Digital
-              </h3>
-              <NumberInput label="Headcount"
-                value={peopleData.bny_headcount}
-                onChange={v => setPeopleData(p => ({ ...p, bny_headcount: v }))}
-                placeholder="0" />
-              <NumberInput label="Regular hours"
-                value={peopleData.bny_reg_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, bny_reg_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Overtime hours"
-                value={peopleData.bny_ot_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, bny_ot_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="PTO hours"
-                value={peopleData.bny_pto_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, bny_pto_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Total hours"
-                value={peopleData.bny_total_hrs}
-                onChange={v => setPeopleData(p => ({ ...p, bny_total_hrs: v }))}
-                placeholder="0" />
-              <NumberInput label="Total gross payroll ($)"
-                value={peopleData.bny_total_pay}
-                onChange={v => setPeopleData(p => ({ ...p, bny_total_pay: v }))}
-                placeholder="0" />
-              <NumberInput label="Bonus total ($)"
-                value={peopleData.bny_bonus_total}
-                onChange={v => setPeopleData(p => ({ ...p, bny_bonus_total: v }))}
-                placeholder="0" />
-            </div>
-          </div>
-
-          <div style={{ marginTop: 20 }}>
-            <label style={{
-              display: 'block',
-              fontSize: 11,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: 'var(--ink-50, #6B7280)',
-              fontWeight: 600,
-              marginBottom: 6,
-            }}>Notes</label>
-            <textarea
-              value={peopleData.notes}
-              onChange={e => setPeopleData(p => ({ ...p, notes: e.target.value }))}
-              rows={3}
-              placeholder="Anything notable about this week's people data — leaves, hires, departures, bonuses, etc."
-              style={{ width: '100%' }}
-            />
-          </div>
+          <AdminPeople weekStart={weekKey} />
         </div>
       )}
 
