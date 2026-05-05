@@ -264,34 +264,52 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     const { FISCAL_CALENDAR } = await import('../fiscalCalendar')
     const currentKey = weekKey(weekStart)
     const currentInfo = FISCAL_CALENDAR[currentKey]
+    const currentCalMonth = currentKey.substring(0, 7) // "YYYY-MM"
 
-    // Rolling table — current month only (per Estephanie)
-    let monthWeeksForRolling = []
-    if (currentInfo) {
-      monthWeeksForRolling = Object.entries(FISCAL_CALENDAR)
-        .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
-        .map(([k]) => k)
-        .sort()
+    // Rolling table — CALENDAR month only (Peter's pref).
+    // The 4-4-5 fiscal calendar treats April 2026 as a 5-week fiscal month
+    // running 3/29 → 5/2; that includes a week whose Sunday-start is in
+    // March, which reads as "wrong month" on a display labeled
+    // "(Current Month)". This filter keeps only weeks whose week_start
+    // ISO date falls inside the calendar month.
+    const monthWeeksForRolling = Object.keys(FISCAL_CALENDAR)
+      .filter(k => k.substring(0, 7) === currentCalMonth && k <= currentKey)
+      .sort()
+    if (monthWeeksForRolling.length > 0) {
+      const { data } = await supabase
+        .from('production')
+        .select('*')
+        .in('week_start', monthWeeksForRolling)
+        .order('week_start', { ascending: true })
+      setHistory(data || [])
     } else {
-      monthWeeksForRolling = Array.from({ length: 5 }, (_, i) => weekKey(subWeeks(weekStart, 4 - i)))
+      setHistory([])
     }
-    const { data } = await supabase.from('production').select('*').in('week_start', monthWeeksForRolling).order('week_start', { ascending: true })
-    setHistory(data || [])
 
-    // MTD and YTD
-    if (currentInfo) {
-      const monthWeeks = Object.entries(FISCAL_CALENDAR)
-        .filter(([k, v]) => v.month === currentInfo.month && v.quarter === currentInfo.quarter && k <= currentKey)
-        .map(([k]) => k)
-        .sort()
-      const { data: mtd } = await supabase.from('production').select('*').in('week_start', monthWeeks).order('week_start', { ascending: true })
+    // MTD — same calendar-month filter for consistency, so the rolling
+    // table and MTD summary show the same number of weeks.
+    if (monthWeeksForRolling.length > 0) {
+      const { data: mtd } = await supabase
+        .from('production')
+        .select('*')
+        .in('week_start', monthWeeksForRolling)
+        .order('week_start', { ascending: true })
       setMtdData(mtd || [])
+    } else {
+      setMtdData([])
+    }
 
+    // YTD — keep fiscal-year-based for budget-against-plan alignment
+    if (currentInfo) {
       const ytdWeeks = Object.entries(FISCAL_CALENDAR)
         .filter(([k]) => k <= currentKey)
         .map(([k]) => k)
         .sort()
-      const { data: ytd } = await supabase.from('production').select('*').in('week_start', ytdWeeks).order('week_start', { ascending: true })
+      const { data: ytd } = await supabase
+        .from('production')
+        .select('*')
+        .in('week_start', ytdWeeks)
+        .order('week_start', { ascending: true })
       setYtdData(ytd || [])
     }
   }
@@ -354,10 +372,24 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     fiscal: getFiscalLabel(h.week_start),
     total: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.yards), 0),
     waste: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.waste), 0),
+    color: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.colorYards), 0),
+    invoicedYds: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.invoiceYds), 0),
+    revenue: ['fabric','grass','paper'].reduce((s,k) => s + n(h.nj_data?.[k]?.invoiceRev), 0)
+              + n(h.nj_data?.miscFees),
     fabric: n(h.nj_data?.fabric?.yards), grass: n(h.nj_data?.grass?.yards), paper: n(h.nj_data?.paper?.yards),
   }))
   const historyBNY = history.map(h => ({
     week: h.week_start,
+    replen:   n(h.bny_data?.replen),
+    mto:      n(h.bny_data?.mto),
+    hos:      n(h.bny_data?.hos),
+    memo:     n(h.bny_data?.memo),
+    contract: n(h.bny_data?.contract),
+    invoicedYds: ['invYdsReplen','invYdsMto','invYdsHos','invYdsMemo','invYdsContract']
+                   .reduce((s, k) => s + n(h.bny_data?.[k]), 0),
+    revenue:    ['incomeReplen','incomeMto','incomeHos','incomeMemo','incomeContract']
+                   .reduce((s, k) => s + n(h.bny_data?.[k]), 0)
+                + n(h.bny_data?.miscFees),
     total: ['replen','mto','hos','memo','contract'].reduce((s,k) => s + n(h.bny_data?.[k]), 0),
   }))
 
@@ -384,13 +416,49 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     memo: mtdData.reduce((s,h) => s + n(h.bny_data?.memo), 0),
     contract: mtdData.reduce((s,h) => s + n(h.bny_data?.contract), 0),
   }
-  // Fiscal info — declared here so it's available for MTD target calculations below
+  // Fiscal info — kept for fiscal label rendering
   const fiscalInfo = getFiscalInfo(weekStart)
-  const weeksInMonth = fiscalInfo?.weeksInMonth || 4
+
+  // Calendar-month week count — counts the Sundays that fall in the
+  // current calendar month up to and including the current week.
+  // For week of 4/26/2026 this returns 4 (4/5, 4/12, 4/19, 4/26).
+  // We use this (not the fiscal week-in-month) so target multipliers
+  // and the visible week count agree on the rolling/MTD display.
+  const monthWeeksElapsed = (() => {
+    const currentKey = weekKey(weekStart)
+    const currentCalMonth = currentKey.substring(0, 7)
+    let count = 0
+    let cur = new Date(weekStart)
+    while (weekKey(cur).substring(0, 7) === currentCalMonth) {
+      count++
+      cur.setDate(cur.getDate() - 7)
+    }
+    return count
+  })()
+
+  // weeksInMonth — total Sundays in current calendar month (4 or 5)
+  const weeksInMonth = (() => {
+    const currentKey = weekKey(weekStart)
+    const currentCalMonth = currentKey.substring(0, 7)
+    const [yearStr, monthStr] = currentCalMonth.split('-')
+    const year = parseInt(yearStr, 10)
+    const month = parseInt(monthStr, 10) - 1 // JS month is 0-indexed
+    let count = 0
+    const d = new Date(year, month, 1)
+    while (d.getMonth() === month) {
+      if (d.getDay() === 0) count++
+      d.setDate(d.getDate() + 1)
+    }
+    return count || 4
+  })()
   const procurementMonthlyTarget = getProcurementMonthlyTarget(weeksInMonth)
 
-  // Accumulating targets = fiscal weeks elapsed × weekly target (uses calendar position, not data count)
-  const mtdFiscalWeeks = fiscalInfo?.weekInMonth || mtdWeeksWithData
+  // Accumulating targets = calendar weeks elapsed × weekly target.
+  // (Was previously fiscalInfo.weekInMonth — which over-counts in
+  // 4-4-5 fiscal months whose first week starts in the prior calendar
+  // month, causing the "5 weeks of target vs 4 weeks of actuals"
+  // visual mismatch Peter flagged.)
+  const mtdFiscalWeeks = monthWeeksElapsed || mtdWeeksWithData
   const mtdNJTarget = { fabric: NJ_TARGETS.fabric.yards * mtdFiscalWeeks, grass: NJ_TARGETS.grass.yards * mtdFiscalWeeks, paper: NJ_TARGETS.paper.yards * mtdFiscalWeeks, total: NJ_TOTAL_TARGET * mtdFiscalWeeks }
   const mtdBNYTarget = { total: BNY_TARGETS.total * mtdFiscalWeeks, replen: BNY_TARGETS.replen * mtdFiscalWeeks, mto: BNY_TARGETS.mto * mtdFiscalWeeks, hos: BNY_TARGETS.hos * mtdFiscalWeeks, memo: BNY_TARGETS.memo * mtdFiscalWeeks, contract: BNY_TARGETS.contract * mtdFiscalWeeks }
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
@@ -824,7 +892,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
         <div className={styles.historySection}>
           <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
             NJ — Capacity (Current Month)
-            <CommentButton weekStart={weekStart} section="dash-rolling-nj" label="NJ Rolling 5-Week" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+            <CommentButton weekStart={weekStart} section="dash-rolling-nj" label="NJ Passaic Rolling" currentUser={currentUser} onCommentPosted={onCommentPosted} />
           </div>
           <div className={styles.tableWrap}>
             <table className={styles.histTable}>
@@ -835,8 +903,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                   <th>Grass</th>
                   <th>Paper</th>
                   <th>Total</th>
+                  <th>Color Yds</th>
                   <th>Waste</th>
                   <th>Net Yds</th>
+                  <th>Inv Yds</th>
+                  <th>Revenue</th>
                 </tr>
                 <tr className={styles.targetRow}>
                   <td>Target</td>
@@ -844,8 +915,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                   <td>{NJ_TARGETS.grass.yards.toLocaleString()}</td>
                   <td>{NJ_TARGETS.paper.yards.toLocaleString()}</td>
                   <td>{NJ_TOTAL_TARGET.toLocaleString()}</td>
+                  <td>{(NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards).toLocaleString()}</td>
                   <td>&lt;10%</td>
                   <td>—</td>
+                  <td>{NJ_TARGETS.weeklyInvoiceYds.toLocaleString()}</td>
+                  <td>${NJ_TARGETS.weeklyRevenue.toLocaleString()}</td>
                 </tr>
               </thead>
               <tbody>
@@ -855,6 +929,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                   const netYds = row.total - row.waste
                   const fiscalInfo = getFiscalLabel(row.week + 'T12:00:00')
                   const shortLabel = fiscalInfo ? fiscalInfo.split('·')[0].trim() : row.week
+                  const njColorTgt = NJ_TARGETS.fabric.colorYards + NJ_TARGETS.grass.colorYards + NJ_TARGETS.paper.colorYards
                   return (
                     <tr key={row.week} className={`${styles.dataRow} ${isCurrent ? styles.currentRow : styles.historicalRow}`}>
                       <td className={styles.weekCell}>
@@ -865,8 +940,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                       <td><Dot status={statusColor(row.grass, NJ_TARGETS.grass.yards)} /> {row.grass ? row.grass.toLocaleString() : '—'}</td>
                       <td><Dot status={statusColor(row.paper, NJ_TARGETS.paper.yards)} /> {row.paper ? row.paper.toLocaleString() : '—'}</td>
                       <td className={styles.totalCell}><Dot status={statusColor(row.total, NJ_TOTAL_TARGET)} /> {row.total ? row.total.toLocaleString() : '—'}</td>
+                      <td>{row.color ? row.color.toLocaleString() : '—'}</td>
                       <td><Dot status={statusColor(wastePct, NJ_TARGETS.wasteTarget, true)} /> {wastePct ? wastePct + '%' : '—'}</td>
                       <td className={styles.netCell}>{netYds > 0 ? netYds.toLocaleString() : '—'}</td>
+                      <td>{row.invoicedYds ? row.invoicedYds.toLocaleString() : '—'}</td>
+                      <td>{row.revenue ? '$' + Math.round(row.revenue).toLocaleString() : '—'}</td>
                     </tr>
                   )
                 })}
@@ -878,9 +956,75 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
             <div className={styles.trendRow}>
               <span className={styles.trendLabel}>Waste % trend</span>
               <Sparkline values={wasteTrend} target={8} />
-              <span className={styles.trendNote}>{wasteTrend[wasteTrend.length-1]}% this week vs {wasteTrend[0]}% 4 weeks ago</span>
+              <span className={styles.trendNote}>
+                {wasteTrend[wasteTrend.length-1]}% this week
+                {wasteTrend.length > 1 && (
+                  <> vs {wasteTrend[0]}% {wasteTrend.length === 2 ? '1 week' : `${wasteTrend.length-1} weeks`} ago</>
+                )}
+              </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ROLLING HISTORY TABLE — BNY (parallels the NJ table above) */}
+      {history.length > 0 && (
+        <div className={styles.historySection}>
+          <div className={styles.historySectionTitle} style={{display:'flex',alignItems:'center',gap:8}}>
+            BNY — Capacity (Current Month)
+            <CommentButton weekStart={weekStart} section="dash-rolling-bny" label="BNY Brooklyn Rolling" currentUser={currentUser} onCommentPosted={onCommentPosted} />
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={styles.histTable}>
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th>Replen</th>
+                  <th>MTO</th>
+                  <th>HOS</th>
+                  <th>Memo</th>
+                  <th>Contract</th>
+                  <th>Total</th>
+                  <th>Inv Yds</th>
+                  <th>Revenue</th>
+                </tr>
+                <tr className={styles.targetRow}>
+                  <td>Target</td>
+                  <td>{BNY_TARGETS.replen.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.mto.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.hos.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.memo.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.contract.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.total.toLocaleString()}</td>
+                  <td>{BNY_TARGETS.total.toLocaleString()}</td>
+                  <td>${BNY_TARGETS.totalIncomeInvoiced.toLocaleString()}</td>
+                </tr>
+              </thead>
+              <tbody>
+                {historyBNY.map((row, i) => {
+                  const isCurrent = row.week === weekKey(weekStart)
+                  const fiscalInfo = getFiscalLabel(row.week + 'T12:00:00')
+                  const shortLabel = fiscalInfo ? fiscalInfo.split('·')[0].trim() : row.week
+                  return (
+                    <tr key={row.week} className={`${styles.dataRow} ${isCurrent ? styles.currentRow : styles.historicalRow}`}>
+                      <td className={styles.weekCell}>
+                        {shortLabel}
+                        {isCurrent && <span className={styles.currBadge}>Current</span>}
+                      </td>
+                      <td><Dot status={statusColor(row.replen, BNY_TARGETS.replen)} /> {row.replen ? row.replen.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.mto, BNY_TARGETS.mto)} /> {row.mto ? row.mto.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.hos, BNY_TARGETS.hos)} /> {row.hos ? row.hos.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.memo, BNY_TARGETS.memo)} /> {row.memo ? row.memo.toLocaleString() : '—'}</td>
+                      <td><Dot status={statusColor(row.contract, BNY_TARGETS.contract)} /> {row.contract ? row.contract.toLocaleString() : '—'}</td>
+                      <td className={styles.totalCell}><Dot status={statusColor(row.total, BNY_TARGETS.total)} /> {row.total ? row.total.toLocaleString() : '—'}</td>
+                      <td>{row.invoicedYds ? row.invoicedYds.toLocaleString() : '—'}</td>
+                      <td>{row.revenue ? '$' + Math.round(row.revenue).toLocaleString() : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
