@@ -242,7 +242,13 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const assignmentsByMachineDay = useMemo(() => {
     const m = {}
     for (const a of enrichedAssignments) {
-      const key = `${a.table_code}|${a.day_of_week}`
+      // Normalize day_of_week on read — pre-fix legacy rows may still
+      // be stored as numeric (0..6) while new rows are TEXT ('Sun'..'Sat').
+      // dowText() handles both shapes; this keeps the in-memory index
+      // text-keyed regardless of what's in the row.
+      const dow = dowText(a.day_of_week)
+      if (!dow) continue // skip malformed rows
+      const key = `${a.table_code}|${dow}`
       if (!m[key]) m[key] = []
       m[key].push(a)
     }
@@ -315,7 +321,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   }
 
   async function updateMachineDayOperator(machine, dayOfWeek, operator) {
-    const cellAssignments = assignmentsByMachineDay[`${machine}|${dayOfWeek}`] || []
+    const cellAssignments = assignmentsByMachineDay[`${machine}|${dowText(dayOfWeek)}`] || []
     if (cellAssignments.length === 0) return
     const ids = cellAssignments.map(a => a.id)
     const { error } = await supabase.from('sched_assignments')
@@ -502,14 +508,16 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             // so we don't push existing cells over capacity either.
             const cellTotals = {}
             for (const a of enrichedAssignments) {
-              const key = `${a.table_code}|${a.day_of_week}`
+              const dow = dowText(a.day_of_week)
+              if (!dow) continue
+              const key = `${a.table_code}|${dow}`
               cellTotals[key] = (cellTotals[key] || 0) + Number(a.planned_yards || 0)
             }
 
             const accepted = []
             const skipped = []
             for (const p of proposals) {
-              const key = `${p.machine}|${p.day_of_week}`
+              const key = `${p.machine}|${dowText(p.day_of_week)}`
               const loc = brooklynMachineNames.has(p.machine)
                 ? 'brooklyn'
                 : passaicMachineNames.has(p.machine) ? 'passaic' : null
@@ -523,7 +531,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               if (current + yd > cap) {
                 skipped.push({
                   p,
-                  reason: `${p.machine} ${DAY_LABELS[p.day_of_week] || `d${p.day_of_week}`} would be ${current + yd}/${cap}`,
+                  reason: `${p.machine} ${dowText(p.day_of_week) || `d${p.day_of_week}`} would be ${current + yd}/${cap}`,
                 })
                 continue
               }
@@ -565,7 +573,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           location={assignModal.location}
           proposed={assignModal.proposed_yards}
           dailyCapacity={capacityFor(assignModal.machine, assignModal.location)}
-          existingOnCell={assignmentsByMachineDay[`${assignModal.machine}|${assignModal.day_of_week}`] || []}
+          existingOnCell={assignmentsByMachineDay[`${assignModal.machine}|${dowText(assignModal.day_of_week)}`] || []}
           onCancel={() => setAssignModal(null)}
           onConfirm={(yards, operator) => commitAssignment({
             po: assignModal.po,
@@ -742,7 +750,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
 function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
   let weekTotal = 0
   for (let d = 0; d < NUM_DAYS; d++) {
-    const cell = assignmentsByMachineDay[`${machine.name}|${d}`] || []
+    const cell = assignmentsByMachineDay[`${machine.name}|${dowText(d)}`] || []
     weekTotal += cell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   }
   const weekCap = machine.capacity * NUM_DAYS
@@ -763,7 +771,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
           machine={machine}
           dayOfWeek={d}
           locationKey={locationKey}
-          assignments={assignmentsByMachineDay[`${machine.name}|${d}`] || []}
+          assignments={assignmentsByMachineDay[`${machine.name}|${dowText(d)}`] || []}
           selectedPO={selectedPO}
           onClick={() => onCellClick(machine.name, d, locationKey)}
           onRemoveAssignment={onRemoveAssignment}
