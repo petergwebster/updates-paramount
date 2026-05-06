@@ -95,6 +95,25 @@ const BNY_OPERATORS = {
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Coerce day-of-week to the text form Postgres requires.
+//   - sched_assignments.day_of_week has CHECK ('Sun'..'Sat') — TEXT only.
+//   - sched_daily_ops.day_of_week has the same CHECK constraint.
+// Internally the BNY UI passes day-of-week as a numeric index (0..6),
+// which matches DAY_LABELS array positions. Some callers (e.g. AI
+// proposals) may already pass text. This helper accepts either and
+// always returns text. Without it, every schedule write hits the
+// "violates check constraint sched_assignments_dow_check" error
+// Wendy reported on 5/5/2026 when assigning Bianca · Sun.
+function dowText(d) {
+  if (typeof d === 'string') {
+    return DAY_LABELS.includes(d) ? d : null
+  }
+  if (typeof d === 'number' && d >= 0 && d <= 6) {
+    return DAY_LABELS[d]
+  }
+  return null
+}
 const NUM_DAYS = 7
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -258,7 +277,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         product_type: po.product_type,
         table_code: machine,
         week_start: isoDate(weekStart),
-        day_of_week: dayOfWeek,
+        day_of_week: dowText(dayOfWeek),
         planned_yards: yards,
         planned_cy: null,
         assigned_by: null,
@@ -311,7 +330,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         site: 'bny',
         week_start: isoDate(weekStart),
         table_code: machine,
-        day_of_week: dayOfWeek,
+        day_of_week: dowText(dayOfWeek),
         shift: '1st',  // BNY runs 1st only by design (digital, single shift)
         operator_1: operator || null,
       })
@@ -520,7 +539,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                 product_type: p.product_type || null,
                 table_code: p.machine,
                 week_start: isoDate(weekStart),
-                day_of_week: p.day_of_week,
+                day_of_week: dowText(p.day_of_week),
                 planned_yards: p.planned_yards,
                 planned_cy: null,
                 operator: null,
