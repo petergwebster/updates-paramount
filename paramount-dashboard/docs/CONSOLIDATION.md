@@ -1,6 +1,6 @@
 # Consolidation & Cleanup Plan
 
-> Phase 4 deliverable of the architecture audit. **`ARCHITECTURE.md` §4 will link here.** Covers the shared-utility gap analysis (F-004, F-006, F-007, F-008), the dead-code deletion plan (F-002, F-011, F-017, F-022, F-023, F-025), and the target consolidation to `budgets.js` (F-005).
+> Phase 4 deliverable of the architecture audit. **`ARCHITECTURE.md` §5 links here.** Covers the shared-utility gap analysis (F-004, F-006, F-007, F-008), the dead-code deletion plan (F-002, F-011, F-017, F-022, F-023, F-025), and the target consolidation to `budgets.js` (F-005).
 > Built from a line-cited verification fan-out, with the three findings that contradicted prior docs **re-verified by direct read** before being written here (see §0).
 > Status: **DRAFT — awaiting sign-off.** Scope is **analysis + plan only**; the code/migration changes are a separate post-audit implementation pass (audit Decision 1).
 

@@ -1,6 +1,6 @@
 # Data Model
 
-> Phase 2 deliverable of the architecture audit. **`ARCHITECTURE.md` §1 links here** as the canonical data-model reference.
+> Phase 2 deliverable of the architecture audit. **`ARCHITECTURE.md` §3 links here** as the canonical data-model reference.
 > Built from the live Supabase schema export (`db/schema.sql`, captured May 2026, project `twsfmzohaymobqmmeayd`) cross-referenced against the Phase 1 module map (`docs/MODULE_MAP.md`) and verified against the live DB via SQL where the export was lossy.
 > Status: **DRAFT — awaiting sign-off.**
 

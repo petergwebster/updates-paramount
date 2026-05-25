@@ -1,6 +1,6 @@
 # Week Anchoring
 
-> Phase 3 deliverable of the architecture audit. **`ARCHITECTURE.md` §3 will link here** as the canonical week-anchoring reference. Resolves F-001 (define canonical anchor + migration plan) and F-009 (confirm the Heartbeat fiscal-label bug).
+> Phase 3 deliverable of the architecture audit. **`ARCHITECTURE.md` §4 links here** as the canonical week-anchoring reference. Resolves F-001 (define canonical anchor + migration plan) and F-009 (confirm the Heartbeat fiscal-label bug).
 > Built from a line-cited verification fan-out across the 16 week-aware modules, cross-checked against direct reads of the contested call sites (`App.jsx`, `ExecutiveDashboardPage.jsx`, `KPIScorecard.jsx`, `ProductionDashboard.jsx`) and the `getFiscalInfo` implementation.
 > Status: **DRAFT — awaiting sign-off.** Scope is **analysis + migration plan only**; the code change is a separate post-audit implementation pass (audit Decision 1).
 

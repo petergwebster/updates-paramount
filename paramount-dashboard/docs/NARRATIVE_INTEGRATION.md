@@ -1,6 +1,6 @@
 # Narrative Integration
 
-> Phase 5 deliverable of the architecture audit. **`ARCHITECTURE.md` §5 will link here** as the canonical reference for the AI/narrative layer.
+> Phase 5 deliverable of the architecture audit. **`ARCHITECTURE.md` §6 links here** as the canonical reference for the AI/narrative layer.
 > Built from **direct line-cited reads** of the narrative spine — `contextBuilder.js`, `ClaudeReadBlock.jsx`, the four prompt templates (`dashboardNarrative.js`, `weeklyRecapNarrative.js`, `heartbeatNarrative.js`, `monthlyBriefNarrative.js`), and the server-side `monday-newgoods-observations.ts` — cross-referenced against `MODULE_MAP.md` (components), `DATA_MODEL.md` (the AI/Narrative tables), and `FINDINGS_LOG.md` (F-010 resolved-here; F-026–F-029 opened-here).
 > Status: **DRAFT — awaiting sign-off.** Scope is **analysis + target architecture + migration plan only**; the code/schema changes are a separate post-audit implementation pass (audit Decision 1).
 

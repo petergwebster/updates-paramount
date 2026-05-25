@@ -1,7 +1,7 @@
 # Findings Log
 
 > Running capture of surprises, recap/code contradictions, and latent bugs found during the audit.
-> Feeds the prioritized backlog (ARCHITECTURE.md §5). **Not yet ranked** — that happens in Phase 6.
+> Feeds the prioritized backlog (**`ARCHITECTURE.md` §7** — the ranked roadmap). **Ranked in Phase 6**: scored on impact × blast-radius × dependency, effort-tagged S/M/L, and sequenced into execution waves (the `Wave` column there is the source of truth).
 > Confidence: **High** = line-verified or self-evident · **Med** = strong lead from breadth read, needs confirm · **Low** = speculative.
 > "Resolve in" = the phase that will confirm/scope it.
 
