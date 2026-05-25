@@ -16,11 +16,11 @@
 | F-007 | Age-bucket logic + key naming inconsistent across modules | duplication | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-008 | productionRollup logic reimplemented in ~5 places | duplication | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-009 | Heartbeat passes Sunday date to Monday-keyed `getFiscalLabel` (one instance of app-wide Class 2) | latent bug | High | Phase 3 ✓ confirmed |
-| F-010 | AI calls inconsistently logged to `ai_call_log` | observability | High | Phase 5 |
+| F-010 | AI calls inconsistently logged to `ai_call_log` | observability | High | Phase 5 ✓ (plan — `NARRATIVE_INTEGRATION.md`) |
 | F-011 | `PlantRollup.jsx` suspected unused | dead code | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-012 | Two `/api/claude` impls; Node `claude.mjs` confirmed unreachable | dead code/config | High | Phase 2/4 |
 | F-013 | Node functions not deployed: dir-casing + missing edge files (CONFIRMED) | config/deploy | High | Phase 2 |
-| F-014 | `VITE_`-prefixed server secrets (latent client exposure) | security | High | (seeded) |
+| F-014 | `VITE_`-prefixed server secrets (latent client exposure) | security | High | Phase 5 Stage 0 prereq (`NARRATIVE_INTEGRATION.md`) |
 | F-015 | `supabase-schema.sql` stale vs live DB | doc/data | High | Phase 2 |
 | F-016 | RLS is not an access boundary: 25 tables anon-exposed (RLS disabled), incl. financials/payroll-inputs/AI logs | security | High | Phase 2 |
 | F-017 | `generate-pdf.mjs` not deployed + likely unused dead code | dead code | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
@@ -32,6 +32,10 @@
 | F-023 | `comments` dead table | dead code | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-024 | `sched_daily_ops` composite-unique export gap (2nd instance of F-021) | doc/data | Med | Phase 2 |
 | F-025 | `Correspondence.jsx` orphaned (imported `App.jsx:7`, never mounted) — now mapped | dead code | High | Phase 4 ✓ |
+| F-026 | Narrative-memory governance: promote-gate primary, guardrails backstop | design/security | High | Phase 5 ✓ (plan — `NARRATIVE_INTEGRATION.md`) |
+| F-027 | Prompt templates in 3 locations; no shared scaffold | duplication | Med | Phase 5 ✓ (`NARRATIVE_INTEGRATION.md`) |
+| F-028 | Fragmented context assembly — 3 independent context builders | duplication | High | Phase 5 ✓ (`NARRATIVE_INTEGRATION.md`) |
+| F-029 | Model-ID drift / stale hardcoded model across AI surfaces | config/correctness | Med | Phase 5 ✓ (`NARRATIVE_INTEGRATION.md`) |
 
 ---
 
@@ -89,8 +93,9 @@ Yards/color-yards/waste/revenue aggregation appears bespoke in `HeartbeatPage` (
 `HeartbeatPage` computes a Sunday `weekKey` but calls `getFiscalLabel(weekStart)` whose `FISCAL_CALENDAR` is Monday-keyed. May mislabel/return null on some weeks. Confirm in Phase 3 alongside F-001.
 **Phase 3 — CONFIRMED (Med→High):** `HeartbeatPage.jsx:145` passes the Sunday computed at line 144 to `getFiscalLabel` → returns `null` **every** week (not just some), so the Heartbeat fiscal label is silently blank. **Not Heartbeat-specific** — it is one instance of the app-wide **Class 2** mismatch documented in `WEEK_ANCHORING.md §2/§4`. Subsumed by the F-001 fix (re-key + normalize closes it and its six+ siblings at once).
 
-### F-010 — Inconsistent AI-call logging · observability · High
+### F-010 — Inconsistent AI-call logging · observability · High — RESOLVED-here (plan)
 `ClaudeReadBlock` logs every call to `ai_call_log` via `contextBuilder.logAICall`; the ad-hoc `/api/claude` callers (`KPIScorecard`, `AdminPanel`, `AdminPeople`, `MonthlyBriefs`) do not. Gaps in cost/usage visibility. Relevant to Phase 5 narrative-unification (centralizing AI access).
+**Phase 5 — RESOLVED (plan): see `docs/NARRATIVE_INTEGRATION.md`.** Verified via direct read: `logAICall` exists in exactly **two** files (`contextBuilder.js:575`, `ClaudeReadBlock.jsx`) — so of the 8 AI surfaces, **5 are unlogged** (KPI narrative, MonthlyBriefs, AdminPeople, both schedulers' streaming) and even the server-side New Goods observations call sits outside `ai_call_log` (it records `model_used` in `mng_observations` instead). Fix = the **narrative gateway** (NARRATIVE_INTEGRATION §3.1, Stage 0) makes `logAICall` non-optional on every non-streaming path; the streaming advisor emits its own log. Code deferred to the implementation pass.
 
 ### F-011 — PlantRollup unused · dead code · Med
 `PlantRollup.jsx` is fully built but not imported by `HeartbeatPage` (which inlines a richer `PlantPulse`). Confirm no other importer; delete if dead.
@@ -106,6 +111,7 @@ Edge `claude.ts` and Node `Functions/claude.mjs` both claim `/api/claude`; `netl
 
 ### F-014 — VITE_-prefixed server secrets · security · High (seeded /init)
 `VITE_ANTHROPIC_API_KEY`, `VITE_MONDAY_TOKEN` are server-only today but the prefix means any future frontend reference bundles them into public JS. Rename to unprefixed; update `claude.ts`, `claude-stream.mjs`, `Functions/claude.mjs`, `lock-wip.js` (newgoods funcs already accept fallback).
+**Phase 5 — Stage 0 prerequisite (integrated, not a parallel epic):** the **Anthropic-key half** of F-014 is folded into the narrative-integration migration — the server-side narrative gateway (`NARRATIVE_INTEGRATION.md §3.1`/§4 Stage 0) cannot stand up without moving the Anthropic key server-only, so that rename lands *with* Stage 0. (The `VITE_MONDAY_TOKEN` half stays with the netlify/`lock-wip` cleanup, F-013.)
 
 ### F-015 — Stale schema file · doc/data · High (seeded /init)
 `supabase-schema.sql` documents only the original 3 tables; live DB has 42 tables + 8 views via uncommitted migrations. **Resolved — live export captured** (`db/schema.sql`, May 2026, project `twsfmzohaymobqmmeayd`) and feeds `DATA_MODEL.md`. **Annotation:** the export is **constraint-lossy** — it reconstructs `CREATE TABLE` from inline constraints only and silently drops standalone/`ALTER`-added objects (composite uniques, extra indexes). See `DATA_MODEL §0` and F-021/F-024; verify composite constraints against the live DB before relying on them.
@@ -117,6 +123,7 @@ Edge `claude.ts` and Node `Functions/claude.mjs` both claim `/api/claude`; `netl
 - **`people_weekly` is the ONLY genuinely role-restrictive table** (authenticated read, **admin-only** writes via a `profiles.role='admin'` subquery). The `authenticated`-scoped tables (`dashboard_narratives`, `sched_*`, `mng_*`, `mos_material_color`) are the next-most-locked but still not role-gated.
 - **Original instance (folded in):** `slack-sync.ts` writes `section_comments` with `VITE_SUPABASE_ANON_KEY` rather than the service role — it succeeds *only* because `section_comments` is wide-open public. Server-side writes should use the service role regardless of posture.
 **Severity High — to be ranked in Phase 6 alongside F-001 as top-priority candidates** (Phase 6 owns the ranking). Related: F-014 (the other High security item).
+**Phase 5 — partial mitigation (noted, not resolved):** the server-side narrative gateway (`NARRATIVE_INTEGRATION.md §3.1`/§4 Stage 0) routes `ai_call_log` + `narrative_memory` writes through the **service role**, so those two tables no longer depend on anon-writability. Narrow win for two tables only — the **full RLS-posture rework (the ~25 anon-exposed tables) remains its own security epic**, untouched by the narrative work.
 **Caveat (see `DATA_MODEL.md §5`):** "no policy → RLS disabled → anon access" is the export's stated assumption. If RLS is *enabled with no policy* on the 25, anon is denied and reads route through the definer-rights `v_current_*` views instead. Confirm per-table with `SELECT relrowsecurity FROM pg_class WHERE relname='<t>'` before treating any as open.
 
 ### F-017 — generate-pdf.mjs not deployed + likely unused · dead code · Med
@@ -146,6 +153,18 @@ Second instance of the F-021 export-lossiness pattern. `sched_daily_ops` shows o
 ### F-025 — `Correspondence.jsx` orphaned · dead code · High — REFRAMED (was doc-gap)
 **Phase 4 correction.** `Correspondence.jsx` was thought to be a *live but unmapped* component; **direct grep proves it orphaned** — imported at `App.jsx:7` but **never mounted** (no `<Correspondence>` render anywhere in `src/`). It is a third orphan alongside `ProductionTab` (F-002) and `PlantRollup` (F-011), not a doc gap. Because it is the sole consumer of the `correspondence` table + Storage bucket, both are effectively dead too.
 **Done this pass:** mapped in `MODULE_MAP.md §2` (flagged ORPHANED); `DATA_MODEL.md §2`'s incorrect "Live" line corrected to orphaned; added to the `CONSOLIDATION.md §2` deletion plan (Layer 1: remove `App.jsx:7` import → delete `Correspondence.jsx` + `.module.css`; decide the table/bucket cascade). (Split from F-023.)
+
+### F-026 — Narrative-memory governance · design/security · High — opened Phase 5
+The accumulating-memory design (NARRATIVE_INTEGRATION §1, Decision 1) means narratives feed forward into future generations. Today this already happens **ungated**: `contextBuilder.fetchRecentNarratives` (`contextBuilder.js:264–285`) pulls the last 4 `dashboard_narratives` — edited or not — into every new generation's context. Owner decision (May 2026): governance is a **promote-gate** — edits/advisor write-backs are local-and-audited by default; an explicit, one-click-but-visible **promote** (restricted to admin + curators Wendy/Chandler, scoped to their `narrative_memory.scope` domains) is what makes an entry propagate. Provenance/confidence/retractability/audit are the **backstop**, not the gate. Risk reframed from "raw propagation poisons the story" to "a missing/mis-scoped gate." Design in NARRATIVE_INTEGRATION §3.5; cutover is Stage 3 (repoint the feed-forward read to promoted rows).
+
+### F-027 — Prompt templates in 3 locations · duplication · Med — opened Phase 5
+Prompt builders live in three dirs: `src/lib/prompts/` (`dashboardNarrative`, `weeklyRecapNarrative`), `src/prompts/` (`heartbeatNarrative`), `src/lib/` root (`monthlyBriefNarrative`). All four share one skeleton (analyst persona → named audience → `contextString` → data-state guard → task → structure → voice → "begin now"), and the **data-state guard** ("don't read empty data as a shutdown") is independently re-implemented in each. No shared scaffold. Consolidate onto one parameterized scaffold (NARRATIVE_INTEGRATION §3.3, Stage 1).
+
+### F-028 — Fragmented context assembly · duplication · High — opened Phase 5
+Three independent context builders feed Claude the "same" business: `contextBuilder.js` (the `ClaudeReadBlock` surfaces — run-rate / heartbeat / recap), the inline `formatBriefContext` in `monthlyBriefNarrative.js` (MonthlyBriefs, sourced from `monthlyBriefData`), and the server-side `buildPrompt` in `monday-newgoods-observations.ts`. Divergent context → the surfaces can describe the same week differently. Fold the brief + observations data-assembly into the gateway's single `buildContext` (NARRATIVE_INTEGRATION §3.3, Stage 1); content rules like the brief's COGS-pending / procurement-pass-through framing stay in the prompt delta, not the context builder.
+
+### F-029 — Model-ID drift / stale hardcoded model · config/correctness · Med — opened Phase 5
+No single model policy: client narrative surfaces hardcode `claude-sonnet-4-20250514` (`ClaudeReadBlock.jsx:174`, and the `logAICall` default `contextBuilder.js:594`); the New Goods observations edge fn uses `claude-sonnet-4-6` (`monday-newgoods-observations.ts:19`); the scheduler advisor uses Opus via `/api/claude-stream`. Surfaces drift in model and the client constant is stale. The gateway owns model selection so one constant governs all non-streaming calls (NARRATIVE_INTEGRATION §3.1, Stage 0).
 
 ---
 
