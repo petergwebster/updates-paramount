@@ -7,7 +7,7 @@
 
 | ID | Title | Type | Confidence | Resolve in |
 |----|-------|------|-----------|-----------|
-| F-001 | Week-keying conflict: Sunday vs Monday anchors coexist | structural | High | Phase 3 |
+| F-001 | Week-keying conflict: Sunday vs Monday anchors coexist | structural | High | Phase 3 ✓ (plan — `WEEK_ANCHORING.md`) |
 | F-002 | `ProductionTab.jsx` orphaned (dead imports in App.jsx) | dead code | High | Phase 4 |
 | F-003 | Monday.com footprint: New Goods live/load-bearing, `lock-wip`→`wip_snapshots` inert | contradiction/scope | High | Phase 2 |
 | F-004 | `SCHEDULABLE_STATUSES`/`NG_PREPROD` duplicated across 3 files | duplication | High | Phase 4 |
@@ -15,7 +15,7 @@
 | F-006 | `derivePeriod()` read/write contract split across 2 files | duplication/risk | Med | Phase 4 |
 | F-007 | Age-bucket logic + key naming inconsistent across modules | duplication | Med | Phase 4 |
 | F-008 | productionRollup logic reimplemented in ~5 places | duplication | High | Phase 4 |
-| F-009 | Heartbeat passes Sunday date to Monday-keyed `getFiscalLabel` | latent bug | Med | Phase 3 |
+| F-009 | Heartbeat passes Sunday date to Monday-keyed `getFiscalLabel` (one instance of app-wide Class 2) | latent bug | High | Phase 3 ✓ confirmed |
 | F-010 | AI calls inconsistently logged to `ai_call_log` | observability | High | Phase 5 |
 | F-011 | `PlantRollup.jsx` suspected unused | dead code | Med | Phase 4 |
 | F-012 | Two `/api/claude` impls; Node `claude.mjs` confirmed unreachable | dead code/config | High | Phase 2/4 |
@@ -40,7 +40,7 @@
 ### F-001 — Week-keying conflict (TOP PRIORITY) · structural · High
 Sunday-anchored and Monday-anchored week logic coexist, sometimes within one destination. `fiscalCalendar.js` keys are **Monday** dates (verified: `2026-01-05` is a Monday); `sched_*`/`production` are **Sunday**-keyed post the May 2026 migration. Monday-anchored offenders: `DashboardPage`, `WeekPaceStrip`, `ProductionDashboard` (internal), `historicalSummaries`, `contextBuilder` (date-fns default), `lock-wip`. Sunday: `App`, `AdminPanel`, `HeartbeatPage`, scheduler stack, `dailyOps`. `ExecutiveDashboardPage` hedges by querying both keys.
 **Why it matters:** single-key Monday queries miss Sunday-keyed rows → silent "no data"/wrong-week aggregation. The recap names this the #1 structural fix; corroborated.
-**Resolve in Phase 3** — line-verify every row of the week-anchor table, define canonical anchor + migration/codemod plan.
+**Phase 3 — RESOLVED (canonical anchor + plan): see `docs/WEEK_ANCHORING.md`.** Canonical anchor = **Sunday** (DB + `scheduleUtils.sundayOf` already there; most code already correct). Line-verified the full anchor table (26 call sites / 16 files). The conflict splits into two mirror classes: **Class 1** Monday→Sunday-DB queries → silent no-data (`DashboardPage:95`, `WeekPaceStrip:90`, `ProductionDashboard:95/258`, `historicalSummaries:255`); **Class 2** Sunday→Monday-`fiscalCalendar` lookups → silent `null` label, app-wide (`App:419`, `Exec:56`, `KPIScorecard:206`, `Heartbeat:145`, `monthlyBriefData:383/443/515`, `AdminPanel:299`, `ProductionDashboard:372/930/1006`). Fix = **Option B, two-step**: re-key the 52-row map to Sunday + transitional `sundayOf` normalization, then later drop normalization to enforce strict Sunday. **Phase 1 offender-list corrections:** `contextBuilder` is *not* a Monday offender — it relies on the date-fns *default* (Sunday), so correct-but-fragile; `lock-wip` is Monday but dead (F-003/F-013). **Code migration deferred to a post-audit implementation pass (audit Decision 1).**
 
 ### F-002 — ProductionTab orphaned · dead code · High
 `App.jsx:16` imports `FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF` from `ProductionTab` but never mounts them. `ProductionTab` is a Google-Sheets mirror (uses `VITE_GOOGLE_SHEETS_API_KEY`) disconnected from the Supabase `sched_daily_ops` flow. Cleanup candidate (seeded from /init).
@@ -83,8 +83,9 @@ WIPTab uses keys `current/30/60/90/90plus`; NewGoodsView uses `0-30/31-60/61-90/
 ### F-008 — productionRollup reimplemented · duplication · High (the recap's named example)
 Yards/color-yards/waste/revenue aggregation appears bespoke in `HeartbeatPage` (multiple helpers), `ProductionDashboard`, `PassaicScheduler.mixTotals`, `BNYScheduler.mixTotals`, `WIPTab` pivots, and `ProductionTab`. Differing groupings → no automatic cross-check between pool/scheduled/produced. Prime extraction target for Phase 4.
 
-### F-009 — Heartbeat fiscal-label anchor mismatch · latent bug · Med
+### F-009 — Heartbeat fiscal-label anchor mismatch · latent bug · High — CONFIRMED
 `HeartbeatPage` computes a Sunday `weekKey` but calls `getFiscalLabel(weekStart)` whose `FISCAL_CALENDAR` is Monday-keyed. May mislabel/return null on some weeks. Confirm in Phase 3 alongside F-001.
+**Phase 3 — CONFIRMED (Med→High):** `HeartbeatPage.jsx:145` passes the Sunday computed at line 144 to `getFiscalLabel` → returns `null` **every** week (not just some), so the Heartbeat fiscal label is silently blank. **Not Heartbeat-specific** — it is one instance of the app-wide **Class 2** mismatch documented in `WEEK_ANCHORING.md §2/§4`. Subsumed by the F-001 fix (re-key + normalize closes it and its six+ siblings at once).
 
 ### F-010 — Inconsistent AI-call logging · observability · High
 `ClaudeReadBlock` logs every call to `ai_call_log` via `contextBuilder.logAICall`; the ad-hoc `/api/claude` callers (`KPIScorecard`, `AdminPanel`, `AdminPeople`, `MonthlyBriefs`) do not. Gaps in cost/usage visibility. Relevant to Phase 5 narrative-unification (centralizing AI access).
