@@ -16,7 +16,7 @@
 The source `db/schema.sql` is a **Supabase dashboard export that reconstructs `CREATE TABLE` statements**. That method is **reliable for inline constraints** — primary keys, column-level `UNIQUE`, inline `CHECK`, inline `FOREIGN KEY` — but **silently drops standalone / `ALTER TABLE ADD CONSTRAINT` objects**: composite unique constraints, extra indexes, and possibly `ALTER`-added FKs/CHECKs. This is **proven**, not theoretical:
 
 - `financials_monthly` shows only its `id` PK in the export, yet the live DB has `financials_monthly_period_business_unit_key UNIQUE (period, business_unit)` (confirmed via `pg_constraint`). The `AdminFinancials` upsert `onConflict:"period,business_unit"` depends on it and works.
-- `sched_daily_ops` shows only its `id` PK, yet `dailyOps.upsertDailyOp` upserts on `(site, week_start, table_code, day_of_week, shift)` — implying a composite unique the export likewise didn't render.
+- `sched_daily_ops` shows only its `id` PK, yet `dailyOps.upsertDailyOp` upserts on `(site, week_start, table_code, day_of_week, shift)` — implying a composite unique the export likewise didn't render. **(F-024 — 2nd instance of this pattern; inferred from the upsert, not yet `pg_constraint`-verified.)**
 
 **Therefore:** treat every "UNIQUE/constraint" note below as **inline-captured and authoritative only for inline constraints**; composite/standalone constraints are **best-effort and must be verified against the live DB** (`SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.<table>'::regclass;`) before relying on them for a migration or upsert.
 
@@ -112,7 +112,7 @@ Notation: **PK** primary key · **FK** foreign key · **U** unique · **CK** che
 
 **`sched_daily_ops`** — end-of-shift actuals.
 - Cols: `id bigint`, `site` **CK** `passaic|bny`, `week_start`, `table_code NOT NULL`, **`day_of_week text` CK `Sun..Sat` NOT NULL**, `operator_1/2`, `actual_yards`, `waste_yards`, `planned_yards`, `note_assigned_to`, `note_status`, `shift` **CK** `1st|2nd` NOT NULL.
-- Constraints: PK `id`; **live composite U on `(site, week_start, table_code, day_of_week, shift)`** implied by `upsertDailyOp` (*not in export* — see §0). RLS: **authenticated** ALL.
+- Constraints: PK `id`; **live composite U on `(site, week_start, table_code, day_of_week, shift)`** implied by `upsertDailyOp` (*not in export* — see §0; **F-024**, 2nd instance of the F-021 export-lossiness pattern). RLS: **authenticated** ALL.
 - R/W by: `LiveOpsTab`, `PassaicScheduler`/`BNYScheduler` (operator dual-write), `dailyOps.js`.
 
 ### Ingestion pipeline  *(snapshot-versioned via `data_snapshots.is_current`)*
@@ -155,7 +155,7 @@ Notation: **PK** primary key · **FK** foreign key · **U** unique · **CK** che
 ### Legacy / orphan
 
 **`comments`** — original bootstrap comment table. RLS: public insert/read. **No `from('comments')` caller** — superseded by `section_comments`. Dead table (F-023).
-**`correspondence`** — `subject`/`contact`/`direction`/`kpi_tag`/`body`/`file_url`. RLS: public delete/insert/read. **Live** via `Correspondence.jsx` (+ `correspondence` storage bucket) — a component MODULE_MAP never mapped (F-023).
+**`correspondence`** — `subject`/`contact`/`direction`/`kpi_tag`/`body`/`file_url`. RLS: public delete/insert/read. **Live** via `Correspondence.jsx` (+ `correspondence` storage bucket) — a component MODULE_MAP never mapped (F-025).
 **`monthly_reports`** — `month`/`type`/`report_title`/`narrative`. RLS: **none**. **Orphan** — no code references it; code targets the non-existent `monthly_briefs` instead (F-018).
 
 ---
@@ -210,7 +210,9 @@ Feeds Phase 3 (which owns the canonical fix); documented here only as the data-l
 | **F-020** | `profiles.role` DEFAULT `'viewer'` not in its CHECK set (`admin|manager|qa|exec`) | Confirmed schema defect; runtime impact depends on profile-creation path (unexported) |
 | **F-021** | Export shows no composite unique on `financials_monthly` | **Reframed → export gap** (live `UNIQUE(period,business_unit)` exists; upsert works). Establishes the §0 lossiness caveat |
 | **F-022** | `sched_current_wip` orphan view; 3 divergent snapshot mechanisms | Confirmed |
-| **F-023** | `comments` dead table; `correspondence`/`Correspondence.jsx` live but unmapped in MODULE_MAP | Confirmed — MODULE_MAP gap |
+| **F-023** | `comments` dead table | Confirmed |
+| **F-024** | `sched_daily_ops` composite unique not in export (2nd instance of F-021) | Confirmed export gap — live composite inferred from `upsertDailyOp`, not yet `pg_constraint`-verified |
+| **F-025** | `correspondence`/`Correspondence.jsx` live but unmapped in MODULE_MAP | Confirmed — MODULE_MAP gap (backfill = Phase 4) |
 | RECAP §7 | "Inventory fed by `inv_*` tables" | Wrong — Inventory MOS-health reads the `mos_material_color` views; `inv_*` is a separate raw ingestion |
 | RECAP §5 | "RLS is the real access boundary" | Wrong — see §5 (25 tables no policy; mostly public) |
 | meta | Table count "32" (handoff) / "~30+" (CLAUDE.md) | Actual **42** tables + 8 views |
@@ -230,4 +232,4 @@ Cross-referenced from RECAP §9 to the tables they bite:
 
 ---
 
-*Phase 2 deliverable. Pairs with `MODULE_MAP.md` (components) and `FINDINGS_LOG.md` (open issues). New findings F-018–F-023 + the F-016 widening are pending the batched FINDINGS_LOG edit.*
+*Phase 2 deliverable. Pairs with `MODULE_MAP.md` (components) and `FINDINGS_LOG.md` (open issues). New findings F-018–F-025 + the F-016 widening are recorded in `FINDINGS_LOG.md`.*

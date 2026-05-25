@@ -22,8 +22,16 @@
 | F-013 | Node functions not deployed: dir-casing + missing edge files (CONFIRMED) | config/deploy | High | Phase 2 |
 | F-014 | `VITE_`-prefixed server secrets (latent client exposure) | security | High | (seeded) |
 | F-015 | `supabase-schema.sql` stale vs live DB | doc/data | High | Phase 2 |
-| F-016 | `slack-sync` uses anon key server-side for writes | security | Med | Phase 2 |
+| F-016 | RLS is not an access boundary: 25 tables anon-exposed (RLS disabled), incl. financials/payroll-inputs/AI logs | security | High | Phase 2 |
 | F-017 | `generate-pdf.mjs` not deployed + likely unused dead code | dead code | Med | Phase 4 |
+| F-018 | `monthly_briefs` absent → MonthlyBriefs save/load broken; `monthly_reports` orphan = incomplete rename | bug/data | High | Phase 2 |
+| F-019 | `role_change_log` absent → UserManagement role audit silently fails | bug/data | High | Phase 2 |
+| F-020 | `profiles.role` DEFAULT `'viewer'` violates CHECK (`admin\|manager\|qa\|exec`) | schema defect | High | Phase 2 |
+| F-021 | Export-lossiness: composite uniques dropped (live `financials_monthly UNIQUE(period,business_unit)`) | doc/data | High | Phase 2 |
+| F-022 | `sched_current_wip` orphan view + 3 divergent snapshot mechanisms | structural/dead | High | Phase 4 |
+| F-023 | `comments` dead table | dead code | High | Phase 4 |
+| F-024 | `sched_daily_ops` composite-unique export gap (2nd instance of F-021) | doc/data | Med | Phase 2 |
+| F-025 | MODULE_MAP gap: `Correspondence.jsx` unmapped (live component) | doc gap | High | Phase 4 |
 
 ---
 
@@ -41,7 +49,7 @@ Sunday-anchored and Monday-anchored week logic coexist, sometimes within one des
 **Rescoped** from "is `lock-wip` a zombie?" to **"what is the full Monday.com footprint, and which parts are load-bearing vs. dead?"** The "Monday.com retired" claim (`WIPTab.jsx` header + RECAP §8/Appendix) is true only for the *scheduling/WIP-source* use; Monday persists in two places:
 - **New Goods — LOAD-BEARING / live.** `monday-newgoods-refresh` + `monday-newgoods-observations` edge functions pull Monday GraphQL into `mng_snapshots`/`mng_items`, backing the user-facing `NewGoodsTab`. Not deprecated. The blanket "Monday is gone" framing in RECAP/`WIPTab` is wrong and undercounts the footprint.
 - **`lock-wip` → `wip_snapshots` — INERT.** `Functions/lock-wip.js` is wired as a scheduled function (`0 5 * * 6`) that fetches Monday board `6053588909` and upserts `wip_snapshots`, but it **never runs in production** — not deployed (dir-casing bug, F-013), so the cron never fires (`netlify functions:list --json` → `lock-wip` `isDeployed:false`; `netlify logs --function lock-wip --since 7d` → no logs). Dead code, not a running zombie. No read path for `wip_snapshots` exists anywhere either (only the writer + the "it's gone" comment at `WIPTab.jsx:21`).
-**Remaining open (lower stakes now):** (a) does `wip_snapshots` still exist in the live schema [answered by `db/schema.sql`]; (b) board `6053588909` / token validity. Verdict on `lock-wip`: **delete the cron + function**, not fix — bundle with the F-013 cleanup.
+**Remaining open (lower stakes now):** (a) ~~does `wip_snapshots` still exist in the live schema~~ **CONFIRMED ABSENT** — `wip_snapshots` does not exist in the live schema (`db/schema.sql`, May 2026; `DATA_MODEL §6`), so `lock-wip` is now **triply dead**: not deployed (F-013) + no write target + no reader; (b) board `6053588909` / token validity. Verdict on `lock-wip`: **delete the cron + function**, not fix — bundle with the F-013 cleanup.
 
 ### F-004 — Pool-status sets duplicated · duplication · High
 `SCHEDULABLE_STATUSES` + `NG_PREPROD` hardcoded in `WIPTab`, `PassaicScheduler`, `BNYScheduler`. A change to "what's schedulable" needs 3 edits. → extract to `scheduleUtils`/shared module.
@@ -97,13 +105,43 @@ Edge `claude.ts` and Node `Functions/claude.mjs` both claim `/api/claude`; `netl
 `VITE_ANTHROPIC_API_KEY`, `VITE_MONDAY_TOKEN` are server-only today but the prefix means any future frontend reference bundles them into public JS. Rename to unprefixed; update `claude.ts`, `claude-stream.mjs`, `Functions/claude.mjs`, `lock-wip.js` (newgoods funcs already accept fallback).
 
 ### F-015 — Stale schema file · doc/data · High (seeded /init)
-`supabase-schema.sql` documents only the original 3 tables; live DB has ~30+ tables/views via uncommitted migrations. Live export needed for Phase 2 (`db/schema.sql`).
+`supabase-schema.sql` documents only the original 3 tables; live DB has 42 tables + 8 views via uncommitted migrations. **Resolved — live export captured** (`db/schema.sql`, May 2026, project `twsfmzohaymobqmmeayd`) and feeds `DATA_MODEL.md`. **Annotation:** the export is **constraint-lossy** — it reconstructs `CREATE TABLE` from inline constraints only and silently drops standalone/`ALTER`-added objects (composite uniques, extra indexes). See `DATA_MODEL §0` and F-021/F-024; verify composite constraints against the live DB before relying on them.
 
-### F-016 — slack-sync uses anon key server-side · security · Med
-`slack-sync.ts` performs writes to `section_comments` using `VITE_SUPABASE_ANON_KEY` rather than the service role. Works only because RLS is permissive; should use service role for server writes.
+### F-016 — RLS is not an access boundary (TOP-PRIORITY security) · security · High ⚑ recap/code
+**Widened** from the original "slack-sync uses anon key server-side" (now just one instance, below) to the **full RLS posture**, corroborated by the live schema export's RLS census (`DATA_MODEL.md §5`, the canonical enumeration). RLS is **not a meaningful access boundary**: secrets-grade data (financials, payroll-adjacent inputs, AI logs, the entire ingestion pipeline) is reachable with the public anon key. The real boundary is URL obscurity + client-side role gating — exactly as `CLAUDE.md` states, and **contradicting RECAP §5's "RLS is the real access boundary."** Of 42 tables:
+- **25 have NO policy** (export: "likely RLS disabled → anon full access"): `ai_call_log`, `business_facts`, `data_snapshots`, `data_source_config`, `financial_ap`/`financial_ar`/`financial_cash`, `historical_summaries`, all 4 `inv_*`, `monthly_reports`, 6 of 7 `mos_*` (all but `mos_material_color`), all 5 `wip_*`, `sched_snapshots`. **Includes all AP/AR/cash and the whole LIFT/MOS/inventory pipeline.**
+- **Wide-open `public` (qual=true):** `comments`, `correspondence`, `kpi_reactions`, `production`, `section_comments`, `weeks`, `profiles` (read; own-row update). And **`financials_monthly` carries an explicit `Anon write financials` cmd=ALL** policy — anon can *write* financials.
+- **`people_weekly` is the ONLY genuinely role-restrictive table** (authenticated read, **admin-only** writes via a `profiles.role='admin'` subquery). The `authenticated`-scoped tables (`dashboard_narratives`, `sched_*`, `mng_*`, `mos_material_color`) are the next-most-locked but still not role-gated.
+- **Original instance (folded in):** `slack-sync.ts` writes `section_comments` with `VITE_SUPABASE_ANON_KEY` rather than the service role — it succeeds *only* because `section_comments` is wide-open public. Server-side writes should use the service role regardless of posture.
+**Severity High — to be ranked in Phase 6 alongside F-001 as top-priority candidates** (Phase 6 owns the ranking). Related: F-014 (the other High security item).
+**Caveat (see `DATA_MODEL.md §5`):** "no policy → RLS disabled → anon access" is the export's stated assumption. If RLS is *enabled with no policy* on the 25, anon is denied and reads route through the definer-rights `v_current_*` views instead. Confirm per-table with `SELECT relrowsecurity FROM pg_class WHERE relname='<t>'` before treating any as open.
 
 ### F-017 — generate-pdf.mjs not deployed + likely unused · dead code · Med
 `Functions/generate-pdf.mjs` (pdfkit, branded PDF) is one of the three Node functions caught by F-013's dir-casing bug — `isDeployed:false`, so `/api/generate-pdf` 404s in production. It may be dead regardless: a repo-wide grep finds **no `src/` caller** of `/api/generate-pdf` (the only `generate-pdf` references are `netlify.toml`, this file, and the function itself), and MODULE_MAP notes the live PDF path (`MonthlyBriefs`) uses **client-side jsPDF** (`monthlyBriefPdf.js`), not this function. **Verify in Phase 4 (dead-code pass):** if nothing needs it, delete alongside the `lock-wip` cleanup; if some surface needs server-side pdfkit, the F-013 dir fix unbreaks it.
+
+### F-018 — `monthly_briefs` table absent → MonthlyBriefs broken · bug/data · High
+`monthlyBriefData.js` reads/writes a `monthly_briefs` table that **does not exist** in the live schema (confirmed via query A against the live DB; `DATA_MODEL §6`). MonthlyBriefs save/load is therefore non-functional. An orphan `monthly_reports` table (`month`/`type`/`report_title`/`narrative`, no code references it) is present — strongly suggesting an **incomplete rename migration** (`monthly_reports` → `monthly_briefs` never finished, or finished only in code). **Small fix:** create `monthly_briefs` (or repoint code at `monthly_reports` after reconciling columns).
+
+### F-019 — `role_change_log` table absent → audit silently fails · bug/data · High
+`UserManagement.jsx` writes a `role_change_log` row on every role/active change; the table **does not exist** (query A; `DATA_MODEL §6`). The insert error is **swallowed**, so role changes still apply but leave **no audit trail** — a silent compliance gap. Fix: create the table (or remove the dead audit call if not wanted).
+
+### F-020 — `profiles.role` DEFAULT violates its own CHECK · schema defect · High
+`profiles.role` is `text` with CHECK `admin|manager|qa|exec` but **DEFAULT `'viewer'`** — a value the CHECK rejects. Any insert that omits `role` would violate the constraint. Confirmed in the export; **runtime impact depends on the profile-creation path** (an `auth.users` trigger not present in the export). Either the trigger always supplies a valid role (masking the defect) or new-profile creation errors. Fix: change the default to a valid member (e.g. `'exec'`) or widen the CHECK, after confirming the creation path.
+
+### F-021 — Export-lossiness: composite uniques dropped · doc/data · High
+The Supabase dashboard export reconstructs `CREATE TABLE` from inline constraints and **silently drops standalone / `ALTER TABLE ADD CONSTRAINT` objects** (composite uniques, extra indexes, possibly `ALTER`-added FKs/CHECKs). **Proven:** `financials_monthly` shows only its `id` PK in the export, yet the live DB has `financials_monthly_period_business_unit_key UNIQUE (period, business_unit)` (confirmed via `pg_constraint`) — `AdminFinancials`' `onConflict:"period,business_unit"` upsert depends on it and works. This establishes the `DATA_MODEL §0` lossiness caveat: treat every "UNIQUE/constraint" note as authoritative only for *inline* constraints; verify composites against the live DB before relying on them. Second instance: F-024.
+
+### F-022 — `sched_current_wip` orphan view + 3 snapshot mechanisms · structural/dead · High
+The app has **three independent snapshot mechanisms** (`DATA_MODEL §3`): pipeline (`data_snapshots`, `is_current`), New Goods (`mng_snapshots`, `is_current`), and scheduler (`sched_snapshots`, **no `is_current` — "current" = latest `uploaded_at`**). The scheduler's `sched_current_wip` view resolves current via `ORDER BY uploaded_at DESC LIMIT 1`, but **no code reads it** — the scheduler components pick the latest snapshot themselves, so the view is an orphan. Consolidation target: unify on one "current" convention and either adopt or drop the view.
+
+### F-023 — `comments` dead table · dead code · High
+`comments` is the original bootstrap comment table (public insert/read RLS). **No `from('comments')` caller exists** anywhere — the live comment system is `section_comments`, which supersedes it. Dead table; drop after confirming no external/SQL consumer. (Split from the prior combined finding; the MODULE_MAP-mapping gap for `Correspondence.jsx` is now F-025.)
+
+### F-024 — `sched_daily_ops` composite-unique export gap · doc/data · Med
+Second instance of the F-021 export-lossiness pattern. `sched_daily_ops` shows only its `id` PK in the export, yet `dailyOps.upsertDailyOp` upserts on `(site, week_start, table_code, day_of_week, shift)` — implying a composite unique the export didn't render. **Med (not High):** unlike `financials_monthly`, this composite is *inferred from the upsert*, **not yet confirmed via `pg_constraint`**. Verify before relying on it (`SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.sched_daily_ops'::regclass;`).
+
+### F-025 — MODULE_MAP gap: `Correspondence.jsx` unmapped · doc gap · High
+`Correspondence.jsx` is a **live** component (reads/writes the `correspondence` table + the `correspondence` storage bucket) but `MODULE_MAP.md` never maps it. Documentation gap, not dead code. **Backfill is Phase 4 work — not done in this pass;** this finding captures the gap. (Split from F-023.)
 
 ---
 
