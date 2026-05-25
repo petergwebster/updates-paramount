@@ -93,6 +93,13 @@ Weekly headcount/hours/payroll + 4-week trailing charts (Chart.js CDN). R `peopl
 **Relationships:** `monthlyBriefData`, `monthlyBriefNarrative`, `monthlyBriefPdf`.
 **Week anchor:** **calendar month** (`yyyy-MM`). AI call here also not logged to `ai_call_log` → F-010.
 
+### `src/components/Correspondence.jsx` — **ORPHANED**
+**Responsibility:** File/organize week-anchored correspondence (emails, PDFs, Word docs, notes) with KPI tagging + contact tracking; drag-and-drop upload (`.pdf/.docx/.doc/.txt/.eml`).
+**Data:** R/W `correspondence` table (insert/select + Realtime on `week_start=eq.<weekKey>`); `correspondence` **Storage bucket** (public; file upload/URL). No AI calls — pure CRUD.
+**Week anchor:** **Sunday** — `format(weekStart,'yyyy-MM-dd')` (line 45); Realtime filter (line 56).
+**Status:** Imported at `App.jsx:7` but **never mounted** — no `<Correspondence>` render exists anywhere in `src/` (grep-confirmed). A third orphan alongside `ProductionTab` (F-002) and `PlantRollup` (F-011). → **F-025** (reframed from a doc-gap to dead code). Because it's the table/bucket's only consumer, the `correspondence` table + bucket are effectively dead too (see `CONSOLIDATION.md §2`).
+**Seams:** hardcoded `KPI_TAGS` (11), `CONTACT_TYPES` (5), `DIRECTIONS` (3) lists.
+
 ---
 
 ## 3. Operations destination

@@ -155,7 +155,7 @@ Notation: **PK** primary key · **FK** foreign key · **U** unique · **CK** che
 ### Legacy / orphan
 
 **`comments`** — original bootstrap comment table. RLS: public insert/read. **No `from('comments')` caller** — superseded by `section_comments`. Dead table (F-023).
-**`correspondence`** — `subject`/`contact`/`direction`/`kpi_tag`/`body`/`file_url`. RLS: public delete/insert/read. **Live** via `Correspondence.jsx` (+ `correspondence` storage bucket) — a component MODULE_MAP never mapped (F-025).
+**`correspondence`** — `subject`/`contact`/`direction`/`kpi_tag`/`body`/`file_url`. RLS: public delete/insert/read. **Orphaned** — its only consumer `Correspondence.jsx` is imported at `App.jsx:7` but **never mounted** (Phase 4, grep-confirmed; F-025 reframed doc-gap→dead code), so the table + `correspondence` storage bucket are effectively dead. Now mapped in `MODULE_MAP.md §2` (flagged ORPHANED).
 **`monthly_reports`** — `month`/`type`/`report_title`/`narrative`. RLS: **none**. **Orphan** — no code references it; code targets the non-existent `monthly_briefs` instead (F-018).
 
 ---

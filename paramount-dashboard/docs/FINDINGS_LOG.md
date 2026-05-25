@@ -8,30 +8,30 @@
 | ID | Title | Type | Confidence | Resolve in |
 |----|-------|------|-----------|-----------|
 | F-001 | Week-keying conflict: Sunday vs Monday anchors coexist | structural | High | Phase 3 ✓ (plan — `WEEK_ANCHORING.md`) |
-| F-002 | `ProductionTab.jsx` orphaned (dead imports in App.jsx) | dead code | High | Phase 4 |
+| F-002 | `ProductionTab.jsx` orphaned (dead imports in App.jsx) | dead code | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-003 | Monday.com footprint: New Goods live/load-bearing, `lock-wip`→`wip_snapshots` inert | contradiction/scope | High | Phase 2 |
-| F-004 | `SCHEDULABLE_STATUSES`/`NG_PREPROD` duplicated across 3 files | duplication | High | Phase 4 |
-| F-005 | NJ/BNY targets duplicated despite `budgets.js` (source-of-truth settled: Mar 2026 deck) | duplication | High | Phase 4 |
-| F-006 | `derivePeriod()` read/write contract split across 2 files | duplication/risk | Med | Phase 4 |
-| F-007 | Age-bucket logic + key naming inconsistent across modules | duplication | Med | Phase 4 |
-| F-008 | productionRollup logic reimplemented in ~5 places | duplication | High | Phase 4 |
+| F-004 | `SCHEDULABLE_STATUSES`/`NG_PREPROD` in WIPTab only — preventive extraction to `scheduleUtils` | duplication | Med | Phase 4 ✓ (`CONSOLIDATION.md`) |
+| F-005 | NJ/BNY targets duplicated despite `budgets.js` (source-of-truth settled: Mar 2026 deck) | duplication | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`; BNY +500 alloc open) |
+| F-006 | `derivePeriod()` read/write contract split across 2 files | duplication/risk | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
+| F-007 | Age-bucket logic + key naming inconsistent across modules | duplication | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
+| F-008 | productionRollup logic reimplemented in ~5 places | duplication | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-009 | Heartbeat passes Sunday date to Monday-keyed `getFiscalLabel` (one instance of app-wide Class 2) | latent bug | High | Phase 3 ✓ confirmed |
 | F-010 | AI calls inconsistently logged to `ai_call_log` | observability | High | Phase 5 |
-| F-011 | `PlantRollup.jsx` suspected unused | dead code | Med | Phase 4 |
+| F-011 | `PlantRollup.jsx` suspected unused | dead code | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-012 | Two `/api/claude` impls; Node `claude.mjs` confirmed unreachable | dead code/config | High | Phase 2/4 |
 | F-013 | Node functions not deployed: dir-casing + missing edge files (CONFIRMED) | config/deploy | High | Phase 2 |
 | F-014 | `VITE_`-prefixed server secrets (latent client exposure) | security | High | (seeded) |
 | F-015 | `supabase-schema.sql` stale vs live DB | doc/data | High | Phase 2 |
 | F-016 | RLS is not an access boundary: 25 tables anon-exposed (RLS disabled), incl. financials/payroll-inputs/AI logs | security | High | Phase 2 |
-| F-017 | `generate-pdf.mjs` not deployed + likely unused dead code | dead code | Med | Phase 4 |
+| F-017 | `generate-pdf.mjs` not deployed + likely unused dead code | dead code | Med | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-018 | `monthly_briefs` absent → MonthlyBriefs save/load broken; `monthly_reports` orphan = incomplete rename | bug/data | High | Phase 2 |
 | F-019 | `role_change_log` absent → UserManagement role audit silently fails | bug/data | High | Phase 2 |
 | F-020 | `profiles.role` DEFAULT `'viewer'` violates CHECK (`admin\|manager\|qa\|exec`) | schema defect | High | Phase 2 |
 | F-021 | Export-lossiness: composite uniques dropped (live `financials_monthly UNIQUE(period,business_unit)`) | doc/data | High | Phase 2 |
-| F-022 | `sched_current_wip` orphan view + 3 divergent snapshot mechanisms | structural/dead | High | Phase 4 |
-| F-023 | `comments` dead table | dead code | High | Phase 4 |
+| F-022 | `sched_current_wip` orphan view + 3 divergent snapshot mechanisms | structural/dead | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
+| F-023 | `comments` dead table | dead code | High | Phase 4 ✓ (plan — `CONSOLIDATION.md`) |
 | F-024 | `sched_daily_ops` composite-unique export gap (2nd instance of F-021) | doc/data | Med | Phase 2 |
-| F-025 | MODULE_MAP gap: `Correspondence.jsx` unmapped (live component) | doc gap | High | Phase 4 |
+| F-025 | `Correspondence.jsx` orphaned (imported `App.jsx:7`, never mounted) — now mapped | dead code | High | Phase 4 ✓ |
 
 ---
 
@@ -51,8 +51,8 @@ Sunday-anchored and Monday-anchored week logic coexist, sometimes within one des
 - **`lock-wip` → `wip_snapshots` — INERT.** `Functions/lock-wip.js` is wired as a scheduled function (`0 5 * * 6`) that fetches Monday board `6053588909` and upserts `wip_snapshots`, but it **never runs in production** — not deployed (dir-casing bug, F-013), so the cron never fires (`netlify functions:list --json` → `lock-wip` `isDeployed:false`; `netlify logs --function lock-wip --since 7d` → no logs). Dead code, not a running zombie. No read path for `wip_snapshots` exists anywhere either (only the writer + the "it's gone" comment at `WIPTab.jsx:21`).
 **Remaining open (lower stakes now):** (a) ~~does `wip_snapshots` still exist in the live schema~~ **CONFIRMED ABSENT** — `wip_snapshots` does not exist in the live schema (`db/schema.sql`, May 2026; `DATA_MODEL §6`), so `lock-wip` is now **triply dead**: not deployed (F-013) + no write target + no reader; (b) board `6053588909` / token validity. Verdict on `lock-wip`: **delete the cron + function**, not fix — bundle with the F-013 cleanup.
 
-### F-004 — Pool-status sets duplicated · duplication · High
-`SCHEDULABLE_STATUSES` + `NG_PREPROD` hardcoded in `WIPTab`, `PassaicScheduler`, `BNYScheduler`. A change to "what's schedulable" needs 3 edits. → extract to `scheduleUtils`/shared module.
+### F-004 — Pool-status sets · duplication · Med — CORRECTED (was High/3-file)
+**Phase 4 correction:** the original "hardcoded in `WIPTab`, `PassaicScheduler`, `BNYScheduler` — a change needs 3 edits" claim is **wrong**. `SCHEDULABLE_STATUSES` (`WIPTab.jsx:60`) and `NG_PREPROD` (`WIPTab.jsx:70`, used `:83–84`) are defined **only in WIPTab** (grep-confirmed absent from both schedulers, which build pools inline at `PassaicScheduler.jsx:178`/`BNYScheduler.jsx:216`). So this is single-source today, not a 3-way duplication → **downgraded High→Med.** Residual concern: the schedulers re-encode schedulability inline rather than sharing WIPTab's sets, so a future scheduler could drift. **Preventive fix:** move both sets to `scheduleUtils.js` and have WIPTab + the schedulers reference them. See `CONSOLIDATION.md §1`.
 
 ### F-005 — Targets duplicated despite budgets.js · duplication · High — source-of-truth SETTLED
 `budgets.js` is the intended canonical source, yet `AdminPanel`, `DashboardPage`, `WeekPaceStrip` carry local `NJ_TARGETS`/`BNY_TARGETS` copies — and the copies already diverged (RECAP §10: Passaic CY as both 33,797 and 25,497; BNY HOS/Memo swapped; small-machine capacity 125 vs 500 yd/day).
@@ -73,6 +73,8 @@ Sunday-anchored and Monday-anchored week logic coexist, sometimes within one des
 - *3600-class (high-volume, BNY): Trish, Sasha, Glow* — 600 yd/day · 15,000 yd/mo each · 45,000 yd/mo class total (3 machines).
 - *Small (570/800/830-class): 125 yd/day · 3,125 yd/mo each · 50,000 yd/mo class total (16 machines)* — BNY: Lash, Bianca, Rhonda (trial), Chyna (trial); Passaic-located (609 budget): Dakota, Ruby, Xia, Ember, Dementia, Valhalla, Ivy, Jacy, Zoey, Apollo, Nemesis, Poseidon.
 - *Fleet: 19 machines (7 BNY + 12 Passaic-physical), 95,000 yd/mo* vs. 62,500 operational target (~66% utilization). Roster matches `BNYScheduler`.
+
+**Phase 4 framing (verified) — `budgets.js` itself is wrong; fix it FIRST, then delete copies.** Direct read of `budgets.js` proved it is a stale "prior set," **not** canonical: Passaic **8,610/25,497** (deck **8,500/25,500**, with materially different category splits and a `paper`→`wallpaper` key rename), BNY **12,000** (deck operational **12,500**), and **`HOS 1,532` / `Memo 211` — exactly the swap flagged above** (deck: Memo 1,535 / HOS 210). The three local copies (`AdminPanel.jsx:33–46`, `DashboardPage.jsx:42–58`, `WeekPaceStrip.jsx:27–38`) currently **match the wrong `budgets.js`**, so they can't be the reference. **Order matters:** rewrite `budgets.js` to the deck (+ update its load-time `assertBudgetIntegrity` and the stale header comment), *then* delete the copies — deleting first would route every consumer to the wrong numbers. BNY +500 per-bucket allocation stays **TBD pending per-team input** (set the total to 12,500, leave the bucket vector provisional). Full delta table + plan in `CONSOLIDATION.md §3`.
 
 ### F-006 — derivePeriod read/write contract · duplication/risk · Med
 `FinancialTab.derivePeriod()` (read) must exactly match `AdminFinancials.derivePeriod()` (write); divergence makes financial data silently vanish. Extract + test the round-trip.
@@ -141,8 +143,9 @@ The app has **three independent snapshot mechanisms** (`DATA_MODEL §3`): pipeli
 ### F-024 — `sched_daily_ops` composite-unique export gap · doc/data · Med
 Second instance of the F-021 export-lossiness pattern. `sched_daily_ops` shows only its `id` PK in the export, yet `dailyOps.upsertDailyOp` upserts on `(site, week_start, table_code, day_of_week, shift)` — implying a composite unique the export didn't render. **Med (not High):** unlike `financials_monthly`, this composite is *inferred from the upsert*, **not yet confirmed via `pg_constraint`**. Verify before relying on it (`SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='public.sched_daily_ops'::regclass;`).
 
-### F-025 — MODULE_MAP gap: `Correspondence.jsx` unmapped · doc gap · High
-`Correspondence.jsx` is a **live** component (reads/writes the `correspondence` table + the `correspondence` storage bucket) but `MODULE_MAP.md` never maps it. Documentation gap, not dead code. **Backfill is Phase 4 work — not done in this pass;** this finding captures the gap. (Split from F-023.)
+### F-025 — `Correspondence.jsx` orphaned · dead code · High — REFRAMED (was doc-gap)
+**Phase 4 correction.** `Correspondence.jsx` was thought to be a *live but unmapped* component; **direct grep proves it orphaned** — imported at `App.jsx:7` but **never mounted** (no `<Correspondence>` render anywhere in `src/`). It is a third orphan alongside `ProductionTab` (F-002) and `PlantRollup` (F-011), not a doc gap. Because it is the sole consumer of the `correspondence` table + Storage bucket, both are effectively dead too.
+**Done this pass:** mapped in `MODULE_MAP.md §2` (flagged ORPHANED); `DATA_MODEL.md §2`'s incorrect "Live" line corrected to orphaned; added to the `CONSOLIDATION.md §2` deletion plan (Layer 1: remove `App.jsx:7` import → delete `Correspondence.jsx` + `.module.css`; decide the table/bucket cascade). (Split from F-023.)
 
 ---
 
