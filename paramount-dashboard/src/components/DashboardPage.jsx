@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { format, startOfWeek, startOfMonth } from 'date-fns'
 import { supabase } from '../supabase'
+import { getFiscalInfo } from '../fiscalCalendar'
 import { refreshSummariesIfNeeded } from '../lib/historicalSummaries'
 import RunRateKPICards from './RunRateKPICards'
 import ClaudeReadBlock from './ClaudeReadBlock'
@@ -22,7 +23,7 @@ import styles from './DashboardPage.module.css'
  * Time windows defined as:
  *   today  → today's date specifically
  *   week   → current Monday through today (week-to-date)
- *   month  → current month start through today (month-to-date)
+ *   month  → current FISCAL month start through today (month-to-date)
  *
  * Data flow:
  *   1. On mount, kick off refreshSummariesIfNeeded() in background
@@ -35,7 +36,44 @@ import styles from './DashboardPage.module.css'
  *   currentUser  string (full name)
  *   userId       string (auth user UUID)
  *   weekStart    Date (Monday of current week — passed from App.jsx)
+ *
+ * ── Fiscal week alignment (bugfix June 23, 2026) ─────────────────────────
+ * production week_start values are SUNDAY-dated (e.g. 2026-05-31), but the
+ * FISCAL_CALENDAR is keyed on MONDAYS (e.g. 2026-06-01) — one day later.
+ * Two consequences this file must handle:
+ *   1. MONTH window: a naive startOfMonth() boundary (2026-06-01) excludes a
+ *      Sunday-dated first week (2026-05-31). We widen the query 2 days and
+ *      filter rows by fiscal month via fiscalMonthOf().
+ *   2. WEEK/TODAY windows: the current week's row is Sunday-dated, so a Monday
+ *      key never matches it. weekDataKeyFor() returns the Sunday key so
+ *      productionRows.find() actually locates the current-week row.
  */
+
+// fiscalMonthOf — Sunday-dated week_start → Monday fiscal key.
+// Try exact key first (Monday-dated data), then retry +1 day (Sunday-dated).
+function fiscalMonthOf(weekStart) {
+  if (!weekStart) return null
+  let info = getFiscalInfo(weekStart)
+  if (info) return info
+  const iso = typeof weekStart === 'string' ? weekStart : format(weekStart, 'yyyy-MM-dd')
+  const d = new Date(iso + 'T12:00:00')
+  if (isNaN(d.getTime())) return null
+  d.setDate(d.getDate() + 1)
+  return getFiscalInfo(format(d, 'yyyy-MM-dd'))
+}
+
+// weekDataKeyFor — given the Monday start of a week, return the key that the
+// production table actually uses for that week. Data is Sunday-dated (one day
+// BEFORE the Monday), so we return the Sunday. Falls back to the Monday key if
+// a future data load ever switches to Monday-dated rows.
+function weekDataKeyFor(mondayStart) {
+  const sunday = new Date(mondayStart)
+  sunday.setDate(sunday.getDate() - 1)
+  return {
+    sunday: format(sunday, 'yyyy-MM-dd'),
+    monday: format(mondayStart, 'yyyy-MM-dd'),
+  }
+}
 
 // These targets mirror those in AdminPanel.jsx — single source of truth would
 // be nice, but extracting now is a refactor we'll do later.
@@ -68,9 +106,9 @@ const WEEKLY_TARGETS = {
 const PROD_DAYS_PER_WEEK = 5
 const PROD_WEEKS_PER_MONTH = 4.33
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 // Compute actuals + expected for a time window
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 
 /**
  * Builds the metric data object for a given time window.
@@ -85,18 +123,21 @@ function buildMetrics({ timeWindow, productionRows, today }) {
   // For today: take the current week's production, scaled to days elapsed
   // (best approximation without per-day data)
   // For week: current week's totals to date (sum of current week's row)
-  // For month: sum all production rows in current month
+  // For month: sum all production rows in current fiscal month
 
   let actuals = { written: 0, produced: 0, colorYards: 0, waste: 0, netYards: 0, revenue: 0 }
   let expected = { written: 0, produced: 0, colorYards: 0, waste: 0, netYards: 0, revenue: 0 }
   let scopeLabel = ''
 
-  // Build current-week production from current-week row (if present)
+  // Build current-week production from current-week row (if present).
+  // Data is Sunday-dated, so match on the Sunday key (with Monday fallback).
   const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 })
-  const currentWeekKey = format(currentWeekStart, 'yyyy-MM-dd')
   const currentMonthStart = startOfMonth(today)
+  const { sunday: currentWeekSun, monday: currentWeekMon } = weekDataKeyFor(currentWeekStart)
 
-  const currentWeekRow = productionRows.find(r => r.week_start === currentWeekKey)
+  const currentWeekRow = productionRows.find(
+    r => r.week_start === currentWeekSun || r.week_start === currentWeekMon
+  )
 
   if (timeWindow === 'today') {
     scopeLabel = format(today, 'EEEE, MMMM d')
@@ -137,10 +178,15 @@ function buildMetrics({ timeWindow, productionRows, today }) {
   }
   else if (timeWindow === 'month') {
     scopeLabel = format(currentMonthStart, 'MMMM yyyy')
-    // Sum production rows whose week_start is in current month
+    // Sum production rows whose FISCAL month matches the current month.
+    // week_start is Sunday-dated, so a fiscal-month filter (not a raw calendar
+    // boundary) is required — otherwise the Sunday-dated first week is dropped.
+    const targetMonthAbbr = format(currentMonthStart, 'MMM')   // e.g. "Jun"
     const monthRows = productionRows.filter(r => {
+      const fm = fiscalMonthOf(r.week_start)
+      if (!fm) return false
       const rowDate = new Date(r.week_start + 'T00:00:00')
-      return rowDate >= currentMonthStart && rowDate <= today
+      return fm.month === targetMonthAbbr && rowDate <= today
     })
     actuals = monthRows.reduce((acc, r) => {
       const wk = sumProductionRow(r)
@@ -154,7 +200,9 @@ function buildMetrics({ timeWindow, productionRows, today }) {
       }
     }, { written: 0, produced: 0, colorYards: 0, waste: 0, netYards: 0, revenue: 0 })
 
-    // Expected = weekly * weeks elapsed in month
+    // Expected = weekly * weeks elapsed in month (run-rate: scales to weeks of
+    // data actually present, which is now correct because the filter includes
+    // the Sunday-dated first week).
     const weeksElapsed = monthRows.length || 1
     expected.written  = (WEEKLY_TARGETS.schYards + WEEKLY_TARGETS.tpYards) * weeksElapsed
     expected.produced = (NJ_TARGETS.totalYards + BNY_TARGETS.total) * weeksElapsed
@@ -179,9 +227,9 @@ function buildMetrics({ timeWindow, productionRows, today }) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 // Sum a single production row into flat metrics
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 function sumProductionRow(row) {
   const result = { written: 0, produced: 0, colorYards: 0, waste: 0, netYards: 0, revenue: 0 }
   if (!row) return result
@@ -223,9 +271,9 @@ function toNum(v) {
   return Number.isNaN(n) ? 0 : n
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 // Hook: load production data for current week + month
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 function useDashboardData(today) {
   const [productionRows, setProductionRows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -236,7 +284,12 @@ function useDashboardData(today) {
       setLoading(true)
       // Fetch all production rows from current month start through today.
       // We need the full month for the "month" window calculation.
-      const monthStartKey = format(startOfMonth(today), 'yyyy-MM-dd')
+      // week_start is Sunday-dated, so pull the start back 2 days to capture a
+      // Sunday-dated first week (e.g. fiscal June starts Sun 2026-05-31).
+      // buildMetrics() filters precisely by fiscal month.
+      const queryStart = new Date(startOfMonth(today))
+      queryStart.setDate(queryStart.getDate() - 2)
+      const monthStartKey = format(queryStart, 'yyyy-MM-dd')
       const todayKey = format(today, 'yyyy-MM-dd')
 
       const { data } = await supabase
@@ -258,9 +311,9 @@ function useDashboardData(today) {
   return { productionRows, loading }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 // Main component
-// ─────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 export default function DashboardPage({ currentUser, userId, weekStart }) {
   const [timeWindow, setTimeWindow] = useState('week')
   const today = useMemo(() => new Date(), [])
