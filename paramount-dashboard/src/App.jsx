@@ -63,6 +63,7 @@ const NJ_DAYS = [
 
 const PERFORMANCE_TABS = [
   { id: 'dashboard',  label: 'Recap'      },  // weekly recap (was: Dashboard in exec mode)
+  { id: 'capacity',   label: 'Dashboard'  },  // rich capacity/MTD/YTD view (ProductionDashboard)
   { id: 'financials', label: 'Financials' },
   { id: 'people',     label: 'People'     },
   { id: 'inventory',  label: 'Inventory', isNew: true },
@@ -583,6 +584,10 @@ export default function App() {
                     userId={authUser?.id}
                   />
                 )}
+                {destination === 'performance' && activeTab==='capacity' && (
+                    <ProductionDashboard weekStart={currentWeek} />
+                  )}
+
                 {destination === 'performance' && activeTab==='financials' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
                 )}
