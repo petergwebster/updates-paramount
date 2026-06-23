@@ -585,7 +585,7 @@ export default function App() {
                   />
                 )}
                 {destination === 'performance' && activeTab==='capacity' && (
-                    <ProductionDashboard weekStart={currentWeek} />
+                    <ProductionDashboard weekStart={currentWeek} readOnly={true} />
                   )}
 
                 {destination === 'performance' && activeTab==='financials' && (
