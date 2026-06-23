@@ -265,6 +265,11 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     const currentKey = weekKey(weekStart)
     const currentInfo = FISCAL_CALENDAR[currentKey]
     const currentCalMonth = currentKey.substring(0, 7) // "YYYY-MM"
+      // currentKey is the Sunday-dated selected week; FISCAL_CALENDAR keys are
+      // Mondays (one day later). Use the Monday equivalent for k <= cutoff
+      // comparisons so the current week is INCLUDED, not dropped at the boundary.
+      const toMonday = (sk) => { const d = new Date(sk + 'T12:00:00'); d.setDate(d.getDate() + 1); return format(d, 'yyyy-MM-dd') }
+      const currentFiscalKey = FISCAL_CALENDAR[currentKey] ? currentKey : toMonday(currentKey)
       const toSunday = (mk) => { const d = new Date(mk + 'T12:00:00'); d.setDate(d.getDate() - 1); return format(d, 'yyyy-MM-dd') }
       const withSundays = (keys) => { const out = []; for (const k of keys) { out.push(k); out.push(toSunday(k)) } return out }
 
@@ -275,7 +280,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     // "(Current Month)". This filter keeps only weeks whose week_start
     // ISO date falls inside the calendar month.
     const monthWeeksForRolling = Object.keys(FISCAL_CALENDAR)
-      .filter(k => k.substring(0, 7) === currentCalMonth && k <= currentKey)
+      .filter(k => k.substring(0, 7) === currentCalMonth && k <= currentFiscalKey)
       .sort()
     if (monthWeeksForRolling.length > 0) {
       const { data } = await supabase
@@ -304,7 +309,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     // YTD — keep fiscal-year-based for budget-against-plan alignment
     if (currentInfo) {
       const ytdWeeks = Object.entries(FISCAL_CALENDAR)
-        .filter(([k]) => k <= currentKey)
+        .filter(([k]) => k <= currentFiscalKey)
         .map(([k]) => k)
         .sort()
       const { data: ytd } = await supabase
