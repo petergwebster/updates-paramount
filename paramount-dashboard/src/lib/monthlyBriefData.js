@@ -480,8 +480,13 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end' }) {
   const monthNjTarget  = safeWeeklyBudget('nj')  * weeksInMonth
   const monthCombinedTarget = monthBnyTarget + monthNjTarget
 
-  // For mid-month, target is pro-rated to weeks of data we actually have
-  const weeksElapsed = phase === 'end' ? weeksInMonth : Math.max(1, weekRows.length || Math.ceil(daysElapsed / 7))
+  // For mid-month, "weeks elapsed" follows the fiscal-month rule, NOT how much
+  // data happens to be entered: mid-month = half the fiscal month, rounded up.
+  //   5-week months (Mar/Jun/Sep/Dec) → 3-week mark
+  //   4-week months                   → 2-week mark
+  // This keeps the "X-week mark" label and pro-rata targets deterministic and
+  // tied to the calendar, independent of data-entry timing.
+  const weeksElapsed = phase === 'end' ? weeksInMonth : Math.ceil(weeksInMonth / 2)
   const proRataFactor = weeksElapsed / weeksInMonth
   const expectedBnyMtd = phase === 'end' ? monthBnyTarget : monthBnyTarget * proRataFactor
   const expectedNjMtd  = phase === 'end' ? monthNjTarget  : monthNjTarget  * proRataFactor
