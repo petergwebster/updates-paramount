@@ -307,7 +307,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     }
 
     // YTD — keep fiscal-year-based for budget-against-plan alignment
-    if (currentInfo) {
+    if (FISCAL_CALENDAR[currentFiscalKey]) {
       const ytdWeeks = Object.entries(FISCAL_CALENDAR)
         .filter(([k]) => k <= currentFiscalKey)
         .map(([k]) => k)
