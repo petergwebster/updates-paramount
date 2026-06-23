@@ -591,7 +591,7 @@ export async function logAICall({
       context:      context || {},
       prompt:       prompt || '',
       response:     response || '',
-      model:        model || 'claude-sonnet-4-20250514',
+      model:        model || 'claude-sonnet-4-6',
       input_tokens: inputTokens || null,
       output_tokens: outputTokens || null,
       duration_ms:  durationMs || null,

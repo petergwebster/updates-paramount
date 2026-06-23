@@ -415,7 +415,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
       const response = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
+        body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
       })
       const data = await response.json()
       const text = data.content?.find(c => c.type === 'text')?.text
