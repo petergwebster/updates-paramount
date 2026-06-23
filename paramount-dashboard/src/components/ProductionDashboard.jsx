@@ -255,7 +255,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   useEffect(() => { loadData(); loadHistory() }, [weekStart])
 
   async function loadData() {
-    const { data } = await supabase.from('production').select('*').eq('week_start', weekKey(weekStart)).single()
+    const { data } = await supabase.from('production').select('*').eq('week_start', weekKey(weekStart)).maybeSingle()
     if (data) { setNjData(data.nj_data || emptyNJ()); setBnyData(data.bny_data || emptyBNY()) }
     else { setNjData(emptyNJ()); setBnyData(emptyBNY()) }
   }

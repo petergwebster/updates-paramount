@@ -93,7 +93,7 @@ export default function WeekPaceStrip() {
         .from('production')
         .select('week_start, nj_data, bny_data')
         .eq('week_start', weekKey)
-        .single()
+        .maybeSingle()
       if (!cancelled) {
         setProductionRow(data || null)
         setLoading(false)

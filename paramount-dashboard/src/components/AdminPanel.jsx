@@ -303,7 +303,7 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   // Load production data
   useEffect(() => {
     async function loadProduction() {
-      const { data } = await supabase.from('production').select('*').eq('week_start', weekKey).single()
+      const { data } = await supabase.from('production').select('*').eq('week_start', weekKey).maybeSingle()
       if (data) {
         setNjData(data.nj_data || emptyNJ())
         setBnyData(data.bny_data || emptyBNY())

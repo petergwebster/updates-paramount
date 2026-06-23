@@ -98,7 +98,7 @@ export default function ClaudeReadBlock({
         .select('*')
         .eq('week_start', weekKey)
         .eq('time_window', timeWindow)
-        .single()
+        .maybeSingle()
 
       if (cancelled) return
 
