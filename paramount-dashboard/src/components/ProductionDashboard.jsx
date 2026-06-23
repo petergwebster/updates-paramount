@@ -465,7 +465,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
   // 4-4-5 fiscal months whose first week starts in the prior calendar
   // month, causing the "5 weeks of target vs 4 weeks of actuals"
   // visual mismatch Peter flagged.)
-  const mtdFiscalWeeks = monthWeeksElapsed || mtdWeeksWithData
+  const mtdFiscalWeeks = mtdData.length || monthWeeksElapsed || mtdWeeksWithData
   const mtdNJTarget = { fabric: NJ_TARGETS.fabric.yards * mtdFiscalWeeks, grass: NJ_TARGETS.grass.yards * mtdFiscalWeeks, paper: NJ_TARGETS.paper.yards * mtdFiscalWeeks, total: NJ_TOTAL_TARGET * mtdFiscalWeeks }
   const mtdBNYTarget = { total: BNY_TARGETS.total * mtdFiscalWeeks, replen: BNY_TARGETS.replen * mtdFiscalWeeks, mto: BNY_TARGETS.mto * mtdFiscalWeeks, hos: BNY_TARGETS.hos * mtdFiscalWeeks, memo: BNY_TARGETS.memo * mtdFiscalWeeks, contract: BNY_TARGETS.contract * mtdFiscalWeeks }
   const mtdNJNet = mtdNJ.total - mtdNJ.waste
