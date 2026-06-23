@@ -265,6 +265,8 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
     const currentKey = weekKey(weekStart)
     const currentInfo = FISCAL_CALENDAR[currentKey]
     const currentCalMonth = currentKey.substring(0, 7) // "YYYY-MM"
+      const toSunday = (mk) => { const d = new Date(mk + 'T12:00:00'); d.setDate(d.getDate() - 1); return format(d, 'yyyy-MM-dd') }
+      const withSundays = (keys) => { const out = []; for (const k of keys) { out.push(k); out.push(toSunday(k)) } return out }
 
     // Rolling table — CALENDAR month only (Peter's pref).
     // The 4-4-5 fiscal calendar treats April 2026 as a 5-week fiscal month
@@ -279,7 +281,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       const { data } = await supabase
         .from('production')
         .select('*')
-        .in('week_start', monthWeeksForRolling)
+        .in('week_start', withSundays(monthWeeksForRolling))
         .order('week_start', { ascending: true })
       setHistory(data || [])
     } else {
@@ -292,7 +294,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       const { data: mtd } = await supabase
         .from('production')
         .select('*')
-        .in('week_start', monthWeeksForRolling)
+        .in('week_start', withSundays(monthWeeksForRolling))
         .order('week_start', { ascending: true })
       setMtdData(mtd || [])
     } else {
@@ -308,7 +310,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
       const { data: ytd } = await supabase
         .from('production')
         .select('*')
-        .in('week_start', ytdWeeks)
+        .in('week_start', withSundays(ytdWeeks))
         .order('week_start', { ascending: true })
       setYtdData(ytd || [])
     }
