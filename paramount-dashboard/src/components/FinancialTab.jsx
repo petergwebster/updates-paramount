@@ -1,49 +1,57 @@
-import React, { useState, useEffect } from 'react'
-import { format } from 'date-fns'
-import { getFiscalInfo } from '../fiscalCalendar'
+import React, { useState, useEffect, useMemo } from 'react'
+import { FISCAL_CALENDAR } from '../fiscalCalendar'
 import { supabase } from '../supabase'
-import { C, STATUS_GOOD, STATUS_WARN, STATUS_BAD, STATUS_BAD_BG } from '../lib/scheduleUtils'
 import styles from './FinancialTab.module.css'
 
-const BU_NJ      = '610'
-const BU_BNY     = '609'
-const BU_SHARED  = '612'
-const MONTH_NAMES = {
-  '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June',
-  '07':'July','08':'August','09':'September','10':'October','11':'November','12':'December'
+// ── Fiscal resolution (Sunday-anchored, mirrors the purchases parser) ────────
+const MONTH_NUM = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' }
+const MONTH_LABEL = { '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June','07':'July','08':'August','09':'September','10':'October','11':'November','12':'December' }
+const _weeks = Object.entries(FISCAL_CALENDAR).map(([k,info]) => {
+  const mon = new Date(k + 'T12:00:00')
+  const sun = new Date(mon); sun.setDate(sun.getDate() - 1)
+  const sat = new Date(mon); sat.setDate(sat.getDate() + 5)
+  return { k, info, sun, sat }
+}).sort((a,b) => a.sun - b.sun)
+function fiscalForDate(iso) {
+  if (!iso) return null
+  const t = new Date(String(iso).slice(0,10) + 'T12:00:00')
+  for (const w of _weeks) if (t >= w.sun && t <= w.sat) {
+    const yr = w.k.slice(0,4)
+    return { fiscalMonth: `${yr}-${MONTH_NUM[w.info.month]}`, fiscalYear: yr }
+  }
+  return null
 }
+const monthLabel = m => { if (!m) return ''; const [y,mo] = m.split('-'); return `${MONTH_LABEL[mo]||mo} ${y}` }
 
-// Period key derivation — MUST match AdminFinancials.derivePeriod() exactly,
-// otherwise reads miss writes. Calendar-day-of-month / 7, capped at W5.
-function derivePeriod(ws) {
-  if (!ws) return ''
-  const d  = typeof ws === 'string' ? new Date(ws + 'T12:00:00') : ws
-  const yr = d.getFullYear(), mo = d.getMonth() + 1
-  return `${yr}-${String(mo).padStart(2,'0')}-W${Math.min(Math.ceil(d.getDate()/7),5)}`
-}
-
-function fmtD(v, opts = {}) {
+// ── Formatters ───────────────────────────────────────────────────────────────
+const fmtD = (v, opts={}) => {
   if (v === null || v === undefined || v === '') return '—'
   const n = parseFloat(v) || 0
-  if (Math.abs(n) < 0.005) return '—'
+  if (Math.abs(n) < 0.5) return '—'
   const abs = Math.abs(Math.round(n)).toLocaleString()
-  const sign = n < 0 ? '-$' : (opts.showPlus && n > 0 ? '+$' : '$')
-  return sign + abs
+  return (n < 0 ? '-$' : (opts.plus && n > 0 ? '+$' : '$')) + abs
+}
+const BU_KEYS = ['BNY','NJ','Shared']
+const COGS_CATS = ['material_inventory','ink','freight']
+const OPEX_CATS = ['opex_temp','opex_te','opex_distribution','opex_edp','opex_supplies','opex_printing','opex_services','opex_utilities','opex_rent','opex_other']
+const OPEX_LABEL = {
+  opex_temp:'Temp / Contract', opex_te:'Travel & Entertainment', opex_distribution:'Distribution',
+  opex_edp:'Office / EDP', opex_supplies:'Supplies', opex_printing:'Printing', opex_services:'Outside Services',
+  opex_utilities:'Utilities', opex_rent:'Rent', opex_other:'Other OpEx',
 }
 
-function DeltaBadge({ v }) {
-  if (!v && v !== 0) return null
-  const n = parseFloat(v) || 0
-  if (Math.abs(n) < 1) return null
-  const cls = n > 0 ? styles.deltaPos : styles.deltaNeg
-  return <span className={cls}>{n > 0 ? '+' : ''}{fmtD(Math.abs(n))}</span>
+// sum helper over an array of {category,business_unit,net}
+function sumWhere(rows, catPred, bu) {
+  let s = 0
+  for (const r of rows) if (catPred(r.category) && (!bu || r.business_unit === bu)) s += (r.net || 0)
+  return s
 }
 
-function SectionRow({ label, nj, bny, shared, bold, indent, isTotal }) {
-  const combined = (parseFloat(nj)||0) + (parseFloat(bny)||0) + (parseFloat(shared)||0)
+function SectionRow({ label, bny, nj, shared, indent, isTotal, est }) {
+  const combined = (bny||0)+(nj||0)+(shared||0)
   return (
-    <tr className={`${bold || isTotal ? styles.boldRow : ''} ${isTotal ? styles.totalRow : ''}`}>
-      <td className={`${styles.rowLabel} ${indent ? styles.indent : ''}`}>{label}</td>
+    <tr className={`${isTotal ? styles.boldRow + ' ' + styles.totalRow : ''}`}>
+      <td className={`${styles.rowLabel} ${indent ? styles.indent : ''}`}>{label}{est && <span style={{fontSize:10,color:'var(--ink-40)',marginLeft:6}}>est.</span>}</td>
       <td className={styles.val}>{fmtD(nj)}</td>
       <td className={styles.val}>{fmtD(bny)}</td>
       <td className={styles.val}>{fmtD(shared)}</td>
@@ -52,449 +60,292 @@ function SectionRow({ label, nj, bny, shared, bold, indent, isTotal }) {
   )
 }
 
-export default function FinancialTab({ weekStart, currentPeriod: currentPeriodProp }) {
-  const [periods, setPeriods]     = useState([])
-  const [selected, setSelected]   = useState(null)
-  const [data, setData]           = useState(null)
-  const [loading, setLoading]     = useState(false)
-  const [apData,  setApData]      = useState(null)
-  const [arData,  setArData]      = useState(null)
-  const [cashData, setCashData]   = useState(null)
+export default function FinancialTab({ weekStart }) {
+  const [scope, setScope]       = useState('MTD')         // MTD | YTD
+  const [selMonth, setSelMonth] = useState(null)
+  const [months, setMonths]     = useState([])
+  const [mtdRows, setMtdRows]   = useState([])
+  const [ytdRows, setYtdRows]   = useState([])
+  const [aging, setAging]       = useState([])
+  const [loading, setLoading]   = useState(false)
+  const [narrative, setNarrative] = useState('')
+  const [genBusy, setGenBusy]   = useState(false)
 
-  // Period key uses same derivation as AdminFinancials write side:
-  // "2026-04-W4" for April 26, 2026. Reads must match writes.
-  const currentPeriod = React.useMemo(() => {
-    return weekStart ? derivePeriod(weekStart) : null
-  }, [weekStart])
+  const derived = useMemo(() => fiscalForDate(weekStart) || fiscalForDate(new Date().toISOString()), [weekStart])
 
-  // Load on mount and whenever weekStart changes
-  useEffect(() => {
-    loadAll(currentPeriod)
-  }, [currentPeriod])
+  // Supabase caps responses at ~1000 rows regardless of .limit(); page through to get all.
+  async function fetchPaged(table, columns, applyFilters) {
+    const PAGE = 1000; let from = 0, all = []
+    for (;;) {
+      let q = supabase.from(table).select(columns)
+      if (applyFilters) q = applyFilters(q)
+      q = q.order('id', { ascending: true }).range(from, from + PAGE - 1)
+      const { data, error } = await q
+      if (error) { console.error('fetchPaged', table, error); break }
+      if (!data || !data.length) break
+      all = all.concat(data)
+      if (data.length < PAGE) break
+      from += PAGE
+    }
+    return all
+  }
 
-  // When user picks a different month from history dropdown
-  useEffect(() => {
-    if (!selected || selected === currentPeriod) return
-    loadForPeriod(selected)
-  }, [selected])
+  // discover available months once
+  useEffect(() => { (async () => {
+    const data = await fetchPaged('financial_transactions', 'fiscal_month')
+    if (data) {
+      const uniq = [...new Set(data.map(r => r.fiscal_month).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
+      setMonths(uniq)
+      setSelMonth(prev => prev || (uniq.includes(derived?.fiscalMonth) ? derived.fiscalMonth : uniq[0]) || derived?.fiscalMonth || null)
+    } else setSelMonth(derived?.fiscalMonth || null)
+  })() }, [derived?.fiscalMonth])
 
-  async function loadAll(period) {
-    setLoading(true)
-    setData(null); setApData(null); setArData(null); setCashData(null)
+  useEffect(() => { if (selMonth) loadAll(selMonth) }, [selMonth])
+
+  async function loadAll(fm) {
+    setLoading(true); setNarrative('')
+    const fy = fm.slice(0,4)
+    const [mtd, ytd, ag] = await Promise.all([
+      fetchPaged('financial_transactions', 'category,business_unit,net', q => q.eq('fiscal_month', fm)),
+      fetchPaged('financial_transactions', 'category,business_unit,net,fiscal_month', q => q.eq('fiscal_year', fy).lte('fiscal_month', fm)),
+      fetchPaged('financial_aging', 'as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets'),
+    ])
+    setMtdRows(mtd || [])
+    setYtdRows(ytd || [])
+    setAging(ag || [])
+    setLoading(false)
+  }
+
+  const rows = scope === 'MTD' ? mtdRows : ytdRows
+
+  // ── Aging: latest snapshot + trend ──
+  const agingView = useMemo(() => {
+    const byDate = {}
+    for (const a of aging) {
+      const k = `${a.as_of_date}|${a.aging_type}`
+      if (!byDate[k]) byDate[k] = { as_of:a.as_of_date, type:a.aging_type, total:0, pastDue:0, buckets:{}, byBU:{} }
+      const e = byDate[k]; e.total += (a.balance||0); e.pastDue += (a.past_due||0)
+      for (const [bk,bv] of Object.entries(a.buckets||{})) e.buckets[bk] = (e.buckets[bk]||0) + (bv||0)
+      const bu = a.business_unit || 'combined'; e.byBU[bu] = (e.byBU[bu]||0) + (a.balance||0)
+    }
+    const all = Object.values(byDate)
+    const dates = [...new Set(all.map(e=>e.as_of))].filter(Boolean).sort()
+    const latest = dates[dates.length-1]
+    const ar = all.filter(e=>e.type==='ar').sort((a,b)=>a.as_of.localeCompare(b.as_of))
+    const ap = all.filter(e=>e.type==='ap').sort((a,b)=>a.as_of.localeCompare(b.as_of))
+    return { latest, dates, ar, ap, arNow: ar.find(e=>e.as_of===latest), apNow: ap.find(e=>e.as_of===latest) }
+  }, [aging])
+
+  async function generateNarrative() {
+    setGenBusy(true)
     try {
-      const [periodsRes, dataRes, apRes, arRes, cashRes] = await Promise.all([
-        supabase.from('financials_monthly').select('period, uploaded_at, upload_notes').order('period', { ascending: false }),
-        period ? supabase.from('financials_monthly').select('*').eq('period', period) : Promise.resolve({ data: [] }),
-        period ? supabase.from('financial_ap').select('*').eq('period', period) : Promise.resolve({ data: [] }),
-        period ? supabase.from('financial_ar').select('*').eq('period', period).maybeSingle() : Promise.resolve({ data: null }),
-        period ? supabase.from('financial_cash').select('*').eq('period', period).maybeSingle() : Promise.resolve({ data: null }),
-      ])
-      const seen = new Set()
-      const unique = (periodsRes.data || []).filter(r => {
-        if (seen.has(r.period)) return false
-        seen.add(r.period); return true
+      const cogs = sumWhere(rows, c=>COGS_CATS.includes(c))
+      const opex = sumWhere(rows, c=>OPEX_CATS.includes(c))
+      const capex = sumWhere(rows, c=>c==='capex')
+      const arRecv = sumWhere(rows, c=>c==='ar_receipt')
+      const apPaid = sumWhere(rows, c=>c==='ap_paid')
+      const arInv = sumWhere(rows, c=>c==='ar_trade'||c==='ar_adjustment')
+      const ctx = {
+        period: scope==='MTD' ? monthLabel(selMonth) : `FY${selMonth?.slice(0,4)} YTD through ${monthLabel(selMonth)}`,
+        est_cogs_material_basis: Math.round(cogs), opex: Math.round(opex), capex: Math.round(capex),
+        ar_invoiced: Math.round(arInv), ar_received: Math.round(arRecv), ap_paid: Math.round(apPaid),
+        ar_aging_total: Math.round(agingView.arNow?.total||0), ar_past_due: Math.round(agingView.arNow?.pastDue||0),
+        ap_aging_total: Math.round(agingView.apNow?.total||0), ap_past_due: Math.round(agingView.apNow?.pastDue||0),
+      }
+      const resp = await fetch('/api/claude', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:600, messages:[{role:'user',
+          content:`You are the President of Paramount Prints writing a brief, candid financial read for the C-suite (peer-to-peer BU leader voice, no fluff). Numbers below are spend/AR/AP for ${ctx.period}. Note COGS is an ESTIMATE on a material-spend basis (true posted COGS pending GP trial balance) — say so once. 2-3 short paragraphs, plain text, no headers.\n\nDATA: ${JSON.stringify(ctx)}` }] })
       })
-      setPeriods(unique)
-      setSelected(period || unique[0]?.period)
-      if (dataRes?.data?.length > 0) {
-        setData({
-          nj:     dataRes.data.find(r => r.business_unit === BU_NJ)     || null,
-          bny:    dataRes.data.find(r => r.business_unit === BU_BNY)    || null,
-          shared: dataRes.data.find(r => r.business_unit === BU_SHARED) || null,
-        })
-      }
-      if (apRes?.data?.length) {
-        setApData({
-          paramount: apRes.data.find(r => r.facility === 'Paramount') || null,
-          bny:       apRes.data.find(r => r.facility === 'BNY')       || null,
-        })
-      }
-      if (arRes?.data) setArData(arRes.data)
-      if (cashRes?.data) setCashData(cashRes.data)
-    } catch(e) {
-      console.error('Financial load error:', e)
-    } finally {
-      setLoading(false)
-    }
+      const data = await resp.json()
+      setNarrative((data.content||[]).map(b=>b.text||'').join('').trim())
+    } catch(e) { setNarrative('Could not generate narrative: ' + e.message) }
+    setGenBusy(false)
   }
 
-  async function loadForPeriod(period) {
-    setLoading(true)
-    setData(null); setApData(null); setArData(null); setCashData(null)
-    try {
-      const [{ data: rows }, { data: apRows }, { data: arRow }, { data: cashRow }] = await Promise.all([
-        supabase.from('financials_monthly').select('*').eq('period', period),
-        supabase.from('financial_ap').select('*').eq('period', period),
-        supabase.from('financial_ar').select('*').eq('period', period).maybeSingle(),
-        supabase.from('financial_cash').select('*').eq('period', period).maybeSingle(),
-      ])
-      if (rows?.length > 0) {
-        setData({
-          nj:     rows.find(r => r.business_unit === BU_NJ)     || null,
-          bny:    rows.find(r => r.business_unit === BU_BNY)    || null,
-          shared: rows.find(r => r.business_unit === BU_SHARED) || null,
-        })
-      }
-      if (apRows?.length) {
-        setApData({
-          paramount: apRows.find(r => r.facility === 'Paramount') || null,
-          bny:       apRows.find(r => r.facility === 'BNY')       || null,
-        })
-      }
-      if (arRow) setArData(arRow)
-      if (cashRow) setCashData(cashRow)
-    } catch(e) {
-      console.error('loadForPeriod error:', e)
-    } finally {
-      setLoading(false)
-    }
-  }
+  if (!selMonth) return <div className={styles.empty}>Loading financial data…</div>
 
-  const get = (bu, field) => {
-    const row = bu === 'nj' ? data?.nj : bu === 'bny' ? data?.bny : data?.shared
-    if (!row) return 0
-    return parseFloat(row[field]) || 0
-  }
+  // ── P&L rollups for current scope ──
+  const cogs = bu => COGS_CATS.map(c => sumWhere(rows, x=>x===c, bu))
+  const cogsTotal = bu => sumWhere(rows, c=>COGS_CATS.includes(c), bu)
+  const opexTotal = bu => sumWhere(rows, c=>OPEX_CATS.includes(c), bu)
+  const capex = bu => sumWhere(rows, c=>c==='capex', bu)
+  const arRecv = sumWhere(rows, c=>c==='ar_receipt')
+  const apPaid = sumWhere(rows, c=>c==='ap_paid')
+  const arInv  = sumWhere(rows, c=>c==='ar_trade'||c==='ar_adjustment')
 
-  const sum3 = (field) => get('nj', field) + get('bny', field) + get('shared', field)
-
-  const periodLabel = p => {
-    if (!p) return ''
-    const parts = p.split('-')
-    const yr = parts[0], mo = parts[1], wk = parts[2]
-    const month = MONTH_NAMES[mo] || mo
-    return wk ? `${month} ${wk.replace('W', 'Week ')} ${yr}` : `${month} ${yr}`
-  }
-
-  if (loading) return <div className={styles.empty}>Loading…</div>
-
-  // Show tables if data loaded OR period exists in DB (may be all zeros)
-  const currentPeriodHasData = data !== null || periods.some(p => p.period === currentPeriod)
-
-  const note = periods.find(p => p.period === selected)?.upload_notes
-
-  // Computed totals
-  const njCogsTotal  = get('nj','cogs_material') + get('nj','cogs_labor') + get('nj','cogs_wip') + get('nj','cogs_other')
-  const bnyCogsTotal = get('bny','cogs_material') + get('bny','cogs_labor') + get('bny','cogs_wip') + get('bny','cogs_other')
-  const shCogsTotal  = get('shared','cogs_material') + get('shared','cogs_labor') + get('shared','cogs_wip') + get('shared','cogs_other')
-
-  const njOpexTotal  = ['salary','salary_ot','fringe','te','printing','distribution','office_edp','consulting','building','utilities','rent'].reduce((s,k) => s + get('nj',k), 0)
-  const bnyOpexTotal = ['salary','salary_ot','fringe','te','printing','distribution','office_edp','consulting','building','utilities','rent'].reduce((s,k) => s + get('bny',k), 0)
-  const shOpexTotal  = ['salary','salary_ot','fringe','te','printing','distribution','office_edp','consulting','building','utilities','rent'].reduce((s,k) => s + get('shared',k), 0)
-
-  const njVendors  = data?.nj?.inv_vendors  || []
-  const bnyVendors = data?.bny?.inv_vendors || []
+  const hasData = rows.length > 0
 
   return (
     <div className={styles.wrap}>
-      {/* Header */}
       <div className={styles.topRow}>
         <div>
           <h2 className={styles.title}>Financial Summary</h2>
-          <p className={styles.sub}>Month-to-date COGS, operating expenses &amp; inventory purchases</p>
+          <p className={styles.sub}>{scope==='MTD' ? 'Month-to-date' : 'Fiscal year-to-date'} spend, AR/AP & cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Current month badge */}
-          {currentPeriod && (
-            <span className={styles.periodBtnActive} style={{ padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, background: C.ink, color: '#fff' }}>
-              {periodLabel(currentPeriod)}
-            </span>
-          )}
-          {/* Browse history — only show if there are past months with data */}
-          {periods.length > 0 && (
-            <select
-              value={selected || ''}
-              onChange={e => setSelected(e.target.value)}
-              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--ink-60)', background: 'transparent', cursor: 'pointer' }}
-            >
-              {currentPeriod && <option value={currentPeriod}>{periodLabel(currentPeriod)}{!currentPeriodHasData ? ' (no data)' : ''}</option>}
-              {periods.filter(p => p.period !== currentPeriod).map(p => (
-                <option key={p.period} value={p.period}>{periodLabel(p.period)}</option>
-              ))}
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          <div className={styles.periodPicker}>
+            {['MTD','YTD'].map(s => (
+              <button key={s} className={`${styles.periodBtn} ${scope===s?styles.periodBtnActive:''}`} onClick={()=>setScope(s)}>{s}</button>
+            ))}
+          </div>
+          {months.length > 0 && (
+            <select value={selMonth||''} onChange={e=>setSelMonth(e.target.value)}
+              style={{fontSize:12,padding:'6px 8px',borderRadius:6,border:'1px solid var(--border)',background:'transparent',color:'var(--ink-60)',cursor:'pointer'}}>
+              {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
           )}
         </div>
       </div>
 
-      {!currentPeriodHasData && (
-        <div className={styles.emptyMonth}>
-          <p>No financial data uploaded for <strong>{currentPeriod ? periodLabel(currentPeriod) : 'this month'}</strong> yet.</p>
-          <p>Upload the GP purchase report for this month in Admin → Financial Data.</p>
-        </div>
-      )}
-      {currentPeriodHasData && note && <div className={styles.noteBanner}>📌 {note}</div>}
+      {loading && <div className={styles.empty}>Loading…</div>}
 
-      {data && currentPeriodHasData && (
+      {!loading && !hasData && (
+        <div className={styles.empty}>No financial transactions for {monthLabel(selMonth)} yet. Upload the GP Purchases workbook in Admin → Financial Data.</div>
+      )}
+
+      {!loading && hasData && (
         <>
-          {/* Top summary cards */}
+          {/* Summary cards */}
           <div className={styles.summaryCards}>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>Total COGS MTD</div>
-              <div className={styles.cardVal}>{fmtD(njCogsTotal + bnyCogsTotal + shCogsTotal)}</div>
-              <div className={styles.cardSplit}>NJ {fmtD(njCogsTotal)} · BNY {fmtD(bnyCogsTotal)} · Shared {fmtD(shCogsTotal)}</div>
+              <div className={styles.cardLabel}>Est. COGS {scope}</div>
+              <div className={styles.cardVal}>{fmtD(cogsTotal(null))}</div>
+              <div className={styles.cardSplit}>Material {fmtD(sumWhere(rows,c=>c==='material_inventory'))} · Ink {fmtD(sumWhere(rows,c=>c==='ink'))} · Frt {fmtD(sumWhere(rows,c=>c==='freight'))}</div>
             </div>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>Total OpEx MTD</div>
-              <div className={styles.cardVal}>{fmtD(njOpexTotal + bnyOpexTotal + shOpexTotal)}</div>
-              <div className={styles.cardSplit}>NJ {fmtD(njOpexTotal)} · BNY {fmtD(bnyOpexTotal)} · Shared {fmtD(shOpexTotal)}</div>
+              <div className={styles.cardLabel}>OpEx {scope}</div>
+              <div className={styles.cardVal}>{fmtD(opexTotal(null))}</div>
+              <div className={styles.cardSplit}>NJ {fmtD(opexTotal('NJ'))} · BNY {fmtD(opexTotal('BNY'))} · Shared {fmtD(opexTotal('Shared'))}</div>
             </div>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>NJ Inventory Purchases</div>
-              <div className={styles.cardVal}>{fmtD(get('nj','inv_purchases'))}</div>
-              <div className={styles.cardSplit}>{njVendors.length} vendor{njVendors.length !== 1 ? 's' : ''} · see breakdown below</div>
+              <div className={styles.cardLabel}>CapEx {scope}</div>
+              <div className={styles.cardVal}>{fmtD(capex(null))}</div>
+              <div className={styles.cardSplit}>NJ {fmtD(capex('NJ'))} · BNY {fmtD(capex('BNY'))}</div>
             </div>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>BNY Inventory Purchases</div>
-              <div className={styles.cardVal}>{fmtD(get('bny','inv_purchases'))}</div>
-              <div className={styles.cardSplit}>{bnyVendors.length} vendor{bnyVendors.length !== 1 ? 's' : ''} · see breakdown below</div>
+              <div className={styles.cardLabel}>Net Cash Flow {scope}</div>
+              <div className={styles.cardVal}>{fmtD(Math.abs(arRecv) - apPaid)}</div>
+              <div className={styles.cardSplit}>AR in {fmtD(Math.abs(arRecv))} · AP out {fmtD(apPaid)}</div>
             </div>
           </div>
 
-          {/* COGS table */}
+          {/* Est. COGS table */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Cost of Goods Sold (COGS)</div>
+            <div className={styles.sectionTitle}>Estimated COGS — Material Spend Basis</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th className={styles.labelCol}></th>
-                    <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
-                    <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
-                    <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
-                    <th className={styles.combined}>Combined</th>
-                  </tr>
-                </thead>
+                <thead><tr>
+                  <th className={styles.labelCol}></th>
+                  <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
+                  <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
+                  <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
+                  <th className={styles.combined}>Combined</th>
+                </tr></thead>
                 <tbody>
-                  <SectionRow label="Material"  nj={get('nj','cogs_material')} bny={get('bny','cogs_material')} shared={get('shared','cogs_material')} indent />
-                  <SectionRow label="Labor"     nj={get('nj','cogs_labor')}    bny={get('bny','cogs_labor')}    shared={get('shared','cogs_labor')} indent />
-                  <SectionRow label="WIP"       nj={get('nj','cogs_wip')}      bny={get('bny','cogs_wip')}      shared={get('shared','cogs_wip')} indent />
-                  <SectionRow label="Other"     nj={get('nj','cogs_other')}    bny={get('bny','cogs_other')}    shared={get('shared','cogs_other')} indent />
-                  <SectionRow label="COGS Total" nj={njCogsTotal} bny={bnyCogsTotal} shared={shCogsTotal} isTotal />
+                  <SectionRow label="Material / Inventory" indent est nj={sumWhere(rows,c=>c==='material_inventory','NJ')} bny={sumWhere(rows,c=>c==='material_inventory','BNY')} shared={sumWhere(rows,c=>c==='material_inventory','Shared')} />
+                  <SectionRow label="Ink" indent est nj={sumWhere(rows,c=>c==='ink','NJ')} bny={sumWhere(rows,c=>c==='ink','BNY')} shared={sumWhere(rows,c=>c==='ink','Shared')} />
+                  <SectionRow label="Freight" indent est nj={sumWhere(rows,c=>c==='freight','NJ')} bny={sumWhere(rows,c=>c==='freight','BNY')} shared={sumWhere(rows,c=>c==='freight','Shared')} />
+                  <SectionRow label="Est. COGS Total" isTotal nj={cogsTotal('NJ')} bny={cogsTotal('BNY')} shared={cogsTotal('Shared')} />
                 </tbody>
               </table>
             </div>
+            <div className={styles.contraRow} style={{padding:'8px 16px',fontSize:12,color:'var(--ink-40)'}}>Estimate based on inventory/ink/freight purchases. True posted COGS (material consumed + labor) pending GP trial balance.</div>
           </div>
 
           {/* OpEx table */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Operating Expenses</div>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th className={styles.labelCol}></th>
-                    <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
-                    <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
-                    <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
-                    <th className={styles.combined}>Combined</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <SectionRow label="Salaries"             nj={get('nj','salary')}       bny={get('bny','salary')}       shared={get('shared','salary')} indent />
-                  <SectionRow label="Overtime / Temp"      nj={get('nj','salary_ot')}    bny={get('bny','salary_ot')}    shared={get('shared','salary_ot')} indent />
-                  <SectionRow label="Fringe / Benefits"    nj={get('nj','fringe')}       bny={get('bny','fringe')}       shared={get('shared','fringe')} indent />
-                  <SectionRow label="T&amp;E"              nj={get('nj','te')}            bny={get('bny','te')}           shared={get('shared','te')} indent />
-                  <SectionRow label="Printing / Consumab." nj={get('nj','printing')}     bny={get('bny','printing')}     shared={get('shared','printing')} indent />
-                  <SectionRow label="Distribution"         nj={get('nj','distribution')} bny={get('bny','distribution')} shared={get('shared','distribution')} indent />
-                  <SectionRow label="Office / EDP"         nj={get('nj','office_edp')}   bny={get('bny','office_edp')}   shared={get('shared','office_edp')} indent />
-                  <SectionRow label="Consulting"           nj={get('nj','consulting')}   bny={get('bny','consulting')}   shared={get('shared','consulting')} indent />
-                  <SectionRow label="Building / Maint."    nj={get('nj','building')}     bny={get('bny','building')}     shared={get('shared','building')} indent />
-                  <SectionRow label="Utilities"            nj={get('nj','utilities')}    bny={get('bny','utilities')}    shared={get('shared','utilities')} indent />
-                  <SectionRow label="Rent"                 nj={get('nj','rent')}         bny={get('bny','rent')}         shared={get('shared','rent')} indent />
-                  <SectionRow label="OpEx Total" nj={njOpexTotal} bny={bnyOpexTotal} shared={shOpexTotal} isTotal />
-                  <tr className={styles.contraRow}>
-                    <td className={`${styles.rowLabel} ${styles.indent}`}>Capitalization (contra)</td>
-                    <td className={styles.val}>{fmtD(get('nj','capitalization'))}</td>
-                    <td className={styles.val}>{fmtD(get('bny','capitalization'))}</td>
-                    <td className={styles.val}>{fmtD(get('shared','capitalization'))}</td>
-                    <td className={`${styles.val} ${styles.combined}`}>{fmtD(get('nj','capitalization') + get('bny','capitalization') + get('shared','capitalization'))}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Inventory purchases */}
-          {(get('nj','inv_purchases') > 0 || get('bny','inv_purchases') > 0) && (
-            <div className={styles.twoCol}>
-              {[{bu:'nj', label:'NJ Passaic', badge:'NJ', vendors:njVendors}, {bu:'bny', label:'BNY Brooklyn', badge:'BK', vendors:bnyVendors, bny:true}].map(f => (
-                <div key={f.bu} className={styles.section}>
-                  <div className={styles.sectionTitle}>
-                    <span className={`${styles.facilityBadge} ${f.bny ? styles.badgeBNY : ''}`}>{f.badge}</span>
-                    {f.label} — Inventory Purchases
-                  </div>
-                  <div className={styles.invTotal}>{fmtD(get(f.bu,'inv_purchases'))}</div>
-                  {f.vendors.length > 0 && (
-                    <table className={styles.vendorTable}>
-                      <tbody>
-                        {f.vendors.map((v,i) => (
-                          <tr key={i}>
-                            <td className={styles.vendorName}>
-                              {v.name.replace(/ - FOR (PARAMOUNT|BNY)/i,'').replace(/,CO\.LTD\./i,'').trim()}
-                            </td>
-                            <td className={styles.vendorAmt}>{fmtD(v.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── AP Section ── */}
-      {(apData?.paramount || apData?.bny) && (() => {
-        const fmtAP = n => n ? '$'+Math.round(n).toLocaleString() : '—'
-        const para = apData.paramount, bny = apData.bny
-        const totalBalance = (para?.total||0)+(bny?.total||0)
-        const totalPastDue = (para?.past_due||0)+(bny?.past_due||0)
-        return (
-          <div className={styles.section} style={{marginTop:32}}>
-            <div className={styles.sectionTitle}>Accounts Payable</div>
-            <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
-              {[
-                {label:'Total AP Balance',  val:fmtAP(totalBalance), sub:'Both facilities'},
-                {label:'Total Past Due',    val:fmtAP(totalPastDue), sub:'All aging buckets', alert:totalPastDue>0},
-                {label:'Paramount Balance', val:fmtAP(para?.total),  sub:`Past due: ${fmtAP(para?.past_due)}`},
-                {label:'BNY Balance',       val:fmtAP(bny?.total),   sub:`Past due: ${fmtAP(bny?.past_due)}`},
-              ].map(c=>(
-                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?`1px solid ${STATUS_BAD_BG}`:undefined}}>
-                  <div className={styles.cardLabel}>{c.label}</div>
-                  <div className={styles.cardVal} style={{color:c.alert?STATUS_BAD:undefined}}>{c.val}</div>
-                  <div className={styles.cardSplit}>{c.sub}</div>
-                </div>
-              ))}
-            </div>
+            <div className={styles.sectionTitle}>Operating Expenses (posted)</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead><tr>
-                  <th className={styles.labelCol}>Facility</th>
-                  <th>Total</th><th>Current</th><th>1–7d</th><th>8–14d</th><th>15–30d</th><th>31–45d</th><th>45d+</th>
-                  <th className={styles.combined}>Past Due</th>
+                  <th className={styles.labelCol}></th>
+                  <th><span className={styles.facilityBadge}>NJ</span> Passaic</th>
+                  <th><span className={`${styles.facilityBadge} ${styles.badgeBNY}`}>BK</span> Brooklyn</th>
+                  <th><span className={`${styles.facilityBadge} ${styles.badgeSH}`}>SH</span> Shared</th>
+                  <th className={styles.combined}>Combined</th>
                 </tr></thead>
                 <tbody>
-                  {[{label:'Paramount',d:para},{label:'BNY',d:bny}].filter(r=>r.d).map(({label,d})=>(
-                    <tr key={label}>
-                      <td className={styles.rowLabel} style={{fontWeight:600}}>{label}</td>
-                      {[d.total,d.current,d.days1_7,d.days8_14,d.days15_30,d.days31_45,d.days45plus].map((v,i)=>(
-                        <td key={i} className={styles.val}>{fmtAP(v)}</td>
-                      ))}
-                      <td className={`${styles.val} ${styles.combined}`} style={{color:d.past_due>0?STATUS_BAD:STATUS_GOOD,fontWeight:600}}>{fmtAP(d.past_due)}</td>
-                    </tr>
-                  ))}
+                  {OPEX_CATS.map(c => {
+                    const nj=sumWhere(rows,x=>x===c,'NJ'), bny=sumWhere(rows,x=>x===c,'BNY'), sh=sumWhere(rows,x=>x===c,'Shared')
+                    if (Math.abs(nj)+Math.abs(bny)+Math.abs(sh) < 0.5) return null
+                    return <SectionRow key={c} label={OPEX_LABEL[c]} indent nj={nj} bny={bny} shared={sh} />
+                  })}
+                  <SectionRow label="OpEx Total" isTotal nj={opexTotal('NJ')} bny={opexTotal('BNY')} shared={opexTotal('Shared')} />
                 </tbody>
               </table>
             </div>
-            <div className={styles.twoCol} style={{marginTop:16}}>
-              {[{label:'Paramount',d:para},{label:'BNY',d:bny}].filter(r=>r.d&&r.d.top_vendors?.length).map(({label,d})=>(
-                <div key={label}>
-                  <div style={{fontSize:11,fontWeight:700,color:'var(--ink-40)',letterSpacing:'0.05em',textTransform:'uppercase',marginBottom:8}}>{label} — Top Vendors</div>
-                  <table className={styles.vendorTable}><tbody>
-                    {d.top_vendors.slice(0,6).map((v,i)=>(
-                      <tr key={i}>
-                        <td className={styles.vendorName}>{v.name?.slice(0,30)}</td>
-                        <td className={styles.vendorAmt}>{fmtAP(v.balance)}</td>
-                        {v.pastDue>0&&<td style={{fontSize:11,color:STATUS_BAD,paddingLeft:8}}>({fmtAP(v.pastDue)} overdue)</td>}
-                      </tr>
-                    ))}
-                  </tbody></table>
-                </div>
-              ))}
-            </div>
           </div>
-        )
-      })()}
 
-      {/* ── AR Section ── */}
-      {arData && (() => {
-        const fmtAR = n => n ? '$'+Math.round(n).toLocaleString() : '—'
-        return (
-          <div className={styles.section} style={{marginTop:32}}>
-            <div className={styles.sectionTitle}>Accounts Receivable</div>
-            <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
+          {/* Cash flow strip */}
+          <div className={styles.section}>
+            <div className={styles.sectionTitle}>Cash Flow — AR In / AP Out</div>
+            <div style={{display:'flex',flexWrap:'wrap'}}>
               {[
-                {label:'Total Outstanding', val:fmtAR(arData.total_outstanding), sub:'All aging buckets'},
-                {label:'Current',           val:fmtAR(arData.aging_current),     sub:'Not yet due'},
-                {label:'Total Past Due',    val:fmtAR(arData.total_past_due),    sub:'1–30d through 91d+', alert:arData.total_past_due>0},
-              ].map(c=>(
-                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160,border:c.alert?`1px solid ${STATUS_BAD_BG}`:undefined}}>
-                  <div className={styles.cardLabel}>{c.label}</div>
-                  <div className={styles.cardVal} style={{color:c.alert?STATUS_BAD:undefined}}>{c.val}</div>
-                  <div className={styles.cardSplit}>{c.sub}</div>
+                ['AR Invoiced', arInv, false],
+                ['AR Received', Math.abs(arRecv), true],
+                ['AP Paid', apPaid, false],
+                ['CapEx', capex(null), false],
+              ].map(([lbl,val,good],i,arr)=>(
+                <div key={lbl} style={{flex:1,minWidth:140,padding:'14px 12px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none'}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{lbl}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:good?'var(--green)':'var(--ink)'}}>{fmtD(val)}</div>
                 </div>
               ))}
             </div>
-            <div style={{display:'flex',gap:0,border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',marginBottom:20}}>
-              {[['Current',arData.aging_current,false],['1–30d',arData.aging_1_30,true],['31–60d',arData.aging_31_60,true],['61–90d',arData.aging_61_90,true],['91d+',arData.aging_91plus,true]]
-                .map(([label,val,isPast],i,arr)=>(
-                <div key={label} style={{flex:1,padding:'12px 8px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none',background:'var(--cream)'}}>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{label}</div>
-                  <div style={{fontSize:16,fontWeight:700,color:!isPast?STATUS_GOOD:val>50000?STATUS_BAD:STATUS_WARN}}>{fmtAR(val)}</div>
-                </div>
-              ))}
-            </div>
-            {arData.key_accounts?.length>0&&(
-              <>
-                <div style={{fontSize:11,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:10}}>Key Accounts to Watch</div>
-                <div className={styles.tableWrap}>
-                  <table className={styles.table}>
-                    <thead><tr>
-                      <th className={styles.labelCol}>Account</th>
-                      <th>Unapplied</th><th>Current</th>
-                      <th className={styles.combined}>Past Due</th>
-                      <th style={{textAlign:'left',paddingLeft:12}}>Notes</th>
-                    </tr></thead>
-                    <tbody>
-                      {arData.key_accounts.map((a,i)=>(
-                        <tr key={i}>
-                          <td className={styles.rowLabel} style={{fontWeight:500}}>{a.name}</td>
-                          <td className={styles.val}>{fmtAR(a.unapplied)}</td>
-                          <td className={styles.val}>{fmtAR(a.current)}</td>
-                          <td className={`${styles.val} ${styles.combined}`} style={{color:a.pastDue>0?STATUS_BAD:'inherit',fontWeight:a.pastDue>0?600:400}}>{fmtAR(a.pastDue)}</td>
-                          <td style={{padding:'6px 12px',fontSize:12,color:'var(--ink-60)'}}>{a.notes?.slice(0,80)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
           </div>
-        )
-      })()}
 
-      {/* ── Cash Position ── */}
-      <div className={styles.section} style={{marginTop:32}}>
-        <div className={styles.sectionTitle}>Cash Position</div>
-        {cashData ? (() => {
-          const passaic = parseFloat(cashData.passaic_cash) || 0
-          const bny = parseFloat(cashData.bny_cash) || 0
-          const total = passaic + bny
-          return (
-            <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
-              {[
-                {label:'Total Cash', val:fmtD(total), sub:'Both facilities'},
-                {label:'Passaic NJ', val:fmtD(passaic), sub:`${total>0?Math.round(passaic/total*100):0}% of total`},
-                {label:'BNY Brooklyn', val:fmtD(bny), sub:`${total>0?Math.round(bny/total*100):0}% of total`},
-              ].map(c=>(
-                <div key={c.label} className={styles.card} style={{flex:1,minWidth:160}}>
-                  <div className={styles.cardLabel}>{c.label}</div>
-                  <div className={styles.cardVal}>{c.val}</div>
-                  <div className={styles.cardSplit}>{c.sub}</div>
+          {/* AR / AP aging with trend */}
+          {[{label:'Accounts Receivable',type:'ar',now:agingView.arNow,series:agingView.ar},
+            {label:'Accounts Payable',type:'ap',now:agingView.apNow,series:agingView.ap}].map(sec => sec.now && (
+            <div key={sec.type} className={styles.section}>
+              <div className={styles.sectionTitle}>{sec.label} — Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of}</span></div>
+              <div style={{display:'flex',flexWrap:'wrap'}}>
+                {Object.entries(sec.now.buckets).map(([k,v],i,arr)=>(
+                  <div key={k} style={{flex:1,minWidth:90,padding:'12px 8px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none'}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{k.replace('d','').replace('_','–').replace('plus','+').replace('current','Current')}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:k==='current'?'var(--green)':'var(--ink)'}}>{fmtD(v)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',padding:'10px 16px',borderTop:'1px solid var(--border)',fontSize:13}}>
+                <span>Total <strong>{fmtD(sec.now.total)}</strong></span>
+                <span style={{color:sec.now.pastDue>0?'var(--red)':'var(--green)'}}>Past due <strong>{fmtD(sec.now.pastDue)}</strong></span>
+              </div>
+              {sec.series.length > 1 && (
+                <div style={{padding:'8px 16px',borderTop:'1px solid var(--border)'}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:6}}>Past-due trend</div>
+                  <div style={{display:'flex',gap:8,alignItems:'flex-end',height:42}}>
+                    {sec.series.map(pt=>{
+                      const max=Math.max(...sec.series.map(p=>p.pastDue),1)
+                      return <div key={pt.as_of} title={`${pt.as_of}: ${fmtD(pt.pastDue)}`} style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:3}}>
+                        <div style={{width:'70%',height:`${Math.max(4,(pt.pastDue/max)*36)}px`,background:'var(--red)',opacity:0.7,borderRadius:2}}/>
+                        <div style={{fontSize:9,color:'var(--ink-40)'}}>{pt.as_of.slice(5)}</div>
+                      </div>
+                    })}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          )
-        })() : (
-          <div style={{background:'var(--cream)',border:'1px dashed var(--border)',borderRadius:8,padding:'24px',textAlign:'center',color:'var(--ink-40)',fontSize:13}}>
-            No cash data for this period — enter values in Admin → Financial Data.
-          </div>
-        )}
-      </div>
+          ))}
 
+          {/* CEO narrative */}
+          <div className={styles.section}>
+            <div className={styles.sectionTitle} style={{justifyContent:'space-between'}}>
+              <span>Claude's Read</span>
+              <button onClick={generateNarrative} disabled={genBusy}
+                style={{fontSize:11,fontWeight:600,padding:'4px 12px',borderRadius:6,border:'none',background:genBusy?'#9ca3af':'var(--ink)',color:'#fff',cursor:genBusy?'default':'pointer',textTransform:'none',letterSpacing:0}}>
+                {genBusy ? 'Drafting…' : narrative ? 'Regenerate' : 'Draft with AI'}
+              </button>
+            </div>
+            <div style={{padding:'14px 16px'}}>
+              {narrative
+                ? <textarea value={narrative} onChange={e=>setNarrative(e.target.value)} style={{width:'100%',minHeight:140,border:'1px solid var(--border)',borderRadius:8,padding:12,fontSize:13,lineHeight:1.5,resize:'vertical',fontFamily:'inherit',color:'var(--ink)',background:'var(--surface)'}}/>
+                : <div style={{fontSize:13,color:'var(--ink-40)'}}>Click “Draft with AI” for a brief exec read on the {scope} numbers.</div>}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
