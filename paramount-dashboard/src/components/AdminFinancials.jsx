@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
+import { parsePurchasesWorkbook } from "../lib/purchasesWorkbook";
 
-// ── SheetJS loader ────────────────────────────────────────────────────────────
+// ── SheetJS loader ──────────────────────────────────────────────────────────
 function loadSheetJS() {
   return new Promise((resolve, reject) => {
     if (window.XLSX) { resolve(window.XLSX); return; }
@@ -13,723 +14,244 @@ function loadSheetJS() {
   });
 }
 
-// ── Period helpers ────────────────────────────────────────────────────────────
-function derivePeriod(ws) {
-  if (!ws) return "";
-  const d  = typeof ws === "string" ? new Date(ws + "T12:00:00") : ws;
-  const yr = d.getFullYear(), mo = d.getMonth() + 1;
-  return `${yr}-${String(mo).padStart(2,"0")}-W${Math.min(Math.ceil(d.getDate()/7),5)}`;
-}
-
-function findCol(row, ...candidates) {
-  const keys = Object.keys(row);
-  for (const c of candidates) {
-    const norm = c.toLowerCase().replace(/\s+/g,"");
-    const hit  = keys.find(k => k.toLowerCase().replace(/\s+/g,"") === norm);
-    if (hit !== undefined) return hit;
-  }
-  return null;
-}
-
-// ── GP Report parser ──────────────────────────────────────────────────────────
-function parseGL(rows) {
-  if (!rows.length) return {};
-  const UNITS = ["609","610","612"];
-  const zero  = () => ({ cogs_material:0, cogs_labor:0, cogs_wip:0, cogs_other:0,
-    salary:0, salary_ot:0, fringe:0, te:0, printing:0, distribution:0,
-    office_edp:0, consulting:0, building:0, utilities:0, rent:0,
-    capitalization:0, inv_purchases:0, _vendors:{} });
-  const totals = {}; UNITS.forEach(u => { totals[u] = zero(); });
-  const s = rows[0];
-  const colBU  = findCol(s,"BusinessUnit","Business Unit","BU");
-  const colAcc = findCol(s,"Account Number","AccountNumber","Account No");
-  const colDeb = findCol(s,"Debit Amount","DebitAmount","Debit");
-  const colNet = findCol(s,"NET","Net","Net Amount");
-  rows.forEach(row => {
-    const bu = String(colBU ? row[colBU] : "").trim();
-    if (!UNITS.includes(bu)) return;
-    const m = String(colAcc ? row[colAcc] : "").match(/-(\d{4})-/);
-    if (!m) return;
-    const obj = parseInt(m[1],10);
-    const deb = parseFloat(colDeb ? row[colDeb] : 0)||0;
-    const net = parseFloat(colNet ? row[colNet] : 0)||0;
-    const pos = net>0?net:0, t = totals[bu];
-    if      ([4104,4105].includes(obj)) t.cogs_material += net;
-    else if ([4108,4109].includes(obj)) t.cogs_labor    += net;
-    else if ([4111,4112].includes(obj)) t.cogs_wip      += net;
-    else if ([4113,4114].includes(obj)) t.cogs_other    += net;
-    else if (obj===1437&&deb>0) {
-      t.inv_purchases += deb;
-      const name = String(row[findCol(row,"Originating Master Name","Master Name")||""]||"")
-        .replace(/\s*-\s*FOR\s+(PARAMOUNT|BNY)[\w\s]*/i,"").replace(/\s+/g," ").trim()||"Unknown";
-      t._vendors[name] = (t._vendors[name]||0)+deb;
-    }
-    else if (obj===6116) t.capitalization += net;
-    else if (obj===6115) t.salary       += pos;
-    else if ([6120,6125,6130,6135].includes(obj)) t.salary_ot += pos;
-    else if (obj===6195) t.fringe       += pos;
-    else if ([6205,6220,6221,6255,6260,6270,6271].includes(obj)) t.te += pos;
-    else if ([4305,4313,6405,6410,6415,6420,6430,6435].includes(obj)) t.distribution += pos;
-    else if (obj===6312) t.printing     += pos;
-    else if ([4815,6505,6510,6515,6520,6525,6530,6540,6550,6640,6815].includes(obj)) t.office_edp += pos;
-    else if (obj===6630) t.consulting   += pos;
-    else if (obj===6710) t.building     += pos;
-    else if (obj===6715) t.utilities    += pos;
-    else if ([6740,6745].includes(obj)) t.rent += pos;
-  });
-  return totals;
-}
-
-function buildGPRow(period, bu, t) {
-  const r = n => Math.round((n||0)*100)/100;
-  return { period, business_unit:bu,
-    cogs_material:r(t.cogs_material), cogs_labor:r(t.cogs_labor), cogs_wip:r(t.cogs_wip), cogs_other:r(t.cogs_other),
-    salary:r(t.salary), salary_ot:r(t.salary_ot), fringe:r(t.fringe), te:r(t.te), printing:r(t.printing),
-    distribution:r(t.distribution), office_edp:r(t.office_edp), consulting:r(t.consulting),
-    building:r(t.building), utilities:r(t.utilities), rent:r(t.rent),
-    capitalization:r(t.capitalization), inv_purchases:r(t.inv_purchases),
-    inv_vendors: Object.entries(t._vendors||{}).map(([name,amount])=>({name,amount:Math.round(amount*100)/100})).sort((a,b)=>b.amount-a.amount),
-    uploaded_at: new Date().toISOString() };
-}
-
-function guessGPPeriod(rows) {
-  if (!rows.length) return null;
-  const pid = rows[0]["Period ID"], yr = rows[0]["Open Year"];
-  if (typeof pid !== "number"||!yr) return null;
-  let maxDay = 1;
-  rows.forEach(row => {
-    const raw = row["TRX Date"];
-    if (typeof raw === "string") { const m=raw.match(/DATE\(\d+,\d+,(\d+)\)/); if(m) maxDay=Math.max(maxDay,+m[1]); }
-    else if (typeof raw === "number") maxDay = Math.max(maxDay, new Date((raw-25569)*86400000).getDate());
-  });
-  return `${parseInt(yr)}-${String(pid).padStart(2,"0")}-W${Math.min(Math.ceil(maxDay/7),5)}`;
-}
-
-// ── AP parser ─────────────────────────────────────────────────────────────────
-// Parse a single AP sheet tab — col headers: Vendor Name[1], HOLD[8], Balance[9], Current[10], 1-7[11], 8-14[12], 15-30[13], 31-45[14], 45+[15]
-function parseAPTab(XLSX, sheet, facility) {
-  const rows = XLSX.utils.sheet_to_json(sheet, { header:1, defval:null })
-  return parseAPRows(rows, facility)
-}
-
-function parseAPRows(rows, facility) {
-  if (rows.length < 2) return null
-  const hdr = (rows[0]||[]).map(v => String(v||'').toLowerCase())
-  // Find columns by header name
-  const ci = name => hdr.findIndex(h => h.includes(name))
-  const nameCol = ci('vendor_name') >= 0 ? ci('vendor_name') : (ci('vendor name') >= 0 ? ci('vendor name') : 1)
-  const holdCol = ci('hold')        >= 0 ? ci('hold')        : 8
-  const balCol  = ci('balance')     >= 0 ? ci('balance')     : 9
-  const curCol  = ci('current')     >= 0 ? ci('current')     : 10
-  const d1Col   = hdr.findIndex(h => h.includes('1_to_7') || h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) >= 0
-                    ? hdr.findIndex(h => h.includes('1_to_7') || h.includes('1 to 7') || h.match(/^1.*(7|seven)/)) : 11
-  const d8Col   = hdr.findIndex(h => h.includes('8_to_14') || h.includes('8 to 14') || h.includes('8-14')) >= 0
-                    ? hdr.findIndex(h => h.includes('8_to_14') || h.includes('8 to 14') || h.includes('8-14')) : 12
-  const d15Col  = hdr.findIndex(h => h.includes('15_to_30') || h.includes('15 to 30') || h.includes('15-30')) >= 0
-                    ? hdr.findIndex(h => h.includes('15_to_30') || h.includes('15 to 30') || h.includes('15-30')) : 13
-  const d31Col  = hdr.findIndex(h => h.includes('31_to_45') || h.includes('31 to 45') || h.includes('31-45')) >= 0
-                    ? hdr.findIndex(h => h.includes('31_to_45') || h.includes('31 to 45') || h.includes('31-45')) : 14
-  const d45Col  = hdr.findIndex(h => h.includes('45_and') || h.includes('45 and') || h.includes('45+') || h.includes('over')) >= 0
-                    ? hdr.findIndex(h => h.includes('45_and') || h.includes('45 and') || h.includes('45+') || h.includes('over')) : 15
-
-  const vendors = []
-  let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0
-  for (const row of rows.slice(1)) {
-    if (!row || !row[nameCol]) continue
-    const balance = parseFloat(row[balCol]) || 0
-    if (balance === 0) continue
-    const name = String(row[nameCol]).trim().replace(/\s*-\s*(FOR\s+)?(PARAMOUNT|BNY)[^,]*/i, '').trim()
-    const c=parseFloat(row[curCol])||0, r1=parseFloat(row[d1Col])||0, r8=parseFloat(row[d8Col])||0,
-          r15=parseFloat(row[d15Col])||0, r31=parseFloat(row[d31Col])||0, r45=parseFloat(row[d45Col])||0
-    const pastDue = r1+r8+r15+r31+r45
-    vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:r15, days31_45:r31, days45plus:r45, pastDue,
-      hold: String(row[holdCol]||'').toLowerCase() === 'yes' })
-    total+=balance; current+=c; d1+=r1; d8+=r8; d15+=r15; d31+=r31; d45+=r45
-  }
-  vendors.sort((a,b) => b.balance - a.balance)
-  return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45,
-    pastDue: d1+d8+d15+d31+d45 }
-}
-
-// Parse combined AP file — handles both multi-tab and single-sheet-with-Division formats
-function parseAPCombinedFile(XLSX, workbook) {
-  const names = workbook.SheetNames
-
-  // Check if the first (or only) sheet has a "Division" column → single-sheet format
-  const firstSheet = workbook.Sheets[names[0]]
-  const allRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: null })
-  const hdr = (allRows[0] || []).map(v => String(v || '').toLowerCase())
-  const divCol = hdr.findIndex(h => h.includes('division'))
-
-  if (divCol >= 0) {
-    // Single-sheet format: split rows by Division column (PH vs BNY)
-    const paraRows = [allRows[0]]  // keep header
-    const bnyRows  = [allRows[0]]
-    for (let i = 1; i < allRows.length; i++) {
-      const row = allRows[i]
-      if (!row) continue
-      const div = String(row[divCol] || '').trim().toUpperCase()
-      if (div === 'PH' || div.includes('PARA')) paraRows.push(row)
-      else if (div === 'BNY' || div.includes('BROOKLYN')) bnyRows.push(row)
-    }
-    const para = paraRows.length > 1 ? parseAPRows(paraRows, 'Paramount') : null
-    const bny  = bnyRows.length > 1  ? parseAPRows(bnyRows,  'BNY')       : null
-    return { para, bny }
-  }
-
-  // Multi-tab format: find tabs by name
-  const paraName = names.find(s => /paramount|para|ph/i.test(s)) || names[0]
-  const bnyName  = names.find(s => /bny|brooklyn/i.test(s))       || (names.length > 1 ? names[1] : null)
-  const para = paraName ? parseAPTab(XLSX, workbook.Sheets[paraName], 'Paramount') : null
-  const bny  = bnyName  ? parseAPTab(XLSX, workbook.Sheets[bnyName],  'BNY')       : null
-  return { para, bny }
-}
-
-// Old: [0]VendorID [7]VendorName [8]HOLD [9]Balance [10]Current [11]1-7 [12]8-14 [13]15-30 [14]31-45 [15]45+
-// New pivot: [0]Row Labels [1]Sum of Current [2]Sum of 1 to 7 Days ... [6]Sum of 91 and Over
-function parseAPSheet(XLSX, workbook, facility) {
-  // Try named sheet first, then fall back to first sheet
-  const sheetName = workbook.SheetNames.find(s => s.toLowerCase().includes("ap aging"))
-    || workbook.SheetNames[0];
-  if (!sheetName) return null;
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header:1, defval:null });
-  if (rows.length < 2) return null;
-
-  const vendors = [];
-  let total=0, current=0, d1=0, d8=0, d15=0, d31=0, d45=0;
-
-  // Detect format by looking at header row
-  const hdr = (rows[0]||[]).map(v=>String(v||'').toLowerCase());
-  const isPivot = hdr.some(h=>h.includes('row label')||h.includes('sum of current'));
-
-  if (isPivot) {
-    // New pivot format: Row Labels | Current | 1-7 | 8-30 | 31-60 | 61-90 | 91+
-    // Find header row (may not be row 0 if there are blank rows at top)
-    let headerIdx = rows.findIndex(r => (r||[]).some(v=>String(v||'').toLowerCase().includes('row label')))
-    if (headerIdx < 0) headerIdx = 0
-    const hdrs = (rows[headerIdx]||[]).map(v=>String(v||'').toLowerCase())
-    const col = name => hdrs.findIndex(h=>h.includes(name))
-    const nameCol = col('row label') >= 0 ? col('row label') : 0
-    const curCol  = col('current')
-    const d1Col   = col('1 to 7')  >= 0 ? col('1 to 7')  : col('1-7')
-    const d8Col   = col('8 to 30') >= 0 ? col('8 to 30') : col('8-30')
-    const d31Col  = col('31 to 60')>= 0 ? col('31 to 60'): col('31-60')
-    const d61Col  = col('61 to 90')>= 0 ? col('61 to 90'): col('61-90')
-    const d91Col  = col('91')
-
-    for (const row of rows.slice(headerIdx+1)) {
-      if (!row||!row[nameCol]) continue
-      const name = String(row[nameCol]).trim()
-      if (!name || name.toLowerCase().includes('grand total') || name.toLowerCase().includes('total')) {
-        // Use Grand Total row for totals if present
-        if (name.toLowerCase().includes('grand total')) {
-          total = (curCol>=0?parseFloat(row[curCol])||0:0)
-               + (d1Col>=0?parseFloat(row[d1Col])||0:0)
-               + (d8Col>=0?parseFloat(row[d8Col])||0:0)
-               + (d31Col>=0?parseFloat(row[d31Col])||0:0)
-               + (d61Col>=0?parseFloat(row[d61Col])||0:0)
-               + (d91Col>=0?parseFloat(row[d91Col])||0:0)
-        }
-        continue
-      }
-      const c   = curCol>=0  ? parseFloat(row[curCol])||0  : 0
-      const r1  = d1Col>=0   ? parseFloat(row[d1Col])||0   : 0
-      const r8  = d8Col>=0   ? parseFloat(row[d8Col])||0   : 0
-      const r31 = d31Col>=0  ? parseFloat(row[d31Col])||0  : 0
-      const r61 = d61Col>=0  ? parseFloat(row[d61Col])||0  : 0
-      const r91 = d91Col>=0  ? parseFloat(row[d91Col])||0  : 0
-      const balance = c+r1+r8+r31+r61+r91
-      if (balance===0) continue
-      const pastDue = r1+r8+r31+r61+r91
-      vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:0, days31_45:r31, days45plus:r61+r91, pastDue, hold:false })
-      current+=c; d1+=r1; d8+=r8; d31+=r31; d45+=r61+r91
-    }
-    if (total===0) total = current+d1+d8+d31+d45
-  } else {
-    // Old format
-    for (const row of rows.slice(1)) {
-      if (!row||!row[7]) continue;
-      const balance = parseFloat(row[9])||0;
-      if (balance===0) continue;
-      const name = String(row[7]).trim().replace(/\s*-\s*(FOR\s+)?(PARAMOUNT|BNY)[^,]*/i,"").trim();
-      const c=parseFloat(row[10])||0, r1=parseFloat(row[11])||0, r8=parseFloat(row[12])||0,
-            r15=parseFloat(row[13])||0, r31=parseFloat(row[14])||0, r45=parseFloat(row[15])||0;
-      const pastDue = r1+r8+r15+r31+r45;
-      vendors.push({ name, balance, current:c, days1_7:r1, days8_14:r8, days15_30:r15, days31_45:r31, days45plus:r45, pastDue,
-        hold: String(row[8]||"").toLowerCase()==="yes" });
-      total+=balance; current+=c; d1+=r1; d8+=r8; d15+=r15; d31+=r31; d45+=r45;
-    }
-  }
-
-  vendors.sort((a,b)=>b.balance-a.balance);
-  return { facility, vendors, total, current, days1_7:d1, days8_14:d8, days15_30:d15, days31_45:d31, days45plus:d45,
-    pastDue: d1+d8+d15+d31+d45 };
-}
-
-// ── AR parser ─────────────────────────────────────────────────────────────────
-// Raw "Sheet" tab: col[0]=CustomerID col[1]=CustomerName col[7]=LiftOrderType(PARA/BNY)
-//   col[10]=DocumentAmount col[11]=UnappliedAmount col[12]=Current col[13]=1-7d col[14]=8-30d
-//   col[15]=31-60d col[16]=61-90d col[17]=91+
-function parseARFile(XLSX, workbook) {
-  const makeResult = () => ({ aging:{current:0,days1_7:0,days8_30:0,days31_60:0,days61_90:0,days91plus:0,total:0},
-    customers:[], totalOutstanding:0, totalPastDue:0 })
-  const para = makeResult(), bny = makeResult()
-
-  // Try raw detail sheet first ("Sheet" or second sheet)
-  const rawName = workbook.SheetNames.find(s => s === 'Sheet')
-    || workbook.SheetNames.find(s => !s.toLowerCase().includes('sheet1') && s !== workbook.SheetNames[0])
-    || workbook.SheetNames[workbook.SheetNames.length > 1 ? 1 : 0]
-
-  const rawSheet = workbook.Sheets[rawName]
-  if (rawSheet) {
-    const rows = XLSX.utils.sheet_to_json(rawSheet, { header:1, defval:null })
-    // Find header row — match with or without underscores
-    const hdrIdx = rows.findIndex(r => (r||[]).some(v => {
-      const lc = String(v||'').toLowerCase().replace(/_/g,' ')
-      return lc.includes('customer id') || lc.includes('lift order')
-    }))
-    if (hdrIdx >= 0) {
-      const hdr = (rows[hdrIdx]||[]).map(v => String(v||'').toLowerCase().replace(/_/g,' '))
-      const ci = (name) => hdr.findIndex(h => h.includes(name))
-      const nameCol   = ci('customer name') >= 0 ? ci('customer name') : 1
-      const divCol    = ci('lift order')    >= 0 ? ci('lift order')    : 7
-      const unapplCol = ci('unapplied')     >= 0 ? ci('unapplied')     : 11
-      const curCol    = ci('current')       >= 0 ? ci('current')       : 12
-      const d1Col     = hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.+7/)) >= 0
-                          ? hdr.findIndex(h => h.includes('1 to 7') || h.match(/^1.+7/)) : 13
-      const d8Col     = hdr.findIndex(h => h.includes('8 to 30') || h.match(/^8.+30/)) >= 0
-                          ? hdr.findIndex(h => h.includes('8 to 30') || h.match(/^8.+30/)) : 14
-      const d31Col    = hdr.findIndex(h => h.includes('31 to 60') || h.match(/^31.+60/)) >= 0
-                          ? hdr.findIndex(h => h.includes('31 to 60') || h.match(/^31.+60/)) : 15
-      const d61Col    = hdr.findIndex(h => h.includes('61 to 90') || h.match(/^61.+90/)) >= 0
-                          ? hdr.findIndex(h => h.includes('61 to 90') || h.match(/^61.+90/)) : 16
-      const d91Col    = hdr.findIndex(h => h.includes('91')) >= 0
-                          ? hdr.findIndex(h => h.includes('91')) : 17
-
-      const customerTotals = {} // { name: { facility, unapplied, current, d1, d8, d31, d61, d91 } }
-
-      for (const row of rows.slice(hdrIdx + 1)) {
-        if (!row || !row[nameCol]) continue
-        const div = String(row[divCol] || '').trim().toUpperCase()
-        if (div !== 'PARA' && div !== 'BNY') continue
-        const name    = String(row[nameCol]).trim()
-        const unappl  = Math.abs(parseFloat(row[unapplCol]) || 0)
-        if (unappl === 0) continue
-        const c   = parseFloat(row[curCol])  || 0
-        const r1  = parseFloat(row[d1Col])   || 0
-        const r8  = parseFloat(row[d8Col])   || 0
-        const r31 = parseFloat(row[d31Col])  || 0
-        const r61 = parseFloat(row[d61Col])  || 0
-        const r91 = parseFloat(row[d91Col])  || 0
-        const key = `${div}::${name}`
-        if (!customerTotals[key]) customerTotals[key] = { name, facility:div, unapplied:0, current:0, d1:0, d8:0, d31:0, d61:0, d91:0 }
-        const ct = customerTotals[key]
-        ct.unapplied += unappl; ct.current += c; ct.d1 += r1; ct.d8 += r8; ct.d31 += r31; ct.d61 += r61; ct.d91 += r91
-      }
-
-      for (const ct of Object.values(customerTotals)) {
-        const target = ct.facility === 'PARA' ? para : bny
-        const pastDue = ct.d1 + ct.d8 + ct.d31 + ct.d61 + ct.d91
-        target.customers.push({ name:ct.name, balance:ct.unapplied, current:ct.current,
-          days1_7:ct.d1, days8_30:ct.d8, days31_60:ct.d31, days61_90:ct.d61, days91plus:ct.d91, pastDue })
-        target.aging.current    += ct.current
-        target.aging.days1_7    += ct.d1
-        target.aging.days8_30   += ct.d8
-        target.aging.days31_60  += ct.d31
-        target.aging.days61_90  += ct.d61
-        target.aging.days91plus += ct.d91
-        target.totalOutstanding += ct.unapplied
-      }
-
-      for (const t of [para, bny]) {
-        t.aging.total = t.totalOutstanding
-        t.totalPastDue = t.aging.days1_7 + t.aging.days8_30 + t.aging.days31_60 + t.aging.days61_90 + t.aging.days91plus
-        t.customers.sort((a,b) => b.balance - a.balance)
-      }
-    }
-  }
-
-  return { para, bny,
-    // Combined totals for backward compat
-    aging: {
-      current:    para.aging.current    + bny.aging.current,
-      days1_30:   para.aging.days1_7    + bny.aging.days1_7 + para.aging.days8_30 + bny.aging.days8_30,
-      days31_60:  para.aging.days31_60  + bny.aging.days31_60,
-      days61_90:  para.aging.days61_90  + bny.aging.days61_90,
-      days91plus: para.aging.days91plus + bny.aging.days91plus,
-      total:      para.totalOutstanding + bny.totalOutstanding,
-    },
-    keyAccounts: [...para.customers, ...bny.customers],
-    totalOutstanding: para.totalOutstanding + bny.totalOutstanding,
-    totalPastDue:     para.totalPastDue     + bny.totalPastDue,
-  }
-}
-
-// ── Formatters ────────────────────────────────────────────────────────────────
+// ── Formatters ──────────────────────────────────────────────────────────────
 const fmt  = n => new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(n||0);
-const fmtD = iso => iso ? new Date(iso).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "";
-const BU   = {"609":"BNY Brooklyn","610":"Passaic NJ","612":"Shared"};
+const fmtD = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}) : "";
+const MONTH_LABEL = { "01":"January","02":"February","03":"March","04":"April","05":"May","06":"June","07":"July","08":"August","09":"September","10":"October","11":"November","12":"December" };
+const monthLabel = m => { if(!m) return ""; const [y,mo]=m.split("-"); return `${MONTH_LABEL[mo]||mo} ${y}`; };
 
-// ── Drop zone ─────────────────────────────────────────────────────────────────
-function DropZone({ label, sublabel, accept, onFile, file, status, color="#4f46e5", disabled }) {
-  const ref  = useRef(null);
+// Friendly labels for tabs / categories
+const TAB_LABEL = {
+  inventory_ink_freight:"Inventory · Ink · Freight",
+  sales_ar_invoiced:"AR — Invoiced (Sales)",
+  ar_received:"AR — Received (Cash)",
+  ap_invoiced:"AP — Invoiced",
+  ap_paid:"AP — Paid",
+  opex_te:"OpEx & T&E",
+  capex:"CapEx",
+};
+const CAT_LABEL = {
+  material_inventory:"Material / Inventory", ink:"Ink", freight:"Freight", inventory_other:"Inventory (other)",
+  opex_temp:"Temp / Contract", opex_te:"Travel & Entertainment", opex_distribution:"Distribution",
+  opex_edp:"Office / EDP", opex_supplies:"Supplies", opex_printing:"Printing", opex_services:"Outside Services",
+  opex_utilities:"Utilities", opex_rent:"Rent", opex_other:"OpEx (other)", prepaid:"Prepaid", line_dev:"Line Development",
+  ar_trade:"AR Trade", ar_adjustment:"AR Adjustments", ar_receipt:"Cash Receipts",
+  ap_invoiced:"AP Invoiced", ap_paid:"AP Paid", capex:"CapEx", other:"Other",
+};
+const BU_LABEL = { BNY:"BNY Brooklyn", NJ:"Passaic NJ", Shared:"Shared", "?":"Unmapped" };
+
+// ── Drop zone ───────────────────────────────────────────────────────────────
+function DropZone({ accept, onFile, file, status, color="#4f46e5", busy }) {
+  const ref = useRef(null);
   const [drag, setDrag] = useState(false);
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:5}}>
-      <div style={{fontSize:12,fontWeight:700,color:"#374151",textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</div>
-      {sublabel && <div style={{fontSize:11,color:"#9ca3af",marginTop:-3}}>{sublabel}</div>}
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
       <div
-        onClick={() => !disabled && ref.current?.click()}
-        onDragOver={e=>{if(!disabled){e.preventDefault();setDrag(true)}}}
+        onClick={() => !busy && ref.current?.click()}
+        onDragOver={e=>{if(!busy){e.preventDefault();setDrag(true)}}}
         onDragLeave={()=>setDrag(false)}
-        onDrop={e=>{e.preventDefault();setDrag(false);if(!disabled){const f=e.dataTransfer.files[0];if(f)onFile(f)}}}
-        style={{ border:`2px dashed ${disabled?"#e5e7eb":drag?color:file?"#6ee7b7":"#d1d5db"}`,
-          borderRadius:10, padding:"14px 10px", textAlign:"center",
-          cursor:disabled?"default":"pointer", transition:"all 0.15s",
-          background:disabled?"#f9fafb":drag?"#f0f9ff":file?"#f0fdf4":"#fafafa",
-          minHeight:76, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3 }}
+        onDrop={e=>{e.preventDefault();setDrag(false);if(!busy){const f=e.dataTransfer.files[0];if(f)onFile(f)}}}
+        style={{ border:`2px dashed ${drag?color:file?"#6ee7b7":"#d1d5db"}`, borderRadius:12,
+          padding:"28px 18px", textAlign:"center", cursor:busy?"default":"pointer", transition:"all 0.15s",
+          background:drag?"#f0f9ff":file?"#f0fdf4":"#fafafa",
+          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6 }}
       >
         <input ref={ref} type="file" accept={accept} style={{display:"none"}}
           onChange={e=>{const f=e.target.files?.[0];if(f)onFile(f);e.target.value="";}}/>
-        {disabled ? (
-          <div style={{fontSize:12,color:"#9ca3af"}}>Coming soon</div>
-        ) : file ? (
-          <><div style={{fontSize:18}}>✓</div><div style={{fontSize:11,fontWeight:600,color:"#15803d",wordBreak:"break-all"}}>{file.name}</div></>
+        {file ? (
+          <><div style={{fontSize:22}}>✓</div><div style={{fontSize:13,fontWeight:600,color:"#15803d",wordBreak:"break-all"}}>{file.name}</div></>
         ) : (
-          <><div style={{fontSize:22,color:"#d1d5db"}}>+</div><div style={{fontSize:12,color:"#6b7280"}}>Drop or click</div><div style={{fontSize:11,color:"#9ca3af"}}>.xlsx</div></>
+          <><div style={{fontSize:26,color:"#d1d5db"}}>+</div>
+            <div style={{fontSize:14,color:"#374151",fontWeight:600}}>Drop the GP Purchases workbook</div>
+            <div style={{fontSize:12,color:"#9ca3af"}}>Inventory · AR · AP · OpEx · CapEx · Aging — one .xlsx</div></>
         )}
       </div>
-      {status && <div style={{fontSize:11,color:status.startsWith("✓")?"#15803d":status.startsWith("⚠")?"#b45309":"#9ca3af"}}>{status}</div>}
+      {status && <div style={{fontSize:12,color:status.startsWith("✓")?"#15803d":status.startsWith("⚠")?"#b45309":"#6b7280"}}>{status}</div>}
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-export default function AdminFinancials({ weekStart }) {
-  const [selectedPeriod,   setSelectedPeriod]   = useState(() => derivePeriod(weekStart));
-  const [showPeriodPicker, setShowPeriodPicker] = useState(false);
-  const [gpFile,    setGpFile]    = useState(null);
-  const [apFile,    setApFile]    = useState(null);
-  const [arFile,    setArFile]    = useState(null);
-  const [gpPreview,  setGpPreview]  = useState(null);
-  const [apData,     setApData]     = useState(null);  // { para, bny }
-  const [arData,     setArData]     = useState(null);
-  const [cashPassaic, setCashPassaic] = useState('');
-  const [cashBNY,     setCashBNY]     = useState('');
-  const [fileStatus, setFileStatus] = useState({});
-  const setStatus = (key, msg) => setFileStatus(p=>({...p,[key]:msg}));
-  const [saving,      setSaving]      = useState(false);
-  const [saveMsg,     setSaveMsg]     = useState(null);
-  const [uploads,     setUploads]     = useState([]);
+// ── Small UI helpers ────────────────────────────────────────────────────────
+function StatGrid({ title, rows, labelMap }) {
+  const entries = Object.entries(rows).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  return (
+    <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
+      <div style={{background:"#f9fafb",padding:"7px 14px",borderBottom:"1px solid #e5e7eb",fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.04em",color:"#6b7280"}}>{title}</div>
+      <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
+        <tbody>
+          {entries.map(([k,v])=>(
+            <tr key={k} style={{borderBottom:"1px solid #f3f4f6"}}>
+              <td style={{padding:"6px 14px"}}>{(labelMap&&labelMap[k])||k}</td>
+              <td style={{padding:"6px 14px",textAlign:"right",fontVariantNumeric:"tabular-nums",color:v<0?"#b91c1c":"#111827"}}>{fmt(v)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+export default function AdminFinancials() {
+  const [file, setFile]         = useState(null);
+  const [status, setStatus]     = useState("");
+  const [parsed, setParsed]     = useState(null);   // result of parsePurchasesWorkbook
+  const [busy, setBusy]         = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [saveMsg, setSaveMsg]   = useState(null);
+  const [history, setHistory]   = useState([]);
   const [loadingHist, setLoadingHist] = useState(false);
 
-  useEffect(() => { setSelectedPeriod(derivePeriod(weekStart)); loadHistory(); }, [weekStart]);
+  useEffect(() => { loadHistory(); }, []);
 
   async function loadHistory() {
     setLoadingHist(true);
-    const { data } = await supabase.from("financials_monthly")
-      .select("period,business_unit,cogs_total,opex_total,inv_purchases,uploaded_at")
-      .order("period",{ascending:false}).order("business_unit",{ascending:true}).limit(20);
-    setUploads(data||[]);
+    // lightweight aggregate: pull fiscal_month + net, summarize client-side
+    const { data, error } = await supabase
+      .from("financial_transactions")
+      .select("fiscal_month, source_tab, net")
+      .order("fiscal_month", { ascending: false })
+      .limit(20000);
+    if (!error && data) {
+      const byMonth = {};
+      for (const r of data) {
+        const m = r.fiscal_month || "—";
+        if (!byMonth[m]) byMonth[m] = { month:m, count:0, net:0 };
+        byMonth[m].count++; byMonth[m].net += (r.net || 0);
+      }
+      setHistory(Object.values(byMonth).sort((a,b)=> b.month.localeCompare(a.month)));
+    }
     setLoadingHist(false);
   }
 
-  async function handleGP(file) {
-    setGpFile(file); setStatus("gp","Parsing…");
+  async function handleFile(f) {
+    setFile(f); setParsed(null); setSaveMsg(null); setBusy(true); setStatus("Reading workbook…");
     try {
       const XLSX = await loadSheetJS();
-      const rows = XLSX.utils.sheet_to_json(XLSX.read(await file.arrayBuffer(),{type:"array"}).Sheets[
-        XLSX.read(await file.arrayBuffer(),{type:"array"}).SheetNames[0]],{raw:true});
-      if (!rows.length) { setStatus("gp","⚠ File empty"); return; }
-      const totals = parseGL(rows);
-      const guess  = guessGPPeriod(rows);
-      if (guess && !selectedPeriod) setSelectedPeriod(guess);
-      setGpPreview({totals, rowCount:rows.length});
-      setStatus("gp",`✓ ${rows.length.toLocaleString()} rows`);
-    } catch(e) { setStatus("gp","⚠ "+e.message); }
+      const wb   = XLSX.read(await f.arrayBuffer(), { type:"array" });
+      const res  = parsePurchasesWorkbook(XLSX, wb, { fileName: f.name });
+      if (!res.transactions.length) { setStatus("⚠ No transactional rows found — is this the right workbook?"); setBusy(false); return; }
+      setParsed(res);
+      setStatus(`✓ ${res.summary.txnCount.toLocaleString()} transactions · ${res.summary.agingCount.toLocaleString()} aging rows · as-of ${fmtD(res.asOfDate)}`);
+    } catch (e) {
+      console.error(e); setStatus("⚠ " + e.message);
+    }
+    setBusy(false);
   }
 
-  async function handleAP(file) {
-    setApFile(file); setStatus("ap","Parsing…");
-    try {
-      const XLSX = await loadSheetJS();
-      const wb   = XLSX.read(await file.arrayBuffer(),{type:"array"});
-      const data = parseAPCombinedFile(XLSX, wb);
-      if (!data.para && !data.bny) { setStatus("ap","⚠ No AP data found"); return; }
-      setApData(data);
-      const parts = [data.para&&`Paramount: ${fmt(data.para.total)}`, data.bny&&`BNY: ${fmt(data.bny.total)}`].filter(Boolean)
-      setStatus("ap",`✓ ${parts.join(' · ')}`);
-    } catch(e) { setStatus("ap","⚠ "+e.message); }
-  }
-
-  async function handleAR(file) {
-    setArFile(file); setStatus("ar","Parsing…");
-    try {
-      const XLSX = await loadSheetJS();
-      const wb   = XLSX.read(await file.arrayBuffer(),{type:"array"});
-      const data = parseARFile(XLSX, wb);
-      setArData(data);
-      setStatus("ar",`✓ Paramount: ${fmt(data.para.totalOutstanding)} · BNY: ${fmt(data.bny.totalOutstanding)}`);
-    } catch(e) { setStatus("ar","⚠ "+e.message); }
-  }
-
-  async function handleSaveAll() {
-    if (!selectedPeriod) { setSaveMsg({type:"error",text:"Select a period first"}); return; }
+  async function handleSave() {
+    if (!parsed) return;
     setSaving(true); setSaveMsg(null);
     try {
-      if (gpPreview) {
-        const rows = Object.entries(gpPreview.totals).map(([bu,t])=>buildGPRow(selectedPeriod,bu,t));
-        const {error} = await supabase.from("financials_monthly").upsert(rows,{onConflict:"period,business_unit"});
-        if (error) throw new Error("GP: "+error.message);
+      const { transactions, aging, summary, asOfDate } = parsed;
+      const months = summary.fiscalMonths.length ? summary.fiscalMonths : [...new Set(transactions.map(t=>t.fiscal_month).filter(Boolean))];
+
+      // 1) Replace-by-window: delete existing txns for every fiscal month in the file
+      for (const m of months) {
+        const { error } = await supabase.from("financial_transactions").delete().eq("fiscal_month", m);
+        if (error) throw new Error("Clearing " + m + ": " + error.message);
       }
-      const apRows = [];
-      if (apData?.para) apRows.push({ period:selectedPeriod, facility:"Paramount",
-        total:apData.para.total, current:apData.para.current, days1_7:apData.para.days1_7,
-        days8_14:apData.para.days8_14, days15_30:apData.para.days15_30, days31_45:apData.para.days31_45,
-        days45plus:apData.para.days45plus, past_due:apData.para.pastDue,
-        top_vendors:apData.para.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
-      if (apData?.bny) apRows.push({ period:selectedPeriod, facility:"BNY",
-        total:apData.bny.total, current:apData.bny.current, days1_7:apData.bny.days1_7,
-        days8_14:apData.bny.days8_14, days15_30:apData.bny.days15_30, days31_45:apData.bny.days31_45,
-        days45plus:apData.bny.days45plus, past_due:apData.bny.pastDue,
-        top_vendors:apData.bny.vendors.slice(0,10), uploaded_at:new Date().toISOString() });
-      if (apRows.length) {
-        const {error} = await supabase.from("financial_ap").upsert(apRows,{onConflict:"period,facility"});
-        if (error) throw new Error("AP: "+error.message);
+      // 2) Bulk insert in chunks (Supabase caps ~1000/call)
+      const CHUNK = 500;
+      for (let i = 0; i < transactions.length; i += CHUNK) {
+        const { error } = await supabase.from("financial_transactions").insert(transactions.slice(i, i+CHUNK));
+        if (error) throw new Error("Inserting transactions: " + error.message);
       }
-      if (arData) {
-        const arPayload = {
-          period:selectedPeriod, aging_current:arData.aging.current||0,
-          aging_1_30:arData.aging.days1_30||0, aging_31_60:arData.aging.days31_60||0,
-          aging_61_90:arData.aging.days61_90||0, aging_91plus:arData.aging.days91plus||0,
-          total_outstanding:arData.totalOutstanding||0, total_past_due:arData.totalPastDue||0,
-          key_accounts: {
-            combined: arData.keyAccounts,
-            para: { aging: arData.para?.aging||{}, customers: (arData.para?.customers||[]).slice(0,15),
-              totalOutstanding: arData.para?.totalOutstanding||0, totalPastDue: arData.para?.totalPastDue||0 },
-            bny:  { aging: arData.bny?.aging||{}, customers: (arData.bny?.customers||[]).slice(0,15),
-              totalOutstanding: arData.bny?.totalOutstanding||0, totalPastDue: arData.bny?.totalPastDue||0 },
-          },
-          uploaded_at:new Date().toISOString()
-        };
-        const {error} = await supabase.from("financial_ar").upsert(arPayload,{onConflict:"period"});
-        if (error) throw new Error("AR: "+error.message);
+      // 3) Aging snapshot: replace this as-of date's rows per type, then insert
+      if (aging.length && asOfDate) {
+        for (const t of [...new Set(aging.map(a=>a.aging_type))]) {
+          const { error } = await supabase.from("financial_aging").delete().eq("as_of_date", asOfDate).eq("aging_type", t);
+          if (error) throw new Error("Clearing aging " + t + ": " + error.message);
+        }
+        for (let i = 0; i < aging.length; i += CHUNK) {
+          const { error } = await supabase.from("financial_aging").insert(aging.slice(i, i+CHUNK));
+          if (error) throw new Error("Inserting aging: " + error.message);
+        }
       }
-      if (cashPassaic || cashBNY) {
-        const {error} = await supabase.from("financial_cash").upsert({
-          period: selectedPeriod,
-          passaic_cash: parseFloat(cashPassaic)||0,
-          bny_cash: parseFloat(cashBNY)||0,
-          uploaded_at: new Date().toISOString()
-        },{onConflict:"period"});
-        if (error) throw new Error("Cash: "+error.message);
-      }
-      setSaveMsg({type:"success",text:`✓ All saved to ${selectedPeriod}`});
-      setGpFile(null); setApFile(null); setArFile(null);
-      setGpPreview(null); setApData(null); setArData(null);
-      setCashPassaic(''); setCashBNY('');
-      setFileStatus({});
+      setSaveMsg({ type:"success", text:`✓ Saved ${transactions.length.toLocaleString()} transactions + ${aging.length.toLocaleString()} aging rows · ${months.map(monthLabel).join(", ")}` });
+      setFile(null); setParsed(null); setStatus("");
       loadHistory();
-    } catch(e) { setSaveMsg({type:"error",text:e.message}); }
+    } catch (e) {
+      console.error(e); setSaveMsg({ type:"error", text:e.message });
+    }
     setSaving(false);
   }
 
-  const hasAnyFile = gpPreview||apData||arData||(cashPassaic||cashBNY);
+  const s = parsed?.summary;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:28}}>
-
-      {/* Period */}
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
-        background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 14px"}}>
-        <span style={{fontSize:12,color:"#15803d",fontWeight:600}}>📅 Saving to period:</span>
-        <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#15803d"}}>{selectedPeriod||"—"}</span>
-        <button onClick={()=>setShowPeriodPicker(p=>!p)}
-          style={{fontSize:11,color:"#4338ca",background:"none",border:"1px solid #c7d2fe",borderRadius:4,padding:"2px 8px",cursor:"pointer"}}>
-          {showPeriodPicker?"✕ close":"change"}
-        </button>
-        {showPeriodPicker&&(
-          <select value={selectedPeriod} onChange={e=>{setSelectedPeriod(e.target.value);setShowPeriodPicker(false);}}
-            style={{border:"1px solid #ccc",borderRadius:6,padding:"4px 8px",fontSize:12,background:"#fff",cursor:"pointer"}}>
-            <option value="">— pick —</option>
-            {(()=>{const opts=[];const now=new Date();for(let m=-2;m<=1;m++){const d=new Date(now.getFullYear(),now.getMonth()+m,1);const yr=d.getFullYear(),mo=d.getMonth()+1,mm=String(mo).padStart(2,"0"),lb=d.toLocaleString("en-US",{month:"long"});for(let w=1;w<=5;w++)opts.push(<option key={`${yr}-${mm}-W${w}`} value={`${yr}-${mm}-W${w}`}>{lb} {yr} — Week {w}</option>);}return opts;})()}
-          </select>
-        )}
+    <div style={{display:"flex",flexDirection:"column",gap:24}}>
+      {/* Intro */}
+      <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#15803d"}}>
+        Drop Jen's full GP Purchases workbook. It loads <strong>Inventory · AR · AP · OpEx · CapEx</strong> as line-level transactions plus <strong>AR/AP aging</strong> snapshots. Re-uploading the same period safely replaces it (backward adjustments reconcile automatically).
       </div>
 
-      {/* Drop zones */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14}}>
-        <DropZone label="GP Report"     sublabel="COGS · OpEx · Inventory" accept=".xlsx,.xls,.csv" file={gpFile}     onFile={handleGP}     status={fileStatus.gp}     color="#4f46e5"/>
-        <DropZone label="AP Aging"       sublabel="Paramount + BNY (combined)"  accept=".xlsx"           file={apFile}     onFile={handleAP}     status={fileStatus.ap}     color="#0369a1"/>
-        <DropZone label="AR Aging"       sublabel="AR Update"               accept=".xlsx"           file={arFile}     onFile={handleAR}     status={fileStatus.ar}     color="#7c3aed"/>
-        <div style={{display:"flex",flexDirection:"column",gap:5}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#374151",textTransform:"uppercase",letterSpacing:"0.05em"}}>Cash</div>
-          <div style={{fontSize:11,color:"#9ca3af",marginTop:-3}}>Cash Position</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px",border:"1px solid #e5e7eb",borderRadius:10,background:"#fafafa"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:11,fontWeight:600,color:"#374151",width:80}}>Passaic</span>
-              <div style={{position:"relative",flex:1}}>
-                <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9ca3af",fontSize:13}}>$</span>
-                <input type="number" value={cashPassaic} onChange={e=>setCashPassaic(e.target.value)}
-                  placeholder="0"
-                  style={{width:"100%",paddingLeft:20,paddingRight:8,paddingTop:6,paddingBottom:6,border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:11,fontWeight:600,color:"#374151",width:80}}>BNY</span>
-              <div style={{position:"relative",flex:1}}>
-                <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#9ca3af",fontSize:13}}>$</span>
-                <input type="number" value={cashBNY} onChange={e=>setCashBNY(e.target.value)}
-                  placeholder="0"
-                  style={{width:"100%",paddingLeft:20,paddingRight:8,paddingTop:6,paddingBottom:6,border:"1px solid #d1d5db",borderRadius:6,fontSize:13,boxSizing:"border-box"}}/>
-              </div>
-            </div>
-            {(cashPassaic||cashBNY)&&<div style={{fontSize:11,color:"#15803d"}}>✓ Total: ${(parseFloat(cashPassaic||0)+parseFloat(cashBNY||0)).toLocaleString()}</div>}
-          </div>
-        </div>
-      </div>
+      {/* Drop zone */}
+      <DropZone accept=".xlsx" file={file} onFile={handleFile} status={status} busy={busy} />
 
-      {/* GP Preview */}
-      {gpPreview&&(
-        <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
-          <div style={{background:"#f9fafb",padding:"8px 16px",borderBottom:"1px solid #e5e7eb",fontSize:13,fontWeight:600}}>
-            GP Report — {gpPreview.rowCount.toLocaleString()} rows
+      {/* Preview */}
+      {parsed && s && (
+        <div style={{display:"flex",flexDirection:"column",gap:18}}>
+          <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160,border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 16px"}}>
+              <div style={{fontSize:11,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",fontWeight:600}}>Fiscal Period</div>
+              <div style={{fontSize:18,fontWeight:700,marginTop:3}}>{s.fiscalMonths.map(monthLabel).join(", ") || "—"}</div>
+              <div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>as-of {fmtD(s.asOf)}</div>
+            </div>
+            <div style={{flex:1,minWidth:160,border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 16px"}}>
+              <div style={{fontSize:11,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",fontWeight:600}}>Transactions</div>
+              <div style={{fontSize:18,fontWeight:700,marginTop:3}}>{s.txnCount.toLocaleString()}</div>
+              <div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>{s.agingCount.toLocaleString()} aging rows</div>
+            </div>
+            <div style={{flex:1,minWidth:160,border:"1px solid #e5e7eb",borderRadius:10,padding:"12px 16px"}}>
+              <div style={{fontSize:11,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",fontWeight:600}}>AR / AP Aging</div>
+              <div style={{fontSize:18,fontWeight:700,marginTop:3}}>{fmt(s.arAgingTotal)}<span style={{fontSize:12,color:"#9ca3af"}}> AR</span></div>
+              <div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>{fmt(s.apAgingTotal)} AP balance</div>
+            </div>
           </div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid #e5e7eb"}}>
-              {["Business Unit","COGS","OpEx","Inv Purchases"].map((h,i)=>
-                <th key={h} style={{textAlign:i===0?"left":"right",padding:"7px 14px",color:"#6b7280",fontWeight:500}}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {Object.entries(gpPreview.totals).map(([bu,t])=>{
-                const cogs=t.cogs_material+t.cogs_labor+t.cogs_wip+t.cogs_other;
-                const opex=t.salary+t.salary_ot+t.fringe+t.te+t.printing+t.distribution+t.office_edp+t.consulting+t.building+t.utilities+t.rent;
-                return(<tr key={bu} style={{borderBottom:"1px solid #f3f4f6"}}>
-                  <td style={{padding:"8px 14px",fontWeight:500}}>{BU[bu]||bu}</td>
-                  <td style={{padding:"8px 14px",textAlign:"right"}}>{fmt(cogs)}</td>
-                  <td style={{padding:"8px 14px",textAlign:"right"}}>{fmt(opex)}</td>
-                  <td style={{padding:"8px 14px",textAlign:"right"}}>{fmt(t.inv_purchases)}</td>
-                </tr>);
-              })}
-            </tbody>
-          </table>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14}}>
+            <StatGrid title="Net by Source" rows={s.netByTab} labelMap={TAB_LABEL} />
+            <StatGrid title="Net by Business Unit" rows={s.netByBU} labelMap={BU_LABEL} />
+          </div>
+          <StatGrid title="Net by Category" rows={s.netByCategory} labelMap={CAT_LABEL} />
+
+          {parsed.warnings?.length > 0 && (
+            <div style={{fontSize:12,color:"#b45309"}}>{parsed.warnings.join(" · ")}</div>
+          )}
+
+          <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+            <button onClick={handleSave} disabled={saving}
+              style={{padding:"10px 26px",background:saving?"#9ca3af":"#1f2937",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:saving?"default":"pointer"}}>
+              {saving ? "Saving…" : `Save ${s.txnCount.toLocaleString()} transactions`}
+            </button>
+            {saveMsg && <div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+          </div>
         </div>
       )}
 
-      {/* AP Preview */}
-      {apData&&(
-        <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
-          <div style={{background:"#f9fafb",padding:"8px 16px",borderBottom:"1px solid #e5e7eb",fontSize:13,fontWeight:600}}>AP Preview</div>
-          <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid #e5e7eb"}}>
-              {["Facility","Total","Current","1–7d","8–14d","15–30d","31–45d","45d+","Past Due"].map((h,i)=>
-                <th key={h} style={{textAlign:i===0?"left":"right",padding:"7px 12px",color:"#6b7280",fontWeight:500,fontSize:11}}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {[apData.para,apData.bny].filter(Boolean).map(d=>(
-                <tr key={d.facility} style={{borderBottom:"1px solid #f3f4f6"}}>
-                  <td style={{padding:"8px 12px",fontWeight:600}}>{d.facility}</td>
-                  {[d.total,d.current,d.days1_7,d.days8_14,d.days15_30,d.days31_45,d.days45plus].map((v,i)=>
-                    <td key={i} style={{padding:"8px 12px",textAlign:"right"}}>{fmt(v)}</td>)}
-                  <td style={{padding:"8px 12px",textAlign:"right",color:d.pastDue>0?"#b91c1c":"#15803d",fontWeight:600}}>{fmt(d.pastDue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {[apData.para,apData.bny].filter(Boolean).map(d=>(
-            <div key={d.facility} style={{padding:"10px 14px",borderTop:"1px solid #f3f4f6"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:6}}>TOP VENDORS — {d.facility.toUpperCase()}</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {d.vendors.slice(0,6).map(v=>(
-                  <div key={v.name} style={{fontSize:11,background:v.pastDue>0?"#fef2f2":"#f9fafb",
-                    border:`1px solid ${v.pastDue>0?"#fecaca":"#e5e7eb"}`,borderRadius:6,padding:"3px 8px"}}>
-                    <span style={{fontWeight:500}}>{v.name.slice(0,22)}</span>
-                    <span style={{color:"#6b7280",marginLeft:5}}>{fmt(v.balance)}</span>
-                    {v.pastDue>0&&<span style={{color:"#b91c1c",marginLeft:4}}>({fmt(v.pastDue)} overdue)</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* AR Preview */}
-      {arData&&(
-        <div style={{border:"1px solid #e5e7eb",borderRadius:10,overflow:"hidden"}}>
-          <div style={{background:"#f9fafb",padding:"8px 16px",borderBottom:"1px solid #e5e7eb",fontSize:13,fontWeight:600}}>
-            AR — {fmt(arData.totalOutstanding)} total outstanding · Paramount: {fmt(arData.para?.totalOutstanding||0)} · BNY: {fmt(arData.bny?.totalOutstanding||0)}
-          </div>
-          {[{label:'Paramount (PARA)', d: arData.para}, {label:'Brooklyn (BNY)', d: arData.bny}].map(({label, d}) => d && (
-            <div key={label} style={{borderBottom:"1px solid #f3f4f6"}}>
-              <div style={{padding:"6px 14px",fontSize:11,fontWeight:700,color:"#6b7280",background:"#fafafa",textTransform:"uppercase"}}>{label} — {fmt(d.totalOutstanding)}</div>
-              <div style={{display:"flex"}}>
-                {[["Current",d.aging.current,0],["1–7d",d.aging.days1_7,1],
-                  ["8–30d",d.aging.days8_30,2],["31–60d",d.aging.days31_60,3],
-                  ["61–90d",d.aging.days61_90,4],["91d+",d.aging.days91plus,5]]
-                  .map(([lbl,val,i])=>(
-                  <div key={lbl} style={{flex:1,padding:"8px 6px",textAlign:"center",borderRight:i<5?"1px solid #f3f4f6":"none"}}>
-                    <div style={{fontSize:10,color:"#9ca3af",fontWeight:600,textTransform:"uppercase"}}>{lbl}</div>
-                    <div style={{fontSize:13,fontWeight:700,marginTop:2,
-                      color:i===0?"#15803d":i>=4?"#b91c1c":"#b45309"}}>{fmt(val)}</div>
-                  </div>
-                ))}
-              </div>
-              {d.customers.length>0&&(
-                <div style={{padding:"8px 14px"}}>
-                  <div style={{fontSize:11,fontWeight:600,color:"#6b7280",marginBottom:6}}>TOP ACCOUNTS</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {d.customers.slice(0,6).map(a=>(
-                      <div key={a.name} style={{fontSize:11,background:a.pastDue>0?"#fef2f2":"#f9fafb",
-                        border:`1px solid ${a.pastDue>0?"#fecaca":"#e5e7eb"}`,borderRadius:6,padding:"3px 8px"}}>
-                        <span style={{fontWeight:500}}>{a.name.slice(0,24)}</span>
-                        <span style={{color:"#6b7280",marginLeft:5}}>{fmt(a.balance)}</span>
-                        {a.pastDue>0&&<span style={{color:"#b91c1c",marginLeft:4}}>({fmt(a.pastDue)} past due)</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Save */}
-      {hasAnyFile&&(
-        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-          <button onClick={handleSaveAll} disabled={saving||!selectedPeriod}
-            style={{padding:"10px 24px",background:selectedPeriod?"#1f2937":"#9ca3af",color:"#fff",
-              border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:selectedPeriod?"pointer":"not-allowed"}}>
-            {saving?"Saving…":`Save All to ${selectedPeriod||"…"}`}
-          </button>
-          {saveMsg&&<div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
-        </div>
+      {!parsed && saveMsg && (
+        <div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>
       )}
 
       {/* History */}
       <div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-          <div style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",color:"#6b7280"}}>GP Report History</div>
-          <button onClick={loadHistory} style={{fontSize:12,color:"#4f46e5",background:"none",border:"none",cursor:"pointer"}}>
-            {loadingHist?"Loading…":"Refresh"}
-          </button>
+          <div style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",color:"#6b7280"}}>Loaded Periods</div>
+          <button onClick={loadHistory} style={{fontSize:12,color:"#4f46e5",background:"none",border:"none",cursor:"pointer"}}>{loadingHist?"Loading…":"Refresh"}</button>
         </div>
-        {uploads.length===0?<p style={{fontSize:13,color:"#9ca3af"}}>No uploads yet.</p>:(
+        {history.length === 0 ? <p style={{fontSize:13,color:"#9ca3af"}}>No financial data loaded yet.</p> : (
           <table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}>
             <thead><tr style={{borderBottom:"1px solid #e5e7eb"}}>
-              {["Period","BU","COGS","OpEx","Inv Purchases","Uploaded"].map((h,i)=>
-                <th key={h} style={{textAlign:i<2?"left":"right",paddingBottom:8,color:"#6b7280",fontWeight:500}}>{h}</th>)}
+              {["Fiscal Month","Transactions","Net"].map((h,i)=>
+                <th key={h} style={{textAlign:i===0?"left":"right",paddingBottom:8,color:"#6b7280",fontWeight:500}}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {uploads.map((u,i)=>(
-                <tr key={i} style={{borderBottom:"1px solid #f3f4f6"}}>
-                  <td style={{padding:"6px 0",fontFamily:"monospace",fontSize:12}}>{u.period}</td>
-                  <td style={{padding:"6px 0"}}>{BU[u.business_unit]||u.business_unit}</td>
-                  <td style={{padding:"6px 0",textAlign:"right"}}>{fmt(u.cogs_total)}</td>
-                  <td style={{padding:"6px 0",textAlign:"right"}}>{fmt(u.opex_total)}</td>
-                  <td style={{padding:"6px 0",textAlign:"right"}}>{fmt(u.inv_purchases)}</td>
-                  <td style={{padding:"6px 0",textAlign:"right",fontSize:11,color:"#9ca3af"}}>{fmtD(u.uploaded_at)}</td>
+              {history.map(h=>(
+                <tr key={h.month} style={{borderBottom:"1px solid #f3f4f6"}}>
+                  <td style={{padding:"6px 0"}}>{monthLabel(h.month)}</td>
+                  <td style={{padding:"6px 0",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{h.count.toLocaleString()}</td>
+                  <td style={{padding:"6px 0",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{fmt(h.net)}</td>
                 </tr>
               ))}
             </tbody>
