@@ -8,6 +8,8 @@ export default function AdminPeople({ weekStart, currentUser, onSaved }) {
   const [parsed, setParsed]                 = useState(null)
   const [hrSummary, setHrSummary]           = useState(null)
   const [existing, setExisting]             = useState(null)  // current saved data for this week
+  const [payrollWeek, setPayrollWeek]       = useState(weekStart || '')
+  const [weekWarn, setWeekWarn]             = useState('')
   const [status, setStatus]                 = useState('')
   const [saving, setSaving]                 = useState(false)
   const [parsingPayroll, setParsingPayroll] = useState(false)
@@ -18,15 +20,18 @@ export default function AdminPeople({ weekStart, currentUser, onSaved }) {
 
   /* ── Load existing saved data for this week on mount / week change ── */
   useEffect(() => {
-    if (!weekStart) return
-    loadExisting()
+    setPayrollWeek(weekStart || '')
   }, [weekStart])
+
+  useEffect(() => {
+    if (payrollWeek) loadExisting()
+  }, [payrollWeek])
 
   async function loadExisting() {
     const { data } = await supabase
       .from('people_weekly')
       .select('*')
-      .eq('week_start', weekStart)
+      .eq('week_start', payrollWeek || weekStart)
       .maybeSingle()
     setExisting(data || null)
   }
@@ -35,6 +40,8 @@ export default function AdminPeople({ weekStart, currentUser, onSaved }) {
   async function handlePayrollFile(file) {
     if (!file) return
     setPayrollFile(file)
+    const detectedWk = ppParseWeekFromFilename(file.name)
+    if (detectedWk) { setPayrollWeek(detectedWk); setWeekWarn(ppIsSunday(detectedWk) ? '' : 'Heads up: detected date is not a Sunday.') }
 
     if (typeof window.XLSX === 'undefined') {
       setStatus('SheetJS not loaded — make sure the SheetJS script tag is in index.html.')
@@ -126,13 +133,15 @@ Return ONLY valid JSON with no preamble, explanation, or markdown code fences. U
     setStatus('Saving…')
 
     const payload = {
-      week_start:  weekStart,
+      week_start:  payrollWeek || weekStart,
       updated_at:  new Date().toISOString(),
       ...(parsed && {
         bny_headcount:   parsed.bny.headcount,
         bny_total_hrs:   parsed.bny.total_hrs,
         bny_reg_hrs:     parsed.bny.reg_hrs,
         bny_ot_hrs:      parsed.bny.ot_hrs,
+        bny_hol_hrs:     parsed.bny.hol_hrs,
+        bny_hol_pay:     parsed.bny.hol_pay,
         bny_pto_hrs:     parsed.bny.pto_hrs,
         bny_total_pay:   parsed.bny.total_pay,
         bny_bonus_total: parsed.bny.bonus_total,
@@ -140,6 +149,8 @@ Return ONLY valid JSON with no preamble, explanation, or markdown code fences. U
         nj_total_hrs:    parsed.nj.total_hrs,
         nj_reg_hrs:      parsed.nj.reg_hrs,
         nj_ot_hrs:       parsed.nj.ot_hrs,
+        nj_hol_hrs:      parsed.nj.hol_hrs,
+        nj_hol_pay:      parsed.nj.hol_pay,
         nj_pto_hrs:      parsed.nj.pto_hrs,
         nj_total_pay:    parsed.nj.total_pay,
         nj_bonus_total:  parsed.nj.bonus_total,
@@ -183,7 +194,7 @@ Return ONLY valid JSON with no preamble, explanation, or markdown code fences. U
       {existing && (
         <div className={styles.existingBanner}>
           <div className={styles.existingLabel}>
-            Currently saved for week of {new Date(weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            Currently saved for week of {new Date((payrollWeek || weekStart) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
           <div className={styles.existingStats}>
             {existing.bny_headcount != null && (
@@ -209,6 +220,16 @@ Return ONLY valid JSON with no preamble, explanation, or markdown code fences. U
           <p className={styles.existingHint}>Drop new files below to update this week's data.</p>
         </div>
       )}
+
+      <div style={{ margin: '12px 0 18px', padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#f9fafb' }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Save payroll to week beginning (Sunday)</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <input type="date" value={payrollWeek || ''} onChange={e => { const v = e.target.value; setPayrollWeek(v); setWeekWarn(v && !ppIsSunday(v) ? 'Heads up: that date is not a Sunday. Payroll weeks should start on Sunday.' : '') }} style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '6px 8px', fontSize: 13 }} />
+          <button type="button" onClick={() => { const base = (payrollWeek || ppToISODate(new Date())) + 'T12:00:00'; const s = ppToISODate(ppSnapToSunday(new Date(base))); setPayrollWeek(s); setWeekWarn('') }} style={{ fontSize: 11, color: '#4338ca', background: 'none', border: '1px solid #c7d2fe', borderRadius: 4, padding: '4px 10px', cursor: 'pointer' }}>snap to Sunday</button>
+        </div>
+        <p style={{ fontSize: 11, color: '#9ca3af', margin: '6px 0 0' }}>Latest report = the ACTUAL payroll for the previous completed week. Auto-filled from the file name when you drop a file - confirm or adjust.</p>
+        {weekWarn && <p style={{ fontSize: 11, color: '#b45309', margin: '4px 0 0' }}>{weekWarn}</p>}
+      </div>
 
       <div className={styles.uploadRow}>
 
@@ -343,6 +364,11 @@ async function extractPptxText(file) {
 /* Finds columns by header name (rows 2-4) so it won't break when columns are added/removed.
  * Location split uses column "Org Level 2": "Brooklyn Navy Yards" → BNY, everything else → NJ.
  */
+function ppToISODate(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const da=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${da}`}
+function ppSnapToSunday(d){const x=new Date(d.getTime());x.setDate(x.getDate()-x.getDay());return x}
+function ppParseWeekFromFilename(filename){if(!filename)return null;const base=String(filename).replace(/\.[^.]+$/,'');const m=base.match(/(\d{1,2})[._\-\/](\d{1,2})(?:[._\-\/](\d{2,4}))?/);if(!m)return null;const mo=parseInt(m[1],10);const da=parseInt(m[2],10);let yr=m[3]?parseInt(m[3],10):new Date().getFullYear();if(yr<100)yr+=2000;if(mo<1||mo>12||da<1||da>31)return null;return ppToISODate(ppSnapToSunday(new Date(yr,mo-1,da,12,0,0)))}
+function ppIsSunday(iso){if(!iso)return false;const d=new Date(iso+'T12:00:00');return !isNaN(d.getTime())&&d.getDay()===0}
+
 function parsePayrollRows(rows) {
   const employees = []
 
@@ -376,6 +402,7 @@ function parsePayrollRows(rows) {
   }
   const otCols    = findEarning('OT')
   const ptopCols  = findEarning('PTOP')  // find PTOP first so PTO doesn't grab it
+  const holCols   = findEarning('HOL')
   const ptoCols   = earHdr.findIndex(h => h === 'PTO') >= 0
                       ? { amt: earHdr.findIndex(h => h === 'PTO'), hrs: earHdr.findIndex(h => h === 'PTO') + 1 }
                       : null
@@ -402,6 +429,8 @@ function parsePayrollRows(rows) {
     const isBny = orgLevel2.includes('brooklyn') || orgLevel2.includes('bny')
 
     const num = v => (v == null || v === '' ? 0 : parseFloat(v) || 0)
+    const holAmt   = holCols   ? num(row[holCols.amt])   : 0
+    const holHrs   = holCols   ? num(row[holCols.hrs])   : 0
     const otAmt    = otCols    ? num(row[otCols.amt])    : 0
     const otHrs    = otCols    ? num(row[otCols.hrs])    : 0
     const ptoAmt   = ptoCols   ? num(row[ptoCols.amt])   : 0
@@ -422,6 +451,8 @@ function parsePayrollRows(rows) {
       name:        trimName,
       title:       '',
       location:    isBny ? 'BNY' : 'NJ',
+      hol_amt:     holAmt,
+      hol_hrs:     holHrs,
       salary:      0,
       is_salaried: totalHrs === 80,
       bonus_amt:   bonusAmt,
@@ -448,6 +479,8 @@ function parsePayrollRows(rows) {
       total_hrs:   sum(bnyEmps, 'total_hrs'),
       reg_hrs:     sum(bnyEmps, 'reg_hrs'),
       ot_hrs:      sum(bnyEmps, 'ot_hrs'),
+      hol_hrs:     sum(bnyEmps, 'hol_hrs'),
+      hol_pay:     sum(bnyEmps, 'hol_amt'),
       pto_hrs:     sum(bnyEmps, 'pto_hrs'),
       total_pay:   sum(bnyEmps, 'total_pay'),
       bonus_total: sum(bnyEmps, 'bonus_amt'),
@@ -457,6 +490,8 @@ function parsePayrollRows(rows) {
       total_hrs:   sum(njEmps, 'total_hrs'),
       reg_hrs:     sum(njEmps, 'reg_hrs'),
       ot_hrs:      sum(njEmps, 'ot_hrs'),
+      hol_hrs:     sum(njEmps, 'hol_hrs'),
+      hol_pay:     sum(njEmps, 'hol_amt'),
       pto_hrs:     sum(njEmps, 'pto_hrs'),
       total_pay:   sum(njEmps, 'total_pay'),
       bonus_total: sum(njEmps, 'bonus_amt'),
