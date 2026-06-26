@@ -4,16 +4,41 @@ import CommentButton from './CommentButton'
 import { C, ACCENT_TEAL, STATUS_WARN, STATUS_BAD } from '../lib/scheduleUtils'
 import styles from './PeopleTab.module.css'
 
+// Stale = older than 7 days from today. Returns true/false/null (null when no data).
+function isStale(dateStr) {
+  if (!dateStr) return null
+  const then = new Date(dateStr + 'T12:00:00')
+  const now = new Date()
+  const days = Math.floor((now - then) / (1000 * 60 * 60 * 24))
+  return days > 7
+}
+
 export default function PeopleTab({ weekStart, readOnly = true, currentUser, onCommentPosted }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [bnyOpen, setBnyOpen] = useState(false)
   const [njOpen, setNjOpen] = useState(false)
+  // Freshness signals -- independent of which week is selected. Fetched once on mount.
+  // Shows the latest week_start the data covers; staleness checked against updated_at
+  // (red when no upload in >7 days, regardless of what week the data is for).
+  const [freshness, setFreshness] = useState({ latestWeek: null, latestUpdate: null })
 
   useEffect(() => {
     if (!weekStart) return
     fetchData()
   }, [weekStart])
+
+  // Freshness fetch -- once on mount. Doesn't change with week selection.
+  useEffect(() => { (async () => {
+    const [wRes, uRes] = await Promise.all([
+      supabase.from('people_weekly').select('week_start').order('week_start',{ascending:false}).limit(1),
+      supabase.from('people_weekly').select('updated_at').order('updated_at',{ascending:false}).limit(1),
+    ])
+    setFreshness({
+      latestWeek: wRes.data?.[0]?.week_start || null,
+      latestUpdate: uRes.data?.[0]?.updated_at ? uRes.data[0].updated_at.slice(0,10) : null,
+    })
+  })() }, [])
 
   async function fetchData() {
     setLoading(true)
@@ -26,6 +51,29 @@ export default function PeopleTab({ weekStart, readOnly = true, currentUser, onC
     if (error) console.error('PeopleTab fetch error:', error)
     setData(row || null)
     setLoading(false)
+  }
+
+  // Freshness badge -- shown date is the latest week the data covers; stale check
+  // runs against the latest updated_at so the warning fires when you stop uploading,
+  // not just because some time passed since the last week_start.
+  const freshBadge = () => {
+    if (!freshness.latestWeek) return null
+    const stale = isStale(freshness.latestUpdate)
+    return (
+      <span style={{
+        fontSize:11,
+        padding:'3px 8px',
+        borderRadius:4,
+        border:`1px solid ${stale ? 'var(--red)' : 'var(--border)'}`,
+        color: stale ? 'var(--red)' : 'var(--ink-60)',
+        background: stale ? 'rgba(220,38,38,0.08)' : 'transparent',
+        fontWeight: stale ? 600 : 500,
+        whiteSpace:'nowrap',
+        marginLeft:8,
+      }}>
+        Payroll: week of {freshness.latestWeek}
+      </span>
+    )
   }
 
   if (loading) {
@@ -81,6 +129,7 @@ export default function PeopleTab({ weekStart, readOnly = true, currentUser, onC
       <p className={styles.eyebrow}>
         Week of {new Date(weekStart + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         &nbsp;·&nbsp; {totalHeadcount} active employees
+        {freshBadge()}
       </p>
 
       {/* Top metrics */}
@@ -210,10 +259,10 @@ export default function PeopleTab({ weekStart, readOnly = true, currentUser, onC
         </div>
       </div>
 
-      {/* Trailing charts — uses window.Chart from CDN */}
+      {/* Trailing charts -- uses window.Chart from CDN */}
       <TrailingCharts weekStart={weekStart} />
 
-      {/* Employee detail — collapsible */}
+      {/* Employee detail -- collapsible */}
       <p className={`${styles.eyebrow} ${styles.sectionDivider}`}>Employee detail</p>
 
       <RosterSection
@@ -249,7 +298,7 @@ export default function PeopleTab({ weekStart, readOnly = true, currentUser, onC
   )
 }
 
-/* ── Collapsible roster section ── */
+/* -- Collapsible roster section -- */
 function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmployee, fmt, fmtD }) {
   const otCount    = employees.filter(e => (e.flags||[]).includes('OT')).length
   const ptoCount   = employees.filter(e => (e.flags||[]).includes('PTO')).length
@@ -303,7 +352,7 @@ function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmpl
   )
 }
 
-/* ── Trailing 4-week bar charts — uses window.Chart loaded via CDN ── */
+/* -- Trailing 4-week bar charts -- uses window.Chart loaded via CDN -- */
 function TrailingCharts({ weekStart }) {
   const njRef    = useRef(null)
   const bnyRef   = useRef(null)
