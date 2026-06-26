@@ -3,7 +3,7 @@ import { FISCAL_CALENDAR } from '../fiscalCalendar'
 import { supabase } from '../supabase'
 import styles from './FinancialTab.module.css'
 
-// ── Fiscal resolution (Sunday-anchored, mirrors the purchases parser) ────────
+// -- Fiscal resolution (Sunday-anchored, mirrors the purchases parser) --
 const MONTH_NUM = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' }
 const MONTH_LABEL = { '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June','07':'July','08':'August','09':'September','10':'October','11':'November','12':'December' }
 const _weeks = Object.entries(FISCAL_CALENDAR).map(([k,info]) => {
@@ -25,7 +25,7 @@ function toISODate(v) {
   const d = new Date(s)
   return isNaN(d.getTime()) ? null : isoOf(d)
 }
-// Resolve a date to its fiscal month, year, week-in-month, and the Sun–Sat span.
+// Resolve a date to its fiscal month, year, week-in-month, and the Sun-Sat span.
 function fiscalForDate(input) {
   const iso = toISODate(input)
   if (!iso) return null
@@ -45,7 +45,16 @@ function fiscalForDate(input) {
 const monthLabel = m => { if (!m) return ''; const [y,mo] = m.split('-'); return `${MONTH_LABEL[mo]||mo} ${y}` }
 const todayISO = () => isoOf(new Date())
 
-// ── Formatters ───────────────────────────────────────────────────────────────
+// Stale = older than 7 days from today. Returns true/false/null (null when no data).
+function isStale(dateStr) {
+  if (!dateStr) return null
+  const then = new Date(dateStr + 'T12:00:00')
+  const now = new Date()
+  const days = Math.floor((now - then) / (1000 * 60 * 60 * 24))
+  return days > 7
+}
+
+// -- Formatters --
 const fmtD = (v, opts={}) => {
   if (v === null || v === undefined || v === '') return '—'
   const n = parseFloat(v) || 0
@@ -85,22 +94,26 @@ export default function FinancialTab({ weekStart }) {
   const [selMonth, setSelMonth] = useState(null)
   const [months, setMonths]     = useState([])
   // Single data bundle TAGGED with the exact query params it was fetched for. The render
-  // only trusts it when its key matches the currently-selected (month, week) — so a stale
+  // only trusts it when its key matches the currently-selected (month, week) -- so a stale
   // response from rapid week-scrolling is simply never displayed (race-proof by construction).
   const [data, setData]         = useState({ key: null, mtd: [], ytd: [], aging: [] })
   const [loading, setLoading]   = useState(false)
   const [narrative, setNarrative] = useState('')
   const [genBusy, setGenBusy]   = useState(false)
   const [userPickedMonth, setUserPickedMonth] = useState(false)
+  // Freshness signals -- independent of week selection, fetched once on mount.
+  // Per-source-appropriate: purchases uses upload date, aging uses as_of_date.
+  // Red when > 7 days old, neutral otherwise.
+  const [freshness, setFreshness] = useState({ purchases: null, aging: null })
 
   // The top-nav week picker is the primary driver.
-  // NOTE: no today-fallback here — a fallback masks out-of-range (future) weeks and
+  // NOTE: no today-fallback here -- a fallback masks out-of-range (future) weeks and
   // defeats the future guard. derived may be null when weekStart is past the calendar.
   const derived = useMemo(() => fiscalForDate(weekStart), [weekStart])
   // The selected week's Sunday, normalized from whatever weekStart is (Date or string).
   const selSunday = toISODate(weekStart) || todayISO()
 
-  // discover available months once (paginated — the 1000-row cap could otherwise hide
+  // discover available months once (paginated -- the 1000-row cap could otherwise hide
   // older months even with the desc order)
   useEffect(() => { (async () => {
     let from = 0, all = []
@@ -113,6 +126,18 @@ export default function FinancialTab({ weekStart }) {
     }
     const uniq = [...new Set(all.map(r => r.fiscal_month).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
     if (uniq.length) setMonths(uniq)
+  })() }, [])
+
+  // Freshness fetch -- once on mount. Doesn't change with week selection.
+  useEffect(() => { (async () => {
+    const [pRes, aRes] = await Promise.all([
+      supabase.from('financial_transactions').select('uploaded_at').order('uploaded_at',{ascending:false}).limit(1),
+      supabase.from('financial_aging').select('as_of_date').order('as_of_date',{ascending:false}).limit(1),
+    ])
+    setFreshness({
+      purchases: pRes.data?.[0]?.uploaded_at ? pRes.data[0].uploaded_at.slice(0,10) : null,
+      aging: aRes.data?.[0]?.as_of_date || null,
+    })
   })() }, [])
 
   // selMonth follows the week picker UNLESS the user explicitly chose a month from the dropdown.
@@ -135,13 +160,13 @@ export default function FinancialTab({ weekStart }) {
 
   // Refetch whenever the key changes. The fetched bundle is stamped with the key it was
   // fetched for; render only uses it when data.key === currentKey, so an out-of-order
-  // (stale) response can never be displayed — it just sits with a non-matching key.
+  // (stale) response can never be displayed -- it just sits with a non-matching key.
   useEffect(() => { if (currentKey) loadAll(selMonth, weekCap, currentKey) }, [currentKey])
 
   async function loadAll(fm, wk, key) {
     setLoading(true); setNarrative('')
     // Server-side rollup sums in Postgres and returns ~30 pre-aggregated rows (scope=MTD|YTD,
-    // per category × business_unit). No client pagination → no truncation/page-skew.
+    // per category x business_unit). No client pagination -> no truncation/page-skew.
     const [rollRes, agRes] = await Promise.all([
       supabase.rpc('finance_rollup', { p_month: fm, p_week: wk }),
       supabase.from('financial_aging').select('as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets').order('as_of_date',{ascending:false}),
@@ -156,7 +181,7 @@ export default function FinancialTab({ weekStart }) {
     setLoading(false)
   }
 
-  // Future guard — independent of the calendar lookup: the selected week's Sunday is after
+  // Future guard -- independent of the calendar lookup: the selected week's Sunday is after
   // today. This catches both in-calendar future weeks (e.g. June wk5) AND weeks past the end
   // of the loaded calendar (e.g. July), which previously slipped through.
   const isFutureWeek = selSunday > todayISO()
@@ -167,10 +192,10 @@ export default function FinancialTab({ weekStart }) {
 
   // Rows arrive from finance_rollup already capped at the selected week (MTD = selected month
   // through wk; YTD = prior months full + selected month through wk), so no client-side
-  // week filtering is needed — just pick the scope.
+  // week filtering is needed -- just pick the scope.
   const rows = !dataReady ? [] : (scope === 'MTD' ? data.mtd : data.ytd)
 
-  // ── Aging: latest snapshot + trend ──
+  // -- Aging: latest snapshot + trend --
   const agingView = useMemo(() => {
     const byDate = {}
     for (const a of aging) {
@@ -207,7 +232,7 @@ export default function FinancialTab({ weekStart }) {
       const resp = await fetch('/api/claude', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:600, messages:[{role:'user',
-          content:`You are the President of Paramount Prints writing a brief, candid financial read for the C-suite (peer-to-peer BU leader voice, no fluff). Numbers below are spend/AR/AP for ${ctx.period}. Note COGS is an ESTIMATE on a material-spend basis (true posted COGS pending GP trial balance) — say so once. 2-3 short paragraphs, plain text, no headers.\n\nDATA: ${JSON.stringify(ctx)}` }] })
+          content:`You are the President of Paramount Prints writing a brief, candid financial read for the C-suite (peer-to-peer BU leader voice, no fluff). Numbers below are spend/AR/AP for ${ctx.period}. Note COGS is an ESTIMATE on a material-spend basis (true posted COGS pending GP trial balance) -- say so once. 2-3 short paragraphs, plain text, no headers.\n\nDATA: ${JSON.stringify(ctx)}` }] })
       })
       const data = await resp.json()
       setNarrative((data.content||[]).map(b=>b.text||'').join('').trim())
@@ -227,12 +252,36 @@ export default function FinancialTab({ weekStart }) {
   const hasData = rows.length > 0
   const weekHdr = isFutureWeek ? '—' : (viewingDerivedMonth ? `through wk ${derived.fiscalWeek}` : 'full month')
 
+  // Freshness badge style -- red when stale (>7 days), neutral otherwise.
+  const freshBadge = (label, dateStr) => {
+    if (!dateStr) return null
+    const stale = isStale(dateStr)
+    return (
+      <span style={{
+        fontSize:11,
+        padding:'3px 8px',
+        borderRadius:4,
+        border:`1px solid ${stale ? 'var(--red)' : 'var(--border)'}`,
+        color: stale ? 'var(--red)' : 'var(--ink-60)',
+        background: stale ? 'rgba(220,38,38,0.08)' : 'transparent',
+        fontWeight: stale ? 600 : 500,
+        whiteSpace:'nowrap',
+      }}>
+        {label}: {dateStr}
+      </span>
+    )
+  }
+
   return (
     <div className={styles.wrap}>
       <div className={styles.topRow}>
         <div>
           <h2 className={styles.title}>Financial Summary</h2>
           <p className={styles.sub}>{scope==='MTD' ? `Month-to-date ${weekHdr}` : `Fiscal year-to-date ${weekHdr}`} · spend, AR/AP & cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></p>
+          <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
+            {freshBadge('Purchases', freshness.purchases)}
+            {freshBadge('AR/AP aging', freshness.aging)}
+          </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div className={styles.periodPicker}>
@@ -249,9 +298,9 @@ export default function FinancialTab({ weekStart }) {
         </div>
       </div>
 
-      {/* Future weeks need no data — show the message regardless of load state. */}
+      {/* Future weeks need no data -- show the message regardless of load state. */}
       {isFutureWeek && (
-        <div className={styles.empty}>No data for this week yet — the week of {selSunday} hasn’t started.</div>
+        <div className={styles.empty}>No data for this week yet -- the week of {selSunday} hasn't started.</div>
       )}
 
       {/* Non-future: show Loading until the bundle matching the current selection arrives. */}
@@ -289,7 +338,7 @@ export default function FinancialTab({ weekStart }) {
 
           {/* Est. COGS table */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Estimated COGS — Material Spend Basis</div>
+            <div className={styles.sectionTitle}>Estimated COGS -- Material Spend Basis</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead><tr>
@@ -336,7 +385,7 @@ export default function FinancialTab({ weekStart }) {
 
           {/* Cash flow strip */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Cash Flow — AR In / AP Out</div>
+            <div className={styles.sectionTitle}>Cash Flow -- AR In / AP Out</div>
             <div style={{display:'flex',flexWrap:'wrap'}}>
               {[
                 ['AR Invoiced', arInv, false],
@@ -356,11 +405,11 @@ export default function FinancialTab({ weekStart }) {
           {[{label:'Accounts Receivable',type:'ar',now:agingView.arNow,series:agingView.ar},
             {label:'Accounts Payable',type:'ap',now:agingView.apNow,series:agingView.ap}].map(sec => sec.now && (
             <div key={sec.type} className={styles.section}>
-              <div className={styles.sectionTitle}>{sec.label} — Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of}</span></div>
+              <div className={styles.sectionTitle}>{sec.label} -- Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of}</span></div>
               <div style={{display:'flex',flexWrap:'wrap'}}>
                 {Object.entries(sec.now.buckets).map(([k,v],i,arr)=>(
                   <div key={k} style={{flex:1,minWidth:90,padding:'12px 8px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none'}}>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{k.replace('d','').replace('_','–').replace('plus','+').replace('current','Current')}</div>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{k.replace('d','').replace('_','-').replace('plus','+').replace('current','Current')}</div>
                     <div style={{fontSize:14,fontWeight:700,color:k==='current'?'var(--green)':'var(--ink)'}}>{fmtD(v)}</div>
                   </div>
                 ))}
@@ -398,7 +447,7 @@ export default function FinancialTab({ weekStart }) {
             <div style={{padding:'14px 16px'}}>
               {narrative
                 ? <textarea value={narrative} onChange={e=>setNarrative(e.target.value)} style={{width:'100%',minHeight:140,border:'1px solid var(--border)',borderRadius:8,padding:12,fontSize:13,lineHeight:1.5,resize:'vertical',fontFamily:'inherit',color:'var(--ink)',background:'var(--surface)'}}/>
-                : <div style={{fontSize:13,color:'var(--ink-40)'}}>Click “Draft with AI” for a brief exec read on the {scope} numbers.</div>}
+                : <div style={{fontSize:13,color:'var(--ink-40)'}}>Click "Draft with AI" for a brief exec read on the {scope} numbers.</div>}
             </div>
           </div>
         </>
