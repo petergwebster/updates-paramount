@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { parsePurchasesWorkbook } from "../lib/purchasesWorkbook";
+import { canWriteAging, weekSaturdayOf } from "../lib/arApLock";
 
 // ── SheetJS loader ──────────────────────────────────────────────────────────
 function loadSheetJS() {
@@ -20,7 +21,6 @@ const fmtD = iso => iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-US"
 const MONTH_LABEL = { "01":"January","02":"February","03":"March","04":"April","05":"May","06":"June","07":"July","08":"August","09":"September","10":"October","11":"November","12":"December" };
 const monthLabel = m => { if(!m) return ""; const [y,mo]=m.split("-"); return `${MONTH_LABEL[mo]||mo} ${y}`; };
 
-// Friendly labels for tabs / categories
 const TAB_LABEL = {
   inventory_ink_freight:"Inventory · Ink · Freight",
   sales_ar_invoiced:"AR — Invoiced (Sales)",
@@ -71,7 +71,7 @@ function DropZone({ accept, onFile, file, status, color="#4f46e5", busy }) {
   );
 }
 
-// ── Small UI helpers ────────────────────────────────────────────────────────
+// ── Small UI helpers ─────────────────────────────────────────────────────────
 function StatGrid({ title, rows, labelMap }) {
   const entries = Object.entries(rows).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
   return (
@@ -91,11 +91,11 @@ function StatGrid({ title, rows, labelMap }) {
   );
 }
 
-// ── Main ────────────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminFinancials() {
   const [file, setFile]         = useState(null);
   const [status, setStatus]     = useState("");
-  const [parsed, setParsed]     = useState(null);   // result of parsePurchasesWorkbook
+  const [parsed, setParsed]     = useState(null);
   const [busy, setBusy]         = useState(false);
   const [saving, setSaving]     = useState(false);
   const [saveMsg, setSaveMsg]   = useState(null);
@@ -106,7 +106,6 @@ export default function AdminFinancials() {
 
   async function loadHistory() {
     setLoadingHist(true);
-    // lightweight aggregate: pull fiscal_month + net, summarize client-side
     const { data, error } = await supabase
       .from("financial_transactions")
       .select("fiscal_month, source_tab, net")
@@ -146,7 +145,8 @@ export default function AdminFinancials() {
       const { transactions, aging, summary, asOfDate } = parsed;
       const months = summary.fiscalMonths.length ? summary.fiscalMonths : [...new Set(transactions.map(t=>t.fiscal_month).filter(Boolean))];
 
-      // 1) Replace-by-window: delete existing txns for every fiscal month in the file
+      // 1) Replace-by-window: delete existing txns for every fiscal month in the file.
+      //    OpEx / COGS / CapEx / cash-flow ALWAYS refresh — never locked.
       for (const m of months) {
         const { error } = await supabase.from("financial_transactions").delete().eq("fiscal_month", m);
         if (error) throw new Error("Clearing " + m + ": " + error.message);
@@ -157,18 +157,34 @@ export default function AdminFinancials() {
         const { error } = await supabase.from("financial_transactions").insert(transactions.slice(i, i+CHUNK));
         if (error) throw new Error("Inserting transactions: " + error.message);
       }
-      // 3) Aging snapshot: replace this as-of date's rows per type, then insert
+      // 3) Aging snapshot (AR/AP ONLY) — LOCK-AWARE.
+      //    AR/AP freeze at Saturday-midnight ET for the just-completed week; a locked
+      //    week's snapshot is preserved and NOT overwritten by later uploads. (OpEx/COGS/
+      //    CapEx above are never locked — they keep refreshing until month-end true-up.)
+      let agingLockNote = "";
       if (aging.length && asOfDate) {
-        for (const t of [...new Set(aging.map(a=>a.aging_type))]) {
-          const { error } = await supabase.from("financial_aging").delete().eq("as_of_date", asOfDate).eq("aging_type", t);
-          if (error) throw new Error("Clearing aging " + t + ": " + error.message);
-        }
-        for (let i = 0; i < aging.length; i += CHUNK) {
-          const { error } = await supabase.from("financial_aging").insert(aging.slice(i, i+CHUNK));
-          if (error) throw new Error("Inserting aging: " + error.message);
+        const { data: existing, error: exErr } = await supabase
+          .from("financial_aging").select("as_of_date");
+        if (exErr) throw new Error("Reading aging history: " + exErr.message);
+        const existingDates = [...new Set((existing || []).map(r => r.as_of_date).filter(Boolean))];
+        const gate = canWriteAging(asOfDate, existingDates);
+        if (!gate.allowed) {
+          agingLockNote = `🔒 AR/AP for week ending ${weekSaturdayOf(asOfDate)} is locked — preserved`;
+        } else {
+          for (const t of [...new Set(aging.map(a=>a.aging_type))]) {
+            const { error } = await supabase.from("financial_aging").delete().eq("as_of_date", asOfDate).eq("aging_type", t);
+            if (error) throw new Error("Clearing aging " + t + ": " + error.message);
+          }
+          for (let i = 0; i < aging.length; i += CHUNK) {
+            const { error } = await supabase.from("financial_aging").insert(aging.slice(i, i+CHUNK));
+            if (error) throw new Error("Inserting aging: " + error.message);
+          }
         }
       }
-      setSaveMsg({ type:"success", text:`✓ Saved ${transactions.length.toLocaleString()} transactions + ${aging.length.toLocaleString()} aging rows · ${months.map(monthLabel).join(", ")}` });
+      const agingTxt = agingLockNote
+        ? ` · ${agingLockNote}`
+        : (aging.length ? ` + ${aging.length.toLocaleString()} aging rows` : "");
+      setSaveMsg({ type:"success", text:`✓ Saved ${transactions.length.toLocaleString()} transactions${agingTxt} · ${months.map(monthLabel).join(", ")}` });
       setFile(null); setParsed(null); setStatus("");
       loadHistory();
     } catch (e) {
@@ -183,7 +199,7 @@ export default function AdminFinancials() {
     <div style={{display:"flex",flexDirection:"column",gap:24}}>
       {/* Intro */}
       <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:13,color:"#15803d"}}>
-        Drop Jen's full GP Purchases workbook. It loads <strong>Inventory · AR · AP · OpEx · CapEx</strong> as line-level transactions plus <strong>AR/AP aging</strong> snapshots. Re-uploading the same period safely replaces it (backward adjustments reconcile automatically).
+        Drop Jen's full GP Purchases workbook. It loads <strong>Inventory · AR · AP · OpEx · CapEx</strong> as line-level transactions plus <strong>AR/AP aging</strong> snapshots. Re-uploading the same period safely replaces it (backward adjustments reconcile automatically). <strong>AR/AP aging locks at Saturday midnight ET</strong> for the completed week; OpEx/COGS/CapEx keep refreshing until month-end.
       </div>
 
       {/* Drop zone */}

@@ -12,16 +12,38 @@ const _weeks = Object.entries(FISCAL_CALENDAR).map(([k,info]) => {
   const sat = new Date(mon); sat.setDate(sat.getDate() + 5)
   return { k, info, sun, sat }
 }).sort((a,b) => a.sun - b.sun)
-function fiscalForDate(iso) {
+const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+// Normalize ANY input (Date object, ISO string, or other date string) to YYYY-MM-DD.
+// This is the fix for the "every week identical / stuck on Loading" bug: weekStart arrives
+// as a Date object, and slicing String(Date) yielded "Sun Jun 14" which never parsed.
+function toISODate(v) {
+  if (!v) return null
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : isoOf(v)
+  const s = String(v)
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? null : isoOf(d)
+}
+// Resolve a date to its fiscal month, year, week-in-month, and the Sun–Sat span.
+function fiscalForDate(input) {
+  const iso = toISODate(input)
   if (!iso) return null
-  const t = new Date(String(iso).slice(0,10) + 'T12:00:00')
+  const t = new Date(iso + 'T12:00:00')
   for (const w of _weeks) if (t >= w.sun && t <= w.sat) {
     const yr = w.k.slice(0,4)
-    return { fiscalMonth: `${yr}-${MONTH_NUM[w.info.month]}`, fiscalYear: yr }
+    return {
+      fiscalMonth: `${yr}-${MONTH_NUM[w.info.month]}`,
+      fiscalYear: yr,
+      fiscalWeek: w.info.weekInMonth,
+      weekSun: isoOf(w.sun),
+      weekSat: isoOf(w.sat),
+    }
   }
   return null
 }
 const monthLabel = m => { if (!m) return ''; const [y,mo] = m.split('-'); return `${MONTH_LABEL[mo]||mo} ${y}` }
+const todayISO = () => isoOf(new Date())
 
 // ── Formatters ───────────────────────────────────────────────────────────────
 const fmtD = (v, opts={}) => {
@@ -31,7 +53,6 @@ const fmtD = (v, opts={}) => {
   const abs = Math.abs(Math.round(n)).toLocaleString()
   return (n < 0 ? '-$' : (opts.plus && n > 0 ? '+$' : '$')) + abs
 }
-const BU_KEYS = ['BNY','NJ','Shared']
 const COGS_CATS = ['material_inventory','ink','freight']
 const OPEX_CATS = ['opex_temp','opex_te','opex_distribution','opex_edp','opex_supplies','opex_printing','opex_services','opex_utilities','opex_rent','opex_other']
 const OPEX_LABEL = {
@@ -40,7 +61,6 @@ const OPEX_LABEL = {
   opex_utilities:'Utilities', opex_rent:'Rent', opex_other:'Other OpEx',
 }
 
-// sum helper over an array of {category,business_unit,net}
 function sumWhere(rows, catPred, bu) {
   let s = 0
   for (const r of rows) if (catPred(r.category) && (!bu || r.business_unit === bu)) s += (r.net || 0)
@@ -61,62 +81,94 @@ function SectionRow({ label, bny, nj, shared, indent, isTotal, est }) {
 }
 
 export default function FinancialTab({ weekStart }) {
-  const [scope, setScope]       = useState('MTD')         // MTD | YTD
+  const [scope, setScope]       = useState('MTD')
   const [selMonth, setSelMonth] = useState(null)
   const [months, setMonths]     = useState([])
-  const [mtdRows, setMtdRows]   = useState([])
-  const [ytdRows, setYtdRows]   = useState([])
-  const [aging, setAging]       = useState([])
+  // Single data bundle TAGGED with the exact query params it was fetched for. The render
+  // only trusts it when its key matches the currently-selected (month, week) — so a stale
+  // response from rapid week-scrolling is simply never displayed (race-proof by construction).
+  const [data, setData]         = useState({ key: null, mtd: [], ytd: [], aging: [] })
   const [loading, setLoading]   = useState(false)
   const [narrative, setNarrative] = useState('')
   const [genBusy, setGenBusy]   = useState(false)
+  const [userPickedMonth, setUserPickedMonth] = useState(false)
 
-  const derived = useMemo(() => fiscalForDate(weekStart) || fiscalForDate(new Date().toISOString()), [weekStart])
+  // The top-nav week picker is the primary driver.
+  // NOTE: no today-fallback here — a fallback masks out-of-range (future) weeks and
+  // defeats the future guard. derived may be null when weekStart is past the calendar.
+  const derived = useMemo(() => fiscalForDate(weekStart), [weekStart])
+  // The selected week's Sunday, normalized from whatever weekStart is (Date or string).
+  const selSunday = toISODate(weekStart) || todayISO()
 
-  // Supabase caps responses at ~1000 rows regardless of .limit(); page through to get all.
-  async function fetchPaged(table, columns, applyFilters) {
-    const PAGE = 1000; let from = 0, all = []
-    for (;;) {
-      let q = supabase.from(table).select(columns)
-      if (applyFilters) q = applyFilters(q)
-      q = q.order('id', { ascending: true }).range(from, from + PAGE - 1)
-      const { data, error } = await q
-      if (error) { console.error('fetchPaged', table, error); break }
-      if (!data || !data.length) break
-      all = all.concat(data)
-      if (data.length < PAGE) break
-      from += PAGE
-    }
-    return all
-  }
-
-  // discover available months once
+  // discover available months once (paginated — the 1000-row cap could otherwise hide
+  // older months even with the desc order)
   useEffect(() => { (async () => {
-    const data = await fetchPaged('financial_transactions', 'fiscal_month')
-    if (data) {
-      const uniq = [...new Set(data.map(r => r.fiscal_month).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
-      setMonths(uniq)
-      setSelMonth(prev => prev || (uniq.includes(derived?.fiscalMonth) ? derived.fiscalMonth : uniq[0]) || derived?.fiscalMonth || null)
-    } else setSelMonth(derived?.fiscalMonth || null)
-  })() }, [derived?.fiscalMonth])
+    let from = 0, all = []
+    for (let g = 0; g < 50; g++) {
+      const { data } = await supabase.from('financial_transactions').select('fiscal_month').order('id',{ascending:true}).range(from, from + 999)
+      if (!data || data.length === 0) break
+      all = all.concat(data)
+      if (data.length < 1000) break
+      from += 1000
+    }
+    const uniq = [...new Set(all.map(r => r.fiscal_month).filter(Boolean))].sort((a,b)=>b.localeCompare(a))
+    if (uniq.length) setMonths(uniq)
+  })() }, [])
 
-  useEffect(() => { if (selMonth) loadAll(selMonth) }, [selMonth])
+  // selMonth follows the week picker UNLESS the user explicitly chose a month from the dropdown.
+  // Safety net: if the week can't be resolved, fall back to the newest loaded month so the
+  // tab never hangs on "Loading…".
+  useEffect(() => {
+    if (userPickedMonth) return
+    if (derived?.fiscalMonth) { setSelMonth(derived.fiscalMonth); return }
+    if (!selMonth && months.length) setSelMonth(months[0])
+  }, [derived?.fiscalMonth, userPickedMonth, months])
 
-  async function loadAll(fm) {
+  // Are we viewing the same month the week picker points at? (vs. a month jumped-to via dropdown)
+  const viewingDerivedMonth = selMonth && derived && selMonth === derived.fiscalMonth
+  // Week cap: when on the picker's own month, cap at the selected fiscal week; when
+  // browsing a different month via dropdown, show that month in full (99 = no cap).
+  const weekCap = viewingDerivedMonth ? derived.fiscalWeek : 99
+
+  // The query key that uniquely identifies what SHOULD be on screen right now.
+  const currentKey = selMonth ? `${selMonth}:${weekCap}` : null
+
+  // Refetch whenever the key changes. The fetched bundle is stamped with the key it was
+  // fetched for; render only uses it when data.key === currentKey, so an out-of-order
+  // (stale) response can never be displayed — it just sits with a non-matching key.
+  useEffect(() => { if (currentKey) loadAll(selMonth, weekCap, currentKey) }, [currentKey])
+
+  async function loadAll(fm, wk, key) {
     setLoading(true); setNarrative('')
-    const fy = fm.slice(0,4)
-    const [mtd, ytd, ag] = await Promise.all([
-      fetchPaged('financial_transactions', 'category,business_unit,net', q => q.eq('fiscal_month', fm)),
-      fetchPaged('financial_transactions', 'category,business_unit,net,fiscal_month', q => q.eq('fiscal_year', fy).lte('fiscal_month', fm)),
-      fetchPaged('financial_aging', 'as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets'),
+    // Server-side rollup sums in Postgres and returns ~30 pre-aggregated rows (scope=MTD|YTD,
+    // per category × business_unit). No client pagination → no truncation/page-skew.
+    const [rollRes, agRes] = await Promise.all([
+      supabase.rpc('finance_rollup', { p_month: fm, p_week: wk }),
+      supabase.from('financial_aging').select('as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets').order('as_of_date',{ascending:false}),
     ])
-    setMtdRows(mtd || [])
-    setYtdRows(ytd || [])
-    setAging(ag || [])
+    const roll = rollRes.data || []
+    setData({
+      key,
+      mtd: roll.filter(r => r.scope === 'MTD'),
+      ytd: roll.filter(r => r.scope === 'YTD'),
+      aging: agRes.data || [],
+    })
     setLoading(false)
   }
 
-  const rows = scope === 'MTD' ? mtdRows : ytdRows
+  // Future guard — independent of the calendar lookup: the selected week's Sunday is after
+  // today. This catches both in-calendar future weeks (e.g. June wk5) AND weeks past the end
+  // of the loaded calendar (e.g. July), which previously slipped through.
+  const isFutureWeek = selSunday > todayISO()
+
+  // Only trust the data bundle if it was fetched for the currently-selected key.
+  const dataReady = data.key && data.key === currentKey
+  const aging = dataReady ? data.aging : []
+
+  // Rows arrive from finance_rollup already capped at the selected week (MTD = selected month
+  // through wk; YTD = prior months full + selected month through wk), so no client-side
+  // week filtering is needed — just pick the scope.
+  const rows = !dataReady ? [] : (scope === 'MTD' ? data.mtd : data.ytd)
 
   // ── Aging: latest snapshot + trend ──
   const agingView = useMemo(() => {
@@ -146,7 +198,7 @@ export default function FinancialTab({ weekStart }) {
       const apPaid = sumWhere(rows, c=>c==='ap_paid')
       const arInv = sumWhere(rows, c=>c==='ar_trade'||c==='ar_adjustment')
       const ctx = {
-        period: scope==='MTD' ? monthLabel(selMonth) : `FY${selMonth?.slice(0,4)} YTD through ${monthLabel(selMonth)}`,
+        period: scope==='MTD' ? `${monthLabel(selMonth)} (through week ${weekCap})` : `FY${selMonth?.slice(0,4)} YTD through ${monthLabel(selMonth)} wk ${weekCap}`,
         est_cogs_material_basis: Math.round(cogs), opex: Math.round(opex), capex: Math.round(capex),
         ar_invoiced: Math.round(arInv), ar_received: Math.round(arRecv), ap_paid: Math.round(apPaid),
         ar_aging_total: Math.round(agingView.arNow?.total||0), ar_past_due: Math.round(agingView.arNow?.pastDue||0),
@@ -165,8 +217,6 @@ export default function FinancialTab({ weekStart }) {
 
   if (!selMonth) return <div className={styles.empty}>Loading financial data…</div>
 
-  // ── P&L rollups for current scope ──
-  const cogs = bu => COGS_CATS.map(c => sumWhere(rows, x=>x===c, bu))
   const cogsTotal = bu => sumWhere(rows, c=>COGS_CATS.includes(c), bu)
   const opexTotal = bu => sumWhere(rows, c=>OPEX_CATS.includes(c), bu)
   const capex = bu => sumWhere(rows, c=>c==='capex', bu)
@@ -175,22 +225,23 @@ export default function FinancialTab({ weekStart }) {
   const arInv  = sumWhere(rows, c=>c==='ar_trade'||c==='ar_adjustment')
 
   const hasData = rows.length > 0
+  const weekHdr = isFutureWeek ? '—' : (viewingDerivedMonth ? `through wk ${derived.fiscalWeek}` : 'full month')
 
   return (
     <div className={styles.wrap}>
       <div className={styles.topRow}>
         <div>
           <h2 className={styles.title}>Financial Summary</h2>
-          <p className={styles.sub}>{scope==='MTD' ? 'Month-to-date' : 'Fiscal year-to-date'} spend, AR/AP & cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></p>
+          <p className={styles.sub}>{scope==='MTD' ? `Month-to-date ${weekHdr}` : `Fiscal year-to-date ${weekHdr}`} · spend, AR/AP & cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></p>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div className={styles.periodPicker}>
-            {['MTD','YTD'].map(s => (
-              <button key={s} className={`${styles.periodBtn} ${scope===s?styles.periodBtnActive:''}`} onClick={()=>setScope(s)}>{s}</button>
+            {['MTD','YTD'].map(sName => (
+              <button key={sName} className={`${styles.periodBtn} ${scope===sName?styles.periodBtnActive:''}`} onClick={()=>setScope(sName)}>{sName}</button>
             ))}
           </div>
           {months.length > 0 && (
-            <select value={selMonth||''} onChange={e=>setSelMonth(e.target.value)}
+            <select value={selMonth||''} onChange={e=>{ setUserPickedMonth(true); setSelMonth(e.target.value) }}
               style={{fontSize:12,padding:'6px 8px',borderRadius:6,border:'1px solid var(--border)',background:'transparent',color:'var(--ink-60)',cursor:'pointer'}}>
               {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
             </select>
@@ -198,13 +249,19 @@ export default function FinancialTab({ weekStart }) {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading…</div>}
-
-      {!loading && !hasData && (
-        <div className={styles.empty}>No financial transactions for {monthLabel(selMonth)} yet. Upload the GP Purchases workbook in Admin → Financial Data.</div>
+      {/* Future weeks need no data — show the message regardless of load state. */}
+      {isFutureWeek && (
+        <div className={styles.empty}>No data for this week yet — the week of {selSunday} hasn’t started.</div>
       )}
 
-      {!loading && hasData && (
+      {/* Non-future: show Loading until the bundle matching the current selection arrives. */}
+      {!isFutureWeek && (loading || !dataReady) && <div className={styles.empty}>Loading…</div>}
+
+      {!isFutureWeek && !loading && dataReady && !hasData && (
+        <div className={styles.empty}>No financial transactions for {monthLabel(selMonth)} {weekHdr} yet. Upload the GP Purchases workbook in Admin → Financial Data.</div>
+      )}
+
+      {!isFutureWeek && !loading && dataReady && hasData && (
         <>
           {/* Summary cards */}
           <div className={styles.summaryCards}>
