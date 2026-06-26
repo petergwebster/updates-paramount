@@ -12,10 +12,6 @@
   function = "lock-wip"
 
 [[edge_functions]]
-  path = "/api/generate-pdf"
-  function = "generate-pdf"
-
-[[edge_functions]]
   path = "/api/slack"
   function = "slack"
 
