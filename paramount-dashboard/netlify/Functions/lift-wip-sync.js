@@ -387,8 +387,17 @@ exports.handler = async (event) => {
     }
 
     if (dryRun) {
-      // Return counts + a few samples per site so it can be eyeballed against
-      // a manual upload — writes NOTHING.
+      // Distinct-PO counts + per-site status breakdown so we can tell whether a
+      // row-count gap vs a manual upload is grain (line-level) or scope.
+      const posBySite = {}, statusBySite = {}
+      for (const r of rows) {
+        (posBySite[r.site] = posBySite[r.site] || new Set()).add(r.po_number || r.order_number)
+        const sb = statusBySite[r.site] = statusBySite[r.site] || {}
+        sb[r.order_status || '(blank)'] = (sb[r.order_status || '(blank)'] || 0) + 1
+      }
+      result.distinct_pos = Object.fromEntries(Object.entries(posBySite).map(([k, v]) => [k, v.size]))
+      result.status_passaic = statusBySite.passaic || {}
+      result.status_bny = statusBySite.bny || {}
       const sample = site => rows.filter(r => r.site === site).slice(0, 3)
       result.samples = { passaic: sample('passaic'), bny: sample('bny') }
       result.orders_headers = ordersHeaders
