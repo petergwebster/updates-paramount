@@ -136,16 +136,30 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   )
   function handleDragStart(e) {
-    setActiveDragPO(e.active?.data?.current?.po || null)
+    // Either a pool PO (create) or an existing assignment (move). Both carry
+    // enough for the fit-highlight; BNY has no category gate.
+    setActiveDragPO(e.active?.data?.current?.po || e.active?.data?.current?.moveAssignment || null)
   }
   function handleDragEnd(e) {
     setActiveDragPO(null)
-    const po = e.active?.data?.current?.po
     const over = e.over?.data?.current
-    if (!po || !over) return
+    if (!over) return
+
+    // MOVE: an existing assignment dragged onto another machine-day cell.
+    // Changes BOTH machine and day. No modal, no category gate (any digital
+    // order runs any digital machine); operator travels with the row. Over-cap
+    // just shows red like any over-cap cell. Drop on the same cell = no-op.
+    const mv = e.active?.data?.current?.moveAssignment
+    if (mv) {
+      if (mv.table_code === over.machine && dowText(mv.day_of_week) === dowText(over.dayOfWeek)) return
+      moveAssignmentToCell(mv, over.machine, over.dayOfWeek)
+      return
+    }
+
+    // CREATE: a pool PO dropped onto a cell — open the assign modal pre-filled.
+    const po = e.active?.data?.current?.po
+    if (!po) return
     if (po.remaining_yards <= 0) return
-    // Mirror handleMachineDayClick: open AssignModalBNY pre-filled for the
-    // dropped-on machine + day, capped at that machine's daily capacity.
     setAssignModal({
       po,
       machine: over.machine,
@@ -408,6 +422,27 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     if (!confirm('Remove this assignment?')) return
     const { error } = await supabase.from('sched_assignments').delete().eq('id', id)
     if (error) { alert('Delete failed: ' + error.message); return }
+    await onAssignmentsChange()
+  }
+
+  // Relocate a placed assignment to a different machine-day (drag-to-move).
+  // Changes table_code + day_of_week; yards/operator carry over unchanged. The
+  // operator is mirrored to sched_daily_ops for the NEW machine-day so Live Ops
+  // and the scorecard stay in sync (same dual-write as the cell dropdown/edit).
+  async function moveAssignmentToCell(a, machine, dayOfWeek) {
+    const { error } = await supabase.from('sched_assignments')
+      .update({ table_code: machine, day_of_week: dowText(dayOfWeek) })
+      .eq('id', a.id)
+    if (error) { alert('Move failed: ' + error.message); return }
+    if (a.operator) {
+      try {
+        await upsertDailyOp({
+          site: 'bny', week_start: isoDate(weekStart),
+          table_code: machine, day_of_week: dowText(dayOfWeek),
+          shift: '1st', operator_1: a.operator,
+        })
+      } catch (e) { console.error('daily_ops dual-write failed (non-fatal):', e) }
+    }
     await onAssignmentsChange()
   }
 
@@ -938,13 +973,18 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
   )
 }
 
+// Placed BNY chip. THREE gestures: drag to MOVE to another machine-day cell,
+// plain click to EDIT yards/operator, × to remove. Same activation pattern as
+// the pool cards (6px mouse / 200ms touch).
 function AssignmentChip({ a, onRemove, onEdit }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `bnyasg-${a.id}`, data: { moveAssignment: a } })
   const col = a.bny_bucket ? BUCKET_COLOR[a.bny_bucket] : C.inkMid
   const bg = a.bny_bucket ? BUCKET_BG[a.bny_bucket] : C.parchment
   return (
-    <div onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
-      title={onEdit ? 'Click to edit yards / operator' : undefined}
-      style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', display: 'flex', alignItems: 'center', gap: 4, cursor: onEdit ? 'pointer' : 'default' }}>
+    <div ref={setNodeRef} {...listeners} {...attributes}
+      onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
+      title={onEdit ? 'Drag to move · click to edit' : undefined}
+      style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', display: 'flex', alignItems: 'center', gap: 4, cursor: onEdit ? 'grab' : 'default', opacity: isDragging ? 0.4 : 1 }}>
       {a.assigned_by === 'claude' && <span data-noclick="true" style={{ color: C.gold, fontWeight: 700 }}>✦</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: C.ink }}>
         {a.line_description}
@@ -1006,7 +1046,7 @@ function DragCardBNY({ r }) {
     <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.amber}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
       <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}{r.bny_bucket ? ` · ${r.bny_bucket}` : ''}</div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
-      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards)} yd</div>
+      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards ?? r.planned_yards)} yd</div>
     </div>
   )
 }
