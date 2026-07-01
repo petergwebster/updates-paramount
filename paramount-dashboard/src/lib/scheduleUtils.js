@@ -151,14 +151,13 @@ function formatRange(start, end) {
   return `${m[start.getMonth()]} ${start.getDate()}, ${start.getFullYear()}–${m[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`
 }
 
-// Default starting week: Sunday April 26, 2026 (start of FSCO Week 4 of April).
-// If today has passed that, default to the next upcoming Sunday.
+// Default starting week: the CURRENT fiscal week (Sunday of the week containing
+// today). Per Wendy's list + the 6/30 ops review, the scheduler should open on
+// the current week rather than jumping ahead — users found the "next week" jump
+// disorienting. Forward navigation is one click away. (Was: hardcoded Apr 26
+// 2026 seed, then +1 week once today passed it, which made it always land ahead.)
 export function defaultSchedulerWeek() {
-  const target = new Date(2026, 3, 26)  // Sunday April 26, 2026
-  const today = new Date()
-  today.setHours(0,0,0,0)
-  if (today > target) return sundayOf(addWeeks(today, 1))
-  return target
+  return sundayOf(new Date())
 }
 
 // "Yesterday" relative to today, returned as a Date at 00:00.

@@ -67,7 +67,7 @@ const BNY_MACHINES = {
     { name: 'Rhonda', model: '570',  capacity: 500 },
   ],
   passaic: [
-    { name: 'Dakota Ka',  capacity: 500 },
+    { name: 'Dakota Kai', capacity: 500 },
     { name: 'Dementia',   capacity: 500 },
     { name: 'EMBER',      capacity: 500 },
     { name: 'Ivy Nile',   capacity: 500 },
@@ -93,6 +93,14 @@ const BNY_OPERATORS = {
     'Joseph Horton', 'Luis Mendoza Capecchi', 'Jeanne Villeneuve',
   ],
 }
+
+// Combined BNY roster (Brooklyn + Passaic-located digital fleet), de-duped and
+// sorted. Operators cross between the physical Brooklyn machines and the
+// Passaic-located digital fleet (e.g. Sara Howard runs Dementia), so the
+// scheduler's operator dropdowns offer the full BNY roster on every machine
+// regardless of the machine's physical location. Fixes Chandler (6/2): couldn't
+// assign Sara to Dementia because Dementia sat in the Passaic-only operator pool.
+const BNY_OPERATORS_ALL = [...new Set([...BNY_OPERATORS.brooklyn, ...BNY_OPERATORS.passaic])].sort()
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -793,7 +801,7 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
   const over = pct > 110
   const canAssign = !!selectedPO
   const cellOperator = assignments[0]?.operator || ''
-  const operatorList = BNY_OPERATORS[locationKey] || []
+  const operatorList = BNY_OPERATORS_ALL
 
   return (
     <div
@@ -879,7 +887,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
   const maxY = Math.min(po.remaining_yards, remainingCap)
   const overCap = yards > remainingCap
   const invalid = yards < 1 || yards > po.remaining_yards || overCap
-  const operatorList = BNY_OPERATORS[location] || []
+  const operatorList = BNY_OPERATORS_ALL
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -985,7 +993,7 @@ BNY PLANT STRUCTURE:
   · 4× HP 570: Bianca, LASH, Chyna, Rhonda — 500 yd/day each
   · Weekly Brooklyn target: 10,000 yards
 - Passaic small digitals (12 machines, all budget to BNY):
-  · Dakota Ka, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey — 500 yd/day each
+  · Dakota Kai, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey — 500 yd/day each
   · Weekly Passaic target: 5,000 yards
 - GRAND TOTAL weekly yards target: 15,000
 
@@ -1135,13 +1143,13 @@ Pool counts by bucket: ${poolCountsLine}
 ${poolLines}
 
 CRITICAL REMINDERS when proposing assignments:
-- Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Ka / Dementia / EMBER / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
+- Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Kai / Dementia / EMBER / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
 - day_of_week MUST be a number 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Not a string.
 - DAILY CAPACITY IS A HARD SUM, NOT A PER-PROPOSAL LIMIT. Total yards across ALL proposals for a single (machine, day_of_week) cannot exceed 600 on 3600s (Glow/Sasha/Trish) or 500 on all other machines. If Glow Mon already has 400 proposed, you can add at most 200 more to Glow Mon — not another 400. Track this as you write each proposal.
 - DO NOT include an operator field. Chandler staffs machines himself.
 
 MACHINE-FAMILY PRIORITY (this is how Chandler actually runs BNY):
-- Passaic digitals (Dakota Ka, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey) = the regular MTO lane. Bucket order: MTO → Memo → Replen. NEVER load Replen onto a Passaic digital while MTO remains unscheduled in the pool (MTOs are out-of-stock at the HUB and need 48-hour turns). Backfill with Memo, then Replen only if MTO and Memo don't fill the 5,000 yd/week target. NEVER load Custom on Passaic.
+- Passaic digitals (Dakota Kai, Dementia, EMBER, Ivy Nile, Jacy Jayne, Ruby, Valhalla, XIA, Apollo, Nemesis, Poseidon, Zoey) = the regular MTO lane. Bucket order: MTO → Memo → Replen. NEVER load Replen onto a Passaic digital while MTO remains unscheduled in the pool (MTOs are out-of-stock at the HUB and need 48-hour turns). Backfill with Memo, then Replen only if MTO and Memo don't fill the 5,000 yd/week target. NEVER load Custom on Passaic.
 
 MANDATORY CHECKLIST before writing ANY proposal for a Passaic machine:
 1. Look at the Pool counts above. How many MTO POs are there? (MTO bucket only — NOT Custom.)
