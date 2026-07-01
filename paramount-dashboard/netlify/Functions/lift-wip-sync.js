@@ -49,30 +49,45 @@ async function fetchCsv(report) {
   return new TextDecoder('windows-1252').decode(buf)
 }
 
-// ─── Minimal RFC-4180 CSV parser (handles quotes, escaped quotes, CRLF) ────
-function parseCsv(text) {
+// ─── CSV parser tuned for LIFT (mirrors the Triad bridge's QUOTE_NONE) ─────
+// LIFT CSVs write inch-marks as bare double-quotes (e.g. 60") and do NOT
+// quote/escape fields. Treating " as an RFC quote char corrupts every row that
+// contains an inch-mark — it swallows all following columns into one field.
+// So we parse with quoting OFF: split purely on commas + newlines, " is a
+// literal character. (If a file ever genuinely starts with a quote, fall back
+// to RFC-style parsing — same guard the bridge uses.)
+function splitRowsRfc(text) {
   const rows = []
-  let field = ''
-  let record = []
-  let inQuotes = false
+  let field = '', record = [], inQuotes = false
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ }
-        else inQuotes = false
-      } else field += c
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false }
+      else field += c
     } else {
       if (c === '"') inQuotes = true
       else if (c === ',') { record.push(field); field = '' }
       else if (c === '\n') { record.push(field); rows.push(record); record = []; field = '' }
-      else if (c === '\r') { /* ignore; handled by \n */ }
+      else if (c === '\r') { /* handled by \n */ }
       else field += c
     }
   }
-  // trailing field / record
   if (field.length > 0 || record.length > 0) { record.push(field); rows.push(record) }
-  if (rows.length === 0) return { headers: [], records: [] }
+  return rows
+}
+function parseCsv(text) {
+  const quotesAreReal = text.charAt(0) === '"'
+  let rows
+  if (quotesAreReal) {
+    rows = splitRowsRfc(text)
+  } else {
+    rows = []
+    for (const line of text.split(/\r?\n/)) {
+      if (/^[\s,]*$/.test(line)) continue      // skip blank / all-comma lines
+      rows.push(line.split(','))
+    }
+  }
+  if (rows.length === 0) return { headers: [], headerNorm: [], records: [] }
 
   const rawHeaders = rows[0].map(h => (h || '').trim())
   const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -81,12 +96,11 @@ function parseCsv(text) {
   const records = []
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]
-    if (row.length === 1 && (row[0] || '').trim() === '') continue // blank line
     const obj = {}
     for (let c = 0; c < headerNorm.length; c++) obj[headerNorm[c]] = (row[c] ?? '').trim()
     records.push(obj)
   }
-  return { headers: rawHeaders, headerNorm, records, _norm: norm }
+  return { headers: rawHeaders, headerNorm, records }
 }
 
 // Resolve a field by trying normalized candidate names in order.
