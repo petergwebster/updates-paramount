@@ -194,6 +194,14 @@ const TERMINAL_STATUSES = new Set([
   'Closed', 'Complete', 'Completed',
 ])
 
+// Non-print product types the feed drops entirely: they're kitted/attached to
+// real print orders but aren't scheduled, and the manual "Production WIP"
+// export omits them (verified against Data_for_WIP.xlsx — zero ground rows).
+// 'Grounds' = the substrate kitted 1:1 to each hand-screen line (the ~2x
+// Passaic inflation); 'Packing Charge' = a fee line. Matches the DAX
+// [Type Yards vs Fees]="Ground"/"Fees" exclusion.
+const EXCLUDED_PRODUCT_TYPES = new Set(['Grounds', 'Ground', 'Packing Charge'])
+
 // ─── Build sched_wip_rows-shaped objects from orders ⨝ products ────────────
 function buildRows(ordersText, productsText, asOf) {
   const notes = []
@@ -220,7 +228,7 @@ function buildRows(ordersText, productsText, asOf) {
   requireHeader(O.headerNorm, ['ITEM_SKU'], 'item_sku', seen)
 
   const rows = []
-  let terminalSkipped = 0, missingColorSku = 0, unknownSite = 0
+  let terminalSkipped = 0, missingColorSku = 0, unknownSite = 0, groundFeeSkipped = 0
 
   for (const rec of O.records) {
     const poNumber = clean(pick(rec, ['PO_NUMBER', 'PONUMBER']))
@@ -246,11 +254,20 @@ function buildRows(ordersText, productsText, asOf) {
     const productType = clean(pm.product_type)
     const color = clean(pm.color)
     const colorsCount = pm.number_of_colors ?? null
+
+    // Drop non-scheduled ground/fee lines (kitted grounds inflate hand-screen
+    // ~2x; the manual export omits them entirely).
+    if (EXCLUDED_PRODUCT_TYPES.has(productType)) { groundFeeSkipped++; continue }
     if (colorsCount == null) missingColorSku++
 
     // Site routing: order_type (Division) primary, material prefix fallback.
     let site = DIVISION_TO_SITE[divisionRaw] || 'unknown'
     if (site === 'unknown') { const f = inferSiteFromMaterial(material); if (f) site = f }
+    // Procurement pass-through is typed SCHUMACHER PROC in the product master and
+    // carries no production Division in `orders`, so it otherwise mis-routes to a
+    // print site by material prefix. Reclassify to procurement — matches the
+    // manual export's Division=Procurement (and its 224-row count exactly).
+    if (productType === 'SCHUMACHER PROC') site = 'procurement'
     if (site === 'unknown') unknownSite++
 
     // 3rd-Party-vs-House: not a column in `orders`; derive from customer name.
@@ -300,6 +317,7 @@ function buildRows(ordersText, productsText, asOf) {
 
   if (missingColorSku > 0) notes.push(`${missingColorSku} rows had no NUMBER_OF_COLORS from the product master (color-yards left null; not zeroed)`)
   if (unknownSite > 0) notes.push(`${unknownSite} rows had no recognizable site (Division/material)`)
+  notes.push(`${groundFeeSkipped} ground/fee lines excluded (kitted grounds + fees; not scheduled, matches manual)`)
   notes.push(`${terminalSkipped} terminal/done rows excluded (WIP scope)`)
   notes.push('auto feed: LIFT orders⨝products; is_new_goods & 3rd-party-vs-house are derived (see function header)')
 
