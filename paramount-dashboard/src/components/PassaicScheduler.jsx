@@ -85,15 +85,30 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   )
   function handleDragStart(e) {
-    setActiveDragPO(e.active?.data?.current?.po || null)
+    // Either a pool PO (create) or an existing assignment (move). Both carry
+    // product_type, which is all the fit-highlight needs.
+    setActiveDragPO(e.active?.data?.current?.po || e.active?.data?.current?.moveAssignment || null)
   }
   function handleDragEnd(e) {
     setActiveDragPO(null)
+    const over = e.over?.data?.current
+    if (!over?.tableCode) return
+    const { tableCode, category } = over
+
+    // MOVE: an existing assignment dragged onto a different, same-category
+    // table. No modal — the yards don't change, only the table. Category is
+    // gated like the click path; a drop back on the same table is a no-op.
+    const mv = e.active?.data?.current?.moveAssignment
+    if (mv) {
+      if (!categoryFitsPO(category, mv)) return
+      if (mv.table_code === tableCode) return
+      moveAssignmentToTable(mv.id, tableCode)
+      return
+    }
+
+    // CREATE: a pool PO dropped onto a fitting table — open the assign modal.
     const po = e.active?.data?.current?.po
-    const tableCode = e.over?.data?.current?.tableCode
-    const category = e.over?.data?.current?.category
-    if (!po || !tableCode) return
-    // Dropped on a wrong-category table — ignore (mirrors the click gating).
+    if (!po) return
     if (!categoryFitsPO(category, po)) return
     if (po.remaining_yards > 0) {
       setAssignModal({ po, tableCode, proposed_yards: po.remaining_yards })
@@ -330,6 +345,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     if (!confirm('Remove this assignment?')) return
     const { error: de } = await supabase.from('sched_assignments').delete().eq('id', id)
     if (de) { alert('Delete failed: ' + de.message); return }
+    await onAssignmentsChange()
+  }
+
+  // Relocate a placed assignment to a different table (drag-to-move). Only
+  // table_code changes — planned_yards / planned_cy carry over unchanged (a
+  // move isn't a re-split). Category was already checked in handleDragEnd.
+  async function moveAssignmentToTable(id, newTable) {
+    const { error } = await supabase.from('sched_assignments')
+      .update({ table_code: newTable })
+      .eq('id', id)
+    if (error) { alert('Move failed: ' + error.message); return }
     await onAssignmentsChange()
   }
 
@@ -695,7 +721,7 @@ function DragCard({ r }) {
     <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.navy}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
       <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
-      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards)} yd · {r.product_type}</div>
+      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards ?? r.planned_yards)} yd · {r.product_type}</div>
     </div>
   )
 }
@@ -894,14 +920,19 @@ function categoryFitsPO(category, po) {
   return false
 }
 
+// Placed assignment card. THREE gestures coexist: drag to MOVE it to another
+// table (useDraggable, 6px/200ms activation), plain click to EDIT yards, × to
+// remove. Same constraint pattern as the pool cards.
 function AssignmentCard({ a, onRemove, onEdit }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `asg-${a.id}`, data: { moveAssignment: a } })
   const isSch = (a.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (a.customer_type||'').toLowerCase().includes('3rd')
   const highColor = (a.colors_count || 0) >= HIGH_COLOR_THRESHOLD
   return (
-    <div onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
-      title={onEdit ? 'Click to edit yards' : undefined}
-      style={{ background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4, fontSize: 10, position: 'relative', cursor: onEdit ? 'pointer' : 'default' }}>
+    <div ref={setNodeRef} {...listeners} {...attributes}
+      onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
+      title={onEdit ? 'Drag to move · click to edit yards' : undefined}
+      style={{ background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4, fontSize: 10, position: 'relative', cursor: onEdit ? 'grab' : 'default', opacity: isDragging ? 0.4 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 2 }}>
         {isSch && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.navy, color: '#fff', fontWeight: 700 }}>SCH</span>}
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
