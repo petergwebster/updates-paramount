@@ -168,6 +168,18 @@ export function yesterday() {
   return d
 }
 
+// ─── Scheduler line identity ──────────────────────────────────────────
+// Stable per-LINE key for matching pool rows (sched_wip_rows) to their
+// assignments (sched_assignments). A multi-SKU PO produces multiple pool rows
+// (one per SKU line); keying assignment consumption by PO alone made scheduling
+// one SKU zero out its siblings' remaining. This composite (PO + SKU + color)
+// is stable across LIFT snapshots — unlike the snapshot-local row id — so it
+// survives re-uploads. Both wip rows and assignments carry po_number/item_sku/
+// color, so it computes identically on both sides.
+export function schedLineKey(r) {
+  return [r.po_number, r.item_sku, r.color].map(v => String(v ?? '').trim()).join('|')
+}
+
 // ─── Cross-site constants ──────────────────────────────────────────────────
 // Site `color` is the destination accent used in modals, headers, and
 // site-identity contexts. Path A collapses these to teal/slate variants —

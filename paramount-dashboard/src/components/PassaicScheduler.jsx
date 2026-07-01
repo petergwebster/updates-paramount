@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT,
-  STATUS_BAD_BORDER,
+  STATUS_BAD_BORDER, schedLineKey,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards, PASSAIC_BUDGET } from '../lib/budgets'
@@ -82,9 +82,25 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   }
   useEffect(() => { reloadDailyOps() }, [weekStart])
 
-  const assignedByPO = useMemo(() => {
+  // Assignment consumption keyed at the LINE level (PO + SKU + color) so
+  // scheduling one SKU of a multi-SKU PO no longer zeroes out its siblings.
+  // Assignments without an item_sku (AI-proposed drafts, or legacy rows from
+  // before this change) fall back to PO-level attribution — old behavior — so
+  // they still reduce remaining and can't be silently double-scheduled.
+  const assignedByLine = useMemo(() => {
     const m = {}
     for (const a of assignments) {
+      if (!a.item_sku) continue
+      const k = schedLineKey(a)
+      m[k] = (m[k] || 0) + Number(a.planned_yards || 0)
+    }
+    return m
+  }, [assignments])
+
+  const assignedByPOLegacy = useMemo(() => {
+    const m = {}
+    for (const a of assignments) {
+      if (a.item_sku) continue
       m[a.po_number] = (m[a.po_number] || 0) + Number(a.planned_yards || 0)
     }
     return m
@@ -112,12 +128,12 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       .filter(r => !terminalStatuses.has(r.order_status || ''))
       .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
-        const already = assignedByPO[r.po_number] || 0
+        const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
         const remaining = Math.max(0, Number(r.yards_written || 0) - already)
         return { ...r, assigned_already: already, remaining_yards: remaining }
       })
       .filter(r => r.remaining_yards > 0)
-  }, [wipRows, assignedByPO])
+  }, [wipRows, assignedByLine, assignedByPOLegacy])
 
   const filteredPool = useMemo(() => {
     let list = pool
@@ -166,9 +182,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     return m
   }, [wipRows])
 
+  // Line-level index so an assignment enriches back to its EXACT SKU row, not
+  // just some sibling under the same PO (wipByPO overwrites to the last row).
+  const wipByLine = useMemo(() => {
+    const m = {}
+    for (const r of wipRows) m[schedLineKey(r)] = r
+    return m
+  }, [wipRows])
+
   const enrichedAssignments = useMemo(() => {
     return assignments.map(a => {
-      const src = wipByPO[a.po_number] || {}
+      const src = wipByLine[schedLineKey(a)] || wipByPO[a.po_number] || {}
       return {
         ...a,
         line_description: a.line_description || src.line_description || a.po_number,
@@ -177,7 +201,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
       }
     })
-  }, [assignments, wipByPO])
+  }, [assignments, wipByPO, wipByLine])
 
   const mixTotals = useMemo(() => {
     const t = {
@@ -227,6 +251,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       const cy = colors ? colors * yards : null
       const { error: ie } = await supabase.from('sched_assignments').insert({
         site: 'passaic', po_number: po.po_number,
+        item_sku: po.item_sku || null, color: po.color || null,
         line_description: po.line_description, product_type: po.product_type,
         table_code: tableCode, week_start: isoDate(weekStart),
         day_of_week: null, shift: '1st', planned_yards: yards, planned_cy: cy,
