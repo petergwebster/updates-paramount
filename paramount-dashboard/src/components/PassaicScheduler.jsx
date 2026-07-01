@@ -270,23 +270,56 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     }
   }
 
-  async function commitAssignment({ po, tableCode, yards }) {
+  // Click a placed assignment to edit its yards. Reopens the same modal in edit
+  // mode, pre-filled with the current amount; confirming UPDATEs the row. The
+  // "All" button caps at the full order qty (from the WIP line) for context.
+  function handleEditAssignment(a) {
+    const wip = wipByLine[schedLineKey(a)] || wipByPO[a.po_number] || {}
+    setAssignModal({
+      editId: a.id,
+      tableCode: a.table_code,
+      proposed_yards: Number(a.planned_yards || 0),
+      po: {
+        po_number: a.po_number,
+        line_description: a.line_description,
+        product_type: a.product_type || wip.product_type,
+        colors_count: a.colors_count ?? wip.colors_count ?? null,
+        item_sku: a.item_sku || null,
+        color: a.color || null,
+        remaining_yards: Number(wip.yards_written || a.planned_yards || 0),
+      },
+    })
+  }
+
+  async function commitAssignment({ po, tableCode, yards, editId }) {
     setAssigning(true)
     try {
       const colors = po.colors_count || null
       const cy = colors ? colors * yards : null
-      const { error: ie } = await supabase.from('sched_assignments').insert({
-        site: 'passaic', po_number: po.po_number,
-        item_sku: po.item_sku || null, color: po.color || null,
-        line_description: po.line_description, product_type: po.product_type,
-        table_code: tableCode, week_start: isoDate(weekStart),
-        day_of_week: null, shift: '1st', planned_yards: yards, planned_cy: cy,
-        assigned_by: null, notes: null, status: 'planned',
-      })
-      if (ie) throw ie
+      if (editId) {
+        // Edit mode — update the existing assignment's yards (+ recomputed CY)
+        // instead of inserting a new row. The table stays put; only the amount
+        // changes. (Moving to another table is still remove + re-add for now.)
+        const { error: ue } = await supabase.from('sched_assignments')
+          .update({ planned_yards: yards, planned_cy: cy })
+          .eq('id', editId)
+        if (ue) throw ue
+      } else {
+        const { error: ie } = await supabase.from('sched_assignments').insert({
+          site: 'passaic', po_number: po.po_number,
+          item_sku: po.item_sku || null, color: po.color || null,
+          line_description: po.line_description, product_type: po.product_type,
+          table_code: tableCode, week_start: isoDate(weekStart),
+          day_of_week: null, shift: '1st', planned_yards: yards, planned_cy: cy,
+          assigned_by: null, notes: null, status: 'planned',
+        })
+        if (ie) throw ie
+      }
       await onAssignmentsChange()
-      if (yards >= po.remaining_yards) setSelectedPO(null)
-      else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - yards, assigned_already: (po.assigned_already||0) + yards })
+      if (!editId) {
+        if (yards >= po.remaining_yards) setSelectedPO(null)
+        else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - yards, assigned_already: (po.assigned_already||0) + yards })
+      }
       setAssignModal(null)
     } catch (e) {
       console.error(e); alert('Assignment failed: ' + (e.message || e))
@@ -406,9 +439,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onEdit={handleEditAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onEdit={handleEditAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onEdit={handleEditAssignment} onOpenCrew={setCrewModalTable} />
         </div>
       </div>
       <DragOverlay dropAnimation={null}>
@@ -450,8 +483,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       {assignModal && (
         <AssignModal
           po={assignModal.po} tableCode={assignModal.tableCode} proposed={assignModal.proposed_yards}
+          isEdit={!!assignModal.editId}
           onCancel={() => setAssignModal(null)}
-          onConfirm={yards => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards })}
+          onConfirm={yards => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId })}
           busy={assigning}
         />
       )}
@@ -571,7 +605,7 @@ function CategoryStrip({ totals }) {
   )
 }
 
-function TableCategoryRow({ category, label, tables, assignments, dailyOps, selectedPO, dragPO, onTableClick, onRemove, onOpenCrew, compact }) {
+function TableCategoryRow({ category, label, tables, assignments, dailyOps, selectedPO, dragPO, onTableClick, onRemove, onEdit, onOpenCrew, compact }) {
   const byTable = useMemo(() => {
     const m = {}
     for (const a of assignments) {
@@ -607,7 +641,7 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
           <TableCard key={t.code} t={t} category={category}
             asgs={byTable[t.code] || []}
             canAssign={canAssign} dragFits={dragFits}
-            onTableClick={onTableClick} onRemove={onRemove} onOpenCrew={onOpenCrew}
+            onTableClick={onTableClick} onRemove={onRemove} onEdit={onEdit} onOpenCrew={onOpenCrew}
             dailyOps={dailyOps} />
         ))}
       </div>
@@ -670,7 +704,7 @@ function DragCard({ r }) {
 // category) preserves the click-to-assign path; `dragFits` (a PO is being
 // dragged and fits) lights the card as a valid target; `isOver && dragFits`
 // is the active hover state. Drop is handled by the parent's onDragEnd.
-function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRemove, onOpenCrew, dailyOps }) {
+function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRemove, onEdit, onOpenCrew, dailyOps }) {
   const { setNodeRef, isOver } = useDroppable({ id: `table-${t.code}`, data: { tableCode: t.code, category } })
   const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
   const cyPct = Math.round((cyUsed / t.capacity_cy) * 100)
@@ -703,7 +737,7 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
       <div style={{ height: 4, background: C.warm, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
         <div style={{ width: Math.min(100, cyPct) + '%', height: '100%', background: overCap ? C.rose : cyPct > 80 ? C.gold : C.sage }} />
       </div>
-      {asgs.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} />)}
+      {asgs.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} onEdit={onEdit ? () => onEdit(a) : null} />)}
       {asgs.length === 0 && (
         <div style={{ fontSize: 10, color: C.inkLight, textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
           {highlight ? 'Drop or click to assign' : 'Empty'}
@@ -860,18 +894,20 @@ function categoryFitsPO(category, po) {
   return false
 }
 
-function AssignmentCard({ a, onRemove }) {
+function AssignmentCard({ a, onRemove, onEdit }) {
   const isSch = (a.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (a.customer_type||'').toLowerCase().includes('3rd')
   const highColor = (a.colors_count || 0) >= HIGH_COLOR_THRESHOLD
   return (
-    <div style={{ background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4, fontSize: 10, position: 'relative' }}>
+    <div onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
+      title={onEdit ? 'Click to edit yards' : undefined}
+      style={{ background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4, fontSize: 10, position: 'relative', cursor: onEdit ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 2 }}>
         {isSch && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.navy, color: '#fff', fontWeight: 700 }}>SCH</span>}
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
         {highColor && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.rose, color: '#fff', fontWeight: 700 }}>{a.colors_count}c</span>}
         {a.assigned_by === 'claude' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>✦</span>}
-        <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={onRemove} title="Remove assignment">×</span>
+        <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={(e) => { e.stopPropagation(); onRemove() }} title="Remove assignment">×</span>
       </div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.line_description}</div>
       <div style={{ color: C.inkLight, fontSize: 9 }}>{fmt(a.planned_yards)}yd · {fmt(a.planned_cy || 0)} CY</div>
@@ -888,7 +924,7 @@ function FilterChip({ active, onClick, color, children }) {
   )
 }
 
-function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
+function AssignModal({ po, tableCode, proposed, isEdit, onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
   const cy = po.colors_count ? po.colors_count * yards : 0
   const maxY = po.remaining_yards
@@ -901,7 +937,7 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>Assign to {tableCode}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>{isEdit ? 'Edit · ' : 'Assign to '}{tableCode}</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
           PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {fmt(po.remaining_yards)} yards remaining
@@ -923,7 +959,7 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>
           <button onClick={() => onConfirm(yards)} disabled={invalid || busy}
             style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
-            {busy ? 'Assigning…' : 'Confirm assignment'}
+            {busy ? (isEdit ? 'Saving…' : 'Assigning…') : (isEdit ? 'Save changes' : 'Confirm assignment')}
           </button>
         </div>
       </div>
