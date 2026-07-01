@@ -389,15 +389,21 @@ exports.handler = async (event) => {
     if (dryRun) {
       // Distinct-PO counts + per-site status breakdown so we can tell whether a
       // row-count gap vs a manual upload is grain (line-level) or scope.
-      const posBySite = {}, statusBySite = {}
+      const posBySite = {}, statusBySite = {}, ageBySite = {}
+      const ageB = d => d == null ? 'no-date' : d <= 30 ? '0-30' : d <= 90 ? '31-90' : d <= 180 ? '91-180' : d <= 365 ? '181-365' : '365+'
       for (const r of rows) {
         (posBySite[r.site] = posBySite[r.site] || new Set()).add(r.po_number || r.order_number)
         const sb = statusBySite[r.site] = statusBySite[r.site] || {}
         sb[r.order_status || '(blank)'] = (sb[r.order_status || '(blank)'] || 0) + 1
+        const ab = ageBySite[r.site] = ageBySite[r.site] || {}
+        const k = ageB(r.age_days)
+        ab[k] = (ab[k] || 0) + 1
       }
       result.distinct_pos = Object.fromEntries(Object.entries(posBySite).map(([k, v]) => [k, v.size]))
       result.status_passaic = statusBySite.passaic || {}
       result.status_bny = statusBySite.bny || {}
+      result.age_passaic = ageBySite.passaic || {}
+      result.age_bny = ageBySite.bny || {}
       const sample = site => rows.filter(r => r.site === site).slice(0, 3)
       result.samples = { passaic: sample('passaic'), bny: sample('bny') }
       result.orders_headers = ordersHeaders
