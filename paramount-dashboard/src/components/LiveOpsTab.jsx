@@ -52,7 +52,7 @@ const BNY_BROOKLYN = [
   { code: 'Rhonda', model: '570',  capacity: 500 },
 ]
 const BNY_PASSAIC_DIGITAL = [
-  { code: 'Dakota Ka', capacity: 500 }, { code: 'Dementia', capacity: 500 },
+  { code: 'Dakota Kai', capacity: 500 }, { code: 'Dementia', capacity: 500 },
   { code: 'EMBER', capacity: 500 }, { code: 'Ivy Nile', capacity: 500 },
   { code: 'Jacy Jayne', capacity: 500 }, { code: 'Ruby', capacity: 500 },
   { code: 'Valhalla', capacity: 500 }, { code: 'XIA', capacity: 500 },
@@ -112,9 +112,12 @@ export default function LiveOpsTab({ currentUser } = {}) {
       const latestWeekStart = new Date(latestWeekStr + 'T00:00:00')
       const today = new Date(); today.setHours(0,0,0,0)
       const todayWeekStart = mondayOf(today)
-      // If today is already in the latest-planned week, stay on today. Otherwise
-      // jump to Monday of that week so Wendy/Sami sees her planning immediately.
-      if (mondayOf(latestWeekStart).getTime() !== todayWeekStart.getTime()) {
+      // Only jump BACK to the most recent PAST planned week (salvage case: today's
+      // week has nothing scheduled yet). NEVER jump AHEAD of today — that landed
+      // Live Ops on a barely-planned future week instead of the active current
+      // week. Actuals default to today; pre-planning a future week is reached via
+      // "Next week".
+      if (mondayOf(latestWeekStart).getTime() < todayWeekStart.getTime()) {
         setSelectedDate(mondayOf(latestWeekStart))
       }
     }
