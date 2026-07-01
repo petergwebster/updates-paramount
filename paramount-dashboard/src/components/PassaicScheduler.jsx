@@ -827,7 +827,12 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
   const cy = po.colors_count ? po.colors_count * yards : 0
   const maxY = po.remaining_yards
-  const invalid = yards < 1 || yards > maxY
+  // Overschedule allowed (Peter 6/30): the floor schedules beyond WIP qty for
+  // MTO/custom/Hosp and prints past nominal capacity when needed. Only a
+  // non-positive entry is invalid; going over is permitted and just flagged.
+  // Live Ops captures what actually ran, so over-100% on the board is accurate.
+  const over = yards > maxY
+  const invalid = yards < 1
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
@@ -837,16 +842,17 @@ function AssignModal({ po, tableCode, proposed, onCancel, onConfirm, busy }) {
           PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {fmt(po.remaining_yards)} yards remaining
         </div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this table</label>
-        <input type="number" value={yards} onChange={e => setYards(parseInt(e.target.value) || 0)} min={1} max={maxY}
+        <input type="number" value={yards} onChange={e => setYards(parseInt(e.target.value) || 0)} min={1}
           style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           <button onClick={() => setYards(maxY)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>All ({fmt(maxY)})</button>
           <button onClick={() => setYards(Math.round(maxY / 2))} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>Half ({fmt(Math.round(maxY/2))})</button>
           <button onClick={() => setYards(Math.round(maxY / 3))} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>Third ({fmt(Math.round(maxY/3))})</button>
         </div>
-        <div style={{ padding: '10px 14px', background: C.goldBg, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.ink }}>
+        <div style={{ padding: '10px 14px', background: over ? C.amberBg : C.goldBg, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.ink }}>
           This assignment: <strong>{fmt(yards)} yards × {po.colors_count || 0} colors = {fmt(cy)} CY</strong>
           {yards < maxY && <div style={{ fontSize: 11, color: C.inkMid, marginTop: 4 }}>Remaining {fmt(maxY - yards)} yards will stay in the pool.</div>}
+          {over && <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 600 }}>Overscheduling {fmt(yards - maxY)} yd beyond the {fmt(maxY)} yd on the WIP — intentional; Live Ops captures actuals.</div>}
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>

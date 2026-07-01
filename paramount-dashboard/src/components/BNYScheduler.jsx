@@ -913,7 +913,10 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
   const remainingCap = Math.max(0, dailyCapacity - alreadyOnCell)
   const maxY = Math.min(po.remaining_yards, remainingCap)
   const overCap = yards > remainingCap
-  const invalid = yards < 1 || yards > po.remaining_yards || overCap
+  // Overschedule allowed (Peter 6/30): schedule beyond WIP qty and beyond the
+  // nominal daily capacity when the floor needs it. Both are flagged, not
+  // blocked; Live Ops captures what actually ran so over-100% is accurate.
+  const invalid = yards < 1
   const operatorList = BNY_OPERATORS_ALL
 
   return (
@@ -929,7 +932,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
         </div>
 
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this machine-day</label>
-        <input type="number" value={yards} onChange={e => setYards(parseInt(e.target.value) || 0)} min={1} max={po.remaining_yards}
+        <input type="number" value={yards} onChange={e => setYards(parseInt(e.target.value) || 0)} min={1}
           style={{ width: '100%', padding: '8px 12px', border: `1px solid ${overCap ? C.rose : C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           <button onClick={() => setYards(maxY)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>Fill cap ({fmt(maxY)})</button>
