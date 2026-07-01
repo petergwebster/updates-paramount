@@ -67,9 +67,9 @@ const BNY_MACHINES_570_BNY = [
 ]
 // 570 machines at Passaic NJ location
 const BNY_MACHINES_570_NJ = [
-  { id: 'dakota_ka', name: 'Dakota Ka', target: 500 },
+  { id: 'dakota_ka', name: 'Dakota Kai', target: 500 },
   { id: 'dementia', name: 'Dementia', target: 500 },
-  { id: 'ember', name: 'EMBER', target: 500 },
+  { id: 'ember', name: 'Ember', target: 500 },
   { id: 'ivy_nile', name: 'Ivy Nile', target: 500 },
   { id: 'jacy_jayne', name: 'Jacy Jayne', target: 500 },
   { id: 'ruby', name: 'Ruby', target: 500 },
