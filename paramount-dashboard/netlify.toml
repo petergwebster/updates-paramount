@@ -35,3 +35,10 @@
 [[scheduled_functions]]
   function = "lock-wip"
   cron = "0 5 * * 6"
+
+# Automated LIFT WIP feed - top of every hour. Pulls orders+products from the
+# LIFT ORDS API, writes a fresh sched_snapshots + sched_wip_rows. Manual
+# "Upload LIFT WIP" stays available as a fallback (newest snapshot wins).
+[[scheduled_functions]]
+  function = "lift-wip-sync"
+  cron = "0 * * * *"
