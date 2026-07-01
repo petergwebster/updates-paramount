@@ -153,3 +153,75 @@ FSCO's LIFT API, writes only the updates-paramount Supabase).
 `Paramount_WIP_LIFT_Feed_Verification.docx` (2026-06-30) — hand-off for Wendy/Chandler: the specific orders
 to verify (which-plant, confirm-real, Tillett), the old Brooklyn records to close in LIFT, and the color-count
 fill task.
+
+
+---
+
+## 2026-07-01 — BUILD LOG: scheduler CRUD, LIFT freshness badge, CRON FIX (verified), machine-name migration
+
+Full-day session. Four things shipped + one real infrastructure bug fixed. All live on main / Netlify.
+
+### Scheduler — full assignment CRUD on BOTH floors (dnd-kit)
+Completed the direct-manipulation model on Passaic (hand-screen tables) and BNY (digital machines × days):
+- **drag-in from pool = create** (opens the assign modal pre-filled); **drag placed card = move** (silent, no
+  modal — a move only changes location, not yards; reversible by dragging back); **click placed card = edit**
+  (yards + operator); **× = remove**. Three gestures coexist on one placed card via `stopPropagation`.
+- BNY move changes **both machine and day** in one drop; operator travels with the row and is mirrored to
+  `sched_daily_ops` (same dual-write as the edit path) so Live Ops / scorecard stay in sync. No category gate
+  on BNY (any digital order runs any digital machine); Passaic moves are category-gated. Over-cap shows red,
+  not blocked. Mouse (6px drag start) + touch (200ms press-hold) via `PointerSensor` + `TouchSensor`.
+- Fixed a stale BNY operator-roster bug: `BNYScheduler` had its OWN hardcoded `BNY_OPERATORS` (salaried names
+  in, Jessica Acosta missing); replaced with the `BNY_OPERATORS_ALL` import from `scheduleUtils` (the payroll-
+  reconciled 13). The morning roster fix had reached scheduleUtils/LiveOps/Passaic but not this local copy.
+
+### LIFT freshness badge — `src/components/LiftFreshnessBadge.jsx` (new)
+Honest, freshness-based LIFT status pill (NOT a live ping). Reads newest `sched_snapshots.uploaded_at`:
+FRESH/green ≤2h · DELAYED/amber 2–24h · STALE/red >24h or none. Re-queries every 5min, re-ticks every 30s.
+Styled to match the Heartbeat `.pulseDot` treatment (12px dot + breathing halo ring, small-caps eyebrow
+"LIFT · LIVE/DELAYED/STALE"); pulses in all states (Peter's call). Placed in WIPTab + SchedulerTab headers.
+Manual LIFT upload in WIPTab **demoted** behind a "Manual override ▾" toggle + warning ("feed is live and
+hourly; a manual upload replaces current data until the next feed run") — kept as fail-safe, not co-equal.
+Caption flips "Refreshed hourly" ↔ "Manual upload" based on the newest snapshot's `source_filename`.
+
+### CRON FIX — the LIFT auto-feed was never actually firing on schedule (RESOLVED + VERIFIED)
+The badge immediately earned its keep: it surfaced the feed ~15h stale. Diagnosis → this was **F-013**
+(see `docs/FINDINGS_LOG.md`), the capital-F `netlify/Functions` dir breaking Netlify's scheduled-function
+discovery on their case-sensitive Linux build. The feed had produced exactly ONE `LIFT API (auto feed)`
+snapshot ever (a one-off), never hourly. Confirmed via Supabase `now()`-clock age (real staleness, not a
+timezone artifact), an empty 7-day function log, and a clean on-demand endpoint hit (GET wrote snapshot 39
+fine — code + LIFT healthy). **Fix:** two-hop `git mv Functions → functions-tmp → functions` (Windows is
+case-insensitive; a direct case-only rename no-ops and never reaches Netlify) + `netlify.toml` `functions =`
+capital→lowercase. Commit `7cc3b00`. **VERIFIED** by unattended top-of-hour `auto feed` rows nobody
+triggered. `lock-wip`'s Saturday cron is fixed as a byproduct (same dir).
+> ⚠️ The 2026-06-30 entry above claims a "CASING FIX" and states it **backwards** (`functions` → `Functions`)
+> — that was wrong and apparently never committed (toml was still capital-F on 7/1). The 7/1 fix is the real one.
+> Still pending under F-013: deleting the dead functions (`claude.mjs`/`lock-wip`/`generate-pdf`) + bogus edge decls.
+
+### Machine-name migration — canonical `Ember` / `Dakota Kai` (DB + code)
+The machine display/table-code names had drifted: `EMBER` (all-caps) and `Dakota Ka` (truncated) in stored
+`table_code` and several code lists. Peter confirmed the true names are **Dakota Kai** and **Ember**, and that
+the **stored `table_code` is the canonical authority** (it's what every join depends on; LIFT carries no machine
+name — machines are a Paramount-internal scheduling concept). Audit of `sched_assignments` + `sched_daily_ops`
+showed the two tables were internally consistent (`Dakota Ka` / `EMBER` in both), so it was a clean rename, not
+an orphaning risk. **Data migrated** (4 `UPDATE`s across both tables: `Dakota Ka`→`Dakota Kai`, `EMBER`→`Ember`),
+**then** the writers aligned so new rows land canonical: `BNYScheduler` machine list + its Ask-Claude prompt
+strings (else Claude's proposals fail the `passaicMachineNames` check and get silently skipped), `LiveOpsTab`
+machine list, and `ProductionDashboard` display names (its machine **`id`s left untouched** — they key
+historical `production.bny_data.machines`, so changing them would orphan history; only the `name` labels changed).
+Migration-first, code-second was deliberate — fixing code first opens a drift window where new rows land canonical
+while old rows still have the typo.
+> **Reconciliation note vs F-005:** the authoritative March 2026 deck (see `FINDINGS_LOG.md` F-005) lists these
+> machines as **"Dakota"** and **"Ember"** — agreeing on Ember casing but NOT on "Dakota Kai." Per Peter (7/1) the
+> real machine name is **Dakota Kai** and the DB is now canonical at that spelling. Do NOT "correct" it back to the
+> deck's "Dakota" — the deck label is the stale one here.
+
+### Repo hygiene
+Removed three tracked `.bak` backups (`AdminFinancials.jsx.bak`, `FinancialTab.jsx.bak`/`.bak2`) via
+`git rm --cached` (files kept on disk); added `.gitignore` entries (`*.bak*`, `node_modules`, `dist`, `.env*`).
+
+### Deferred (deliberately not done)
+- **Machine-list centralization** into `scheduleUtils` (F-004-adjacent). The three lists have genuinely different
+  shapes (`{id,name,target}` history-keyed / `{code,capacity}` match-keyed / `{name,capacity,model}` grid), so
+  centralizing is a real refactor whose payoff is future-proofing, not a bug. Names are now canonical + consistent;
+  centralize when a future machine change makes it earn its keep.
+- The F-013 bundled deletes (above).
