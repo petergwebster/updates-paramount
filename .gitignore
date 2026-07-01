@@ -1,2 +1,15 @@
 # Local Netlify folder
 .netlify
+
+# Editor / backup cruft
+*.bak
+*.bak[0-9]
+
+# Dependencies & build output
+node_modules
+dist
+
+# Env files (never commit secrets)
+.env
+.env.local
+.env.*.local
