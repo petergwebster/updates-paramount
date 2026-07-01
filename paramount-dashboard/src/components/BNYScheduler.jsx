@@ -322,34 +322,82 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     })
   }
 
-  async function commitAssignment({ po, machine, dayOfWeek, yards, operator }) {
+  // Click a placed assignment to edit its yards + operator. Reopens the same
+  // modal in edit mode, pre-filled with current values; confirming UPDATEs the
+  // row (machine/day stay put — moving is remove + re-drag). day_of_week is
+  // stored as text ('Wed'); the modal wants a numeric index, so convert here.
+  function handleEditAssignment(a) {
+    const wip = wipByLine[schedLineKey(a)] || wipByPO[a.po_number] || {}
+    const loc = brooklynMachineNames.has(a.table_code) ? 'brooklyn' : 'passaic'
+    const dayIdx = DAY_LABELS.indexOf(dowText(a.day_of_week))
+    setAssignModal({
+      editId: a.id,
+      editOperator: a.operator || '',
+      machine: a.table_code,
+      day_of_week: dayIdx >= 0 ? dayIdx : 0,
+      location: loc,
+      proposed_yards: Number(a.planned_yards || 0),
+      po: {
+        po_number: a.po_number,
+        line_description: a.line_description,
+        product_type: a.product_type || wip.product_type,
+        bny_bucket: a.bny_bucket ?? wip.bny_bucket ?? null,
+        colors_count: a.colors_count ?? wip.colors_count ?? null,
+        item_sku: a.item_sku || null,
+        color: a.color || null,
+        remaining_yards: Number(wip.yards_written || a.planned_yards || 0),
+      },
+    })
+  }
+
+  async function commitAssignment({ po, machine, dayOfWeek, yards, operator, editId }) {
     setAssigning(true)
     try {
-      const { error: ie } = await supabase.from('sched_assignments').insert({
-        site: 'bny',
-        po_number: po.po_number,
-        item_sku: po.item_sku || null,
-        color: po.color || null,
-        line_description: po.line_description,
-        product_type: po.product_type,
-        table_code: machine,
-        week_start: isoDate(weekStart),
-        day_of_week: dowText(dayOfWeek),
-        planned_yards: yards,
-        planned_cy: null,
-        assigned_by: null,
-        operator: operator || null,
-        notes: null,
-        status: 'planned',
-      })
-      if (ie) throw ie
+      if (editId) {
+        // Edit mode — update this assignment's yards + operator in place, and
+        // mirror the operator to sched_daily_ops (same as the cell dropdown)
+        // so Live Ops + the operator scorecard stay in sync. Machine/day stay
+        // put; moving to another cell is still remove + re-drag.
+        const { error: ue } = await supabase.from('sched_assignments')
+          .update({ planned_yards: yards, operator: operator || null })
+          .eq('id', editId)
+        if (ue) throw ue
+        try {
+          await upsertDailyOp({
+            site: 'bny', week_start: isoDate(weekStart),
+            table_code: machine, day_of_week: dowText(dayOfWeek),
+            shift: '1st', operator_1: operator || null,
+          })
+        } catch (e) { console.error('daily_ops dual-write failed (non-fatal):', e) }
+      } else {
+        const { error: ie } = await supabase.from('sched_assignments').insert({
+          site: 'bny',
+          po_number: po.po_number,
+          item_sku: po.item_sku || null,
+          color: po.color || null,
+          line_description: po.line_description,
+          product_type: po.product_type,
+          table_code: machine,
+          week_start: isoDate(weekStart),
+          day_of_week: dowText(dayOfWeek),
+          planned_yards: yards,
+          planned_cy: null,
+          assigned_by: null,
+          operator: operator || null,
+          notes: null,
+          status: 'planned',
+        })
+        if (ie) throw ie
+      }
       await onAssignmentsChange()
-      if (yards >= po.remaining_yards) setSelectedPO(null)
-      else setSelectedPO({
-        ...po,
-        remaining_yards: po.remaining_yards - yards,
-        assigned_already: (po.assigned_already || 0) + yards,
-      })
+      if (!editId) {
+        if (yards >= po.remaining_yards) setSelectedPO(null)
+        else setSelectedPO({
+          ...po,
+          remaining_yards: po.remaining_yards - yards,
+          assigned_already: (po.assigned_already || 0) + yards,
+        })
+      }
       setAssignModal(null)
     } catch (e) {
       console.error(e); alert('Assignment failed: ' + (e.message || e))
@@ -505,6 +553,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             dragActive={!!activeDragPO}
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
+            onEditAssignment={handleEditAssignment}
             onOperatorChange={updateMachineDayOperator}
           />
           <LocationSection
@@ -517,6 +566,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             dragActive={!!activeDragPO}
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
+            onEditAssignment={handleEditAssignment}
             onOperatorChange={updateMachineDayOperator}
           />
         </div>
@@ -603,8 +653,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           dayOfWeek={assignModal.day_of_week}
           location={assignModal.location}
           proposed={assignModal.proposed_yards}
+          isEdit={!!assignModal.editId}
+          initialOperator={assignModal.editOperator}
           dailyCapacity={capacityFor(assignModal.machine, assignModal.location)}
-          existingOnCell={assignmentsByMachineDay[`${assignModal.machine}|${dowText(assignModal.day_of_week)}`] || []}
+          existingOnCell={(assignmentsByMachineDay[`${assignModal.machine}|${dowText(assignModal.day_of_week)}`] || []).filter(a => a.id !== assignModal.editId)}
           onCancel={() => setAssignModal(null)}
           onConfirm={(yards, operator) => commitAssignment({
             po: assignModal.po,
@@ -612,6 +664,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             dayOfWeek: assignModal.day_of_week,
             yards,
             operator,
+            editId: assignModal.editId,
           })}
           busy={assigning}
         />
@@ -748,7 +801,7 @@ function BucketCard({ bucket, totals }) {
   )
 }
 
-function LocationSection({ locationKey, label, sublabel, machines, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
+function LocationSection({ locationKey, label, sublabel, machines, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onEditAssignment, onOperatorChange, compact }) {
   return (
     <div style={{ marginTop: 20, marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
@@ -771,6 +824,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
           dragActive={dragActive}
           onCellClick={onCellClick}
           onRemoveAssignment={onRemoveAssignment}
+          onEditAssignment={onEditAssignment}
           onOperatorChange={onOperatorChange}
           compact={compact}
         />
@@ -779,7 +833,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
   )
 }
 
-function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
+function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onEditAssignment, onOperatorChange, compact }) {
   let weekTotal = 0
   for (let d = 0; d < NUM_DAYS; d++) {
     const cell = assignmentsByMachineDay[`${machine.name}|${dowText(d)}`] || []
@@ -808,6 +862,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
           dragActive={dragActive}
           onClick={() => onCellClick(machine.name, d, locationKey)}
           onRemoveAssignment={onRemoveAssignment}
+          onEditAssignment={onEditAssignment}
           onOperatorChange={onOperatorChange}
           compact={compact}
         />
@@ -820,7 +875,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
   )
 }
 
-function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selectedPO, dragActive, onClick, onRemoveAssignment, onOperatorChange, compact }) {
+function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selectedPO, dragActive, onClick, onRemoveAssignment, onEditAssignment, onOperatorChange, compact }) {
   const { setNodeRef, isOver } = useDroppable({ id: `bnycell-${machine.name}-${dayOfWeek}`, data: { machine: machine.name, dayOfWeek, location: locationKey } })
   const cellYards = assignments.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   const pct = Math.round((cellYards / machine.capacity) * 100)
@@ -876,18 +931,20 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
           </div>
         )}
         {assignments.map(a => (
-          <AssignmentChip key={a.id} a={a} onRemove={() => onRemoveAssignment(a.id)} />
+          <AssignmentChip key={a.id} a={a} onRemove={() => onRemoveAssignment(a.id)} onEdit={onEditAssignment ? () => onEditAssignment(a) : null} />
         ))}
       </div>
     </div>
   )
 }
 
-function AssignmentChip({ a, onRemove }) {
+function AssignmentChip({ a, onRemove, onEdit }) {
   const col = a.bny_bucket ? BUCKET_COLOR[a.bny_bucket] : C.inkMid
   const bg = a.bny_bucket ? BUCKET_BG[a.bny_bucket] : C.parchment
   return (
-    <div style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
+      title={onEdit ? 'Click to edit yards / operator' : undefined}
+      style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', display: 'flex', alignItems: 'center', gap: 4, cursor: onEdit ? 'pointer' : 'default' }}>
       {a.assigned_by === 'claude' && <span data-noclick="true" style={{ color: C.gold, fontWeight: 700 }}>✦</span>}
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: C.ink }}>
         {a.line_description}
@@ -954,9 +1011,9 @@ function DragCardBNY({ r }) {
   )
 }
 
-function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapacity, existingOnCell, onCancel, onConfirm, busy }) {
+function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, initialOperator, dailyCapacity, existingOnCell, onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
-  const [operator, setOperator] = useState(existingOnCell[0]?.operator || '')
+  const [operator, setOperator] = useState(initialOperator ?? (existingOnCell[0]?.operator || ''))
   const alreadyOnCell = existingOnCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   const remainingCap = Math.max(0, dailyCapacity - alreadyOnCell)
   const maxY = Math.min(po.remaining_yards, remainingCap)
@@ -972,7 +1029,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
       onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>
-          Assign to {machine} · {DAY_LABELS[dayOfWeek]}
+          {isEdit ? 'Edit · ' : 'Assign to '}{machine} · {DAY_LABELS[dayOfWeek]}
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
@@ -1005,7 +1062,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, dailyCapac
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>
           <button onClick={() => onConfirm(yards, operator)} disabled={invalid || busy}
             style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
-            {busy ? 'Assigning…' : 'Confirm assignment'}
+            {busy ? (isEdit ? 'Saving…' : 'Assigning…') : (isEdit ? 'Save changes' : 'Confirm assignment')}
           </button>
         </div>
       </div>
