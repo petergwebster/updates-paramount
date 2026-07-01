@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT,
   STATUS_BAD_BORDER, schedLineKey,
@@ -73,6 +74,31 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
   const [weekDailyOps, setWeekDailyOps] = useState([])
+  const [activeDragPO, setActiveDragPO] = useState(null)
+
+  // Drag-and-drop (dnd-kit). PointerSensor = mouse: a 6px move starts a drag,
+  // so a plain click still selects. TouchSensor = the floor's tablets: a 200ms
+  // press-and-hold starts a drag, so a tap/scroll on the pool doesn't grab a
+  // card. Click-to-assign remains fully working as the fallback.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
+  function handleDragStart(e) {
+    setActiveDragPO(e.active?.data?.current?.po || null)
+  }
+  function handleDragEnd(e) {
+    setActiveDragPO(null)
+    const po = e.active?.data?.current?.po
+    const tableCode = e.over?.data?.current?.tableCode
+    const category = e.over?.data?.current?.category
+    if (!po || !tableCode) return
+    // Dropped on a wrong-category table — ignore (mirrors the click gating).
+    if (!categoryFitsPO(category, po)) return
+    if (po.remaining_yards > 0) {
+      setAssignModal({ po, tableCode, proposed_yards: po.remaining_yards })
+    }
+  }
 
   // Load this week's daily_ops (crew + actuals) so the table cards can show
   // a compact staffing strip. Refreshes when the week changes or after a save.
@@ -331,6 +357,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       </div>
 
       {/* Main layout */}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragPO(null)}>
       <div style={{
         display: 'grid',
         gridTemplateColumns: '340px 1fr',
@@ -363,42 +390,11 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
             {filteredPool.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
             )}
-            {filteredPool.map(r => {
-              const sel = selectedPO?.po_number === r.po_number
-              const isSch = (r.customer_type||'').toLowerCase() === 'schumacher'
-              const is3P = (r.customer_type||'').toLowerCase().includes('3rd')
-              const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
-              const wasteP = hasWasteHistory(r.line_description)
-              return (
-                <div key={r.id} onClick={() => setSelectedPO(sel ? null : r)}
-                  style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: sel ? C.goldBg : 'transparent' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
-                    {r.order_number && r.order_number !== r.po_number && (
-                      <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
-                    )}
-                    {isSch && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.navyLight, color: C.navy, fontWeight: 700 }}>SCH</span>}
-                    {is3P && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>3P</span>}
-                    {r.is_new_goods && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>NEW</span>}
-                    {highColor && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.roseBg, color: C.rose, fontWeight: 700 }}>{r.colors_count}c</span>}
-                    {wasteP && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>⚠ WASTE</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
-                  {(r.item_sku || r.color) && (
-                    <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
-                      {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
-                    <span>{r.product_type}</span>
-                    <span>·</span>
-                    <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
-                    <span>·</span>
-                    <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
-                  </div>
-                </div>
-              )
-            })}
+            {filteredPool.map(r => (
+              <PoolCard key={r.id} r={r}
+                selected={selectedPO?.po_number === r.po_number}
+                onToggle={() => setSelectedPO(selectedPO?.po_number === r.po_number ? null : r)} />
+            ))}
           </div>
           {selectedPO && (
             <div style={{ padding: '10px 14px', background: C.goldBg, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.ink }}>
@@ -410,11 +406,15 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
         {/* TABLE GRID */}
         <div>
-          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
-          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="grass"     label="Grasscloth" tables={PASSAIC_TABLES.filter(t => t.category === 'grass')}     assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="fabric"    label="Fabric"     tables={PASSAIC_TABLES.filter(t => t.category === 'fabric')}    assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
+          <TableCategoryRow category="wallpaper" label="Wallpaper"  tables={PASSAIC_TABLES.filter(t => t.category === 'wallpaper')} assignments={enrichedAssignments} dailyOps={weekDailyOps} selectedPO={selectedPO} dragPO={activeDragPO} onTableClick={handleTableClick} onRemove={removeAssignment} onOpenCrew={setCrewModalTable} />
         </div>
       </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDragPO ? <DragCard r={activeDragPO} /> : null}
+      </DragOverlay>
+      </DndContext>
 
       {/* ASK CLAUDE — modal overlay (full-screen) */}
       {askClaudeOpen && (
@@ -571,7 +571,7 @@ function CategoryStrip({ totals }) {
   )
 }
 
-function TableCategoryRow({ category, label, tables, assignments, dailyOps, selectedPO, onTableClick, onRemove, onOpenCrew, compact }) {
+function TableCategoryRow({ category, label, tables, assignments, dailyOps, selectedPO, dragPO, onTableClick, onRemove, onOpenCrew, compact }) {
   const byTable = useMemo(() => {
     const m = {}
     for (const a of assignments) {
@@ -582,6 +582,7 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
   }, [assignments])
 
   const canAssign = selectedPO && categoryFitsPO(category, selectedPO)
+  const dragFits = !!(dragPO && categoryFitsPO(category, dragPO))
   // Responsive card grid. Each card claims at least 360px (enough for the
   // CrewStrip CREW column to fully render two-operator names like
   // "Humberto G. / Jeremy D." without truncation), then fills the
@@ -602,54 +603,118 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
         {label} <span style={{ color: C.inkLight, fontWeight: 400 }}>— {tables.length} table{tables.length !== 1 ? 's' : ''}</span>
       </div>
       <div style={gridStyle}>
-        {tables.map(t => {
-          const asgs = byTable[t.code] || []
-          const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
-          const cyPct = Math.round((cyUsed / t.capacity_cy) * 100)
-          const overCap = cyPct > 110
-          const highlight = canAssign
-          return (
-            <div key={t.code}
-              onClick={() => canAssign && onTableClick(t.code)}
-              style={{
-                background: '#fff',
-                border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${highlight ? C.navy : overCap ? C.rose : C.border}`,
-                borderRadius: 8, padding: 8, minHeight: 220,
-                cursor: canAssign ? 'pointer' : 'default',
-              }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>{t.code}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {onOpenCrew && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onOpenCrew(t.code) }}
-                      title="Set daily yards targets and assign crew for each day"
-                      style={{ padding: '1px 6px', fontSize: 9, fontWeight: 600, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 3, cursor: 'pointer', color: C.inkMid, letterSpacing: '0.04em' }}>
-                      PLAN
-                    </button>
-                  )}
-                  <span style={{ fontSize: 9, color: overCap ? C.rose : cyPct > 80 ? C.gold : C.inkLight, fontWeight: 600 }}>{cyPct}%</span>
-                </div>
-              </div>
-              <div style={{ height: 4, background: C.warm, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
-                <div style={{ width: Math.min(100, cyPct) + '%', height: '100%', background: overCap ? C.rose : cyPct > 80 ? C.gold : C.sage }} />
-              </div>
-              {asgs.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} />)}
-              {asgs.length === 0 && (
-                <div style={{ fontSize: 10, color: C.inkLight, textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
-                  {canAssign ? 'Click to assign' : 'Empty'}
-                </div>
-              )}
-              <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4, display: 'flex', gap: 10 }}>
-                <span>Yards: <strong style={{ color: C.ink, fontWeight: 700 }}>{fmt(asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0))}</strong></span>
-                <span>CY: <strong style={{ color: overCap ? C.rose : C.ink, fontWeight: 700 }}>{fmt(cyUsed)}</strong> / {fmt(t.capacity_cy)}</span>
-              </div>
-              <CrewStrip tableCode={t.code} dailyOps={dailyOps}
-                weeklyYards={asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)} />
-            </div>
-          )
-        })}
+        {tables.map(t => (
+          <TableCard key={t.code} t={t} category={category}
+            asgs={byTable[t.code] || []}
+            canAssign={canAssign} dragFits={dragFits}
+            onTableClick={onTableClick} onRemove={onRemove} onOpenCrew={onOpenCrew}
+            dailyOps={dailyOps} />
+        ))}
       </div>
+    </div>
+  )
+}
+
+// Draggable pool card. Keeps the original click-to-select behavior (onToggle)
+// AND becomes a drag source. The PointerSensor's 6px activation constraint
+// means a plain click still selects; a drag needs deliberate movement.
+function PoolCard({ r, selected, onToggle }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `pool-${r.id}`, data: { po: r } })
+  const isSch = (r.customer_type||'').toLowerCase() === 'schumacher'
+  const is3P = (r.customer_type||'').toLowerCase().includes('3rd')
+  const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
+  const wasteP = hasWasteHistory(r.line_description)
+  return (
+    <div ref={setNodeRef} {...listeners} {...attributes} onClick={onToggle}
+      style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'grab', background: selected ? C.goldBg : 'transparent', opacity: isDragging ? 0.4 : 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+        {r.order_number && r.order_number !== r.po_number && (
+          <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
+        )}
+        {isSch && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.navyLight, color: C.navy, fontWeight: 700 }}>SCH</span>}
+        {is3P && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>3P</span>}
+        {r.is_new_goods && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.goldBg, color: C.gold, fontWeight: 700 }}>NEW</span>}
+        {highColor && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.roseBg, color: C.rose, fontWeight: 700 }}>{r.colors_count}c</span>}
+        {wasteP && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>⚠ WASTE</span>}
+      </div>
+      <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
+      {(r.item_sku || r.color) && (
+        <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+          {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
+        <span>{r.product_type}</span>
+        <span>·</span>
+        <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
+        <span>·</span>
+        <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
+      </div>
+    </div>
+  )
+}
+
+// Compact card that follows the cursor/finger during a drag (DragOverlay).
+function DragCard({ r }) {
+  return (
+    <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.navy}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
+      <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</div>
+      <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
+      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards)} yd · {r.product_type}</div>
+    </div>
+  )
+}
+
+// Droppable table card. `canAssign` (a PO is selected via click and fits this
+// category) preserves the click-to-assign path; `dragFits` (a PO is being
+// dragged and fits) lights the card as a valid target; `isOver && dragFits`
+// is the active hover state. Drop is handled by the parent's onDragEnd.
+function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRemove, onOpenCrew, dailyOps }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `table-${t.code}`, data: { tableCode: t.code, category } })
+  const cyUsed = asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0)
+  const cyPct = Math.round((cyUsed / t.capacity_cy) * 100)
+  const overCap = cyPct > 110
+  const highlight = canAssign || dragFits
+  const dropActive = isOver && dragFits
+  return (
+    <div ref={setNodeRef}
+      onClick={() => canAssign && onTableClick(t.code)}
+      style={{
+        background: dropActive ? C.goldBg : '#fff',
+        border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${dropActive ? C.gold : highlight ? C.navy : overCap ? C.rose : C.border}`,
+        borderRadius: 8, padding: 8, minHeight: 220,
+        cursor: canAssign ? 'pointer' : 'default',
+      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.ink }}>{t.code}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {onOpenCrew && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenCrew(t.code) }}
+              title="Set daily yards targets and assign crew for each day"
+              style={{ padding: '1px 6px', fontSize: 9, fontWeight: 600, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 3, cursor: 'pointer', color: C.inkMid, letterSpacing: '0.04em' }}>
+              PLAN
+            </button>
+          )}
+          <span style={{ fontSize: 9, color: overCap ? C.rose : cyPct > 80 ? C.gold : C.inkLight, fontWeight: 600 }}>{cyPct}%</span>
+        </div>
+      </div>
+      <div style={{ height: 4, background: C.warm, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
+        <div style={{ width: Math.min(100, cyPct) + '%', height: '100%', background: overCap ? C.rose : cyPct > 80 ? C.gold : C.sage }} />
+      </div>
+      {asgs.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} />)}
+      {asgs.length === 0 && (
+        <div style={{ fontSize: 10, color: C.inkLight, textAlign: 'center', padding: '12px 0', fontStyle: 'italic' }}>
+          {highlight ? 'Drop or click to assign' : 'Empty'}
+        </div>
+      )}
+      <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4, display: 'flex', gap: 10 }}>
+        <span>Yards: <strong style={{ color: C.ink, fontWeight: 700 }}>{fmt(asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0))}</strong></span>
+        <span>CY: <strong style={{ color: overCap ? C.rose : C.ink, fontWeight: 700 }}>{fmt(cyUsed)}</strong> / {fmt(t.capacity_cy)}</span>
+      </div>
+      <CrewStrip tableCode={t.code} dailyOps={dailyOps}
+        weeklyYards={asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)} />
     </div>
   )
 }
