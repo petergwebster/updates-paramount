@@ -1,23 +1,23 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { C, STATUS_GOOD, STATUS_WARN, STATUS_BAD } from '../lib/scheduleUtils'
+import { C } from '../lib/scheduleUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LiftFreshnessBadge — honest live-status pill for the LIFT feed.
 //
-// The status is FRESHNESS-based, not a live ping: it reads the newest
-// sched_snapshots.uploaded_at and reports how recent the data is. That's the
-// signal that actually matters — "is the dashboard showing current data?" —
-// and it reflects the hourly feed cron actually landing, not just whether a
-// browser can reach a URL.
+// FRESHNESS-based, not a live ping: reads the newest sched_snapshots.uploaded_at
+// and reports how recent the data is — the signal that actually matters ("is the
+// dashboard showing current data?") and reflects the hourly feed cron landing.
 //
-// The auto-feed cron runs hourly, so the tiers are:
-//   • FRESH   (green, flashing dot)  — within 2h (one hourly run + grace)
-//   • DELAYED (amber, steady)        — 2–24h (a few missed runs, still today)
-//   • STALE   (red, steady)          — >24h, or no snapshot at all
+// Styling matches the Heartbeat page's "LIVE · PLANT PULSE" treatment: a 12px
+// dot with a soft halo ring that breathes (scales + expands outward), plus a
+// wide-tracked small-caps eyebrow. Colors are semantic and the dot pulses in
+// every state — a live feed should read as *alive*.
 //
-// Under the pill: "Refreshed hourly · last updated <relative time>". The
-// timestamp is the proof the pulse is telling the truth.
+// The auto-feed cron runs hourly:
+//   • LIVE    (green)  — within 2h (one hourly run + grace)
+//   • DELAYED (amber)  — 2–24h (a few missed runs, still today's data)
+//   • STALE   (red)    — >24h, or no snapshot at all
 // ═══════════════════════════════════════════════════════════════════════════
 
 const FRESH_MS   = 2  * 60 * 60 * 1000
@@ -42,10 +42,12 @@ function relativeTime(uploadedAt) {
   return `${days} day${days !== 1 ? 's' : ''} ago`
 }
 
+// dot = solid dot + eyebrow color; halo = same color as an "r,g,b" triplet so
+// the keyframe can fade a colored ring out around it.
 const TIERS = {
-  fresh:   { color: STATUS_GOOD, label: 'LIFT LIVE',    pulse: true  },
-  delayed: { color: STATUS_WARN, label: 'LIFT DELAYED', pulse: false },
-  stale:   { color: STATUS_BAD,  label: 'LIFT STALE',   pulse: false },
+  fresh:   { dot: '#0F7A4E', halo: '15,122,78',  word: 'LIVE'    },  // emerald
+  delayed: { dot: '#C17F24', halo: '193,127,36', word: 'DELAYED' },  // amber
+  stale:   { dot: '#E5484D', halo: '229,72,77',  word: 'STALE'   },  // bright red
 }
 
 export default function LiftFreshnessBadge({ compact = false }) {
@@ -71,22 +73,30 @@ export default function LiftFreshnessBadge({ compact = false }) {
   }, [])
 
   const uploadedAt = snap?.uploaded_at || null
-  const tier = tierFor(uploadedAt)
-  const { color, label, pulse } = TIERS[tier]
+  const { dot, halo, word } = TIERS[tierFor(uploadedAt)]
   const isAuto = (snap?.source_filename || '').toLowerCase().includes('auto feed')
 
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
-      <style>{`@keyframes liftPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+    <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
+      <style>{`
+        @keyframes liftHeartbeat {
+          0%, 100% { transform: scale(1);    box-shadow: 0 0 0 4px rgba(var(--lift-halo),0.20), 0 0 0 8px  rgba(var(--lift-halo),0); }
+          50%      { transform: scale(1.25); box-shadow: 0 0 0 6px rgba(var(--lift-halo),0.10), 0 0 0 14px rgba(var(--lift-halo),0); }
+        }
+      `}</style>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
         <span style={{
-          width: 9, height: 9, borderRadius: '50%', background: color, display: 'inline-block',
-          animation: pulse ? 'liftPulse 1.4s ease-in-out infinite' : 'none',
+          '--lift-halo': halo,
+          width: 12, height: 12, borderRadius: '50%', background: dot, display: 'inline-block',
+          boxShadow: `0 0 0 4px rgba(${halo},0.18)`,
+          animation: 'liftHeartbeat 1.4s ease-in-out infinite',
         }} />
-        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.04em', color }}>{label}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.28em', textTransform: 'uppercase', color: dot }}>
+          LIFT · {word}
+        </span>
       </div>
       {!compact && (
-        <span style={{ fontSize: 10, color: C.inkLight }}>
+        <span style={{ fontSize: 10, color: C.inkLight, paddingLeft: 24 }}>
           {isAuto ? 'Refreshed hourly' : 'Manual upload'} · last updated {relativeTime(uploadedAt)}
         </span>
       )}
