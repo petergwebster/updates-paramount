@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { supabase } from '../supabase'
-import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek, STATUS_BAD_BORDER, schedLineKey } from '../lib/scheduleUtils'
+import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek, STATUS_BAD_BORDER, schedLineKey, BNY_OPERATORS_ALL } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { BNY_BUDGET, weeklyBudgetYards } from '../lib/budgets'
 
@@ -82,25 +83,11 @@ const BNY_MACHINES = {
   ],
 }
 
-const BNY_OPERATORS = {
-  brooklyn: [
-    'Shelby Adams', 'Ramon Bermudez', 'Blake Devine-Rosser',
-    'Sara Howard', 'Susan Jean-Baptiste', 'Philip Keefer',
-    'Brynn Lawlor', 'Adam McClellan', "John O'Connor",
-    'Sydney Remson', 'Denzell Silvia', 'Xiachen Zhou',
-  ],
-  passaic: [
-    'Joseph Horton', 'Luis Mendoza Capecchi', 'Jeanne Villeneuve',
-  ],
-}
-
-// Combined BNY roster (Brooklyn + Passaic-located digital fleet), de-duped and
-// sorted. Operators cross between the physical Brooklyn machines and the
-// Passaic-located digital fleet (e.g. Sara Howard runs Dementia), so the
-// scheduler's operator dropdowns offer the full BNY roster on every machine
-// regardless of the machine's physical location. Fixes Chandler (6/2): couldn't
-// assign Sara to Dementia because Dementia sat in the Passaic-only operator pool.
-const BNY_OPERATORS_ALL = [...new Set([...BNY_OPERATORS.brooklyn, ...BNY_OPERATORS.passaic])].sort()
+// Operator roster now comes from scheduleUtils (BNY_OPERATORS_ALL) — the single
+// source reconciled to payroll 6/30 (salaried removed, Jessica Acosta added).
+// This file previously kept its OWN hardcoded copy, so the morning roster fix
+// never reached the BNY dropdowns. Imported at the top now; every digital
+// operator is eligible on every digital machine (Brooklyn + Passaic-located).
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -138,6 +125,35 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const [filterApprovedToPrint, setFilterApprovedToPrint] = useState(false)
   const [filterReadyToPrint, setFilterReadyToPrint] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
+  const [activeDragPO, setActiveDragPO] = useState(null)
+
+  // Drag-and-drop (dnd-kit), same setup as the Passaic scheduler. Mouse: a 6px
+  // move starts a drag (plain clicks still select). Touch: 200ms press-hold.
+  // Click-to-assign is retained as the fallback. Drop targets are the
+  // machine-day CELLS — dropping on "Glow · Wed" pre-fills that machine + day.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+  )
+  function handleDragStart(e) {
+    setActiveDragPO(e.active?.data?.current?.po || null)
+  }
+  function handleDragEnd(e) {
+    setActiveDragPO(null)
+    const po = e.active?.data?.current?.po
+    const over = e.over?.data?.current
+    if (!po || !over) return
+    if (po.remaining_yards <= 0) return
+    // Mirror handleMachineDayClick: open AssignModalBNY pre-filled for the
+    // dropped-on machine + day, capped at that machine's daily capacity.
+    setAssignModal({
+      po,
+      machine: over.machine,
+      day_of_week: over.dayOfWeek,
+      location: over.location,
+      proposed_yards: Math.min(po.remaining_yards, capacityFor(over.machine, over.location)),
+    })
+  }
 
   const brooklynMachineNames = useMemo(() => new Set(BNY_MACHINES.brooklyn.map(m => m.name)), [])
   const passaicMachineNames  = useMemo(() => new Set(BNY_MACHINES.passaic.map(m => m.name)), [])
@@ -430,6 +446,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         <BucketStrip totals={mixTotals} />
       </div>
 
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveDragPO(null)}>
       <div style={{
         display: 'grid',
         gridTemplateColumns: '260px 1fr',
@@ -463,38 +480,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             {filteredPool.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
             )}
-            {filteredPool.map(r => {
-              const sel = selectedPO?.po_number === r.po_number
-              const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
-              const aged = (r.age_days || 0) > 90
-              return (
-                <div key={r.id} onClick={() => setSelectedPO(sel ? null : r)}
-                  style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: sel ? C.goldBg : 'transparent' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
-                    {r.order_number && r.order_number !== r.po_number && (
-                      <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
-                    )}
-                    {r.bny_bucket && (
-                      <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: BUCKET_BG[r.bny_bucket], color: BUCKET_COLOR[r.bny_bucket], fontWeight: 700 }}>{r.bny_bucket}</span>
-                    )}
-                    {highColor && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.roseBg, color: C.rose, fontWeight: 700 }}>{r.colors_count}c</span>}
-                    {aged && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>{r.age_days}d</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
-                  {(r.item_sku || r.color) && (
-                    <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
-                      {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
-                    <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
-                    <span>·</span>
-                    <span>{fmtD(r.income_written)}</span>
-                  </div>
-                </div>
-              )
-            })}
+            {filteredPool.map(r => (
+              <PoolCardBNY key={r.id} r={r}
+                selected={selectedPO?.po_number === r.po_number}
+                onToggle={() => setSelectedPO(selectedPO?.po_number === r.po_number ? null : r)} />
+            ))}
           </div>
           {selectedPO && (
             <div style={{ padding: '10px 14px', background: C.goldBg, borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.ink }}>
@@ -512,6 +502,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             machines={BNY_MACHINES.brooklyn}
             assignmentsByMachineDay={assignmentsByMachineDay}
             selectedPO={selectedPO}
+            dragActive={!!activeDragPO}
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
             onOperatorChange={updateMachineDayOperator}
@@ -523,12 +514,17 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             machines={BNY_MACHINES.passaic}
             assignmentsByMachineDay={assignmentsByMachineDay}
             selectedPO={selectedPO}
+            dragActive={!!activeDragPO}
             onCellClick={handleMachineDayClick}
             onRemoveAssignment={removeAssignment}
             onOperatorChange={updateMachineDayOperator}
           />
         </div>
       </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDragPO ? <DragCardBNY r={activeDragPO} /> : null}
+      </DragOverlay>
+      </DndContext>
 
       {/* ASK CLAUDE — modal overlay (full-screen) */}
       {askClaudeOpen && (
@@ -752,7 +748,7 @@ function BucketCard({ bucket, totals }) {
   )
 }
 
-function LocationSection({ locationKey, label, sublabel, machines, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
+function LocationSection({ locationKey, label, sublabel, machines, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
   return (
     <div style={{ marginTop: 20, marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
@@ -772,6 +768,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
           locationKey={locationKey}
           assignmentsByMachineDay={assignmentsByMachineDay}
           selectedPO={selectedPO}
+          dragActive={dragActive}
           onCellClick={onCellClick}
           onRemoveAssignment={onRemoveAssignment}
           onOperatorChange={onOperatorChange}
@@ -782,7 +779,7 @@ function LocationSection({ locationKey, label, sublabel, machines, assignmentsBy
   )
 }
 
-function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
+function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO, dragActive, onCellClick, onRemoveAssignment, onOperatorChange, compact }) {
   let weekTotal = 0
   for (let d = 0; d < NUM_DAYS; d++) {
     const cell = assignmentsByMachineDay[`${machine.name}|${dowText(d)}`] || []
@@ -808,6 +805,7 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
           locationKey={locationKey}
           assignments={assignmentsByMachineDay[`${machine.name}|${dowText(d)}`] || []}
           selectedPO={selectedPO}
+          dragActive={dragActive}
           onClick={() => onCellClick(machine.name, d, locationKey)}
           onRemoveAssignment={onRemoveAssignment}
           onOperatorChange={onOperatorChange}
@@ -822,24 +820,28 @@ function MachineRow({ machine, locationKey, assignmentsByMachineDay, selectedPO,
   )
 }
 
-function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selectedPO, onClick, onRemoveAssignment, onOperatorChange, compact }) {
+function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selectedPO, dragActive, onClick, onRemoveAssignment, onOperatorChange, compact }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `bnycell-${machine.name}-${dayOfWeek}`, data: { machine: machine.name, dayOfWeek, location: locationKey } })
   const cellYards = assignments.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   const pct = Math.round((cellYards / machine.capacity) * 100)
   const over = pct > 110
   const canAssign = !!selectedPO
+  const highlight = canAssign || dragActive
+  const dropActive = isOver && dragActive
   const cellOperator = assignments[0]?.operator || ''
   const operatorList = BNY_OPERATORS_ALL
 
   return (
     <div
+      ref={setNodeRef}
       onClick={(e) => {
         if (e.target.tagName === 'SELECT' || e.target.tagName === 'OPTION') return
         if (e.target.dataset?.noclick) return
         if (canAssign) onClick()
       }}
       style={{
-        background: '#fff',
-        border: `${canAssign ? 2 : 1}px ${canAssign ? 'dashed' : 'solid'} ${canAssign ? C.amber : over ? C.rose : C.border}`,
+        background: dropActive ? C.goldBg : '#fff',
+        border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${dropActive ? C.gold : highlight ? C.amber : over ? C.rose : C.border}`,
         borderRadius: 6, padding: 4, minHeight: 110,
         cursor: canAssign ? 'pointer' : 'default',
         display: 'flex', flexDirection: 'column', gap: 3,
@@ -903,6 +905,52 @@ function FilterChip({ active, onClick, color, children }) {
       style={{ padding: '3px 8px', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: `1px solid ${active ? color : C.border}`, background: active ? color : 'transparent', color: active ? '#fff' : C.inkMid, fontWeight: active ? 700 : 400 }}>
       {children}
     </button>
+  )
+}
+
+// Draggable BNY pool card — click still selects (onToggle); drag lifts it onto
+// a machine-day cell. Same activation constraints as Passaic.
+function PoolCardBNY({ r, selected, onToggle }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `bnypool-${r.id}`, data: { po: r } })
+  const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
+  const aged = (r.age_days || 0) > 90
+  return (
+    <div ref={setNodeRef} {...listeners} {...attributes} onClick={onToggle}
+      style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'grab', background: selected ? C.goldBg : 'transparent', opacity: isDragging ? 0.4 : 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+        {r.order_number && r.order_number !== r.po_number && (
+          <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
+        )}
+        {r.bny_bucket && (
+          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: BUCKET_BG[r.bny_bucket], color: BUCKET_COLOR[r.bny_bucket], fontWeight: 700 }}>{r.bny_bucket}</span>
+        )}
+        {highColor && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.roseBg, color: C.rose, fontWeight: 700 }}>{r.colors_count}c</span>}
+        {aged && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, fontWeight: 700 }}>{r.age_days}d</span>}
+      </div>
+      <div style={{ fontSize: 12, color: C.ink, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{r.line_description}</div>
+      {(r.item_sku || r.color) && (
+        <div style={{ fontSize: 9, color: C.inkLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 2 }}>
+          {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
+        <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
+        <span>·</span>
+        <span>{fmtD(r.income_written)}</span>
+      </div>
+    </div>
+  )
+}
+
+// Compact drag preview following the cursor/finger during a BNY drag.
+function DragCardBNY({ r }) {
+  return (
+    <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.amber}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
+      <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}{r.bny_bucket ? ` · ${r.bny_bucket}` : ''}</div>
+      <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
+      <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards)} yd</div>
+    </div>
   )
 }
 
