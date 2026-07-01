@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { C, SITES, isoDate, defaultSchedulerWeek, STATUS_BAD_BORDER } from '../lib/scheduleUtils'
 import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
+import LiftFreshnessBadge from './LiftFreshnessBadge'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SchedulerTab — schedule grid orchestrator
@@ -96,9 +97,10 @@ export default function SchedulerTab() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>Production · Scheduler</h2>
-            <p style={{ fontSize: 13, color: C.inkLight, margin: '4px 0 0' }}>
-              LIFT WIP · {snapshot ? `Uploaded ${new Date(snapshot.uploaded_at).toLocaleString()}` : 'No data yet — upload on the WIP tab'}
-            </p>
+            <div style={{ margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <LiftFreshnessBadge />
+              {!snapshot && <span style={{ fontSize: 11, color: C.inkLight }}>No data yet — upload on the WIP tab</span>}
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={loadLatest} disabled={loading}

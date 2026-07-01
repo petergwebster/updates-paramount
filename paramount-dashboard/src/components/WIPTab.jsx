@@ -6,6 +6,7 @@ import { C, fmt, fmtD,
   STATUS_WARN, STATUS_WARN_BG, STATUS_WARN_BORDER,
   STATUS_BAD,  STATUS_BAD_BG,  STATUS_BAD_BORDER,
 } from '../lib/scheduleUtils'
+import LiftFreshnessBadge from './LiftFreshnessBadge'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WIPTab — single source of truth for WIP across the dashboard.
@@ -256,6 +257,7 @@ export default function WIPTab() {
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(null)
   const [error, setError] = useState(null)
+  const [showManualUpload, setShowManualUpload] = useState(false)  // manual override is a fail-safe, hidden by default
   // Site toggle — mirrors the NEW Goods pattern. Each site gets its own
   // scoped view: filters, aging cards, division pivot all reflect this.
   const [site, setSite] = useState('passaic')  // 'passaic' | 'bny' | 'procurement'
@@ -511,20 +513,33 @@ export default function WIPTab() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>Production · WIP</h2>
-            <p style={{ fontSize: 13, color: C.inkLight, margin: '4px 0 0' }}>
-              LIFT WIP · {snapshot ? `Uploaded ${new Date(snapshot.uploaded_at).toLocaleString()}` : 'No data yet'}
-            </p>
+            <div style={{ margin: '6px 0 0' }}>
+              <LiftFreshnessBadge />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChosen} style={{ display: 'none' }} />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-              style={{ padding: '9px 20px', background: uploading ? C.warm : C.ink, color: uploading ? C.inkLight : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer' }}>
-              {uploading ? 'Uploading…' : '⬆ Upload LIFT WIP'}
-            </button>
-            <button onClick={loadLatest} disabled={loading || uploading}
-              style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: (loading || uploading) ? 'not-allowed' : 'pointer' }}>
-              {loading ? 'Loading…' : '↻ Refresh'}
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={loadLatest} disabled={loading || uploading}
+                style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: (loading || uploading) ? 'not-allowed' : 'pointer' }}>
+                {loading ? 'Loading…' : '↻ Refresh'}
+              </button>
+              <button onClick={() => setShowManualUpload(v => !v)}
+                style={{ padding: '9px 12px', background: 'transparent', color: C.inkLight, border: 'none', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>
+                {showManualUpload ? 'Hide manual override' : 'Manual override ▾'}
+              </button>
+            </div>
+            {showManualUpload && (
+              <div style={{ maxWidth: 340, background: C.goldBg, border: `1px solid ${C.warm}`, borderRadius: 8, padding: '10px 12px', textAlign: 'left' }}>
+                <div style={{ fontSize: 11, color: C.inkMid, lineHeight: 1.5, marginBottom: 8 }}>
+                  <strong style={{ color: C.ink }}>The feed is live and hourly.</strong> Only upload manually if the feed is down — a manual upload replaces the current data until the next feed run.
+                </div>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChosen} style={{ display: 'none' }} />
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                  style={{ padding: '8px 16px', background: uploading ? C.warm : 'transparent', color: uploading ? C.inkLight : C.inkMid, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                  {uploading ? 'Uploading…' : '⬆ Upload LIFT WIP manually'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
         {uploadStatus && (
