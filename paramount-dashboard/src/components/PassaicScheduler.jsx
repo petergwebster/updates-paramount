@@ -91,10 +91,14 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   }, [assignments])
 
   const pool = useMemo(() => {
-    const schedulableStatuses = new Set([
-      'Approved to Print','Ready to Print','In Mixing Queue','In Progress',
-      'Waiting for Material','Waiting for Screen','Waiting for Approval','Waiting for Sample',
-      'Strike Off','Orders Unallocated',
+    // Terminal statuses only — a BLACKLIST, not a whitelist. The old whitelist
+    // silently dropped any LIFT status not explicitly listed, including already-
+    // printed work the team wants to record retroactively (In Packing, Ready to
+    // Ship) and LIFT naming variants ("Mixing" vs "In Mixing Queue"). Now we show
+    // everything except truly-done orders — robust to LIFT renaming/reordering
+    // steps, which is a recurring upstream issue.
+    const terminalStatuses = new Set([
+      'Shipped','Invoiced','Cancelled','Canceled','Cancellation Fee','Closed','Complete','Completed',
     ])
     // Pre-production New Goods (in strike-off / approval / waiting-for-material
     // stages) live in the New Goods view only — they're tracked as a dev
@@ -105,7 +109,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       'Waiting for Screen','Waiting for Material',
     ])
     return wipRows
-      .filter(r => schedulableStatuses.has(r.order_status || ''))
+      .filter(r => !terminalStatuses.has(r.order_status || ''))
       .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = assignedByPO[r.po_number] || 0

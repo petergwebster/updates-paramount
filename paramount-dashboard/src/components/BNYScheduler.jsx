@@ -156,10 +156,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   }, [assignments])
 
   const pool = useMemo(() => {
-    const schedulableStatuses = new Set([
-      'Approved to Print','Ready to Print','In Mixing Queue','In Progress',
-      'Waiting for Material','Waiting for Screen','Waiting for Approval','Waiting for Sample',
-      'Strike Off','Orders Unallocated',
+    // Terminal statuses only — BLACKLIST, not whitelist (see PassaicScheduler for
+    // the rationale). Show everything except truly-done orders so already-printed
+    // work and LIFT status renames don't silently vanish from the pool.
+    const terminalStatuses = new Set([
+      'Shipped','Invoiced','Cancelled','Canceled','Cancellation Fee','Closed','Complete','Completed',
     ])
     // Pre-production New Goods (strike-off / approval / waiting-for-material)
     // live in the New Goods view only. They return here automatically once
@@ -169,7 +170,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       'Waiting for Screen','Waiting for Material',
     ])
     return schedulableWip
-      .filter(r => schedulableStatuses.has(r.order_status || ''))
+      .filter(r => !terminalStatuses.has(r.order_status || ''))
       .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = assignedByPO[r.po_number] || 0
