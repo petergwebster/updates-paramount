@@ -4,7 +4,7 @@ import {
   C, fmt, isoDate, mondayOf,
   weekLabel,
   DAY_NAMES_FULL, dayOfWeekFiscal,
-  PASSAIC_OPERATORS, BNY_OPERATORS_BROOKLYN, BNY_OPERATORS_PASSAIC_DIGITAL,
+  PASSAIC_OPERATORS, BNY_OPERATORS_ALL,
 
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
@@ -547,9 +547,9 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     setSavedAt(Date.now())
   }
 
-  const operatorList = site === 'passaic'
-    ? PASSAIC_OPERATORS
-    : (BNY_BROOKLYN.some(m => m.code === table.code) ? BNY_OPERATORS_BROOKLYN : BNY_OPERATORS_PASSAIC_DIGITAL)
+  // Digital operators aren't machine-scoped — any digital operator can run any
+  // digital machine at either site (Peter 6/30). Hand-screen stays Passaic-only.
+  const operatorList = site === 'passaic' ? PASSAIC_OPERATORS : BNY_OPERATORS_ALL
 
   const actual = yards === '' ? null : Number(yards)
   const variance = actual != null ? actual - plannedYards : null

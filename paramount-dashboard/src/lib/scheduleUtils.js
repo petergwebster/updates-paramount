@@ -192,31 +192,46 @@ export const SITES = [
   { key: 'procurement', label: 'Procurement', sub: 'Pass-through',  color: ACCENT_OPS       },  // #2E3944 charcoal slate
 ]
 
-// ─── Passaic operator roster (42 screen-print operators from Employees sheet) ─
+// ─── Passaic HAND-SCREEN operator roster (Paramount payroll, org 610) ────────
+// Hand-screen tables ONLY — never digital. Reconciled to payroll 6/30/2026:
+// removed departed (Arteaga, R. Bermudez, Maihuay, Soto Martinez, Vinas,
+// Williams) and salaried (Brito/"Sami", Reger-Hare/"Wendy", Shehata — salaried
+// staff don't belong in an operator pick-list); kept Alberto De Leon (unpaid
+// leave) and Roberto Ortiz (active); added new hires.
 export const PASSAIC_OPERATORS = [
   'Angel Acevedo', 'Armando Acevedo', 'Christian Acevedo', 'Jesus Acevedo',
-  'Heriberto Arroyo', 'Juan Arteaga', 'Rodney Bermudez', 'Samuel Brito',
-  'Yvanna Cabrera', 'Miguel Carpio', 'Salomon Cruz JR', 'Alberto De Leon',
-  'Jeremy Dominguez', 'Elizabeth Doyle', 'Patrizia Galati', 'Humberto Gonzalez',
-  'Edward Hanratty III', 'Yensi Henriquez', 'Miguel Hijuitl', 'Louis Hillen',
-  'Jerome Jeter Jr.', 'Alejandro Leal', 'Felix Maihuay', 'Freddy Martinez',
+  'Heriberto Arroyo', 'Yvanna Cabrera', 'Miguel Carpio', 'Salomon Cruz JR',
+  'Alberto De Leon', 'Jeremy Dominguez', 'Elizabeth Doyle', 'Patrizia Galati',
+  'Humberto Gonzalez', 'Edward Hanratty III', 'Yensi Henriquez', 'Miguel Hijuitl',
+  'Louis Hillen', 'Jerome Jeter Jr.', 'Alejandro Leal', 'Freddy Martinez',
   'Emilio Medina', 'Lesly Mendoza', 'Jose Molina', 'Abiodun Obagbemi',
   'Roberto Ortiz', 'Romer Osorto', 'Heriberto Perez', 'Miguel Picon',
-  'Wendy Reger-Hare', 'Steven Sanguino', 'Marcos Shehata', 'Sergio Solis',
-  'Estephanie Soto Martinez', 'Genaro Tobias', 'Daniel Velez', 'Kevin Vinas',
-  'Ariel Williams', 'Santos Zambrano',
+  'Steven Sanguino', 'Sergio Solis', 'Genaro Tobias', 'Daniel Velez',
+  'Santos Zambrano',
+  // new hires (payroll 6/30)
+  'Juan Carrasco Garcia', 'Johan Reyes', 'Xavier Rivera', 'William Sanchez',
 ]
 
-// ─── BNY operator rosters (from previous commits; duplicated here for Live Ops) ─
+// ─── DIGITAL operator rosters (BNY payroll, org 609) ─────────────────────
+// ALL digital operators are on the Brooklyn Navy Yard payroll — including the
+// four who physically run the small digital fleet at Passaic (Horton, Mendoza
+// Capecchi, Acosta, Villeneuve). Per Peter 6/30: every digital operator can run
+// ANY digital machine at EITHER site, so BNY_OPERATORS_ALL (the union below) is
+// the pick-list for all digital machines. Salaried removed (Adams, Lawlor,
+// O'Connor/"Chandler").
 export const BNY_OPERATORS_BROOKLYN = [
-  'Shelby Adams', 'Ramon Bermudez', 'Blake Devine-Rosser',
-  'Sara Howard', 'Susan Jean-Baptiste', 'Philip Keefer',
-  'Brynn Lawlor', 'Adam McClellan', "John O'Connor",
+  'Ramon Bermudez', 'Blake Devine-Rosser', 'Sara Howard',
+  'Susan Jean-Baptiste', 'Philip Keefer', 'Adam McClellan',
   'Sydney Remson', 'Denzell Silvia', 'Xiachen Zhou',
 ]
 export const BNY_OPERATORS_PASSAIC_DIGITAL = [
-  'Joseph Horton', 'Luis Mendoza Capecchi', 'Jeanne Villeneuve',
+  'Joseph Horton', 'Luis Mendoza Capecchi', 'Jessica Acosta', 'Jeanne Villeneuve',
 ]
+// Combined digital pool — every digital operator is eligible on every digital
+// machine (Brooklyn + Passaic-located). Use this for ALL digital dropdowns.
+export const BNY_OPERATORS_ALL = [
+  ...new Set([...BNY_OPERATORS_BROOKLYN, ...BNY_OPERATORS_PASSAIC_DIGITAL]),
+].sort()
 
 // ─── Day labels — canonical Sun=0..Sat=6 ordering ─────────────────────────
 
