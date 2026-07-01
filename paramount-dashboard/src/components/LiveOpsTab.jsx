@@ -53,7 +53,7 @@ const BNY_BROOKLYN = [
 ]
 const BNY_PASSAIC_DIGITAL = [
   { code: 'Dakota Kai', capacity: 500 }, { code: 'Dementia', capacity: 500 },
-  { code: 'EMBER', capacity: 500 }, { code: 'Ivy Nile', capacity: 500 },
+  { code: 'Ember', capacity: 500 }, { code: 'Ivy Nile', capacity: 500 },
   { code: 'Jacy Jayne', capacity: 500 }, { code: 'Ruby', capacity: 500 },
   { code: 'Valhalla', capacity: 500 }, { code: 'XIA', capacity: 500 },
   { code: 'Apollo', capacity: 500 }, { code: 'Nemesis', capacity: 500 },
