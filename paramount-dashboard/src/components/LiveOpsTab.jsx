@@ -184,6 +184,8 @@ export default function LiveOpsTab({ currentUser } = {}) {
         let plannedYards = 0
         let plannedSource = 'none'  // 'explicit' | 'scheduled' | 'derived' | 'none'
         let plannedDetails = []
+        let cellAsg = []   // dropdown options for the per-PO lines
+        let seedAsg = []   // day-specific placements → pre-seed one line each
 
         if (isPassaic) {
           // Passaic: prefer explicit daily target. If not set, prefer
@@ -202,6 +204,12 @@ export default function LiveOpsTab({ currentUser } = {}) {
           } else {
             plannedDetails = shift === '1st' ? onTable.map(a => a.line_description || a.po_number) : []
           }
+          // Dropdown options: day-specific placements if any, else the table's
+          // full PO list on 1st shift (Passaic POs are usually assigned table-
+          // wide, not pinned to a weekday). Pre-seed only the day-specific ones
+          // so a table with many weekly POs doesn't spawn a blank line each.
+          cellAsg = onCellThisShift.length > 0 ? onCellThisShift : (shift === '1st' ? onTable : [])
+          seedAsg = onCellThisShift
 
           if (op?.planned_yards != null) {
             plannedYards = Number(op.planned_yards)
@@ -227,9 +235,11 @@ export default function LiveOpsTab({ currentUser } = {}) {
           plannedYards = onCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
           plannedSource = plannedYards > 0 ? 'scheduled' : 'none'
           plannedDetails = onCell.map(a => a.line_description || a.po_number)
+          cellAsg = onCell
+          seedAsg = onCell
         }
 
-        m[`${t.code}|${shift}`] = { op, plannedYards, plannedSource, plannedDetails }
+        m[`${t.code}|${shift}`] = { op, plannedYards, plannedSource, plannedDetails, cellAssignments: cellAsg, seedAssignments: seedAsg }
       }
     }
     return m
@@ -292,10 +302,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
     return t.category
   }
 
-  // Per-cell slices passed to each OpsRow: the assignments planned on this
-  // table/day/shift (seed the PO dropdown) and the saved production lines.
-  const cellAssignmentsFor = (tableCode, shift) => assignments.filter(a =>
-    a.table_code === tableCode && a.day_of_week === dayOfWeek && (a.shift || '1st') === shift)
+  // Saved production lines for a cell — day-specific (lines are keyed by day).
   const cellLinesFor = (tableCode, shift) => opLines.filter(l =>
     l.table_code === tableCode && l.day_of_week === dayOfWeek && (l.shift || '1st') === shift)
 
@@ -422,7 +429,8 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   plannedSource={firstCell?.plannedSource || 'none'}
                   plannedDetails={firstCell?.plannedDetails || []}
                   op={firstCell?.op}
-                  cellAssignments={cellAssignmentsFor(t.code, '1st')}
+                  cellAssignments={firstCell?.cellAssignments || []}
+                  seedAssignments={firstCell?.seedAssignments || []}
                   cellLines={cellLinesFor(t.code, '1st')}
                   weekStart={weekStart}
                   dayOfWeek={dayOfWeek}
@@ -439,7 +447,8 @@ export default function LiveOpsTab({ currentUser } = {}) {
                     plannedSource={secondCell?.plannedSource || 'none'}
                     plannedDetails={secondCell?.plannedDetails || []}
                     op={secondCell?.op}
-                    cellAssignments={cellAssignmentsFor(t.code, '2nd')}
+                    cellAssignments={secondCell?.cellAssignments || []}
+                    seedAssignments={secondCell?.seedAssignments || []}
                     cellLines={cellLinesFor(t.code, '2nd')}
                     weekStart={weekStart}
                     dayOfWeek={dayOfWeek}
@@ -488,7 +497,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], cellLines = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
   // Cell-level fields — crew + notes stay per table/day/shift.
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
@@ -514,7 +523,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   // or its server-side data changes — not on every parent render (which would
   // wipe in-progress typing).
   const linesSig = cellLines.map(l => l.id).join(',')
-  const asgSig = cellAssignments.map(a => a.id).join(',')
+  const seedSig = seedAssignments.map(a => a.id).join(',')
 
   useEffect(() => {
     const mk = (o) => ({ _key: `l${keyRef.current++}`, ...o })
@@ -534,9 +543,11 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         line_description: 'Recorded total',
         actual_yards: op.actual_yards ?? '', waste_yards: op.waste_yards ?? '',
       })]
-    } else if (cellAssignments.length > 0) {
-      // Fresh cell — one blank line per planned PO to fill actuals against.
-      seed = cellAssignments.map(a => mk({
+    } else if (seedAssignments.length > 0) {
+      // Day-specific placements — pre-seed one blank line per planned PO so the
+      // operator just fills actuals. (Table-level-only POs seed a single blank
+      // line instead; they're still pickable from the dropdown.)
+      seed = seedAssignments.map(a => mk({
         id: null,
         po_number: a.po_number || null, item_sku: a.item_sku || null, color: a.color || null,
         line_description: a.line_description || a.po_number || null,
@@ -555,7 +566,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     setNotesModalOpen(false)
     setSavedAt(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.id, dayOfWeek, shift, table.code, linesSig, asgSig])
+  }, [op?.id, dayOfWeek, shift, table.code, linesSig, seedSig])
 
   function updateLine(key, patch) {
     setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
