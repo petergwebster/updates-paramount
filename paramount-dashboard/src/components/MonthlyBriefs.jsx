@@ -52,6 +52,10 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
   }, [weekStart])
 
   const [monthKey, setMonthKey] = useState(defaultMonthKey)
+  // True once the user manually picks a month from the dropdown. Until then,
+  // each phase button targets its natural month on generate (End = last closed
+  // month, Mid = the month in progress).
+  const [userPickedMonth, setUserPickedMonth] = useState(false)
   const [phase, setPhase] = useState(null)
   const [stage, setStage] = useState('idle')          // idle | gathering | drafting | ready | error | saving
   const [error, setError] = useState(null)
@@ -95,8 +99,22 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
     setPhase(selectedPhase)
     setStage('gathering')
 
+    // Unless the user hand-picked a month, target the natural one for the phase:
+    // End-of-Month = last CLOSED month (previous); Mid-Month = the month in
+    // progress (current). Stops an early-in-the-month End-of-Month click from
+    // silently building an empty current month (the July-vs-June mixup).
+    const effectiveMonthKey = userPickedMonth
+      ? monthKey
+      : format(
+          selectedPhase === 'end'
+            ? subMonths(startOfMonth(new Date()), 1)
+            : startOfMonth(new Date()),
+          'yyyy-MM',
+        )
+    if (effectiveMonthKey !== monthKey) setMonthKey(effectiveMonthKey)
+
     try {
-      const data = await gatherMonthlyBriefData({ monthKey, phase: selectedPhase })
+      const data = await gatherMonthlyBriefData({ monthKey: effectiveMonthKey, phase: selectedPhase })
       setBriefData(data)
       setStage('drafting')
 
@@ -214,7 +232,7 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
           <select
             className={styles.monthSelect}
             value={monthKey}
-            onChange={e => { setMonthKey(e.target.value); reset() }}
+            onChange={e => { setMonthKey(e.target.value); setUserPickedMonth(true); reset() }}
             disabled={stage === 'gathering' || stage === 'drafting' || stage === 'saving'}
           >
             {monthOptions.map(m => (
