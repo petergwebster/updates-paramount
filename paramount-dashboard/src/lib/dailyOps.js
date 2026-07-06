@@ -36,6 +36,56 @@ export async function upsertDailyOp(row) {
   if (error) { console.error('upsertDailyOp', error); throw error }
 }
 
+// ============================================================================
+// sched_daily_ops_lines — per-PO production lines under a cell (Option B)
+// ============================================================================
+// The header row (sched_daily_ops) carries the ROLLED-UP actual_yards /
+// waste_yards; these helpers manage the per-PO detail beneath it. All readers
+// (Heartbeat, scorecards, KPI strip, buildRecentActualsSummary) keep reading
+// the header total, so nothing downstream changes.
+
+// Fetch every line for a (site, week_start). Returns [] if none. Callers
+// filter by table_code / day_of_week / shift client-side (one query per week).
+export async function loadWeekDailyOpLines(site, weekStart) {
+  const { data, error } = await supabase
+    .from('sched_daily_ops_lines')
+    .select('*')
+    .eq('site', site)
+    .eq('week_start', isoDate(weekStart))
+  if (error) { console.error('loadWeekDailyOpLines', error); return [] }
+  return data || []
+}
+
+// Insert one production line. Returns the new row (with its id) so the caller
+// can track it for subsequent updates without a full refetch.
+export async function insertDailyOpLine(line) {
+  const { data, error } = await supabase
+    .from('sched_daily_ops_lines')
+    .insert({ ...line, updated_at: new Date().toISOString() })
+    .select()
+    .single()
+  if (error) { console.error('insertDailyOpLine', error); throw error }
+  return data
+}
+
+// Update one production line by id. Pass only the fields to change.
+export async function updateDailyOpLine(id, patch) {
+  const { error } = await supabase
+    .from('sched_daily_ops_lines')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) { console.error('updateDailyOpLine', error); throw error }
+}
+
+// Delete one production line by id.
+export async function deleteDailyOpLine(id) {
+  const { error } = await supabase
+    .from('sched_daily_ops_lines')
+    .delete()
+    .eq('id', id)
+  if (error) { console.error('deleteDailyOpLine', error); throw error }
+}
+
 // Build a compact string summary of recent actuals for the AI context note.
 // Returns something like:
 //   "Friday:

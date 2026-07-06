@@ -56,15 +56,14 @@ const STATUS_ORDER = [
 
 // ── Scheduler pool eligibility — mirrors PassaicScheduler / BNYScheduler ──
 //
-// Source of truth: PassaicScheduler.jsx pool memo + BNYScheduler.jsx pool
-// memo (May 2026). Statuses ELIGIBLE for the Scheduler pool:
-const SCHEDULABLE_STATUSES = new Set([
-  'Approved to Print', 'Ready to Print',
-  'In Mixing Queue',   'In Progress',
-  'Waiting for Material', 'Waiting for Screen',
-  'Waiting for Approval', 'Waiting for Sample',
-  'Strike Off',
-  'Orders Unallocated',
+// Both schedulers moved from a whitelist to a terminal-status BLACKLIST
+// (2026-06-30): the pool shows everything EXCEPT truly-done orders, so already-
+// printed work stays visible for retroactive recording and LIFT status renames
+// don't silently drop POs. This count MUST use the same rule, or the
+// "in Scheduler pool" number here disagrees with what the scheduler shows.
+const TERMINAL_STATUSES = new Set([
+  'Shipped', 'Invoiced', 'Cancelled', 'Canceled', 'Cancellation Fee',
+  'Closed', 'Complete', 'Completed',
 ])
 // New Goods preproduction is excluded — those POs live in the New Goods view
 // until they reach Approved to Print.
@@ -76,12 +75,13 @@ const NG_PREPROD = new Set([
 // Returns true if this row is currently eligible for its site's Scheduler
 // pool. Does NOT account for the per-week `remaining_yards > 0` filter
 // (Scheduler additionally hides POs already fully assigned for the week);
-// this gives an upper-bound "potentially schedulable" count.
+// this gives an upper-bound "potentially schedulable" count. Mirrors the
+// schedulers' terminal-status blacklist so the count ties out.
 function isSchedulable(r) {
   // Only Passaic and BNY have schedulers — Procurement is pass-through.
   if (r.site !== 'passaic' && r.site !== 'bny') return false
   const status = (r.order_status || '').trim()
-  if (!SCHEDULABLE_STATUSES.has(status)) return false
+  if (TERMINAL_STATUSES.has(status)) return false
   if (r.is_new_goods && NG_PREPROD.has(status)) return false
   // BNY-specific: must have a bny_bucket and have yards written.
   if (r.site === 'bny') {
@@ -267,9 +267,11 @@ export default function WIPTab() {
   const [categoryFilters, setCategoryFilters] = useState(new Set()) // multi-select OR
   const [ageBucketFilters, setAgeBucketFilters] = useState(new Set()) // multi-select OR — clickable aging cards
   const fileInputRef = useRef(null)
+  const lastSnapIdRef = useRef(null)
+  const [refreshNote, setRefreshNote] = useState(null)
 
-  async function loadLatest() {
-    setLoading(true); setError(null)
+  async function loadLatest(fromButton = false) {
+    setLoading(true); setError(null); setRefreshNote(null)
     try {
       const { data: snaps, error: se } = await supabase
         .from('sched_snapshots')
@@ -279,6 +281,15 @@ export default function WIPTab() {
       if (se) throw se
       const snap = snaps?.[0] || null
       setSnapshot(snap)
+
+      // Refresh honesty: the button re-queries for a NEWER snapshot — if none
+      // exists, say so instead of silently "doing nothing" (the old behavior
+      // that read as broken). Auto-clears after a few seconds.
+      if (fromButton && snap && lastSnapIdRef.current === snap.id) {
+        setRefreshNote(`Checked — no newer data. Still showing ${snap.source_filename || 'the last upload'}.`)
+        setTimeout(() => setRefreshNote(null), 6000)
+      }
+      lastSnapIdRef.current = snap?.id ?? null
 
       if (!snap) { setWipRows([]); return }
 
@@ -519,7 +530,7 @@ export default function WIPTab() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button onClick={loadLatest} disabled={loading || uploading}
+              <button onClick={() => loadLatest(true)} disabled={loading || uploading}
                 style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: (loading || uploading) ? 'not-allowed' : 'pointer' }}>
                 {loading ? 'Loading…' : '↻ Refresh'}
               </button>
@@ -542,6 +553,9 @@ export default function WIPTab() {
             )}
           </div>
         </div>
+        {refreshNote && (
+          <div style={{ marginTop: 12, fontSize: 12, color: C.inkMid, background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 12px' }}>{refreshNote}</div>
+        )}
         {uploadStatus && (
           <div style={{ marginTop: 12, fontSize: 12, color: C.inkMid, background: C.goldBg, border: `1px solid ${C.warm}`, borderRadius: 6, padding: '8px 12px' }}>{uploadStatus}</div>
         )}
@@ -680,12 +694,12 @@ function ConnectionNote() {
     }}>
       <strong style={{ color: C.ink }}>Source of truth.</strong>{' '}
       The Scheduler reads from this same data. Its unscheduled pool is a per-site, distinct-PO
-      view of orders eligible to schedule — production-active statuses (Approved to Print,
-      Ready to Print, In Mixing Queue, In Progress, Strike Off, Orders Unallocated, and Waiting
-      for Approval / Material / Sample / Screen) with New Goods rows in pre-production routed
-      to the New Goods view instead. Statuses past the printer (Mixing, In Packing, Ready to
-      Ship, Shipped) are not in the pool. Procurement isn't scheduled — it's pass-through.
-      Each section header below shows total POs and how many are in that site's Scheduler pool.
+      view of everything eligible to schedule — all orders except the truly-done ones (Shipped,
+      Invoiced, Closed, Cancelled), with New Goods rows still in pre-production routed to the
+      New Goods view instead. Already-printed and past-printer statuses (Mixing, In Packing,
+      Ready to Ship) stay visible so work can be recorded retroactively. Procurement isn't
+      scheduled — it's pass-through. Each section header below shows total POs and how many are
+      in that site's Scheduler pool.
     </div>
   )
 }

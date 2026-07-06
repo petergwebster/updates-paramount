@@ -7,7 +7,7 @@ import {
   PASSAIC_OPERATORS, BNY_OPERATORS_ALL,
 
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
-import { loadWeekDailyOps, upsertDailyOp } from '../lib/dailyOps'
+import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
@@ -69,6 +69,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
     const d = new Date(); d.setHours(0,0,0,0); return d
   })
   const [dailyOps, setDailyOps] = useState([])
+  const [opLines, setOpLines] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(false)
   // Tracks which Passaic tables the user has clicked "+ add 2nd shift" on
@@ -131,6 +132,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
       setLoading(true)
       try {
         const ops = await loadWeekDailyOps(site, weekStart)
+        const opLineRows = await loadWeekDailyOpLines(site, weekStart)
         const { data: asn } = await supabase
           .from('sched_assignments')
           .select('*')
@@ -138,6 +140,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
           .eq('week_start', isoDate(weekStart))
         if (cancelled) return
         setDailyOps(ops || [])
+        setOpLines(opLineRows || [])
         setAssignments(asn || [])
       } finally {
         if (!cancelled) setLoading(false)
@@ -289,6 +292,13 @@ export default function LiveOpsTab({ currentUser } = {}) {
     return t.category
   }
 
+  // Per-cell slices passed to each OpsRow: the assignments planned on this
+  // table/day/shift (seed the PO dropdown) and the saved production lines.
+  const cellAssignmentsFor = (tableCode, shift) => assignments.filter(a =>
+    a.table_code === tableCode && a.day_of_week === dayOfWeek && (a.shift || '1st') === shift)
+  const cellLinesFor = (tableCode, shift) => opLines.filter(l =>
+    l.table_code === tableCode && l.day_of_week === dayOfWeek && (l.shift || '1st') === shift)
+
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
@@ -412,6 +422,10 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   plannedSource={firstCell?.plannedSource || 'none'}
                   plannedDetails={firstCell?.plannedDetails || []}
                   op={firstCell?.op}
+                  cellAssignments={cellAssignmentsFor(t.code, '1st')}
+                  cellLines={cellLinesFor(t.code, '1st')}
+                  weekStart={weekStart}
+                  dayOfWeek={dayOfWeek}
                   canEnterActuals={true}
                   currentUser={currentUser}
                   onSave={(patch) => saveRow(t.code, '1st', patch)}
@@ -425,6 +439,10 @@ export default function LiveOpsTab({ currentUser } = {}) {
                     plannedSource={secondCell?.plannedSource || 'none'}
                     plannedDetails={secondCell?.plannedDetails || []}
                     op={secondCell?.op}
+                    cellAssignments={cellAssignmentsFor(t.code, '2nd')}
+                    cellLines={cellLinesFor(t.code, '2nd')}
+                    weekStart={weekStart}
+                    dayOfWeek={dayOfWeek}
                     canEnterActuals={true}
                     currentUser={currentUser}
                     onSave={(patch) => saveRow(t.code, '2nd', patch)}
@@ -470,28 +488,65 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, canEnterActuals, currentUser, onSave }) {
-  const [yards, setYards]   = useState(op?.actual_yards ?? '')
-  const [waste, setWaste]   = useState(op?.waste_yards ?? '')
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], cellLines = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
+  // Cell-level fields — crew + notes stay per table/day/shift.
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
   const [notes, setNotes]   = useState(op?.notes ?? '')
   // Note delegation v1 (Wendy 4/2026): assign a note to one of four roles.
-  // Status auto-flips to 'open' when assigned and a note exists; stays null
-  // for unassigned notes; flips to 'resolved' via the Mark Resolved button.
   const [assignedTo, setAssignedTo] = useState(op?.note_assigned_to ?? '')
   const [noteStatus, setNoteStatus] = useState(op?.note_status ?? null)
   const [notesModalOpen, setNotesModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
 
+  // Production-by-PO lines. Each: { _key, id|null, po_number, item_sku, color,
+  // line_description, actual_yards, waste_yards }. The header's actual_yards /
+  // waste_yards are the ROLLED-UP sums of these, so every existing reader keeps
+  // working. deletedIds tracks server rows removed this edit session.
+  const [lines, setLines] = useState([])
+  const [deletedIds, setDeletedIds] = useState([])
+  const keyRef = useRef(0)
+
   const isSecondShift = shift === '2nd'
 
-  // Reset fields when the underlying row changes (user navigates day/site).
-  // Also close the notes modal so it doesn't hover with stale state.
+  // Stable signatures so the seed effect re-runs only when the cell identity
+  // or its server-side data changes — not on every parent render (which would
+  // wipe in-progress typing).
+  const linesSig = cellLines.map(l => l.id).join(',')
+  const asgSig = cellAssignments.map(a => a.id).join(',')
+
   useEffect(() => {
-    setYards(op?.actual_yards ?? '')
-    setWaste(op?.waste_yards ?? '')
+    const mk = (o) => ({ _key: `l${keyRef.current++}`, ...o })
+    let seed
+    if (cellLines.length > 0) {
+      seed = cellLines.map(l => mk({
+        id: l.id,
+        po_number: l.po_number, item_sku: l.item_sku, color: l.color,
+        line_description: l.line_description,
+        actual_yards: l.actual_yards ?? '', waste_yards: l.waste_yards ?? '',
+      }))
+    } else if (op?.actual_yards != null || op?.waste_yards != null) {
+      // Legacy lump entry (header total, no lines) — surface as one editable
+      // line so nothing is lost; migrates to a real line on next save.
+      seed = [mk({
+        id: null, po_number: null, item_sku: null, color: null,
+        line_description: 'Recorded total',
+        actual_yards: op.actual_yards ?? '', waste_yards: op.waste_yards ?? '',
+      })]
+    } else if (cellAssignments.length > 0) {
+      // Fresh cell — one blank line per planned PO to fill actuals against.
+      seed = cellAssignments.map(a => mk({
+        id: null,
+        po_number: a.po_number || null, item_sku: a.item_sku || null, color: a.color || null,
+        line_description: a.line_description || a.po_number || null,
+        actual_yards: '', waste_yards: '',
+      }))
+    } else {
+      seed = [mk({ id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '' })]
+    }
+    setLines(seed)
+    setDeletedIds([])
     setOp1(op?.operator_1 ?? '')
     setOp2(op?.operator_2 ?? '')
     setNotes(op?.notes ?? '')
@@ -499,63 +554,120 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     setNoteStatus(op?.note_status ?? null)
     setNotesModalOpen(false)
     setSavedAt(null)
-  }, [op?.id, op?.actual_yards, op?.waste_yards, op?.operator_1, op?.operator_2, op?.notes, op?.note_assigned_to, op?.note_status])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [op?.id, dayOfWeek, shift, table.code, linesSig, asgSig])
+
+  function updateLine(key, patch) {
+    setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
+  }
+  function pickPO(key, poKey) {
+    if (poKey === '__other') {
+      updateLine(key, { po_number: null, item_sku: null, color: null, line_description: null })
+      return
+    }
+    const a = cellAssignments.find(x => `${x.po_number}|${x.item_sku || ''}|${x.color || ''}` === poKey)
+    if (a) updateLine(key, {
+      po_number: a.po_number, item_sku: a.item_sku || null, color: a.color || null,
+      line_description: a.line_description || a.po_number || null,
+    })
+  }
+  function addLine() {
+    setLines(prev => [...prev, { _key: `l${keyRef.current++}`, id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '' }])
+  }
+  function removeLine(key) {
+    setLines(prev => {
+      const row = prev.find(l => l._key === key)
+      if (row?.id) setDeletedIds(d => [...d, row.id])
+      return prev.filter(l => l._key !== key)
+    })
+  }
+
+  const num = (v) => (v === '' || v == null ? null : Number(v))
+  const isBlankLine = (l) => num(l.actual_yards) == null && num(l.waste_yards) == null && !l.po_number && !l.line_description
+  const rolledActual = lines.reduce((s, l) => s + (num(l.actual_yards) || 0), 0)
+  const rolledWaste  = lines.reduce((s, l) => s + (num(l.waste_yards) || 0), 0)
+  const anyActual    = lines.some(l => num(l.actual_yards) != null)
+  const anyWaste     = lines.some(l => num(l.waste_yards) != null)
 
   async function handleSave() {
     setSaving(true)
-    // Status logic: assignment + note text → 'open' (unless already 'resolved')
-    // No assignment → null. Resolved status sticks until user clears assignment.
-    let nextStatus = noteStatus
-    if (assignedTo && notes) {
-      if (nextStatus !== 'resolved') nextStatus = 'open'
-    } else {
-      nextStatus = null
+    try {
+      // 1) Persist production lines (insert new, update existing, delete
+      //    removed). Skip fully-blank rows.
+      const cellKey = { site, week_start: isoDate(weekStart), table_code: table.code, day_of_week: dayOfWeek, shift }
+      const nextLines = [...lines]
+      for (let i = 0; i < nextLines.length; i++) {
+        const l = nextLines[i]
+        if (isBlankLine(l)) continue
+        const payload = {
+          ...cellKey,
+          po_number: l.po_number || null,
+          item_sku: l.item_sku || null,
+          color: l.color || null,
+          line_description: l.line_description || null,
+          actual_yards: num(l.actual_yards),
+          waste_yards: num(l.waste_yards),
+        }
+        if (l.id) {
+          await updateDailyOpLine(l.id, payload)
+        } else {
+          const saved = await insertDailyOpLine(payload)
+          nextLines[i] = { ...l, id: saved.id }
+        }
+      }
+      for (const id of deletedIds) await deleteDailyOpLine(id)
+      setLines(nextLines)
+      setDeletedIds([])
+
+      // 2) Roll lines up into the header + save crew/notes. Writing the header
+      //    actual_yards / waste_yards here keeps Heartbeat, the KPI strip,
+      //    scorecards, and Claude's reader correct.
+      let nextStatus = noteStatus
+      if (assignedTo && notes) { if (nextStatus !== 'resolved') nextStatus = 'open' }
+      else nextStatus = null
+      const patch = {
+        operator_1: op1 || null,
+        operator_2: op2 || null,
+        actual_yards: anyActual ? rolledActual : null,
+        waste_yards: anyWaste ? rolledWaste : null,
+        notes: notes || null,
+        note_assigned_to: assignedTo || null,
+        note_status: nextStatus,
+      }
+      await onSave(patch)
+
+      // 3) Slack ping — only on a new/changed OPEN note assignment.
+      const wasAssignedToSomeone = !!op?.note_assigned_to
+      const assigneeChanged = (op?.note_assigned_to || '') !== (assignedTo || '')
+      if (assignedTo && nextStatus === 'open' && (assigneeChanged || !wasAssignedToSomeone)) {
+        fetch('/api/slack-note-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignedTo,
+            assignedBy: currentUser || 'Unknown user',
+            site,
+            tableLabel: table.label || table.code,
+            dateLabel: op?.date_label || '',
+            noteText: notes,
+          }),
+        }).catch(() => {})
+      }
+      setNoteStatus(nextStatus)
+      setSavedAt(Date.now())
+    } catch (e) {
+      alert('Save failed: ' + (e.message || e))
+    } finally {
+      setSaving(false)
     }
-    const patch = {
-      operator_1: op1 || null,
-      operator_2: op2 || null,
-      actual_yards: yards === '' ? null : Number(yards),
-      waste_yards: waste === '' ? null : Number(waste),
-      notes: notes || null,
-      note_assigned_to: assignedTo || null,
-      note_status: nextStatus,
-    }
-    await onSave(patch)
-    // Fire Slack notification only when the assignment is NEW or CHANGED, and
-    // status is 'open'. Silent on every other save (yards updates, edits to
-    // note text without reassignment, marking resolved, etc.) to avoid spam.
-    const wasAssignedToSomeone = !!op?.note_assigned_to
-    const assigneeChanged = (op?.note_assigned_to || '') !== (assignedTo || '')
-    const becomingOpen = nextStatus === 'open'
-    if (assignedTo && becomingOpen && (assigneeChanged || !wasAssignedToSomeone)) {
-      // Best-effort — failures don't block the save flow.
-      fetch('/api/slack-note-notify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignedTo,
-          assignedBy: currentUser || 'Unknown user',
-          site,
-          tableLabel: table.label || table.code,
-          dateLabel: op?.date_label || '',
-          noteText: notes,
-        }),
-      }).catch(() => {})
-    }
-    setNoteStatus(nextStatus)
-    setSaving(false)
-    setSavedAt(Date.now())
   }
 
   // Digital operators aren't machine-scoped — any digital operator can run any
   // digital machine at either site (Peter 6/30). Hand-screen stays Passaic-only.
   const operatorList = site === 'passaic' ? PASSAIC_OPERATORS : BNY_OPERATORS_ALL
 
-  const actual = yards === '' ? null : Number(yards)
+  const actual = anyActual ? rolledActual : null
   const variance = actual != null ? actual - plannedYards : null
-  // Hide the variance line entirely when no actual is entered. A bare "—"
-  // sitting under the input read as an errant dash without context. Only
-  // show the line once there's a real number to compare against.
   const varianceColor = variance == null ? C.inkLight
     : Math.abs(variance) < 50 ? C.sage
     : variance > 0 ? C.gold : C.rose
@@ -563,8 +675,15 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     : variance === 0 ? 'on plan'
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
+  // PO dropdown options for a line: planned POs on this cell + "Other".
+  const poOptions = cellAssignments.map(a => ({
+    key: `${a.po_number}|${a.item_sku || ''}|${a.color || ''}`,
+    label: (a.line_description || a.po_number || '—') + (a.po_number ? ` · ${a.po_number}` : ''),
+  }))
+  const lineKeyOf = (l) => (l.po_number ? `${l.po_number}|${l.item_sku || ''}|${l.color || ''}` : '__other')
+
   return (
-    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '140px minmax(140px, 1fr) 80px 80px 130px 130px 100px 80px', gap: 12, alignItems: 'start' }}>
+    <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '150px minmax(120px, 1fr) 120px 130px 130px 110px 80px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>
@@ -601,23 +720,16 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         )}
       </div>
 
-      {/* Actual yards */}
+      {/* Actual (total) — read-only; sum of the PO lines below */}
       <div>
-        <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actual yds</label>
-        <input type="number" value={yards} onChange={e => setYards(e.target.value)} disabled={!canEnterActuals}
-          placeholder="—"
-          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, boxSizing: 'border-box', background: canEnterActuals ? '#fff' : C.warm }} />
+        <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actual (total)</label>
+        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: actual != null ? C.ink : C.inkLight, lineHeight: 1.4 }}>
+          {actual != null ? fmt(actual) : '—'}
+          {anyWaste && <span style={{ fontSize: 10, color: C.inkLight, fontWeight: 400, marginLeft: 6 }}>· {fmt(rolledWaste)} waste</span>}
+        </div>
         {varianceLabel && (
-          <div style={{ fontSize: 9, color: varianceColor, fontWeight: 600, marginTop: 3 }}>{varianceLabel}</div>
+          <div style={{ fontSize: 9, color: varianceColor, fontWeight: 600, marginTop: 2 }}>{varianceLabel}</div>
         )}
-      </div>
-
-      {/* Waste */}
-      <div>
-        <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Waste yds</label>
-        <input type="number" value={waste} onChange={e => setWaste(e.target.value)} disabled={!canEnterActuals}
-          placeholder="0"
-          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, boxSizing: 'border-box', background: canEnterActuals ? '#fff' : C.warm }} />
       </div>
 
       {/* Operator 1 */}
@@ -676,6 +788,44 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         {savedAt && (
           <div style={{ fontSize: 9, color: C.sage, textAlign: 'center', fontWeight: 600 }}>✓ saved</div>
         )}
+      </div>
+
+      {/* Production-by-PO lines — one row per PO/SKU that ran on this table
+          today; the header total above is their sum. Spans the full width. */}
+      <div style={{ gridColumn: '1 / -1', marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 100px 100px 28px', gap: 8, fontSize: 8, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+          <span>PO / job on this table today</span>
+          <span style={{ textAlign: 'right' }}>Actual yds</span>
+          <span style={{ textAlign: 'right' }}>Waste</span>
+          <span />
+        </div>
+        {lines.map(l => (
+          <div key={l._key} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 100px 100px 28px', gap: 8, alignItems: 'center', marginBottom: 5 }}>
+            {poOptions.length > 0 ? (
+              <select value={lineKeyOf(l)} onChange={e => pickPO(l._key, e.target.value)} disabled={!canEnterActuals}
+                style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: '#fff', boxSizing: 'border-box' }}>
+                {poOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                <option value="__other">Other / unplanned…</option>
+              </select>
+            ) : (
+              <input type="text" value={l.line_description || ''} onChange={e => updateLine(l._key, { line_description: e.target.value })}
+                placeholder="PO or description (optional)" disabled={!canEnterActuals}
+                style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, boxSizing: 'border-box' }} />
+            )}
+            <input type="number" value={l.actual_yards} onChange={e => updateLine(l._key, { actual_yards: e.target.value })}
+              placeholder="—" min={0} step="any" disabled={!canEnterActuals}
+              style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, textAlign: 'right', boxSizing: 'border-box' }} />
+            <input type="number" value={l.waste_yards} onChange={e => updateLine(l._key, { waste_yards: e.target.value })}
+              placeholder="0" min={0} step="any" disabled={!canEnterActuals}
+              style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, textAlign: 'right', boxSizing: 'border-box' }} />
+            <button onClick={() => removeLine(l._key)} title="Remove line"
+              style={{ background: 'transparent', border: 'none', color: C.inkLight, fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          </div>
+        ))}
+        <button onClick={addLine} disabled={!canEnterActuals}
+          style={{ marginTop: 2, padding: '3px 10px', fontSize: 10, fontWeight: 600, color: C.navy, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 3, cursor: 'pointer', letterSpacing: '0.03em' }}>
+          + Add PO / job line
+        </button>
       </div>
 
       {/* Notes pop-out modal — backdrop click closes without saving (escape
