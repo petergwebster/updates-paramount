@@ -964,7 +964,9 @@ function AssignModal({ po, tableCode, proposed, isEdit, onCancel, onConfirm, bus
   // non-positive entry is invalid; going over is permitted and just flagged.
   // Live Ops captures what actually ran, so over-100% on the board is accurate.
   const over = yards > maxY
-  const invalid = yards < 1
+  // Strike-offs (27" and other sub-yard samples) consume <1 yard — allow
+  // fractional yards. Any positive amount is valid; only zero/negative blocks.
+  const invalid = !(yards > 0)
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
@@ -974,7 +976,7 @@ function AssignModal({ po, tableCode, proposed, isEdit, onCancel, onConfirm, bus
           PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {fmt(po.remaining_yards)} yards remaining
         </div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this table</label>
-        <input type="number" value={yards} onChange={e => setYards(parseInt(e.target.value) || 0)} min={1}
+        <input type="number" value={yards} onChange={e => setYards(parseFloat(e.target.value) || 0)} min={0} step="any"
           style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           <button onClick={() => setYards(maxY)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>All ({fmt(maxY)})</button>
