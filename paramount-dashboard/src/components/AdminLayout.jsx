@@ -4,6 +4,7 @@ import StubPage from './StubPage'
 import UserManagement from './UserManagement'
 import LIFTDataRefresh from './LIFTDataRefresh'
 import MonthlyBriefs from './MonthlyBriefs'
+import WeeklyProductionSummary from './WeeklyProductionSummary'
 import { isSuperAdmin } from '../lib/access'
 import styles from './AdminLayout.module.css'
 
@@ -32,6 +33,7 @@ const SIDEBAR = [
     group: 'Intelligence',
     items: [
       { id: 'monthly-briefs', label: 'Monthly Briefs', badge: 'NEW' },
+      { id: 'weekly-summary', label: 'Weekly Production Summary', badge: 'NEW' },
       { id: 'ai-monitoring',  label: 'AI Monitoring',  badge: 'NEW' },
       { id: 'daily-digest',   label: 'Daily Digest',   badge: 'NEW' },
     ],
@@ -120,7 +122,11 @@ export default function AdminLayout({
           {section === 'lift-refresh' && <LIFTDataRefresh />}
 
           {section === 'monthly-briefs' && (
-            <MonthlyBriefs weekStart={weekStart} />
+            <MonthlyBriefs weekStart={weekStart} authUser={authUser} />
+          )}
+
+          {section === 'weekly-summary' && (
+            <WeeklyProductionSummary authUser={authUser} />
           )}
 
           {section === 'ai-monitoring' && (
