@@ -86,6 +86,75 @@ export async function deleteDailyOpLine(id) {
   if (error) { console.error('deleteDailyOpLine', error); throw error }
 }
 
+// ============================================================================
+// sched_daily_ops_notes — categorized production notes under a cell
+// ============================================================================
+// Notes are the holding spot for production commentary (waste causes, setup
+// issues, workflow interruptions, etc.). Each note carries a category plus
+// free narrative, so the weekly rollup can rank WHERE the pain concentrates.
+// A single cell can hold several notes.
+
+export const NOTE_CATEGORIES = ['People', 'Setup', 'Colors/Screens', 'Workflow Interruptions', 'Other']
+
+// Fetch every note for a (site, week_start). Callers filter by
+// table_code / day_of_week / shift client-side (one query per week).
+export async function loadWeekDailyOpNotes(site, weekStart) {
+  const { data, error } = await supabase
+    .from('sched_daily_ops_notes')
+    .select('*')
+    .eq('site', site)
+    .eq('week_start', isoDate(weekStart))
+  if (error) { console.error('loadWeekDailyOpNotes', error); return [] }
+  return data || []
+}
+
+// Insert one note. Returns the new row (with its id) so the caller can track
+// it for subsequent edits without a full refetch.
+export async function insertDailyOpNote(note) {
+  const { data, error } = await supabase
+    .from('sched_daily_ops_notes')
+    .insert({ ...note, updated_at: new Date().toISOString() })
+    .select()
+    .single()
+  if (error) { console.error('insertDailyOpNote', error); throw error }
+  return data
+}
+
+// Update one note by id. Pass only the fields to change.
+export async function updateDailyOpNote(id, patch) {
+  const { error } = await supabase
+    .from('sched_daily_ops_notes')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) { console.error('updateDailyOpNote', error); throw error }
+}
+
+// Delete one note by id.
+export async function deleteDailyOpNote(id) {
+  const { error } = await supabase
+    .from('sched_daily_ops_notes')
+    .delete()
+    .eq('id', id)
+  if (error) { console.error('deleteDailyOpNote', error); throw error }
+}
+
+// ---------------------------------------------------------------------------
+// Color-yards — Passaic hand-screen labor unit
+// ---------------------------------------------------------------------------
+// A PO's planned color multiplier lives on its schedule assignment as
+// planned_cy / planned_yards (avg ~3.3, range 1–12 for hand-screen). Scaling
+// actual yards by that ratio gives actual color-yards with no extra floor
+// entry. Returns null when the multiplier can't be derived — no matching
+// assignment, or BNY digital (no planned_cy), where color-yards doesn't apply.
+export function deriveColorYards(actualYards, assignment) {
+  if (actualYards == null || isNaN(actualYards)) return null
+  if (!assignment) return null
+  const py = Number(assignment.planned_yards)
+  const pcy = Number(assignment.planned_cy)
+  if (!py || py <= 0 || !pcy || pcy <= 0) return null
+  return Math.round(actualYards * (pcy / py))
+}
+
 // Build a compact string summary of recent actuals for the AI context note.
 // Returns something like:
 //   "Friday:

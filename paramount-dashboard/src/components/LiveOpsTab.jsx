@@ -7,7 +7,7 @@ import {
   PASSAIC_OPERATORS, BNY_OPERATORS_ALL,
 
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
-import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine } from '../lib/dailyOps'
+import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
@@ -693,6 +693,12 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   }))
   const lineKeyOf = (l) => (l.po_number ? `${l.po_number}|${l.item_sku || ''}|${l.color || ''}` : '__other')
 
+  // Passaic lines get a read-only color-yards column (yards × the PO's planned
+  // cy/yd ratio). BNY is digital — no color-yards — so its line grid stays 4-col.
+  const lineGridCols = site === 'passaic'
+    ? 'minmax(200px, 1fr) 90px 90px 72px 28px'
+    : 'minmax(220px, 1fr) 100px 100px 28px'
+
   return (
     <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '150px minmax(120px, 1fr) 120px 130px 130px 110px 80px', gap: 12, alignItems: 'start' }}>
       {/* Table label */}
@@ -804,14 +810,18 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       {/* Production-by-PO lines — one row per PO/SKU that ran on this table
           today; the header total above is their sum. Spans the full width. */}
       <div style={{ gridColumn: '1 / -1', marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 100px 100px 28px', gap: 8, fontSize: 8, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: lineGridCols, gap: 8, fontSize: 8, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
           <span>PO / job on this table today</span>
           <span style={{ textAlign: 'right' }}>Actual yds</span>
           <span style={{ textAlign: 'right' }}>Waste</span>
+          {site === 'passaic' && <span style={{ textAlign: 'right' }}>Color-yds</span>}
           <span />
         </div>
-        {lines.map(l => (
-          <div key={l._key} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 100px 100px 28px', gap: 8, alignItems: 'center', marginBottom: 5 }}>
+        {lines.map(l => {
+          const matchedAsg = cellAssignments.find(a => `${a.po_number}|${a.item_sku || ''}|${a.color || ''}` === lineKeyOf(l))
+          const lineCY = site === 'passaic' ? deriveColorYards(num(l.actual_yards), matchedAsg) : null
+          return (
+          <div key={l._key} style={{ display: 'grid', gridTemplateColumns: lineGridCols, gap: 8, alignItems: 'center', marginBottom: 5 }}>
             {poOptions.length > 0 ? (
               <select value={lineKeyOf(l)} onChange={e => pickPO(l._key, e.target.value)} disabled={!canEnterActuals}
                 style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: '#fff', boxSizing: 'border-box' }}>
@@ -829,10 +839,17 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
             <input type="number" value={l.waste_yards} onChange={e => updateLine(l._key, { waste_yards: e.target.value })}
               placeholder="0" min={0} step="any" disabled={!canEnterActuals}
               style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, textAlign: 'right', boxSizing: 'border-box' }} />
+            {site === 'passaic' && (
+              <div title={matchedAsg ? 'yards × planned colors' : 'no planned colors for this line'}
+                style={{ fontSize: 12, textAlign: 'right', color: lineCY != null ? C.inkMid : C.inkLight, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {lineCY != null ? fmt(lineCY) : '—'}
+              </div>
+            )}
             <button onClick={() => removeLine(l._key)} title="Remove line"
               style={{ background: 'transparent', border: 'none', color: C.inkLight, fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
-        ))}
+          )
+        })}
         <button onClick={addLine} disabled={!canEnterActuals}
           style={{ marginTop: 2, padding: '3px 10px', fontSize: 10, fontWeight: 600, color: C.navy, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 3, cursor: 'pointer', letterSpacing: '0.03em' }}>
           + Add PO / job line
