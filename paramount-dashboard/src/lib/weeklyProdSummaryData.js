@@ -283,6 +283,48 @@ export async function gatherWeeklyProdData({ weekStart, throughDate = new Date()
     coveragePct: producedAll > 0 ? (producedAttributed / producedAll) * 100 : null,
   }
 
+  // ── Operator scorecard ────────────────────────────────────────
+  // Attribute each recorded cell's yards + waste to BOTH operators on it (not
+  // split — a table's output isn't cleanly one person's, so credit the pair
+  // rather than fake a half-split). Track each operator's recorded-vs-planned
+  // days so a low total that's really a recording gap reads as a gap, not a
+  // performance problem (critical given how much rides on Sami's entry).
+  const operatorAgg = new Map()
+  for (const h of headers) {
+    const planned = h.planned_yards == null ? null : num(h.planned_yards)
+    const actual  = h.actual_yards  == null ? null : num(h.actual_yards)
+    const elapsed = isElapsed(h.day_of_week)
+    for (const name of [h.operator_1, h.operator_2]) {
+      if (!name) continue
+      if (!operatorAgg.has(name)) operatorAgg.set(name, {
+        name, site: h.site, actualYards: 0, wasteYards: 0, plannedYards: 0,
+        recordedCells: 0, plannedCells: 0, missing: [], units: new Set(),
+      })
+      const o = operatorAgg.get(name)
+      o.units.add(h.table_code)
+      if (actual != null) { o.actualYards += actual; o.wasteYards += num(h.waste_yards); o.recordedCells += 1 }
+      if (elapsed && planned != null && planned > 0) {
+        o.plannedCells += 1
+        o.plannedYards += planned
+        if (actual == null) o.missing.push({ unitCode: h.table_code, day: h.day_of_week })
+      }
+    }
+  }
+  const operators = [...operatorAgg.values()].map(o => ({
+    name: o.name,
+    site: o.site,
+    actualYards: o.actualYards,
+    wasteYards: o.wasteYards,
+    wastePct: (o.actualYards + o.wasteYards) > 0 ? (o.wasteYards / (o.actualYards + o.wasteYards)) * 100 : null,
+    plannedYards: o.plannedYards,
+    attainmentPct: o.plannedYards > 0 ? (o.actualYards / o.plannedYards) * 100 : null,
+    recordedCells: o.recordedCells,
+    plannedCells: o.plannedCells,
+    coveragePct: o.plannedCells > 0 ? (o.recordedCells / o.plannedCells) * 100 : null,
+    missingCount: o.missing.length,
+    unitCount: o.units.size,
+  })).sort((a, b) => b.actualYards - a.actualYards)
+
   return {
     weekStart: wk,
     generatedAt: new Date().toISOString(),
@@ -294,6 +336,7 @@ export async function gatherWeeklyProdData({ weekStart, throughDate = new Date()
     wasteByProduct,
     notesByCategory,
     lostCapacity,
+    operators,
     attribution,
     totalNotes: opNotes.length,
     counts: { assignments: assignments.length, headers: headers.length, lines: opLines.length, notes: opNotes.length },

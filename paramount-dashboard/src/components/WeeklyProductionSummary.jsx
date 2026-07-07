@@ -239,7 +239,7 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
             </tr>
           </thead>
           <tbody>
-            {data.units.filter(u => u.plannedYards > 0)
+            {data.units.filter(u => u.plannedYards > 0 || u.actualYards > 0)
               .sort((a, b) => (a.attainmentPct ?? 9999) - (b.attainmentPct ?? 9999))
               .map((u, i) => (
                 <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
@@ -247,8 +247,8 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
                   <td style={tdL}>{siteShort(u.site)}</td>
                   <td style={tdL}>{u.product}</td>
                   <td style={tdR}>{fmt(u.actualYards)}</td>
-                  <td style={tdR}>{fmt(u.plannedYards)}</td>
-                  <td style={{ ...tdR, color: attColor(u.attainmentPct), fontWeight: 600 }}>{pct(u.attainmentPct)}</td>
+                  <td style={tdR}>{u.plannedYards > 0 ? fmt(u.plannedYards) : '—'}</td>
+                  <td style={{ ...tdR, color: attColor(u.attainmentPct), fontWeight: 600 }}>{u.plannedYards > 0 ? pct(u.attainmentPct) : 'no plan'}</td>
                   <td style={{ ...tdL, color: C.red }}>{u.missingDays.join('/') || '—'}</td>
                 </tr>
               ))}
@@ -293,6 +293,38 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
               ))}
             </div>
           </>
+        )}
+
+        {/* Operator scorecard */}
+        {data.operators && data.operators.length > 0 && (
+          <div style={{ marginTop: 22 }}>
+            <SectionLabel>OPERATOR SCORECARD · both operators credited per table (not split)</SectionLabel>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 8 }}>
+              <thead>
+                <tr style={{ color: C.inkLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <th style={thL}>Operator</th><th style={thL}>Site</th>
+                  <th style={thR}>Produced</th><th style={thR}>Waste</th><th style={thR}>Waste %</th>
+                  <th style={thR}>Attain.</th><th style={thR}>Recorded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.operators.map((o, i) => (
+                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+                    <td style={{ ...tdL, fontWeight: 600 }}>{o.name}</td>
+                    <td style={tdL}>{siteShort(o.site)}</td>
+                    <td style={tdR}>{fmt(o.actualYards)}</td>
+                    <td style={tdR}>{fmt(o.wasteYards)}</td>
+                    <td style={{ ...tdR, color: (o.wastePct != null && o.wastePct > 8) ? C.red : C.ink }}>{pct1(o.wastePct)}</td>
+                    <td style={{ ...tdR, color: attColor(o.attainmentPct), fontWeight: 600 }}>{o.plannedYards > 0 ? pct(o.attainmentPct) : 'no plan'}</td>
+                    <td style={{ ...tdR, color: (o.coveragePct != null && o.coveragePct < 100) ? C.amber : C.inkMid }}>{o.plannedCells > 0 ? `${o.recordedCells}/${o.plannedCells}` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic', lineHeight: 1.5 }}>
+              Yards and waste credit BOTH operators on a table — not split — so a total reflects tables worked, not solo output. “Recorded” shows closed-out vs planned cells; a low producer with a low recorded count is likely a data-entry gap, not a performance issue.
+            </div>
+          </div>
         )}
       </div>
     </div>
