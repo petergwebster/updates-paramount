@@ -130,6 +130,7 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   let y = 56
 
   const phase = data.pacing.phase
+  const includeFin = data.includeFinancials !== false
   const phaseLabel = phase === 'mid' ? 'Mid-Month Brief' : 'End-of-Month Brief'
   const monthLabel = data.pacing.monthLabel
   const monthUpper = monthLabel.toUpperCase()
@@ -166,6 +167,7 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   if (phase === 'mid') subParts.push(`${data.pacing.weeksElapsed}-week mark`)
   else                 subParts.push('period closed')
   if (data.pacing.fiscalQuarter) subParts.push(`Fiscal ${data.pacing.fiscalQuarter}`)
+  if (!includeFin) subParts.push('production-only')
   doc.text(subParts.join(' · '), MX, y)
 
   // Right-side date matches the title line height
@@ -175,7 +177,7 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   // ── HERO KPI STRIP ──────────────────────────────────────────────────
   // Four stat cells across the top — at-a-glance summary above the prose.
   y += 14
-  drawHeroKpiStrip(doc, MX, y, CW, data)
+  drawHeroKpiStrip(doc, MX, y, CW, data, includeFin)
   y += 64
 
   // ── EXECUTIVE SUMMARY ───────────────────────────────────────────────
@@ -371,20 +373,25 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
   doc.line(leftX, y - 4, leftX + colW, y - 4)
   doc.line(rightX, y - 4, rightX + colW, y - 4)
 
-  // OPEX MTD row — Inv Purchases for BNY, Waste % + Inv Purchases for NJ
-  const bnyOpexSub = data.financials.cogsAvailable
-    ? `Inv Purchases: ${money(bnyInvP)}  ·  COGS: ${money(fByUnit.bny?.cogsTotal)}`
-    : `Inv Purchases: ${money(bnyInvP)}`
-  const njOpexSubParts = []
-  if (data.production.njWastePct != null) njOpexSubParts.push(`Waste: ${pct1(data.production.njWastePct)}`)
-  njOpexSubParts.push(`Inv: ${money(njInvP)}`)
-  if (data.financials.cogsAvailable && fByUnit.nj?.cogsTotal) {
-    njOpexSubParts.push(`COGS: ${money(fByUnit.nj.cogsTotal)}`)
-  }
+  // OPEX MTD row — Inv Purchases for BNY, Waste % + Inv Purchases for NJ.
+  // Skipped entirely on a production-only brief (includeFin === false).
+  if (includeFin) {
+    const bnyOpexSub = data.financials.cogsAvailable
+      ? `Inv Purchases: ${money(bnyInvP)}  ·  COGS: ${money(fByUnit.bny?.cogsTotal)}`
+      : `Inv Purchases: ${money(bnyInvP)}`
+    const njOpexSubParts = []
+    if (data.production.njWastePct != null) njOpexSubParts.push(`Waste: ${pct1(data.production.njWastePct)}`)
+    njOpexSubParts.push(`Inv: ${money(njInvP)}`)
+    if (data.financials.cogsAvailable && fByUnit.nj?.cogsTotal) {
+      njOpexSubParts.push(`COGS: ${money(fByUnit.nj.cogsTotal)}`)
+    }
 
-  drawProdBlock(leftX,  y, 'OPEX MTD', moneyForce(bnyOpex), bnyOpexSub)
-  drawProdBlock(rightX, y, 'OPEX MTD', moneyForce(njOpex),  njOpexSubParts.join(' · '))
-  y += blockH + 4
+    drawProdBlock(leftX,  y, 'OPEX MTD', moneyForce(bnyOpex), bnyOpexSub)
+    drawProdBlock(rightX, y, 'OPEX MTD', moneyForce(njOpex),  njOpexSubParts.join(' · '))
+    y += blockH + 4
+  } else {
+    y += 4
+  }
 
   // ── PRODUCTION SUMMARY — MTD TRACKING TABLE ─────────────────────────
   if (y > PAGE_H - 220) { doc.addPage(); y = 56 }
@@ -435,12 +442,12 @@ export async function generateMonthlyBriefPdf({ data, narrative, returnBlob = fa
         : ['pending', 'pending', 'pending'] },
     { label: 'NJ Waste %', subtle: true,
       cells: [pct1(data.production.njWastePct), '—', '—'] },
-  ]
+  ].filter(row => includeFin || (row.label !== 'OpEx MTD' && row.label !== 'COGS MTD'))
 
   drawTable(doc, MX, y, CW, tableRows)
   y += (tableRows.length + 1) * 22 + 6
 
-  if (!cogsAvail) {
+  if (includeFin && !cogsAvail) {
     doc.setFont('helvetica', 'italic')
     doc.setFontSize(8)
     doc.setTextColor(...COLOR.inkSoft)
@@ -651,7 +658,7 @@ function capitalize(s) {
 //   4. HEADCOUNT   — total active people
 // ---------------------------------------------------------------------------
 
-function drawHeroKpiStrip(doc, x, y, w, data) {
+function drawHeroKpiStrip(doc, x, y, w, data, includeFin = true) {
   const cellGap = 12
   const cellW = (w - cellGap * 3) / 4
   const cellH = 56
@@ -696,6 +703,20 @@ function drawHeroKpiStrip(doc, x, y, w, data) {
       subColor: COLOR.inkSoft,
     },
   ]
+
+  // Production-only brief: swap the OpEx cell for an Invoiced-yards cell so the
+  // strip stays four cells wide with no financial figure on it.
+  if (!includeFin) {
+    cells[2] = {
+      label: 'INVOICED YDS',
+      main: data.production.combinedInvoicedYds != null
+        ? Math.round(data.production.combinedInvoicedYds).toLocaleString()
+        : '—',
+      unit: 'yds',
+      sub: `${Math.round(data.production.combinedYards || 0).toLocaleString()} produced`,
+      subColor: COLOR.inkSoft,
+    }
+  }
 
   for (let i = 0; i < cells.length; i++) {
     const cx = x + i * (cellW + cellGap)

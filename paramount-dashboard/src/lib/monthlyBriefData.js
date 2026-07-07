@@ -380,7 +380,7 @@ async function fetchCurrentWipSnapshot() {
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export async function gatherMonthlyBriefData({ monthKey, phase = 'end' }) {
+export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeFinancials = true }) {
   const [year, monthNum] = monthKey.split('-').map(Number)
   const monthStart = new Date(year, monthNum - 1, 1)
   const monthEnd = new Date(year, monthNum, 0)
@@ -496,37 +496,59 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end' }) {
   prod.njVsTargetPct   = expectedNjMtd   > 0 ? (100 * prod.njYards       / expectedNjMtd)   : null
   prod.combVsTargetPct = expectedCombMtd > 0 ? (100 * prod.combinedYards / expectedCombMtd) : null
 
-  // ── Financials: rows where period falls in this month ─────────────────
-  const periodKeys = allPeriodKeysForMonth(monthKey)
+  // ── Financials — skipped entirely when includeFinancials is false ─────
+  // Lets Peter run a production-only brief while the OpEx/COGS reconciliation
+  // is still in flight: the toggle drops everything finance owns (OpEx, COGS,
+  // inventory purchases, AP/AR/cash) so an un-reconciled number never lands in
+  // a leadership brief. Revenue stays — it flows from weekly production entry
+  // and is trusted.
+  let fin, ap = null, ar = null, cash = null
+  if (includeFinancials) {
+    const periodKeys = allPeriodKeysForMonth(monthKey)
 
-  const { data: finRows } = await supabase
-    .from('financials_monthly')
-    .select('*')
-    .in('period', periodKeys)
+    const { data: finRows } = await supabase
+      .from('financials_monthly')
+      .select('*')
+      .in('period', periodKeys)
 
-  const fin = aggregateFinancials(finRows || [], { today, monthEnd })
+    fin = aggregateFinancials(finRows || [], { today, monthEnd })
 
-  // ── AP / AR / Cash — most recent period in the month ──────────────────
-  const [{ data: apRows }, { data: arRows }, { data: cashRows }] = await Promise.all([
-    supabase.from('financial_ap').select('*').in('period', periodKeys).order('period', { ascending: false }),
-    supabase.from('financial_ar').select('*').in('period', periodKeys).order('period', { ascending: false }),
-    supabase.from('financial_cash').select('*').in('period', periodKeys).order('period', { ascending: false }),
-  ])
+    // ── AP / AR / Cash — most recent period in the month ────────────────
+    const [{ data: apRows }, { data: arRows }, { data: cashRows }] = await Promise.all([
+      supabase.from('financial_ap').select('*').in('period', periodKeys).order('period', { ascending: false }),
+      supabase.from('financial_ar').select('*').in('period', periodKeys).order('period', { ascending: false }),
+      supabase.from('financial_cash').select('*').in('period', periodKeys).order('period', { ascending: false }),
+    ])
 
-  const ap = (apRows && apRows[0]) ? {
-    period: apRows[0].period,
-    total: num(apRows[0].total),
-    pastDue: num(apRows[0].past_due),
-    current: num(apRows[0].current),
-  } : null
+    ap = (apRows && apRows[0]) ? {
+      period: apRows[0].period,
+      total: num(apRows[0].total),
+      pastDue: num(apRows[0].past_due),
+      current: num(apRows[0].current),
+    } : null
 
-  const ar = (arRows && arRows[0]) ? {
-    period: arRows[0].period,
-    totalOutstanding: num(arRows[0].total_outstanding),
-    aging91Plus: num(arRows[0].aging_91plus),
-  } : null
+    ar = (arRows && arRows[0]) ? {
+      period: arRows[0].period,
+      totalOutstanding: num(arRows[0].total_outstanding),
+      aging91Plus: num(arRows[0].aging_91plus),
+    } : null
 
-  const cash = (cashRows && cashRows[0]) ? cashRows[0] : null
+    cash = (cashRows && cashRows[0]) ? cashRows[0] : null
+  } else {
+    fin = {
+      suppressed: true,
+      rowCount: 0,
+      cogsAvailable: false,
+      cogsPendingNote: null,
+      opex: null,
+      invPurchases: null,
+      cogsTotal: null,
+      cogsMaterial: null,
+      cogsLabor: null,
+      cogsOther: null,
+      byUnit: {},
+    }
+  }
 
   // ── People: rollup of people_weekly rows in the month ─────────────────
   // Same Sunday-dated week_start widening as production (monthStartIso is
@@ -563,6 +585,7 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end' }) {
 
   return {
     pacing,
+    includeFinancials,
     targets: {
       monthBnyTarget,
       monthNjTarget,

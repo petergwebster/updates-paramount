@@ -56,6 +56,7 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
   // each phase button targets its natural month on generate (End = last closed
   // month, Mid = the month in progress).
   const [userPickedMonth, setUserPickedMonth] = useState(false)
+  const [includeFinancials, setIncludeFinancials] = useState(true)
   const [phase, setPhase] = useState(null)
   const [stage, setStage] = useState('idle')          // idle | gathering | drafting | ready | error | saving
   const [error, setError] = useState(null)
@@ -114,7 +115,7 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
     if (effectiveMonthKey !== monthKey) setMonthKey(effectiveMonthKey)
 
     try {
-      const data = await gatherMonthlyBriefData({ monthKey: effectiveMonthKey, phase: selectedPhase })
+      const data = await gatherMonthlyBriefData({ monthKey: effectiveMonthKey, phase: selectedPhase, includeFinancials })
       setBriefData(data)
       setStage('drafting')
 
@@ -239,6 +240,17 @@ export default function MonthlyBriefs({ weekStart, authUser }) {
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </select>
+        </label>
+
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#3a3f45', cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={includeFinancials}
+            onChange={e => { setIncludeFinancials(e.target.checked); reset() }}
+            disabled={stage === 'gathering' || stage === 'drafting' || stage === 'saving'}
+          />
+          Include financials
+          <span style={{ fontSize: 11, color: '#7a7e85' }}>(OpEx · COGS · AP/AR/cash — leave off for a production-only brief)</span>
         </label>
 
         <div className={styles.buttonRow}>
@@ -380,6 +392,7 @@ function BriefPreview({
 }) {
   const phaseLabel = phase === 'mid' ? 'Mid-Month Brief' : 'End-of-Month Brief'
   const cogsAvail = data.financials.cogsAvailable
+  const includeFin = data.includeFinancials !== false
 
   const fByUnit = data.financials.byUnit || {}
   const njRev   = data.production.njRevenue || 0
@@ -420,6 +433,7 @@ function BriefPreview({
             {data.pacing.monthLabel}
             {phase === 'mid' ? ` · ${data.pacing.weeksElapsed}-week mark` : ' · period closed'}
             {data.pacing.fiscalQuarter ? ` · Fiscal ${data.pacing.fiscalQuarter}` : ''}
+            {!includeFin ? ' · production-only' : ''}
           </div>
         </div>
         <div className={styles.previewHeaderActions}>
@@ -463,13 +477,22 @@ function BriefPreview({
           sub={combProc > 0 ? `+ ${money(combProc)} pass-through` : 'no pass-through'}
           subItalic={combProc > 0}
         />
-        <KpiCell
-          label="OPEX MTD"
-          main={moneyForce(data.financials.opex)}
-          sub={data.financials.invPurchases > 0
-            ? `+ ${money(data.financials.invPurchases)} inv purch`
-            : 'no inv purch'}
-        />
+        {includeFin ? (
+          <KpiCell
+            label="OPEX MTD"
+            main={moneyForce(data.financials.opex)}
+            sub={data.financials.invPurchases > 0
+              ? `+ ${money(data.financials.invPurchases)} inv purch`
+              : 'no inv purch'}
+          />
+        ) : (
+          <KpiCell
+            label="INVOICED YDS"
+            main={fmt(data.production.combinedInvoicedYds)}
+            unit="yds"
+            sub={`${fmt(data.production.combinedYards)} produced`}
+          />
+        )}
         <KpiCell
           label="HEADCOUNT"
           main={data.people?.combined?.headcount ? String(data.people.combined.headcount) : '—'}
@@ -526,14 +549,16 @@ function BriefPreview({
                 } : null,
               ].filter(Boolean)}
             />
-            <ProdBlock
-              label="OPEX MTD"
-              main={moneyForce(bnyOpex)}
-              sub={cogsAvail
-                ? `Inv Purchases: ${money(bnyInvP)}  ·  COGS: ${money(bnyCogs)}`
-                : `Inv Purchases: ${money(bnyInvP)}`
-              }
-            />
+            {includeFin && (
+              <ProdBlock
+                label="OPEX MTD"
+                main={moneyForce(bnyOpex)}
+                sub={cogsAvail
+                  ? `Inv Purchases: ${money(bnyInvP)}  ·  COGS: ${money(bnyCogs)}`
+                  : `Inv Purchases: ${money(bnyInvP)}`
+                }
+              />
+            )}
           </div>
 
           {/* NJ column */}
@@ -561,15 +586,17 @@ function BriefPreview({
                 } : null,
               ].filter(Boolean)}
             />
-            <ProdBlock
-              label="OPEX MTD"
-              main={moneyForce(njOpex)}
-              sub={[
-                data.production.njWastePct != null ? `Waste: ${pct1(data.production.njWastePct)}` : null,
-                `Inv: ${money(njInvP)}`,
-                cogsAvail && njCogs ? `COGS: ${money(njCogs)}` : null,
-              ].filter(Boolean).join(' · ')}
-            />
+            {includeFin && (
+              <ProdBlock
+                label="OPEX MTD"
+                main={moneyForce(njOpex)}
+                sub={[
+                  data.production.njWastePct != null ? `Waste: ${pct1(data.production.njWastePct)}` : null,
+                  `Inv: ${money(njInvP)}`,
+                  cogsAvail && njCogs ? `COGS: ${money(njCogs)}` : null,
+                ].filter(Boolean).join(' · ')}
+              />
+            )}
           </div>
         </div>
       </section>
@@ -623,18 +650,22 @@ function BriefPreview({
               <td className={styles.tdBold}>{moneyForce(bnyInflows)}</td>
               <td className={styles.tdBold}>{moneyForce(combInflows)}</td>
             </tr>
-            <tr>
-              <td className={styles.tdLabel}>OpEx MTD</td>
-              <td>{moneyForce(njOpex)}</td>
-              <td>{moneyForce(bnyOpex)}</td>
-              <td className={styles.tdBold}>{moneyForce(data.financials.opex)}</td>
-            </tr>
-            <tr className={cogsAvail ? '' : styles.pendingRow}>
-              <td className={styles.tdLabel}>COGS MTD</td>
-              <td>{cogsAvail ? money(njCogs) : 'pending'}</td>
-              <td>{cogsAvail ? money(bnyCogs) : 'pending'}</td>
-              <td className={cogsAvail ? styles.tdBold : ''}>{cogsAvail ? money(data.financials.cogsTotal) : 'pending'}</td>
-            </tr>
+            {includeFin && (
+              <tr>
+                <td className={styles.tdLabel}>OpEx MTD</td>
+                <td>{moneyForce(njOpex)}</td>
+                <td>{moneyForce(bnyOpex)}</td>
+                <td className={styles.tdBold}>{moneyForce(data.financials.opex)}</td>
+              </tr>
+            )}
+            {includeFin && (
+              <tr className={cogsAvail ? '' : styles.pendingRow}>
+                <td className={styles.tdLabel}>COGS MTD</td>
+                <td>{cogsAvail ? money(njCogs) : 'pending'}</td>
+                <td>{cogsAvail ? money(bnyCogs) : 'pending'}</td>
+                <td className={cogsAvail ? styles.tdBold : ''}>{cogsAvail ? money(data.financials.cogsTotal) : 'pending'}</td>
+              </tr>
+            )}
             <tr className={styles.subtleRow}>
               <td className={styles.tdLabel}>NJ Waste %</td>
               <td>{pct1(data.production.njWastePct)}</td>
@@ -643,7 +674,7 @@ function BriefPreview({
             </tr>
           </tbody>
         </table>
-        {!cogsAvail && (
+        {includeFin && !cogsAvail && (
           <div className={styles.cogsNote}>
             COGS pending — {data.financials.cogsPendingNote}
           </div>

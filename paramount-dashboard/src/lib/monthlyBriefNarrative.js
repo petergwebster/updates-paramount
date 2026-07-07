@@ -33,7 +33,7 @@ import { format } from 'date-fns'
 // ---------------------------------------------------------------------------
 
 function formatBriefContext(data) {
-  const { pacing, targets, production: p, financials: f, ap, ar, cash, people, wip } = data
+  const { pacing, targets, production: p, financials: f, ap, ar, cash, people, wip, includeFinancials } = data
   const lines = []
 
   // Header
@@ -115,22 +115,29 @@ function formatBriefContext(data) {
     lines.push('')
   }
 
-  // Financials — operating cost story
-  lines.push('## Cost / financial picture')
-  lines.push(`OpEx total: ${money(f.opex)}  ·  by unit:  NJ ${money(f.byUnit?.nj?.opex)}  ·  BNY ${money(f.byUnit?.bny?.opex)}  ·  Shared ${money(f.byUnit?.shared?.opex)}`)
-  lines.push(`Inventory purchases total: ${money(f.invPurchases)}  ·  NJ ${money(f.byUnit?.nj?.invPurchases)}  ·  BNY ${money(f.byUnit?.bny?.invPurchases)}  ·  Shared ${money(f.byUnit?.shared?.invPurchases)}`)
-  if (f.cogsAvailable) {
-    lines.push(`COGS total: ${money(f.cogsTotal)} (Material ${money(f.cogsMaterial)}, Labor ${money(f.cogsLabor)}, Other ${money(f.cogsOther)})`)
-  } else {
-    lines.push(`COGS: PENDING — ${f.cogsPendingNote}`)
-  }
-  lines.push('')
+  // Financials — operating cost story (omitted when the brief is run
+  // production-only, i.e. includeFinancials is false)
+  if (includeFinancials) {
+    lines.push('## Cost / financial picture')
+    lines.push(`OpEx total: ${money(f.opex)}  ·  by unit:  NJ ${money(f.byUnit?.nj?.opex)}  ·  BNY ${money(f.byUnit?.bny?.opex)}  ·  Shared ${money(f.byUnit?.shared?.opex)}`)
+    lines.push(`Inventory purchases total: ${money(f.invPurchases)}  ·  NJ ${money(f.byUnit?.nj?.invPurchases)}  ·  BNY ${money(f.byUnit?.bny?.invPurchases)}  ·  Shared ${money(f.byUnit?.shared?.invPurchases)}`)
+    if (f.cogsAvailable) {
+      lines.push(`COGS total: ${money(f.cogsTotal)} (Material ${money(f.cogsMaterial)}, Labor ${money(f.cogsLabor)}, Other ${money(f.cogsOther)})`)
+    } else {
+      lines.push(`COGS: PENDING — ${f.cogsPendingNote}`)
+    }
+    lines.push('')
 
-  if (ap || ar || cash) {
-    lines.push('## Working capital')
-    if (ap) lines.push(`AP (${ap.period}): ${money(ap.total)} total · ${money(ap.pastDue)} past due · ${money(ap.current)} current`)
-    if (ar) lines.push(`AR (${ar.period}): ${money(ar.totalOutstanding)} outstanding · ${money(ar.aging91Plus)} over 90 days`)
-    if (cash && cash.total != null) lines.push(`Cash (${cash.period}): ${money(cash.total)}`)
+    if (ap || ar || cash) {
+      lines.push('## Working capital')
+      if (ap) lines.push(`AP (${ap.period}): ${money(ap.total)} total · ${money(ap.pastDue)} past due · ${money(ap.current)} current`)
+      if (ar) lines.push(`AR (${ar.period}): ${money(ar.totalOutstanding)} outstanding · ${money(ar.aging91Plus)} over 90 days`)
+      if (cash && cash.total != null) lines.push(`Cash (${cash.period}): ${money(cash.total)}`)
+      lines.push('')
+    }
+  } else {
+    lines.push('## Cost / financial picture')
+    lines.push('EXCLUDED — this brief was run production-only. OpEx, COGS, inventory purchases, and AP/AR/cash are intentionally omitted pending reconciliation. Do not discuss operating costs, margin, or profitability.')
     lines.push('')
   }
 
@@ -173,6 +180,7 @@ export function buildMonthlyBriefPrompt({ data }) {
   const phase = data.pacing.phase
   const monthLabel = data.pacing.monthLabel
   const contextString = formatBriefContext(data)
+  const includeFinancials = data.includeFinancials !== false
 
   // Detect data sufficiency so Claude doesn't fabricate when production is empty
   const hasProduction = data.production.combinedYards > 0
@@ -192,7 +200,14 @@ want a clean retrospective: what landed, what didn't, what it means for the next
 period. Tone: reflective, evidence-based. Verbs are past-tense ("April closed"), \
 with a short forward-look in the closing.`
 
-  const cogsGuidance = data.financials.cogsAvailable
+  const cogsGuidance = !includeFinancials
+    ? `**FINANCIALS ARE EXCLUDED from this brief.** It is being run production-only \
+while the OpEx/COGS reconciliation is still in progress. Do NOT discuss OpEx, COGS, \
+inventory purchases, gross profit, margin, profitability, or AP/AR/cash — that data \
+is deliberately not in this brief. SKIP the cost/financial paragraph entirely; write \
+only about production, revenue, invoiced yards, people, and WIP. Do not flag the \
+absence as a data gap — it is an intentional scope choice.`
+    : data.financials.cogsAvailable
     ? `COGS is available — discuss it directly. Reference gross profit and margin \
 where relevant.`
     : `**COGS is NOT available yet.** Finance does not release COGS until after \
@@ -213,7 +228,7 @@ entries before the next read.`)
     completenessNotes.push(`REVENUE IS ZERO despite production showing yards. The invoiced-yards / income-by-bucket \
 fields weren't filled in. Note this as a data-entry gap, not as an actual zero-revenue month.`)
   }
-  if (!hasFinancials) {
+  if (includeFinancials && !hasFinancials) {
     completenessNotes.push(`FINANCIALS APPEAR EMPTY for this month. The GP report may not be uploaded yet. \
 Note this gap rather than treating zero OpEx as truth.`)
   }
