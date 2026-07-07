@@ -7,7 +7,7 @@ import {
   PASSAIC_OPERATORS, BNY_OPERATORS_ALL,
 
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
-import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards } from '../lib/dailyOps'
+import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards, loadWeekDailyOpNotes, insertDailyOpNote, updateDailyOpNote, deleteDailyOpNote, NOTE_CATEGORIES } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
@@ -70,6 +70,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
   })
   const [dailyOps, setDailyOps] = useState([])
   const [opLines, setOpLines] = useState([])
+  const [opNotes, setOpNotes] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(false)
   // Tracks which Passaic tables the user has clicked "+ add 2nd shift" on
@@ -133,6 +134,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
       try {
         const ops = await loadWeekDailyOps(site, weekStart)
         const opLineRows = await loadWeekDailyOpLines(site, weekStart)
+        const opNoteRows = await loadWeekDailyOpNotes(site, weekStart)
         const { data: asn } = await supabase
           .from('sched_assignments')
           .select('*')
@@ -141,6 +143,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
         if (cancelled) return
         setDailyOps(ops || [])
         setOpLines(opLineRows || [])
+        setOpNotes(opNoteRows || [])
         setAssignments(asn || [])
       } finally {
         if (!cancelled) setLoading(false)
@@ -306,6 +309,10 @@ export default function LiveOpsTab({ currentUser } = {}) {
   const cellLinesFor = (tableCode, shift) => opLines.filter(l =>
     l.table_code === tableCode && l.day_of_week === dayOfWeek && (l.shift || '1st') === shift)
 
+  // Saved categorized notes for a cell — same day-specific keying.
+  const cellNotesFor = (tableCode, shift) => opNotes.filter(n =>
+    n.table_code === tableCode && n.day_of_week === dayOfWeek && (n.shift || '1st') === shift)
+
   return (
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
@@ -432,6 +439,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   cellAssignments={firstCell?.cellAssignments || []}
                   seedAssignments={firstCell?.seedAssignments || []}
                   cellLines={cellLinesFor(t.code, '1st')}
+                  cellNotes={cellNotesFor(t.code, '1st')}
                   weekStart={weekStart}
                   dayOfWeek={dayOfWeek}
                   canEnterActuals={true}
@@ -450,6 +458,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                     cellAssignments={secondCell?.cellAssignments || []}
                     seedAssignments={secondCell?.seedAssignments || []}
                     cellLines={cellLinesFor(t.code, '2nd')}
+                    cellNotes={cellNotesFor(t.code, '2nd')}
                     weekStart={weekStart}
                     dayOfWeek={dayOfWeek}
                     canEnterActuals={true}
@@ -497,11 +506,13 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], cellNotes = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
   // Cell-level fields — crew + notes stay per table/day/shift.
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
-  const [notes, setNotes]   = useState(op?.notes ?? '')
+  // Categorized notes (child table). Each: { _key, id|null, category, note_text }.
+  const [noteRows, setNoteRows] = useState([])
+  const [deletedNoteIds, setDeletedNoteIds] = useState([])
   // Note delegation v1 (Wendy 4/2026): assign a note to one of four roles.
   const [assignedTo, setAssignedTo] = useState(op?.note_assigned_to ?? '')
   const [noteStatus, setNoteStatus] = useState(op?.note_status ?? null)
@@ -516,6 +527,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   const [lines, setLines] = useState([])
   const [deletedIds, setDeletedIds] = useState([])
   const keyRef = useRef(0)
+  const noteKeyRef = useRef(0)
 
   const isSecondShift = shift === '2nd'
 
@@ -524,6 +536,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   // wipe in-progress typing).
   const linesSig = cellLines.map(l => l.id).join(',')
   const seedSig = seedAssignments.map(a => a.id).join(',')
+  const notesSig = cellNotes.map(n => n.id).join(',')
 
   useEffect(() => {
     const mk = (o) => ({ _key: `l${keyRef.current++}`, ...o })
@@ -560,13 +573,24 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     setDeletedIds([])
     setOp1(op?.operator_1 ?? '')
     setOp2(op?.operator_2 ?? '')
-    setNotes(op?.notes ?? '')
+    // Seed categorized notes from the child table for this cell; fall back to
+    // the legacy header note as one 'Other' note so nothing's hidden.
+    const nmk = (o) => ({ _key: `n${noteKeyRef.current++}`, ...o })
+    if (cellNotes.length > 0) {
+      setNoteRows(cellNotes.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
+        .map(n => nmk({ id: n.id, category: n.category || 'Other', note_text: n.note_text || '' })))
+    } else if (op?.notes && op.notes.trim()) {
+      setNoteRows([nmk({ id: null, category: 'Other', note_text: op.notes.trim() })])
+    } else {
+      setNoteRows([])
+    }
+    setDeletedNoteIds([])
     setAssignedTo(op?.note_assigned_to ?? '')
     setNoteStatus(op?.note_status ?? null)
     setNotesModalOpen(false)
     setSavedAt(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.id, dayOfWeek, shift, table.code, linesSig, seedSig])
+  }, [op?.id, dayOfWeek, shift, table.code, linesSig, seedSig, notesSig])
 
   function updateLine(key, patch) {
     setLines(prev => prev.map(l => l._key === key ? { ...l, ...patch } : l))
@@ -592,6 +616,26 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       return prev.filter(l => l._key !== key)
     })
   }
+
+  function addNote() {
+    setNoteRows(prev => [...prev, { _key: `n${noteKeyRef.current++}`, id: null, category: 'Other', note_text: '' }])
+  }
+  function updateNote(key, patch) {
+    setNoteRows(prev => prev.map(n => n._key === key ? { ...n, ...patch } : n))
+  }
+  function removeNote(key) {
+    setNoteRows(prev => {
+      const row = prev.find(n => n._key === key)
+      if (row?.id) setDeletedNoteIds(d => [...d, row.id])
+      return prev.filter(n => n._key !== key)
+    })
+  }
+  // Denormalized header mirror: "[Category] text" per note, newline-joined, so
+  // legacy readers (Heartbeat, AI recent-actuals) still show something useful.
+  const notesText = noteRows
+    .filter(n => (n.note_text || '').trim())
+    .map(n => `[${n.category}] ${n.note_text.trim()}`)
+    .join('\n')
 
   const num = (v) => (v === '' || v == null ? null : Number(v))
   const isBlankLine = (l) => num(l.actual_yards) == null && num(l.waste_yards) == null && !l.po_number && !l.line_description
@@ -630,18 +674,37 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       setLines(nextLines)
       setDeletedIds([])
 
+      // 1b) Persist categorized notes (insert new, update existing, delete
+      //     removed). Skip rows with no text.
+      const noteCellKey = { site, week_start: isoDate(weekStart), table_code: table.code, day_of_week: dayOfWeek, shift }
+      const nextNotes = [...noteRows]
+      for (let i = 0; i < nextNotes.length; i++) {
+        const n = nextNotes[i]
+        if (!(n.note_text || '').trim()) continue
+        const payload = { ...noteCellKey, category: n.category || 'Other', note_text: n.note_text.trim(), recorded_by: currentUser || null }
+        if (n.id) {
+          await updateDailyOpNote(n.id, payload)
+        } else {
+          const saved = await insertDailyOpNote(payload)
+          nextNotes[i] = { ...n, id: saved.id }
+        }
+      }
+      for (const id of deletedNoteIds) await deleteDailyOpNote(id)
+      setNoteRows(nextNotes)
+      setDeletedNoteIds([])
+
       // 2) Roll lines up into the header + save crew/notes. Writing the header
       //    actual_yards / waste_yards here keeps Heartbeat, the KPI strip,
       //    scorecards, and Claude's reader correct.
       let nextStatus = noteStatus
-      if (assignedTo && notes) { if (nextStatus !== 'resolved') nextStatus = 'open' }
+      if (assignedTo && notesText) { if (nextStatus !== 'resolved') nextStatus = 'open' }
       else nextStatus = null
       const patch = {
         operator_1: op1 || null,
         operator_2: op2 || null,
         actual_yards: anyActual ? rolledActual : null,
         waste_yards: anyWaste ? rolledWaste : null,
-        notes: notes || null,
+        notes: notesText || null,
         note_assigned_to: assignedTo || null,
         note_status: nextStatus,
       }
@@ -660,7 +723,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
             site,
             tableLabel: table.label || table.code,
             dateLabel: op?.date_label || '',
-            noteText: notes,
+            noteText: notesText,
           }),
         }).catch(() => {})
       }
@@ -769,16 +832,19 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         </select>
       </div>
 
-      {/* Notes — pop-out editor. The button shows a preview when populated;
-          clicking opens a full-size modal. The note is staged on this row's
-          local state and saves with the row's main Save button (consistent
-          with how operators / yards already work — one save path). */}
+      {/* Notes — categorized pop-out editor. Button shows a count + the
+          categories present; clicking opens the full editor. Notes stage on
+          this row's local state and save with the row's main Save button. */}
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</label>
-        {notes ? (
-          <button onClick={() => setNotesModalOpen(true)} title={notes}
+        {noteRows.some(n => (n.note_text || '').trim()) ? (
+          <button onClick={() => setNotesModalOpen(true)} title={notesText}
             style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.ink, background: C.warm, cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'inherit', display: 'block' }}>
-            ✏️ {notes.split('\n')[0]}
+            ✏️ {(() => {
+              const filled = noteRows.filter(n => (n.note_text || '').trim())
+              const cats = [...new Set(filled.map(n => n.category))]
+              return `${filled.length} note${filled.length > 1 ? 's' : ''} · ${cats.slice(0, 2).join(', ')}${cats.length > 2 ? '…' : ''}`
+            })()}
             {assignedTo && (
               <span style={{ marginLeft: 6, fontSize: 9, padding: '0 4px', borderRadius: 2, fontWeight: 700, letterSpacing: '0.04em',
                 background: noteStatus === 'resolved' ? C.sageBg : C.goldBg,
@@ -789,7 +855,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
             )}
           </button>
         ) : (
-          <button onClick={() => setNotesModalOpen(true)}
+          <button onClick={() => { if (noteRows.length === 0) addNote(); setNotesModalOpen(true) }}
             style={{ width: '100%', padding: '6px 8px', border: `1px dashed ${C.border}`, borderRadius: 4, fontSize: 11, color: C.inkLight, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'block' }}>
             + Add note
           </button>
@@ -881,9 +947,34 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
               )}
             </div>
             <div style={{ padding: 18 }}>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} autoFocus
-                rows={9} placeholder="Type here…"
-                style={{ width: '100%', padding: '10px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 180, lineHeight: 1.5 }} />
+              {/* Categorized notes — one row each: category + narrative. Add as
+                  many as needed; the weekly rollup ranks by category. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {noteRows.length === 0 && (
+                  <div style={{ fontSize: 12, color: C.inkLight, fontStyle: 'italic' }}>No notes yet — add one below.</div>
+                )}
+                {noteRows.map((n, idx) => (
+                  <div key={n._key} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, background: C.warm }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <select value={n.category} onChange={e => updateNote(n._key, { category: e.target.value })}
+                        style={{ padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#fff', color: C.ink, cursor: 'pointer' }}>
+                        {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <div style={{ flex: 1 }} />
+                      <button onClick={() => removeNote(n._key)} title="Remove note"
+                        style={{ background: 'transparent', border: 'none', color: C.inkLight, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                    </div>
+                    <textarea value={n.note_text} onChange={e => updateNote(n._key, { note_text: e.target.value })}
+                      autoFocus={idx === noteRows.length - 1}
+                      rows={3} placeholder="What happened — waste cause, setup issue, interruption…"
+                      style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 64, lineHeight: 1.5, background: '#fff' }} />
+                  </div>
+                ))}
+                <button onClick={addNote}
+                  style={{ alignSelf: 'flex-start', padding: '5px 12px', fontSize: 11, fontWeight: 600, color: C.navy, background: 'transparent', border: `1px dashed ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>
+                  + Add note
+                </button>
+              </div>
 
               {/* Assignee + status row */}
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
