@@ -2,8 +2,8 @@
 // WeeklyProductionSummary.jsx — Admin > Intelligence section. Claude reads the
 // week's Scheduler + Live Ops data and writes a production commentary. Mirrors
 // the Monthly Briefs generate → edit → save/lock → history pattern.
-// Priority order (Peter's): DATA INTEGRITY first, then production vs plan by
-// table/machine, then waste (where + why), then lost capacity.
+// Priority order (Peter's): DATA INTEGRITY first, then per-SITE sections
+// (units then operators), then waste (where + why), then lost capacity.
 // ============================================================================
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -220,7 +220,7 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
         </div>
 
         {/* Editable narrative */}
-        <div style={{ marginBottom: 22 }}>
+        <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', marginBottom: 6 }}>PRODUCTION COMMENTARY</div>
           <div style={{ height: 2, width: 40, background: C.navy, marginBottom: 10 }} />
           <textarea value={narrative} onChange={e => onNarrative(e.target.value)} spellCheck
@@ -229,31 +229,35 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
           <div style={{ fontSize: 11, color: C.inkLight, marginTop: 6 }}>Edit freely — Save &amp; Lock stores this version with a timestamp for the week.</div>
         </div>
 
-        {/* Scorecard */}
-        <SectionLabel>TABLE / MACHINE SCORECARD · worst attainment first</SectionLabel>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 22 }}>
-          <thead>
-            <tr style={{ color: C.inkLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              <th style={thL}>Unit</th><th style={thL}>Site</th><th style={thL}>Product</th>
-              <th style={thR}>Actual</th><th style={thR}>Planned</th><th style={thR}>Attain.</th><th style={thL}>Not rec.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.units.filter(u => u.plannedYards > 0 || u.actualYards > 0)
-              .sort((a, b) => (a.attainmentPct ?? 9999) - (b.attainmentPct ?? 9999))
-              .map((u, i) => (
-                <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
-                  <td style={{ ...tdL, fontWeight: 600 }}>{u.unitCode}</td>
-                  <td style={tdL}>{siteShort(u.site)}</td>
-                  <td style={tdL}>{u.product}</td>
-                  <td style={tdR}>{fmt(u.actualYards)}</td>
-                  <td style={tdR}>{u.plannedYards > 0 ? fmt(u.plannedYards) : '—'}</td>
-                  <td style={{ ...tdR, color: attColor(u.attainmentPct), fontWeight: 600 }}>{u.plannedYards > 0 ? pct(u.attainmentPct) : 'no plan'}</td>
-                  <td style={{ ...tdL, color: C.red }}>{u.missingDays.join('/') || '—'}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        {/* ── Per-site sections: units then operators ── */}
+        {['passaic', 'bny'].map(site => {
+          const siteUnits = data.units
+            .filter(u => u.site === site && (u.plannedYards > 0 || u.actualYards > 0))
+            .sort((a, b) => (a.attainmentPct ?? 9999) - (b.attainmentPct ?? 9999))
+          const siteOps = (data.operators || []).filter(o => o.site === site)
+          if (siteUnits.length === 0 && siteOps.length === 0) return null
+          const isBny = site === 'bny'
+          return (
+            <div key={site} style={{ marginBottom: 26 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.navy, marginBottom: 12, paddingBottom: 6, borderBottom: `2px solid ${C.navy}` }}>
+                {isBny ? 'BNY · DIGITAL MACHINES' : 'PASSAIC · HAND-SCREEN TABLES'}
+              </div>
+
+              <SubLabel>{isBny ? 'Machines' : 'Tables'} · worst attainment first</SubLabel>
+              <UnitScorecard units={siteUnits} unitHeader={isBny ? 'Machine' : 'Table'} />
+
+              <div style={{ marginTop: 16 }}>
+                <SubLabel>Operators</SubLabel>
+                <OperatorScorecard operators={siteOps} />
+              </div>
+            </div>
+          )
+        })}
+        <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic', lineHeight: 1.5, marginTop: -10, marginBottom: 24 }}>
+          Operator yards and waste credit BOTH operators on a table — not split — so a total reflects tables worked,
+          not solo output. “Recorded” shows closed-out vs planned cells; a low producer with a low recorded count is
+          likely a data-entry gap, not a performance issue.
+        </div>
 
         {/* Waste + notes */}
         <SectionLabel>WASTE — WHERE &amp; WHY</SectionLabel>
@@ -294,40 +298,62 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
             </div>
           </>
         )}
-
-        {/* Operator scorecard */}
-        {data.operators && data.operators.length > 0 && (
-          <div style={{ marginTop: 22 }}>
-            <SectionLabel>OPERATOR SCORECARD · both operators credited per table (not split)</SectionLabel>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 8 }}>
-              <thead>
-                <tr style={{ color: C.inkLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th style={thL}>Operator</th><th style={thL}>Site</th>
-                  <th style={thR}>Produced</th><th style={thR}>Waste</th><th style={thR}>Waste %</th>
-                  <th style={thR}>Attain.</th><th style={thR}>Recorded</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.operators.map((o, i) => (
-                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td style={{ ...tdL, fontWeight: 600 }}>{o.name}</td>
-                    <td style={tdL}>{siteShort(o.site)}</td>
-                    <td style={tdR}>{fmt(o.actualYards)}</td>
-                    <td style={tdR}>{fmt(o.wasteYards)}</td>
-                    <td style={{ ...tdR, color: (o.wastePct != null && o.wastePct > 8) ? C.red : C.ink }}>{pct1(o.wastePct)}</td>
-                    <td style={{ ...tdR, color: attColor(o.attainmentPct), fontWeight: 600 }}>{o.plannedYards > 0 ? pct(o.attainmentPct) : 'no plan'}</td>
-                    <td style={{ ...tdR, color: (o.coveragePct != null && o.coveragePct < 100) ? C.amber : C.inkMid }}>{o.plannedCells > 0 ? `${o.recordedCells}/${o.plannedCells}` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic', lineHeight: 1.5 }}>
-              Yards and waste credit BOTH operators on a table — not split — so a total reflects tables worked, not solo output. “Recorded” shows closed-out vs planned cells; a low producer with a low recorded count is likely a data-entry gap, not a performance issue.
-            </div>
-          </div>
-        )}
       </div>
     </div>
+  )
+}
+
+// ── Scorecard sub-components ─────────────────────────────────────────────────
+function UnitScorecard({ units, unitHeader }) {
+  if (!units.length) return <div style={{ fontSize: 13, color: C.inkLight, fontStyle: 'italic' }}>Nothing recorded.</div>
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <thead>
+        <tr style={{ color: C.inkLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <th style={thL}>{unitHeader}</th><th style={thL}>Product</th>
+          <th style={thR}>Actual</th><th style={thR}>Planned</th><th style={thR}>Attain.</th><th style={thL}>Not rec.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {units.map((u, i) => (
+          <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+            <td style={{ ...tdL, fontWeight: 600 }}>{u.unitCode}</td>
+            <td style={tdL}>{u.product}</td>
+            <td style={tdR}>{fmt(u.actualYards)}</td>
+            <td style={tdR}>{u.plannedYards > 0 ? fmt(u.plannedYards) : '—'}</td>
+            <td style={{ ...tdR, color: attColor(u.attainmentPct), fontWeight: 600 }}>{u.plannedYards > 0 ? pct(u.attainmentPct) : 'no plan'}</td>
+            <td style={{ ...tdL, color: C.red }}>{u.missingDays.join('/') || '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function OperatorScorecard({ operators }) {
+  if (!operators.length) return <div style={{ fontSize: 13, color: C.inkLight, fontStyle: 'italic' }}>No operators recorded.</div>
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <thead>
+        <tr style={{ color: C.inkLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <th style={thL}>Operator</th>
+          <th style={thR}>Produced</th><th style={thR}>Waste</th><th style={thR}>Waste %</th>
+          <th style={thR}>Attain.</th><th style={thR}>Recorded</th>
+        </tr>
+      </thead>
+      <tbody>
+        {operators.map((o, i) => (
+          <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+            <td style={{ ...tdL, fontWeight: 600 }}>{o.name}</td>
+            <td style={tdR}>{fmt(o.actualYards)}</td>
+            <td style={tdR}>{fmt(o.wasteYards)}</td>
+            <td style={{ ...tdR, color: (o.wastePct != null && o.wastePct > 8) ? C.red : C.ink }}>{pct1(o.wastePct)}</td>
+            <td style={{ ...tdR, color: attColor(o.attainmentPct), fontWeight: 600 }}>{o.plannedYards > 0 ? pct(o.attainmentPct) : 'no plan'}</td>
+            <td style={{ ...tdR, color: (o.coveragePct != null && o.coveragePct < 100) ? C.amber : C.inkMid }}>{o.plannedCells > 0 ? `${o.recordedCells}/${o.plannedCells}` : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -382,6 +408,10 @@ function SectionLabel({ children }) {
       {children}
     </div>
   )
+}
+
+function SubLabel({ children }) {
+  return <div style={{ fontSize: 11, fontWeight: 700, color: C.inkLight, letterSpacing: '0.05em', marginBottom: 6, textTransform: 'uppercase' }}>{children}</div>
 }
 
 const thL = { padding: '6px 8px', textAlign: 'left', fontWeight: 700 }
