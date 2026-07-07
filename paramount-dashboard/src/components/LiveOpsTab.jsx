@@ -516,7 +516,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   // Note delegation v1 (Wendy 4/2026): assign a note to one of four roles.
   const [assignedTo, setAssignedTo] = useState(op?.note_assigned_to ?? '')
   const [noteStatus, setNoteStatus] = useState(op?.note_status ?? null)
-  const [notesModalOpen, setNotesModalOpen] = useState(false)
+  const [notesScope, setNotesScope] = useState(null)  // null=closed | { key, label, po_number, item_sku, color, line_description }
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
 
@@ -578,16 +578,17 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     const nmk = (o) => ({ _key: `n${noteKeyRef.current++}`, ...o })
     if (cellNotes.length > 0) {
       setNoteRows(cellNotes.slice().sort((a, b) => (a.id || 0) - (b.id || 0))
-        .map(n => nmk({ id: n.id, category: n.category || 'Other', note_text: n.note_text || '' })))
+        .map(n => nmk({ id: n.id, category: n.category || 'Other', note_text: n.note_text || '',
+          po_number: n.po_number || null, item_sku: n.item_sku || null, color: n.color || null, line_description: n.line_description || null })))
     } else if (op?.notes && op.notes.trim()) {
-      setNoteRows([nmk({ id: null, category: 'Other', note_text: op.notes.trim() })])
+      setNoteRows([nmk({ id: null, category: 'Other', note_text: op.notes.trim(), po_number: null, item_sku: null, color: null, line_description: null })])
     } else {
       setNoteRows([])
     }
     setDeletedNoteIds([])
     setAssignedTo(op?.note_assigned_to ?? '')
     setNoteStatus(op?.note_status ?? null)
-    setNotesModalOpen(false)
+    setNotesScope(null)
     setSavedAt(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op?.id, dayOfWeek, shift, table.code, linesSig, seedSig, notesSig])
@@ -617,8 +618,17 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     })
   }
 
+  // A note is scoped to a PO line (po_number set) or is a table-general note
+  // (po_number null). The key aligns with the line signature used elsewhere.
+  const noteScopeKey = (n) => (n.po_number ? `${n.po_number}|${n.item_sku || ''}|${n.color || ''}` : '__general')
+  const notesInScope = notesScope ? noteRows.filter(n => noteScopeKey(n) === notesScope.key) : []
+
   function addNote() {
-    setNoteRows(prev => [...prev, { _key: `n${noteKeyRef.current++}`, id: null, category: 'Other', note_text: '' }])
+    const s = notesScope || {}
+    setNoteRows(prev => [...prev, {
+      _key: `n${noteKeyRef.current++}`, id: null, category: 'Other', note_text: '',
+      po_number: s.po_number || null, item_sku: s.item_sku || null, color: s.color || null, line_description: s.line_description || null,
+    }])
   }
   function updateNote(key, patch) {
     setNoteRows(prev => prev.map(n => n._key === key ? { ...n, ...patch } : n))
@@ -634,7 +644,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   // legacy readers (Heartbeat, AI recent-actuals) still show something useful.
   const notesText = noteRows
     .filter(n => (n.note_text || '').trim())
-    .map(n => `[${n.category}] ${n.note_text.trim()}`)
+    .map(n => `${n.po_number ? `[${n.category} · ${n.po_number}]` : `[${n.category}]`} ${n.note_text.trim()}`)
     .join('\n')
 
   const num = (v) => (v === '' || v == null ? null : Number(v))
@@ -681,7 +691,8 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       for (let i = 0; i < nextNotes.length; i++) {
         const n = nextNotes[i]
         if (!(n.note_text || '').trim()) continue
-        const payload = { ...noteCellKey, category: n.category || 'Other', note_text: n.note_text.trim(), recorded_by: currentUser || null }
+        const payload = { ...noteCellKey, category: n.category || 'Other', note_text: n.note_text.trim(), recorded_by: currentUser || null,
+          po_number: n.po_number || null, item_sku: n.item_sku || null, color: n.color || null, line_description: n.line_description || null }
         if (n.id) {
           await updateDailyOpNote(n.id, payload)
         } else {
@@ -759,8 +770,8 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   // Passaic lines get a read-only color-yards column (yards × the PO's planned
   // cy/yd ratio). BNY is digital — no color-yards — so its line grid stays 4-col.
   const lineGridCols = site === 'passaic'
-    ? 'minmax(200px, 1fr) 90px 90px 72px 28px'
-    : 'minmax(220px, 1fr) 100px 100px 28px'
+    ? 'minmax(180px, 1fr) 78px 78px 58px 46px 28px'
+    : 'minmax(200px, 1fr) 90px 90px 46px 28px'
 
   return (
     <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '150px minmax(120px, 1fr) 120px 130px 130px 110px 80px', gap: 12, alignItems: 'start' }}>
@@ -832,34 +843,33 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         </select>
       </div>
 
-      {/* Notes — categorized pop-out editor. Button shows a count + the
-          categories present; clicking opens the full editor. Notes stage on
-          this row's local state and save with the row's main Save button. */}
+      {/* Table-general notes — non-PO stuff (crew change, table-wide setup).
+          PO-specific notes live on each PO line below. */}
       <div>
-        <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes</label>
-        {noteRows.some(n => (n.note_text || '').trim()) ? (
-          <button onClick={() => setNotesModalOpen(true)} title={notesText}
-            style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.ink, background: C.warm, cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'inherit', display: 'block' }}>
-            ✏️ {(() => {
-              const filled = noteRows.filter(n => (n.note_text || '').trim())
-              const cats = [...new Set(filled.map(n => n.category))]
-              return `${filled.length} note${filled.length > 1 ? 's' : ''} · ${cats.slice(0, 2).join(', ')}${cats.length > 2 ? '…' : ''}`
-            })()}
-            {assignedTo && (
-              <span style={{ marginLeft: 6, fontSize: 9, padding: '0 4px', borderRadius: 2, fontWeight: 700, letterSpacing: '0.04em',
-                background: noteStatus === 'resolved' ? C.sageBg : C.goldBg,
-                color: noteStatus === 'resolved' ? C.sage : C.gold,
-              }}>
-                {noteStatus === 'resolved' ? '✓' : '→'} {assignedTo.split(' ').map(w => w[0]).join('')}
-              </span>
-            )}
-          </button>
-        ) : (
-          <button onClick={() => { if (noteRows.length === 0) addNote(); setNotesModalOpen(true) }}
-            style={{ width: '100%', padding: '6px 8px', border: `1px dashed ${C.border}`, borderRadius: 4, fontSize: 11, color: C.inkLight, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'block' }}>
-            + Add note
-          </button>
-        )}
+        <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Table notes</label>
+        {(() => {
+          const generalNotes = noteRows.filter(n => !n.po_number && (n.note_text || '').trim())
+          const openGeneral = () => setNotesScope({ key: '__general', label: 'Table / general', po_number: null, item_sku: null, color: null, line_description: null })
+          return generalNotes.length > 0 ? (
+            <button onClick={openGeneral} title={generalNotes.map(n => `[${n.category}] ${n.note_text}`).join('\n')}
+              style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, color: C.ink, background: C.warm, cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'inherit', display: 'block' }}>
+              ✏️ {`${generalNotes.length} note${generalNotes.length > 1 ? 's' : ''} · ${[...new Set(generalNotes.map(n => n.category))].slice(0, 2).join(', ')}`}
+              {assignedTo && (
+                <span style={{ marginLeft: 6, fontSize: 9, padding: '0 4px', borderRadius: 2, fontWeight: 700, letterSpacing: '0.04em',
+                  background: noteStatus === 'resolved' ? C.sageBg : C.goldBg,
+                  color: noteStatus === 'resolved' ? C.sage : C.gold,
+                }}>
+                  {noteStatus === 'resolved' ? '✓' : '→'} {assignedTo.split(' ').map(w => w[0]).join('')}
+                </span>
+              )}
+            </button>
+          ) : (
+            <button onClick={openGeneral}
+              style={{ width: '100%', padding: '6px 8px', border: `1px dashed ${C.border}`, borderRadius: 4, fontSize: 11, color: C.inkLight, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'block' }}>
+              + Table note
+            </button>
+          )
+        })()}
       </div>
 
       {/* Save */}
@@ -881,6 +891,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           <span style={{ textAlign: 'right' }}>Actual yds</span>
           <span style={{ textAlign: 'right' }}>Waste</span>
           {site === 'passaic' && <span style={{ textAlign: 'right' }}>Color-yds</span>}
+          <span style={{ textAlign: 'center' }}>Note</span>
           <span />
         </div>
         {lines.map(l => {
@@ -911,6 +922,19 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                 {lineCY != null ? fmt(lineCY) : '—'}
               </div>
             )}
+            {(() => {
+              if (!l.po_number) return <span style={{ fontSize: 10, color: C.inkLight, textAlign: 'center' }}>—</span>
+              const lk = lineKeyOf(l)
+              const cnt = noteRows.filter(n => noteScopeKey(n) === lk && (n.note_text || '').trim()).length
+              return (
+                <button
+                  onClick={() => setNotesScope({ key: lk, label: l.line_description || l.po_number, po_number: l.po_number, item_sku: l.item_sku || null, color: l.color || null, line_description: l.line_description || null })}
+                  title={cnt ? `${cnt} note${cnt > 1 ? 's' : ''} on this PO` : 'Add a note for this PO'}
+                  style={{ padding: '3px 4px', border: `1px ${cnt ? 'solid' : 'dashed'} ${C.border}`, borderRadius: 4, fontSize: 10, color: cnt ? C.ink : C.inkLight, background: cnt ? C.warm : 'transparent', cursor: 'pointer', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                  {cnt ? `📝 ${cnt}` : '📝 +'}
+                </button>
+              )
+            })()}
             <button onClick={() => removeLine(l._key)} title="Remove line"
               style={{ background: 'transparent', border: 'none', color: C.inkLight, fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>×</button>
           </div>
@@ -926,15 +950,19 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           hatch). The "Save & close" button persists the entire row, then
           closes — which means the modal alone is sufficient to commit notes
           without needing the row's main Save button. */}
-      {notesModalOpen && (
-        <div onClick={(e) => e.target === e.currentTarget && setNotesModalOpen(false)}
+      {notesScope && (
+        <div onClick={(e) => e.target === e.currentTarget && setNotesScope(null)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Notes · {table.label || table.code}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+                  Notes · {(table.label || table.code)}{notesScope.key !== '__general' ? ` — ${notesScope.label}` : ''}
+                </div>
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
-                  Registration issues, color mix problems, crew changes — anything worth remembering.
+                  {notesScope.key === '__general'
+                    ? 'Table-wide notes — crew changes, setup, anything not tied to one PO.'
+                    : `Notes for this PO${notesScope.po_number ? ` · ${notesScope.po_number}` : ''}.`}
                 </div>
               </div>
               {assignedTo && noteStatus && (
@@ -950,10 +978,10 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
               {/* Categorized notes — one row each: category + narrative. Add as
                   many as needed; the weekly rollup ranks by category. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {noteRows.length === 0 && (
+                {notesInScope.length === 0 && (
                   <div style={{ fontSize: 12, color: C.inkLight, fontStyle: 'italic' }}>No notes yet — add one below.</div>
                 )}
-                {noteRows.map((n, idx) => (
+                {notesInScope.map((n, idx) => (
                   <div key={n._key} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, background: C.warm }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <select value={n.category} onChange={e => updateNote(n._key, { category: e.target.value })}
@@ -965,7 +993,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                         style={{ background: 'transparent', border: 'none', color: C.inkLight, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>×</button>
                     </div>
                     <textarea value={n.note_text} onChange={e => updateNote(n._key, { note_text: e.target.value })}
-                      autoFocus={idx === noteRows.length - 1}
+                      autoFocus={idx === notesInScope.length - 1}
                       rows={3} placeholder="What happened — waste cause, setup issue, interruption…"
                       style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 64, lineHeight: 1.5, background: '#fff' }} />
                   </div>
@@ -1016,11 +1044,11 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   {saving ? 'Saving…' : 'Save & close commits this row to the database.'}
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setNotesModalOpen(false)} disabled={saving}
+                  <button onClick={() => setNotesScope(null)} disabled={saving}
                     style={{ padding: '8px 14px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
                     Cancel
                   </button>
-                  <button onClick={async () => { await handleSave(); setNotesModalOpen(false) }} disabled={saving}
+                  <button onClick={async () => { await handleSave(); setNotesScope(null) }} disabled={saving}
                     style={{ padding: '8px 18px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
                     {saving ? 'Saving…' : 'Save & close'}
                   </button>
