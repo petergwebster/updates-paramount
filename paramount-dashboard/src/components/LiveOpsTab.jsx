@@ -388,7 +388,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
             ACTUAL    = sum of Live Ops actuals for this week
           Shows yards always; color-yards on the Passaic site only (digital
           is single-pass — color-yards is meaningless for BNY).               */}
-      {!loading && <KpiStrip site={site} weekStart={weekStart} dailyOps={dailyOps} assignments={assignments} />}
+      {!loading && <KpiStrip site={site} weekStart={weekStart} dailyOps={dailyOps} opLines={opLines} assignments={assignments} />}
 
       {/* No-plan-data warning — only if neither explicit targets nor PO assignments exist */}
       {!loading && !dailyOps.some(r => r.planned_yards != null) && assignments.length === 0 && (
@@ -1054,7 +1054,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
    yards is meaningless for BNY). All cards size equally.
    ═════════════════════════════════════════════════════════════════════════ */
 
-function KpiStrip({ site, weekStart, dailyOps, assignments }) {
+function KpiStrip({ site, weekStart, dailyOps, opLines = [], assignments }) {
   const showCY = site === 'passaic'
 
   // Site-level totals from canonical budgets.js
@@ -1074,28 +1074,28 @@ function KpiStrip({ site, weekStart, dailyOps, assignments }) {
   const actualYards = dailyOps
     .filter(o => o.site === site)
     .reduce((s, o) => s + Number(o.actual_yards || 0), 0)
+  // Actual color-yards — sum the per-PO line color-yards (yards × the PO's
+  // planned cy/yd ratio). Passaic POs are assigned table-wide (not day-pinned),
+  // so we match each line to its table assignment by PO/SKU/color — the same
+  // match the per-line Color-yds column uses, so the headline ties to the lines
+  // exactly. Replaces the old header-vs-day-pinned derivation that fell back to
+  // zero for Passaic (POs aren't pinned to a weekday).
   let actualColorYards = null
   if (showCY) {
     actualColorYards = 0
-    for (const o of dailyOps) {
-      if (o.site !== site) continue
-      const yd = Number(o.actual_yards || 0)
+    for (const l of opLines) {
+      if (l.site !== site) continue
+      const yd = Number(l.actual_yards || 0)
       if (yd <= 0) continue
-      // Find matching assignment cell to derive cy/yd ratio
-      const ratioCell = assignments
-        .filter(a =>
-          a.site === site &&
-          a.table_code === o.table_code &&
-          a.day_of_week === o.day_of_week &&
-          (a.shift || '1st') === (o.shift || '1st')
-        )
-        .reduce((acc, a) => ({
-          yd: acc.yd + Number(a.planned_yards || 0),
-          cy: acc.cy + Number(a.planned_cy || 0),
-        }), { yd: 0, cy: 0 })
-      if (ratioCell.yd > 0) {
-        actualColorYards += (yd / ratioCell.yd) * ratioCell.cy
-      }
+      const asg = assignments.find(a =>
+        a.site === site &&
+        a.table_code === l.table_code &&
+        (a.po_number || '') === (l.po_number || '') &&
+        (a.item_sku || '') === (l.item_sku || '') &&
+        (a.color || '') === (l.color || '')
+      )
+      const cy = deriveColorYards(yd, asg)
+      if (cy != null) actualColorYards += cy
     }
   }
 
