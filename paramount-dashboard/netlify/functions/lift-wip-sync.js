@@ -25,6 +25,8 @@
 // Supabase. It does not touch the Triad Supabase or any personal infra.
 // ===========================================================================
 
+const { schedule } = require('@netlify/functions')
+
 const LIFT_BASE_URL = process.env.LIFT_BASE_URL
 const SUPABASE_URL   = process.env.VITE_SUPABASE_URL
 const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -375,7 +377,7 @@ async function pruneOldSnapshots() {
 }
 
 // ─── Handler ───────────────────────────────────────────────────────────────
-exports.handler = async (event) => {
+const runSync = async (event) => {
   try {
     if (!LIFT_BASE_URL) throw new Error('LIFT_BASE_URL not set in env')
     if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase env not set')
@@ -465,3 +467,11 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) }
   }
 }
+
+// The hourly schedule lives HERE, in code — the netlify.toml route silently
+// failed to register on this site (proven 2026-07-07: valid [functions] syntax
+// deployed and live, tick never fired). schedule() is the documented, reliable
+// path. NOTE: wrapping disables public HTTP invocation — use the companion
+// lift-wip-run function for the manual trigger / dryRun diagnostic.
+exports.runSync = runSync
+exports.handler = schedule('@hourly', runSync)

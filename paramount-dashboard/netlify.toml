@@ -33,8 +33,7 @@
 # reference only. (The WIP tab's manual "Upload LIFT WIP" is separate plumbing
 # and unaffected.)
 
-# Automated LIFT WIP feed - top of every hour. Pulls orders+products from the
-# LIFT ORDS API, writes a fresh sched_snapshots + sched_wip_rows. Manual
-# "Upload LIFT WIP" stays available as a fallback (newest snapshot wins).
-[functions."lift-wip-sync"]
-  schedule = "0 * * * *"
+# Automated LIFT WIP feed — the hourly schedule now lives IN CODE via the
+# schedule() wrapper inside netlify/functions/lift-wip-sync.js (the toml route
+# below silently failed to register on this site — proven 2026-07-07). Manual
+# trigger / dryRun moved to the companion function lift-wip-run (POST).
