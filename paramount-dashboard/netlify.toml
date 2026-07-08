@@ -8,10 +8,6 @@
   function = "claude"
 
 [[edge_functions]]
-  path = "/api/lock-wip"
-  function = "lock-wip"
-
-[[edge_functions]]
   path = "/api/slack"
   function = "slack"
 
@@ -31,14 +27,14 @@
   path = "/api/slack-note-notify"
   function = "slack-note-notify"
 
-# Scheduled WIP lockdown - every Saturday at midnight ET (05:00 UTC)
-[[scheduled_functions]]
-  function = "lock-wip"
-  cron = "0 5 * * 6"
+# lock-wip REMOVED 2026-07-07: dead Monday-era code — it wrote to the
+# wip_snapshots table, which no longer exists. Its Saturday schedule and its
+# /api/lock-wip edge mapping are gone; the .js files remain on disk for
+# reference only. (The WIP tab's manual "Upload LIFT WIP" is separate plumbing
+# and unaffected.)
 
 # Automated LIFT WIP feed - top of every hour. Pulls orders+products from the
 # LIFT ORDS API, writes a fresh sched_snapshots + sched_wip_rows. Manual
 # "Upload LIFT WIP" stays available as a fallback (newest snapshot wins).
-[[scheduled_functions]]
-  function = "lift-wip-sync"
-  cron = "0 * * * *"
+[functions."lift-wip-sync"]
+  schedule = "0 * * * *"

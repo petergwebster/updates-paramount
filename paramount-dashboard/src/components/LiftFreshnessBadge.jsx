@@ -23,9 +23,20 @@ import { C } from '../lib/scheduleUtils'
 const FRESH_MS   = 2  * 60 * 60 * 1000
 const DELAYED_MS = 24 * 60 * 60 * 1000
 
+// Parse a Supabase timestamp defensively: strings WITHOUT timezone info
+// (naive "2026-07-02T14:30:00") are UTC from Postgres but JS parses them as
+// LOCAL — skewing "last updated" by the UTC offset (the bug where a morning
+// upload showed "6 hrs ago" at night). Append Z only when no tz is present,
+// so timestamptz strings (+00:00) keep working untouched.
+function parseTs(s) {
+  if (!s) return null
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
+  return new Date(hasTz ? s : s + 'Z')
+}
+
 function tierFor(uploadedAt) {
   if (!uploadedAt) return 'stale'
-  const age = Date.now() - new Date(uploadedAt).getTime()
+  const age = Date.now() - parseTs(uploadedAt).getTime()
   if (age <= FRESH_MS)   return 'fresh'
   if (age <= DELAYED_MS) return 'delayed'
   return 'stale'
@@ -33,7 +44,7 @@ function tierFor(uploadedAt) {
 
 function relativeTime(uploadedAt) {
   if (!uploadedAt) return 'never'
-  const mins = Math.round((Date.now() - new Date(uploadedAt).getTime()) / 60000)
+  const mins = Math.round((Date.now() - parseTs(uploadedAt).getTime()) / 60000)
   if (mins < 1)  return 'just now'
   if (mins < 60) return `${mins} min ago`
   const hrs = Math.round(mins / 60)
