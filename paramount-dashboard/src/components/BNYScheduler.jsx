@@ -159,13 +159,13 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     // CREATE: a pool PO dropped onto a cell — open the assign modal pre-filled.
     const po = e.active?.data?.current?.po
     if (!po) return
-    if (po.remaining_yards <= 0) return
+    if (!po.unquantified && po.remaining_yards <= 0) return
     setAssignModal({
       po,
       machine: over.machine,
       day_of_week: over.dayOfWeek,
       location: over.location,
-      proposed_yards: Math.min(po.remaining_yards, capacityFor(over.machine, over.location)),
+      proposed_yards: po.unquantified ? 0 : Math.min(po.remaining_yards, capacityFor(over.machine, over.location)),
     })
   }
 
@@ -173,7 +173,12 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const passaicMachineNames  = useMemo(() => new Set(BNY_MACHINES.passaic.map(m => m.name)), [])
 
   const schedulableWip = useMemo(
-    () => wipRows.filter(r => r.bny_bucket && r.yards_written > 0),
+    // Memos / customs come out of LIFT with NO yardage (yards_written = 0, no
+    // qty_invoiced, no color_yards) — they're counted in pieces, not yards. The
+    // old `yards_written > 0` guard made them permanently invisible in the pool
+    // (MEMO-144 aged 39 days unseen). Let them through; they're flagged
+    // `unquantified` below and the scheduler enters the qty at drop time.
+    () => wipRows.filter(r => r.bny_bucket),
     [wipRows]
   )
 
@@ -220,10 +225,14 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
-        const remaining = Math.max(0, Number(r.yards_written || 0) - already)
-        return { ...r, assigned_already: already, remaining_yards: remaining }
+        const written = Number(r.yards_written || 0)
+        // No yardage in LIFT (memos/customs) — schedulable, but with no total to
+        // burn down against, so we can't compute a "remaining".
+        const unquantified = written <= 0
+        const remaining = unquantified ? 0 : Math.max(0, written - already)
+        return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
-      .filter(r => r.remaining_yards > 0)
+      .filter(r => r.unquantified || r.remaining_yards > 0)
   }, [schedulableWip, assignedByLine, assignedByPOLegacy])
 
   const filteredPool = useMemo(() => {
@@ -326,13 +335,13 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
 
   function handleMachineDayClick(machineName, dayOfWeek, locationKey) {
     if (!selectedPO) return
-    if (selectedPO.remaining_yards <= 0) return
+    if (!selectedPO.unquantified && selectedPO.remaining_yards <= 0) return
     setAssignModal({
       po: selectedPO,
       machine: machineName,
       day_of_week: dayOfWeek,
       location: locationKey,
-      proposed_yards: Math.min(selectedPO.remaining_yards, capacityFor(machineName, locationKey)),
+      proposed_yards: selectedPO.unquantified ? 0 : Math.min(selectedPO.remaining_yards, capacityFor(machineName, locationKey)),
     })
   }
 
@@ -405,7 +414,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       }
       await onAssignmentsChange()
       if (!editId) {
-        if (yards >= po.remaining_yards) setSelectedPO(null)
+        if (po.unquantified || yards >= po.remaining_yards) setSelectedPO(null)
         else setSelectedPO({
           ...po,
           remaining_yards: po.remaining_yards - yards,
@@ -535,7 +544,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         gridTemplateColumns: '260px 1fr',
         gap: 14, marginTop: 16,
       }}>
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 230 }}>
+        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
@@ -559,7 +568,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               <FilterChip active={filterAged90} onClick={() => setFilterAged90(!filterAged90)} color={C.amber}>Aged 90+</FilterChip>
             </div>
           </div>
-          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+          {/* Only the PO list scrolls — the header, search box and filter chips
+              stay pinned so Chandler doesn't have to scroll back up to search
+              each time he assigns to a machine lower down the board. */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredPool.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
             )}
@@ -1032,7 +1044,9 @@ function PoolCardBNY({ r, selected, onToggle }) {
         </div>
       )}
       <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
-        <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
+        <span>{r.unquantified
+          ? `qty at schedule${r.assigned_already > 0 ? ` · ${fmt(r.assigned_already)} scheduled` : ''}`
+          : `${fmt(r.remaining_yards)} yd remaining${r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}`}</span>
         <span>·</span>
         <span>{fmtD(r.income_written)}</span>
       </div>
@@ -1056,7 +1070,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
   const [operator, setOperator] = useState(initialOperator ?? (existingOnCell[0]?.operator || ''))
   const alreadyOnCell = existingOnCell.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
   const remainingCap = Math.max(0, dailyCapacity - alreadyOnCell)
-  const maxY = Math.min(po.remaining_yards, remainingCap)
+  const maxY = po.unquantified ? remainingCap : Math.min(po.remaining_yards, remainingCap)
   const overCap = yards > remainingCap
   // Overschedule allowed (Peter 6/30): schedule beyond WIP qty and beyond the
   // nominal daily capacity when the floor needs it. Both are flagged, not
@@ -1075,7 +1089,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
         </div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
-          PO {po.po_number} · {po.bny_bucket || po.product_type} · {po.colors_count || '—'} colors · {fmt(po.remaining_yards)} yards remaining
+          PO {po.po_number} · {po.bny_bucket || po.product_type} · {po.colors_count || '—'} colors · {po.unquantified ? 'no yardage in LIFT — enter qty' : `${fmt(po.remaining_yards)} yards remaining`}
         </div>
 
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this machine-day</label>
@@ -1084,7 +1098,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
           <button onClick={() => setYards(maxY)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>Fill cap ({fmt(maxY)})</button>
           <button onClick={() => setYards(Math.round(maxY / 2))} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>Half ({fmt(Math.round(maxY/2))})</button>
-          <button onClick={() => setYards(po.remaining_yards)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>All remaining ({fmt(po.remaining_yards)})</button>
+          {!po.unquantified && <button onClick={() => setYards(po.remaining_yards)} style={{ padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>All remaining ({fmt(po.remaining_yards)})</button>}
         </div>
 
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Operator</label>
@@ -1097,7 +1111,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
         <div style={{ padding: '10px 14px', background: overCap ? C.roseBg : C.goldBg, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.ink }}>
           Cell load after assign: <strong>{fmt(alreadyOnCell + yards)} / {fmt(dailyCapacity)} yd</strong>
           {overCap && <div style={{ fontSize: 11, color: C.rose, marginTop: 4, fontWeight: 600 }}>⚠ Over daily capacity — consider splitting across days or machines</div>}
-          {yards < po.remaining_yards && !overCap && <div style={{ fontSize: 11, color: C.inkMid, marginTop: 4 }}>Remaining {fmt(po.remaining_yards - yards)} yards stay in the pool.</div>}
+          {!po.unquantified && yards < po.remaining_yards && !overCap && <div style={{ fontSize: 11, color: C.inkMid, marginTop: 4 }}>Remaining {fmt(po.remaining_yards - yards)} yards stay in the pool.</div>}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

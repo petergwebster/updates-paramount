@@ -110,8 +110,8 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     const po = e.active?.data?.current?.po
     if (!po) return
     if (!categoryFitsPO(category, po)) return
-    if (po.remaining_yards > 0) {
-      setAssignModal({ po, tableCode, proposed_yards: po.remaining_yards })
+    if (po.unquantified || po.remaining_yards > 0) {
+      setAssignModal({ po, tableCode, proposed_yards: po.unquantified ? 0 : po.remaining_yards })
     }
   }
 
@@ -170,10 +170,14 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
-        const remaining = Math.max(0, Number(r.yards_written || 0) - already)
-        return { ...r, assigned_already: already, remaining_yards: remaining }
+        const written = Number(r.yards_written || 0)
+        // Memos / customs carry NO yardage in LIFT — schedulable, but with no
+        // total to burn down against. Flagged so the qty is entered at drop time.
+        const unquantified = written <= 0
+        const remaining = unquantified ? 0 : Math.max(0, written - already)
+        return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
-      .filter(r => r.remaining_yards > 0)
+      .filter(r => r.unquantified || r.remaining_yards > 0)
   }, [wipRows, assignedByLine, assignedByPOLegacy])
 
   const filteredPool = useMemo(() => {
@@ -280,8 +284,8 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 
   function handleTableClick(tableCode) {
     if (!selectedPO) return
-    if (selectedPO.remaining_yards > 0) {
-      setAssignModal({ po: selectedPO, tableCode, proposed_yards: selectedPO.remaining_yards })
+    if (selectedPO.unquantified || selectedPO.remaining_yards > 0) {
+      setAssignModal({ po: selectedPO, tableCode, proposed_yards: selectedPO.unquantified ? 0 : selectedPO.remaining_yards })
     }
   }
 
@@ -332,7 +336,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       }
       await onAssignmentsChange()
       if (!editId) {
-        if (yards >= po.remaining_yards) setSelectedPO(null)
+        if (po.unquantified || yards >= po.remaining_yards) setSelectedPO(null)
         else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - yards, assigned_already: (po.assigned_already||0) + yards })
       }
       setAssignModal(null)
@@ -423,7 +427,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         gap: 16, marginTop: 16,
       }}>
         {/* POOL */}
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 230 }}>
+        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
@@ -445,7 +449,8 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
               <FilterChip active={filterHighValueLowColor} onClick={() => setFilterHighValueLowColor(!filterHighValueLowColor)} color={C.sage}>$$ low-color</FilterChip>
             </div>
           </div>
-          <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+          {/* Only the PO list scrolls — header, search and filter chips stay pinned. */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredPool.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
             )}
@@ -707,7 +712,9 @@ function PoolCard({ r, selected, onToggle }) {
       <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
         <span>{r.product_type}</span>
         <span>·</span>
-        <span>{fmt(r.remaining_yards)} yd remaining{r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}</span>
+        <span>{r.unquantified
+          ? `qty at schedule${r.assigned_already > 0 ? ` · ${fmt(r.assigned_already)} scheduled` : ''}`
+          : `${fmt(r.remaining_yards)} yd remaining${r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}`}</span>
         <span>·</span>
         <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
       </div>
@@ -958,7 +965,7 @@ function FilterChip({ active, onClick, color, children }) {
 function AssignModal({ po, tableCode, proposed, isEdit, onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
   const cy = po.colors_count ? po.colors_count * yards : 0
-  const maxY = po.remaining_yards
+  const maxY = po.unquantified ? 0 : po.remaining_yards
   // Overschedule allowed (Peter 6/30): the floor schedules beyond WIP qty for
   // MTO/custom/Hosp and prints past nominal capacity when needed. Only a
   // non-positive entry is invalid; going over is permitted and just flagged.
@@ -973,7 +980,7 @@ function AssignModal({ po, tableCode, proposed, isEdit, onCancel, onConfirm, bus
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>{isEdit ? 'Edit · ' : 'Assign to '}{tableCode}</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
-          PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {fmt(po.remaining_yards)} yards remaining
+          PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {po.unquantified ? 'no yardage in LIFT — enter qty' : `${fmt(po.remaining_yards)} yards remaining`}
         </div>
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this table</label>
         <input type="number" value={yards} onChange={e => setYards(parseFloat(e.target.value) || 0)} min={0} step="any"
