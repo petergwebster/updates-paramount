@@ -222,7 +222,15 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     ])
     return schedulableWip
       .filter(r => !terminalStatuses.has(r.order_status || ''))
-      .filter(r => !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
+      // RULE (Peter, 7/12): if it has a PO, it can be scheduled.
+      // New Goods are speculative/pre-production ONLY until the first PO lands.
+      // Once a PO exists it's real work that must be produced (and after that
+      // first run the new good graduates into a replen SKU). So a PO-bearing new
+      // good belongs in the pool even while its status is still pre-production
+      // (e.g. "Waiting for Material"). Only PO-less new goods stay hidden in the
+      // New Goods view. Use the "New Goods" filter chip to isolate them.
+      .filter(r => (r.po_number && String(r.po_number).trim())
+        || !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
         const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
         const written = Number(r.yards_written || 0)
