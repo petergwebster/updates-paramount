@@ -717,8 +717,12 @@ function PoolCard({ r, selected, onToggle }) {
           {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
         </div>
       )}
-      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
+      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <span>{r.product_type}</span>
+        <span>·</span>
+        <span style={{ fontWeight: r.colors_count >= 6 ? 700 : 400, color: r.colors_count >= 6 ? C.rose : C.inkLight }}>
+          {r.colors_count ? `${r.colors_count}c` : '—c'}
+        </span>
         <span>·</span>
         <span>{r.unquantified
           ? `qty at schedule${r.assigned_already > 0 ? ` · ${fmt(r.assigned_already)} scheduled` : ''}`
@@ -957,6 +961,15 @@ function AssignmentCard({ a, onRemove, onEdit }) {
       </div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.line_description}</div>
       <div style={{ color: C.inkLight, fontSize: 9 }}>{fmt(a.planned_yards)}yd · {fmt(a.planned_cy || 0)} CY</div>
+      {/* PO · colours · age — Ramon's request: the scheduled card should carry the
+          same identifying detail as the pool card. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
+        <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
+        {a.colors_count != null && !highColor && <span>· {a.colors_count}c</span>}
+        {a.age_days != null && (
+          <span style={{ marginLeft: 'auto', color: a.age_days > 90 ? C.rose : C.inkLight, fontWeight: a.age_days > 90 ? 700 : 400 }}>{a.age_days}d</span>
+        )}
+      </div>
     </div>
   )
 }

@@ -1004,14 +1004,29 @@ function AssignmentChip({ a, onRemove, onEdit }) {
     <div ref={setNodeRef} {...listeners} {...attributes}
       onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
       title={onEdit ? 'Drag to move · click to edit' : undefined}
-      style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', display: 'flex', alignItems: 'center', gap: 4, cursor: onEdit ? 'grab' : 'default', opacity: isDragging ? 0.4 : 1 }}>
-      {a.assigned_by === 'claude' && <span data-noclick="true" style={{ color: C.gold, fontWeight: 700 }}>✦</span>}
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: C.ink }}>
-        {a.line_description}
-      </span>
-      <span style={{ color: C.inkMid }}>{fmt(a.planned_yards)}y</span>
-      <span data-noclick="true" onClick={(e) => { e.stopPropagation(); onRemove() }}
-        style={{ cursor: 'pointer', color: C.inkLight, fontSize: 11, marginLeft: 2 }} title="Remove">×</span>
+      style={{ background: bg, borderLeft: `3px solid ${col}`, borderRadius: 3, padding: '3px 5px', fontSize: 9, position: 'relative', cursor: onEdit ? 'grab' : 'default', opacity: isDragging ? 0.4 : 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {a.assigned_by === 'claude' && <span data-noclick="true" style={{ color: C.gold, fontWeight: 700 }}>✦</span>}
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, color: C.ink }}>
+          {a.line_description}
+        </span>
+        <span style={{ color: C.inkMid }}>{fmt(a.planned_yards)}y</span>
+        <span data-noclick="true" onClick={(e) => { e.stopPropagation(); onRemove() }}
+          style={{ cursor: 'pointer', color: C.inkLight, fontSize: 11, marginLeft: 2 }} title="Remove">×</span>
+      </div>
+      {/* PO · colours · age — Ramon's request: the scheduled card should carry the
+          same identifying detail as the pool card. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
+        <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
+        {a.colors_count != null && (
+          <span style={{ fontWeight: a.colors_count >= HIGH_COLOR_THRESHOLD ? 700 : 400, color: a.colors_count >= HIGH_COLOR_THRESHOLD ? C.rose : C.inkLight }}>
+            · {a.colors_count}c
+          </span>
+        )}
+        {a.age_days != null && (
+          <span style={{ marginLeft: 'auto', color: a.age_days > 90 ? C.rose : C.inkLight, fontWeight: a.age_days > 90 ? 700 : 400 }}>{a.age_days}d</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -1051,12 +1066,18 @@ function PoolCardBNY({ r, selected, onToggle }) {
           {r.item_sku || ''}{r.item_sku && r.color ? ' · ' : ''}{r.color || ''}
         </div>
       )}
-      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 8 }}>
+      <div style={{ fontSize: 10, color: C.inkLight, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <span>{r.unquantified
           ? `qty at schedule${r.assigned_already > 0 ? ` · ${fmt(r.assigned_already)} scheduled` : ''}`
           : `${fmt(r.remaining_yards)} yd remaining${r.assigned_already > 0 ? ` (${fmt(r.assigned_already)} scheduled)` : ''}`}</span>
         <span>·</span>
+        <span style={{ fontWeight: r.colors_count >= HIGH_COLOR_THRESHOLD ? 700 : 400, color: r.colors_count >= HIGH_COLOR_THRESHOLD ? C.rose : C.inkLight }}>
+          {r.colors_count ? `${r.colors_count}c` : '—c'}
+        </span>
+        <span>·</span>
         <span>{fmtD(r.income_written)}</span>
+        <span>·</span>
+        <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
       </div>
     </div>
   )
