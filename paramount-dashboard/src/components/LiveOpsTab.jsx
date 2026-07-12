@@ -902,7 +902,18 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
             {poOptions.length > 0 ? (
               <select value={lineKeyOf(l)} onChange={e => pickPO(l._key, e.target.value)} disabled={!canEnterActuals}
                 style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: '#fff', boxSizing: 'border-box' }}>
-                {poOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                {/* Ramon's request: show the planned yards (and color-yards on
+                    Passaic) right in the dropdown, so the floor can see what the
+                    job was scheduled for while entering what actually ran. */}
+                {poOptions.map(o => {
+                  const a = cellAssignments.find(x => `${x.po_number}|${x.item_sku || ''}|${x.color || ''}` === o.key)
+                  const pYd = a ? Number(a.planned_yards || 0) : 0
+                  const pCy = a ? Number(a.planned_cy || 0) : 0
+                  const qty = pYd > 0
+                    ? ` — ${fmt(pYd)} yd${(site === 'passaic' && pCy > 0) ? ` / ${fmt(pCy)} cy` : ''}`
+                    : ''
+                  return <option key={o.key} value={o.key}>{o.label}{qty}</option>
+                })}
                 <option value="__other">Other / unplanned…</option>
               </select>
             ) : (
