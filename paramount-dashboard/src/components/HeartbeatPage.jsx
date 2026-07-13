@@ -102,29 +102,36 @@ const PASSAIC_TABLES = [
 // BNY — but 12 of them sit at Passaic (the small digital fleet) while 7 are
 // physically at Brooklyn (the 3600s and 570s). The operator scorecard groups
 // people by physical location, not by who scheduled them.
+//
+// table_code MUST match sched_assignments.table_code EXACTLY ("Sasha", not
+// "sasha"). DayGrid compares raw strings, so the old lowercase/underscored
+// codes matched nothing and every BNY day cell rendered as "—". (The machine
+// cards happened to work because they normalise via norm() — except
+// "Dakota Kai", which was mis-keyed as "dakota_ka" and silently showed a
+// 0-yard target.)
 const BNY_MACHINES = [
   // 3 HP 3600s (Brooklyn — high-volume workhorses)
-  { name: 'Glow',      kind: '3600', location: 'brooklyn', table_code: 'glow'      },
-  { name: 'Sasha',     kind: '3600', location: 'brooklyn', table_code: 'sasha'     },
-  { name: 'Trish',     kind: '3600', location: 'brooklyn', table_code: 'trish'     },
+  { name: 'Glow',       kind: '3600', location: 'brooklyn', table_code: 'Glow'       },
+  { name: 'Sasha',      kind: '3600', location: 'brooklyn', table_code: 'Sasha'      },
+  { name: 'Trish',      kind: '3600', location: 'brooklyn', table_code: 'Trish'      },
   // 4 HP 570s (Brooklyn)
-  { name: 'Bianca',    kind: '570',  location: 'brooklyn', table_code: 'bianca'    },
-  { name: 'LASH',      kind: '570',  location: 'brooklyn', table_code: 'lash'      },
-  { name: 'Chyna',     kind: '570',  location: 'brooklyn', table_code: 'chyna'     },
-  { name: 'Rhonda',    kind: '570',  location: 'brooklyn', table_code: 'rhonda'    },
+  { name: 'Bianca',     kind: '570',  location: 'brooklyn', table_code: 'Bianca'     },
+  { name: 'LASH',       kind: '570',  location: 'brooklyn', table_code: 'LASH'       },
+  { name: 'Chyna',      kind: '570',  location: 'brooklyn', table_code: 'Chyna'      },
+  { name: 'Rhonda',     kind: '570',  location: 'brooklyn', table_code: 'Rhonda'     },
   // 12 small digitals — physically at Passaic, scheduled by Chandler, budget to BNY
-  { name: 'Dakota Ka', kind: '570',  location: 'passaic',  table_code: 'dakota_ka' },
-  { name: 'Dementia',  kind: '570',  location: 'passaic',  table_code: 'dementia'  },
-  { name: 'Ember',     kind: '570',  location: 'passaic',  table_code: 'ember'     },
-  { name: 'Ivy Nile',  kind: '570',  location: 'passaic',  table_code: 'ivy_nile'  },
-  { name: 'Jacy Jayne',kind: '570',  location: 'passaic',  table_code: 'jacy_jayne'},
-  { name: 'Apollo',    kind: '570',  location: 'passaic',  table_code: 'apollo'    },
-  { name: 'Valhalla',  kind: '570',  location: 'passaic',  table_code: 'valhalla'  },
-  { name: 'XIA',       kind: '570',  location: 'passaic',  table_code: 'xia'       },
-  { name: 'Ruby',      kind: '570',  location: 'passaic',  table_code: 'ruby'      },
-  { name: 'Nemesis',   kind: '570',  location: 'passaic',  table_code: 'nemesis'   },
-  { name: 'Poseidon',  kind: '570',  location: 'passaic',  table_code: 'poseidon'  },
-  { name: 'Zoey',      kind: '570',  location: 'passaic',  table_code: 'zoey'      },
+  { name: 'Dakota Kai', kind: '570',  location: 'passaic',  table_code: 'Dakota Kai' },
+  { name: 'Dementia',   kind: '570',  location: 'passaic',  table_code: 'Dementia'   },
+  { name: 'Ember',      kind: '570',  location: 'passaic',  table_code: 'Ember'      },
+  { name: 'Ivy Nile',   kind: '570',  location: 'passaic',  table_code: 'Ivy Nile'   },
+  { name: 'Jacy Jayne', kind: '570',  location: 'passaic',  table_code: 'Jacy Jayne' },
+  { name: 'Apollo',     kind: '570',  location: 'passaic',  table_code: 'Apollo'     },
+  { name: 'Valhalla',   kind: '570',  location: 'passaic',  table_code: 'Valhalla'   },
+  { name: 'XIA',        kind: '570',  location: 'passaic',  table_code: 'XIA'        },
+  { name: 'Ruby',       kind: '570',  location: 'passaic',  table_code: 'Ruby'       },
+  { name: 'Nemesis',    kind: '570',  location: 'passaic',  table_code: 'Nemesis'    },
+  { name: 'Poseidon',   kind: '570',  location: 'passaic',  table_code: 'Poseidon'   },
+  { name: 'Zoey',       kind: '570',  location: 'passaic',  table_code: 'Zoey'       },
 ]
 
 // ─── BNY bucket order (matches Scheduler filter chips) ─────────────────────
