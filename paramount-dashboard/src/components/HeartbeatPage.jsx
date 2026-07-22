@@ -300,6 +300,22 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
     },
   }
 
+  // Working-day-aware pace. Passaic hand-screen runs Mon–Fri (5-day basis);
+  // BNY digital works weekends (7, per Peter 7/2026). The PLANT projection sums
+  // each site on its OWN calendar so Passaic's idle weekend doesn't inflate the
+  // expected plant total — that phantom Saturday was making a finished Passaic
+  // week read as "behind pace" (Ramon's flag). Color-yards is Passaic-only, so
+  // it's always the 5-day basis.
+  const njYardsPace  = workdayPace(njAgg.actualYards,      weekStart, 5, true)
+  const bnyYardsPace = workdayPace(bnyAgg.actualYards,     weekStart, 7, false)
+  const njCYPace     = workdayPace(njAgg.actualColorYards, weekStart, 5, true)
+  const plantYardsPace = {
+    mixed: true,
+    elapsed: Math.max(njYardsPace.elapsed, bnyYardsPace.elapsed),
+    projected: njYardsPace.projected + bnyYardsPace.projected,
+  }
+  const plantCYPace = { ...njCYPace, mixed: false }
+
   // Per-category Passaic
   const categoryData = buildCategoryData(assignments, dailyOps, wipByStatus)
 
@@ -434,7 +450,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         ) : (
           <PlantPulse
             yards={plantYards}
-            weekStart={weekStart}
+            pace={plantYardsPace}
             hasActuals={hasActuals}
             label="Yards"
             unit="yds"
@@ -468,7 +484,7 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         ) : (
           <PlantPulse
             yards={plantCY}
-            weekStart={weekStart}
+            pace={plantCYPace}
             hasActuals={hasActuals && plantCY.actual > 0}
             label="Color-Yards"
             unit="cy"
@@ -738,6 +754,35 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
    Inlined here (not in PlantRollup.jsx) so this file is self-contained.
    ═════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Working-day-aware pace projection.
+ *   Passaic hand-screen runs Mon–Fri     → workDays=5, weekdaysOnly=true.
+ *   BNY digital works the weekend too    → workDays=7, weekdaysOnly=false (per Peter, 7/2026).
+ * Projects the week-end total as actual scaled by (workDays / workdays-elapsed).
+ * Counting weekdays-only for Passaic means a full Mon–Fri reads as done (×5/5)
+ * instead of ×7/6 on a Friday — which is what made Passaic look perpetually
+ * "behind pace" once the (non-working) weekend was folded into the divisor.
+ */
+function workdayPace(actual, weekStart, workDays, weekdaysOnly) {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const ws = startOfWeek(weekStart, { weekStartsOn: 0 })
+  const msPerDay = 1000 * 60 * 60 * 24
+  const calDays = Math.min(7, Math.max(0, Math.floor((today - ws) / msPerDay) + 1))
+  let elapsed
+  if (weekdaysOnly) {
+    elapsed = 0
+    for (let i = 1; i <= calDays; i++) {
+      const dow = (i - 1) % 7 // i=1 → 0 (Sun) … i=6 → 5 (Fri)
+      if (dow >= 1 && dow <= 5) elapsed++
+    }
+    elapsed = Math.min(workDays, elapsed)
+  } else {
+    elapsed = Math.min(workDays, calDays)
+  }
+  const projected = elapsed > 0 && actual > 0 ? actual * (workDays / elapsed) : 0
+  return { elapsed, workDays, projected }
+}
+
 const PP_COLORS = {
   ink:       C.ink,
   paper:     C.cream,
@@ -848,7 +893,7 @@ const PP_STYLES = {
   },
 }
 
-function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds' }) {
+function PlantPulse({ yards, pace, hasActuals, label = 'Yards', unit = 'yds' }) {
   const budget    = yards.budget
   const scheduled = yards.scheduled
   const actual    = yards.actual
@@ -869,13 +914,11 @@ function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds
   const scheduledBarPct = budget > 0 ? Math.min(100, (scheduled / budget) * 100) : 0
   const actualBarPct    = budget > 0 ? Math.min(100, (actual    / budget) * 100) : 0
 
-  // Day-of-week pace projection. Sunday-Saturday week.
-  const today    = new Date()
-  const ws       = startOfWeek(weekStart, { weekStartsOn: 0 })
-  const msPerDay = 1000 * 60 * 60 * 24
-  const rawDays  = Math.floor((today - ws) / msPerDay) + 1
-  const daysElapsed = Math.min(7, Math.max(0, rawDays))
-  const projected   = daysElapsed > 0 && hasActuals ? actual * (7 / daysElapsed) : 0
+  // Pace projection is computed upstream (working-day-aware): Passaic runs
+  // Mon–Fri (5-day basis), BNY works weekends (7), and the plant sums each on
+  // its own calendar. See workdayPace() + the pace props in HeartbeatPage.
+  const daysElapsed = pace?.elapsed ?? 0
+  const projected   = pace?.projected ?? 0
 
   // Status pill — vs scheduled (execution lens)
   const tone = !hasActuals ? 'pending'
@@ -1000,7 +1043,9 @@ function PlantPulse({ yards, weekStart, hasActuals, label = 'Yards', unit = 'yds
               ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>schedule built · awaiting actuals</span>
               : daysElapsed === 0
                 ? <span style={{color: PP_COLORS.muted, fontStyle: 'italic'}}>week not yet started</span>
-                : `Day ${daysElapsed} of 7 · projected ${fmt(projected)} ${unit}`
+                : pace?.mixed
+                  ? `projected ${fmt(projected)} ${unit}`
+                  : `Day ${daysElapsed} of ${pace?.workDays ?? 5} · projected ${fmt(projected)} ${unit}`
             }
           </span>
         </div>
