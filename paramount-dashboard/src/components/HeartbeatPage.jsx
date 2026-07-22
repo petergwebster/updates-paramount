@@ -257,6 +257,14 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
   const hasActuals  = dailyOps.some(r => Number(r.actual_yards) > 0)
   const hasRealData = hasSchedule
 
+  // Per-floor schedule/actuals flags — so each floor's card reflects its OWN
+  // state (BNY can be mid-week with actuals while Passaic hasn't opened yet,
+  // or one floor scheduled and the other not).
+  const njHasSchedule  = assignments.some(a => a.site === 'passaic')
+  const bnyHasSchedule = assignments.some(a => a.site === 'bny')
+  const njHasActuals   = dailyOps.some(r => r.site === 'passaic' && Number(r.actual_yards) > 0)
+  const bnyHasActuals  = dailyOps.some(r => r.site === 'bny' && Number(r.actual_yards) > 0)
+
   // Plant Rollup — yards. Color-yards is hand-screen-only and lives in
   // its own pulse below (Passaic numbers, framed for plant-level visibility).
   // Three layers per FY2026 budget design:
@@ -315,6 +323,25 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
     projected: njYardsPace.projected + bnyYardsPace.projected,
   }
   const plantCYPace = { ...njCYPace, mixed: false }
+
+  // Per-floor yards rollups — same Budget/Scheduled/Actual shape as the plant
+  // card, fed each floor's own totals. Peter 7/2026: day to day we read the two
+  // floors separately, not the blended plant number.
+  const passaicYards = {
+    budget:    NJ_TOTAL_YARDS_TGT,
+    scheduled: njAgg.plannedYards,
+    actual:    njAgg.actualYards,
+    shift1: { scheduled: njShift1Agg.plannedYards, actual: njShift1Agg.actualYards },
+    shift2: { scheduled: njShift2Agg.plannedYards, actual: njShift2Agg.actualYards },
+  }
+  const bnyYards = {
+    budget:    BNY_TARGETS.total,
+    scheduled: bnyAgg.plannedYards,
+    actual:    bnyAgg.actualYards,
+    // BNY is 1st-shift only — shift2 stays 0 so the split block doesn't render.
+    shift1: { scheduled: bnyAgg.plannedYards, actual: bnyAgg.actualYards },
+    shift2: { scheduled: 0, actual: 0 },
+  }
 
   // Per-category Passaic
   const categoryData = buildCategoryData(assignments, dailyOps, wipByStatus)
@@ -423,54 +450,105 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
         </div>
       )}
 
-      {/* Plant Rollup — yards only */}
+      {/* ─────────────────────────────────────────────────────────────────
+          Per-floor rollups. Peter 7/2026: day to day we don't read the plant
+          as one number — hand-screen and digital are different floors, crews,
+          schedulers (Ramon vs Chandler) and calendars. So each floor gets its
+          own Budget/Scheduled/Actual + pace card; the combined Plant Total is
+          kept below as the board-level roll-up, no longer the lead. Order:
+          Hand-Screen first (the labor-cost story we watch hardest), then
+          Digital, then Plant Total.
+          ───────────────────────────────────────────────────────────────── */}
+
+      {/* Hand-Screen · Passaic — yards + color-yards (the labor unit) */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <div className={styles.sectionEyebrow}>The Plant Pulse</div>
+          <div className={styles.sectionEyebrow}>Screen Print Floor</div>
           <div className={styles.sectionTitle}>
             <div className={styles.sectionTitleText}>
-              <span className={`${styles.sitePill} ${styles.pillPlant}`}>PLANT</span>
-              Plant Rollup
+              <span className={`${styles.sitePill} ${styles.pillPassaic}`}>NJ</span>
+              Hand-Screen · Passaic
             </div>
             <div className={styles.sectionDesc}>
-              Yards · the one metric that means the same on both floors.
-              Color-yards and complexity live downstairs at Passaic.
+              Ramon's floor · Mon–Fri. Yards up top, color-yards beneath — color-yards is the true labor unit (an 11-color job costs ~4× the labor of a 1-color job at the same yardage).
             </div>
           </div>
         </div>
 
         {loading ? (
           <div className={styles.loading}>Loading schedule and actuals…</div>
-        ) : !hasSchedule ? (
+        ) : !njHasSchedule ? (
           <div className={styles.loading}>
-            No schedule built yet for the week of{' '}
+            No Passaic schedule yet for the week of{' '}
             {format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'MMM d')}.
-            Heartbeat will populate as Wendy and Chandler assign POs in Scheduler.
+            Populates as Ramon assigns POs in Scheduler.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <PlantPulse
+              yards={passaicYards}
+              pace={njYardsPace}
+              hasActuals={njHasActuals}
+              label="Yards"
+              unit="yds"
+            />
+            <PlantPulse
+              yards={plantCY}
+              pace={plantCYPace}
+              hasActuals={njHasActuals && plantCY.actual > 0}
+              label="Color-Yards"
+              unit="cy"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Digital · BNY — yards only (digital prints all colors in one pass;
+          color-yards is a hand-screen labor unit, meaningless here) */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div className={styles.sectionEyebrow}>Digital Floor</div>
+          <div className={styles.sectionTitle}>
+            <div className={styles.sectionTitleText}>
+              <span className={`${styles.sitePill} ${styles.pillBny}`}>BNY</span>
+              Digital · BNY
+            </div>
+            <div className={styles.sectionDesc}>
+              Chandler's floor · runs the weekend. 7 machines in Brooklyn + 12 small digitals at Passaic, all to BNY budget. Yards is the metric — digital prints every color in one pass.
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={styles.loading}>Loading…</div>
+        ) : !bnyHasSchedule ? (
+          <div className={styles.loading}>
+            No BNY schedule yet for this week. Populates as Chandler assigns POs in Scheduler.
           </div>
         ) : (
           <PlantPulse
-            yards={plantYards}
-            pace={plantYardsPace}
-            hasActuals={hasActuals}
+            yards={bnyYards}
+            pace={bnyYardsPace}
+            hasActuals={bnyHasActuals}
             label="Yards"
             unit="yds"
           />
         )}
       </div>
 
-      {/* Plant Color-Yards — Passaic-only labor unit, framed plant-level
-          so Peter can read the hand-screen labor pulse next to the plant
-          yards pulse. BNY contributes zero (digital is single-pass).      */}
+      {/* Plant Total — both floors combined. Board-level roll-up, kept below the
+          per-floor cards per Peter 7/2026 (we don't run the floor off the
+          blended number). Pace sums each floor on its own calendar. */}
       <div className={styles.section}>
         <div className={styles.sectionHeader}>
-          <div className={styles.sectionEyebrow}>Hand-Screen Labor</div>
+          <div className={styles.sectionEyebrow}>Both Floors</div>
           <div className={styles.sectionTitle}>
             <div className={styles.sectionTitleText}>
-              <span className={`${styles.sitePill} ${styles.pillPassaic}`}>NJ</span>
-              Plant Color-Yards
+              <span className={`${styles.sitePill} ${styles.pillPlant}`}>PLANT</span>
+              Plant Total
             </div>
             <div className={styles.sectionDesc}>
-              Passaic only · color-yards = yards × colors. The labor unit. An 11-color job invoices like a small order but costs ~4× the labor.
+              Hand-screen + digital combined — the one-number board view. Day to day, read the two floors above; this is the roll-up.
             </div>
           </div>
         </div>
@@ -479,15 +557,16 @@ export default function HeartbeatPage({ weekStart, currentUser, userId }) {
           <div className={styles.loading}>Loading…</div>
         ) : !hasSchedule ? (
           <div className={styles.loading}>
-            Color-yards populate once Passaic POs are scheduled.
+            No schedule built yet for the week of{' '}
+            {format(startOfWeek(weekStart, { weekStartsOn: 0 }), 'MMM d')}.
           </div>
         ) : (
           <PlantPulse
-            yards={plantCY}
-            pace={plantCYPace}
-            hasActuals={hasActuals && plantCY.actual > 0}
-            label="Color-Yards"
-            unit="cy"
+            yards={plantYards}
+            pace={plantYardsPace}
+            hasActuals={hasActuals}
+            label="Yards"
+            unit="yds"
           />
         )}
       </div>
