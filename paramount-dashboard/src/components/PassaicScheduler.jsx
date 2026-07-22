@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, useSortable, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, PASSAIC_OPERATORS, DAY_NAMES_SHORT,
   STATUS_BAD_BORDER, schedLineKey,
@@ -28,6 +29,12 @@ const PASSAIC_TARGETS = {
 
 const MIX_TARGET_SCH = 0.60
 const HIGH_COLOR_THRESHOLD = 6
+
+// Run-order comparator for cards within a day group (Ramon's reorder ask).
+// sort_order is the saved sequence; NULL (never reordered) sorts last, then by
+// id so the order is stable and deterministic.
+const bySortOrder = (a, b) =>
+  ((a.sort_order ?? 1e9) - (b.sort_order ?? 1e9)) || (Number(a.id) - Number(b.id))
 
 const WASTE_HISTORY_PATTERNS = [
   'CLOUD TOILE', 'BANANA LEAF', 'ACANTHUS STRIPE',
@@ -134,24 +141,55 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   }
   function handleDragEnd(e) {
     setActiveDragPO(null)
-    const over = e.over?.data?.current
-    if (!over?.tableCode) return
-    const { tableCode, category } = over
+    if (!e.over) return
+    const activeData = e.active?.data?.current
+    const overData = e.over?.data?.current
+    const src = activeData?.moveAssignment          // dragging a placed card
+    const overAsg = overData?.assignment            // dropped over another placed card
 
-    // MOVE: an existing assignment dragged onto a different, same-category
-    // table. No modal — the yards don't change, only the table. Category is
-    // gated like the click path; a drop back on the same table is a no-op.
-    const mv = e.active?.data?.current?.moveAssignment
-    if (mv) {
-      if (!categoryFitsPO(category, mv)) return
-      if (mv.table_code === tableCode) return
-      moveAssignmentToTable(mv.id, tableCode)
+    // ── MOVE / REORDER of an existing placed card ───────────────────────
+    if (src) {
+      // Dropped over another card:
+      if (overAsg && String(overAsg.id) !== String(src.id)) {
+        const sameGroup = src.table_code === overAsg.table_code
+          && (src.day_of_week || null) === (overAsg.day_of_week || null)
+        if (sameGroup) {
+          // REORDER within the day group — persist the new run order (Ramon's
+          // "order jobs per table, per day" ask).
+          const group = enrichedAssignments
+            .filter(a => a.table_code === src.table_code && (a.day_of_week || null) === (src.day_of_week || null))
+            .sort(bySortOrder)
+          const ids = group.map(a => a.id)
+          const from = ids.findIndex(id => String(id) === String(src.id))
+          const to = ids.findIndex(id => String(id) === String(overAsg.id))
+          if (from !== -1 && to !== -1 && from !== to) reorderDayGroup(arrayMove(ids, from, to))
+          return
+        }
+        // Different table — treat as a MOVE to that card's table (if it fits).
+        const targetCat = PASSAIC_TABLES.find(t => t.code === overAsg.table_code)?.category
+        if (targetCat && categoryFitsPO(targetCat, src) && src.table_code !== overAsg.table_code) {
+          moveAssignmentToTable(src.id, overAsg.table_code)
+        }
+        return
+      }
+      // Dropped over a table area — MOVE to that table (same-category, not a no-op).
+      if (overData?.tableCode) {
+        if (!categoryFitsPO(overData.category, src)) return
+        if (src.table_code === overData.tableCode) return
+        moveAssignmentToTable(src.id, overData.tableCode)
+      }
       return
     }
 
-    // CREATE: a pool PO dropped onto a fitting table — open the assign modal.
-    const po = e.active?.data?.current?.po
+    // ── CREATE from the pool ────────────────────────────────────
+    // Resolve the target table whether the PO was dropped on the table area or
+    // directly onto a card (a card resolves to its own table).
+    const po = activeData?.po
     if (!po) return
+    const tableCode = overData?.tableCode || overAsg?.table_code
+    const category  = overData?.category
+      || (overAsg ? PASSAIC_TABLES.find(t => t.code === overAsg.table_code)?.category : null)
+    if (!tableCode || !category) return
     if (!categoryFitsPO(category, po)) return
     if (po.unquantified || po.remaining_yards > 0) {
       setAssignModal({ po, tableCode, proposed_yards: po.unquantified ? 0 : po.remaining_yards })
@@ -436,6 +474,21 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       .update({ table_code: newTable })
       .eq('id', id)
     if (error) { alert('Move failed: ' + error.message); return }
+    await onAssignmentsChange()
+  }
+
+  // Persist a new run order within a day group (Ramon's ask: order jobs per
+  // table, per day). `orderedIds` is the desired sequence; we renumber the
+  // whole group 0,1,2,… so there are never gaps or ties. Small groups (a few
+  // POs), so N tiny updates in parallel is fine.
+  async function reorderDayGroup(orderedIds) {
+    if (!orderedIds || orderedIds.length < 2) return
+    const results = await Promise.all(
+      orderedIds.map((id, i) =>
+        supabase.from('sched_assignments').update({ sort_order: i }).eq('id', id))
+    )
+    const bad = results.find(r => r.error)
+    if (bad) { alert('Reorder failed: ' + bad.error.message); return }
     await onAssignmentsChange()
   }
 
@@ -854,7 +907,10 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
       {/* DAILY SCHEDULER — POs grouped by the day they're pinned to. Anything
           not pinned to a day (all legacy assignments, and anything the planner
           leaves on "Whole week") collects under "Not day-assigned", so nothing
-          is hidden and Wendy can work through them at her own pace. */}
+          is hidden and the planner can work through them at their own pace.
+          Within each group the cards are drag-to-reorder (Ramon's ask) — the
+          order persists via sort_order. Dragging a card onto another TABLE
+          still moves it there. */}
       {(() => {
         const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
         const byDay = {}
@@ -864,7 +920,16 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
           if (d && WEEKDAYS.includes(d)) (byDay[d] = byDay[d] || []).push(a)
           else unpinned.push(a)
         }
+        // Sort each group by saved run order so reordering sticks across reloads.
+        for (const d of WEEKDAYS) if (byDay[d]) byDay[d].sort(bySortOrder)
+        unpinned.sort(bySortOrder)
         const dayTotal = (list) => list.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+        // Each group is its own sortable list (keyed by the card ids in order).
+        const renderGroup = (list) => (
+          <SortableContext items={list.map(a => String(a.id))} strategy={verticalListSortingStrategy}>
+            {list.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} onEdit={onEdit ? () => onEdit(a) : null} />)}
+          </SortableContext>
+        )
         return (
           <>
             {WEEKDAYS.filter(d => byDay[d]?.length).map(d => (
@@ -873,7 +938,7 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
                   <span>{d}</span>
                   <span style={{ color: C.inkLight, fontWeight: 600 }}>{fmt(dayTotal(byDay[d]))} yd</span>
                 </div>
-                {byDay[d].map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} onEdit={onEdit ? () => onEdit(a) : null} />)}
+                {renderGroup(byDay[d])}
               </div>
             ))}
             {unpinned.length > 0 && (
@@ -882,7 +947,7 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
                   <span>Not day-assigned</span>
                   <span style={{ fontWeight: 600 }}>{fmt(dayTotal(unpinned))} yd</span>
                 </div>
-                {unpinned.map(a => <AssignmentCard key={a.id} a={a} onRemove={() => onRemove(a.id)} onEdit={onEdit ? () => onEdit(a) : null} />)}
+                {renderGroup(unpinned)}
               </div>
             )}
           </>
@@ -1048,15 +1113,33 @@ function categoryFitsPO(category, po) {
 // table (useDraggable, 6px/200ms activation), plain click to EDIT yards, × to
 // remove. Same constraint pattern as the pool cards.
 function AssignmentCard({ a, onRemove, onEdit }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `asg-${a.id}`, data: { moveAssignment: a } })
+  // useSortable (not useDraggable) so cards can be dragged to REORDER within
+  // their day group. The sortable id must equal the SortableContext item id
+  // (String(a.id)). data carries `moveAssignment` (used by the move path +
+  // drag overlay) and `assignment` (used by handleDragEnd to detect a
+  // card-over-card reorder vs a table move).
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
+    id: String(a.id),
+    data: { moveAssignment: a, assignment: a },
+  })
   const isSch = (a.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (a.customer_type||'').toLowerCase().includes('3rd')
   const highColor = (a.colors_count || 0) >= HIGH_COLOR_THRESHOLD
+  const style = {
+    background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4,
+    fontSize: 10, position: 'relative', cursor: onEdit ? 'grab' : 'default',
+    opacity: isDragging ? 0.4 : 1,
+    // The DragOverlay renders the moving card, so the active item suppresses
+    // its own translate (otherwise it double-images). Non-active cards keep
+    // their transform so the list opens a gap at the drop position.
+    transform: (transform && !isDragging) ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
+  }
   return (
     <div ref={setNodeRef} {...listeners} {...attributes}
       onClick={onEdit ? (e) => { e.stopPropagation(); onEdit() } : undefined}
-      title={onEdit ? 'Drag to move · click to edit yards' : undefined}
-      style={{ background: C.parchment, borderRadius: 4, padding: '5px 7px', marginBottom: 4, fontSize: 10, position: 'relative', cursor: onEdit ? 'grab' : 'default', opacity: isDragging ? 0.4 : 1 }}>
+      title={onEdit ? 'Drag to reorder or move · click to edit yards' : undefined}
+      style={style}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 2 }}>
         {isSch && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.navy, color: '#fff', fontWeight: 700 }}>SCH</span>}
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
