@@ -547,6 +547,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         po_number: l.po_number, item_sku: l.item_sku, color: l.color,
         line_description: l.line_description,
         actual_yards: l.actual_yards ?? '', waste_yards: l.waste_yards ?? '',
+        is_complete: !!l.is_complete,
       }))
     } else if (op?.actual_yards != null || op?.waste_yards != null) {
       // Legacy lump entry (header total, no lines) — surface as one editable
@@ -555,6 +556,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         id: null, po_number: null, item_sku: null, color: null,
         line_description: 'Recorded total',
         actual_yards: op.actual_yards ?? '', waste_yards: op.waste_yards ?? '',
+        is_complete: false,
       })]
     } else if (seedAssignments.length > 0) {
       // Day-specific placements — pre-seed one blank line per planned PO so the
@@ -564,10 +566,10 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         id: null,
         po_number: a.po_number || null, item_sku: a.item_sku || null, color: a.color || null,
         line_description: a.line_description || a.po_number || null,
-        actual_yards: '', waste_yards: '',
+        actual_yards: '', waste_yards: '', is_complete: false,
       }))
     } else {
-      seed = [mk({ id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '' })]
+      seed = [mk({ id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', is_complete: false })]
     }
     setLines(seed)
     setDeletedIds([])
@@ -608,7 +610,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     })
   }
   function addLine() {
-    setLines(prev => [...prev, { _key: `l${keyRef.current++}`, id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '' }])
+    setLines(prev => [...prev, { _key: `l${keyRef.current++}`, id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', is_complete: false }])
   }
   function removeLine(key) {
     setLines(prev => {
@@ -672,6 +674,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           line_description: l.line_description || null,
           actual_yards: num(l.actual_yards),
           waste_yards: num(l.waste_yards),
+          is_complete: !!l.is_complete,
         }
         if (l.id) {
           await updateDailyOpLine(l.id, payload)
@@ -768,10 +771,12 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   const lineKeyOf = (l) => (l.po_number ? `${l.po_number}|${l.item_sku || ''}|${l.color || ''}` : '__other')
 
   // Passaic lines get a read-only color-yards column (yards × the PO's planned
-  // cy/yd ratio). BNY is digital — no color-yards — so its line grid stays 4-col.
+  // cy/yd ratio). BNY is digital — no color-yards. Both get a Done checkbox
+  // (per line item per table per day) — the completion signal the Status tab
+  // reads. Nothing checked = in progress, even with yardage recorded.
   const lineGridCols = site === 'passaic'
-    ? 'minmax(180px, 1fr) 78px 78px 58px 46px 28px'
-    : 'minmax(200px, 1fr) 90px 90px 46px 28px'
+    ? 'minmax(170px, 1fr) 74px 74px 54px 40px 44px 26px'
+    : 'minmax(190px, 1fr) 86px 86px 40px 44px 26px'
 
   return (
     <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, display: 'grid', gridTemplateColumns: '150px minmax(120px, 1fr) 120px 130px 130px 110px 80px', gap: 12, alignItems: 'start' }}>
@@ -891,6 +896,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           <span style={{ textAlign: 'right' }}>Actual yds</span>
           <span style={{ textAlign: 'right' }}>Waste</span>
           {site === 'passaic' && <span style={{ textAlign: 'right' }}>Color-yds</span>}
+          <span style={{ textAlign: 'center' }}>Done</span>
           <span style={{ textAlign: 'center' }}>Note</span>
           <span />
         </div>
@@ -933,6 +939,16 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                 {lineCY != null ? fmt(lineCY) : '—'}
               </div>
             )}
+            {/* Done — per line item per table per day. This is the ONLY driver of
+                In Progress / Complete on the Status tab. Recorded yardage still
+                burns down the PO's remaining independently; this flag is the
+                human "this line is finished" signal. */}
+            <div style={{ textAlign: 'center' }}>
+              <input type="checkbox" checked={!!l.is_complete} disabled={!canEnterActuals}
+                onChange={e => updateLine(l._key, { is_complete: e.target.checked })}
+                title={l.is_complete ? 'Line complete — uncheck to reopen' : 'Mark this line complete'}
+                style={{ cursor: canEnterActuals ? 'pointer' : 'not-allowed', width: 15, height: 15, accentColor: C.sage }} />
+            </div>
             {(() => {
               if (!l.po_number) return <span style={{ fontSize: 10, color: C.inkLight, textAlign: 'center' }}>—</span>
               const lk = lineKeyOf(l)

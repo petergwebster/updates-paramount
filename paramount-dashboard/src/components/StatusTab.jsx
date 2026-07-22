@@ -1,0 +1,340 @@
+import { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../supabase'
+import { C, fmt, isoDate, weekLabel, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { loadWeekDailyOpLines, deriveColorYards } from '../lib/dailyOps'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// StatusTab — "where does each PO stand this week?"
+// ═══════════════════════════════════════════════════════════════════════════
+// Two independent signals per PO, exactly per Peter's model:
+//
+//   1. NUMBERS (yards / color-yards). Scheduled vs recorded. Remaining =
+//      scheduled − recorded. Recorded actuals ALWAYS burn down remaining —
+//      whether or not the line is checked complete. Recording something (even
+//      zero) moves the numbers; the checkbox does not.
+//
+//   2. STATUS PILL (In Progress / Complete). Driven ONLY by the per-line Done
+//      checkboxes in Live Ops (sched_daily_ops_lines.is_complete). A PO reads
+//      Complete only when it has ≥1 recorded line AND every recorded line is
+//      checked. Nothing checked = In Progress, even at 100% of yards.
+//
+// Color-yards is DERIVED, never stored on the PO: deriveColorYards(actual, asg)
+// = actual × (planned_cy / planned_yards), per line, then summed. Same function
+// and same (table, po, sku, color) match the Live Ops KPI strip uses, so the
+// numbers here tie to Live Ops by construction. BNY is digital — no color-yards
+// (deriveColorYards returns null) — so those columns show "—".
+//
+// TONIGHT: the By-PO view (below). The By-Material category scorecard is
+// scaffolded as a second button but built next session, after a hand tie-out
+// of color-yards-completed-by-category.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export default function StatusTab() {
+  const [site, setSite] = useState('passaic')
+  const [weekStart, setWeekStart] = useState(() => defaultSchedulerWeek())
+  const [view, setView] = useState('po')          // 'po' | 'material'
+  const [assignments, setAssignments] = useState([])
+  const [opLines, setOpLines] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const showCY = site === 'passaic'
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        const { data: asn } = await supabase
+          .from('sched_assignments')
+          .select('*')
+          .eq('site', site)
+          .eq('week_start', isoDate(weekStart))
+        const lines = await loadWeekDailyOpLines(site, weekStart)
+        if (cancelled) return
+        setAssignments(asn || [])
+        setOpLines(lines || [])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [site, weekStart])
+
+  // Per-PO rollup — the core of the By-PO view.
+  const poRows = useMemo(() => {
+    // Match an actual line to its plan row the SAME way the KPI strip does, so
+    // derived color-yards ties out exactly: (table, po, sku, color).
+    const matchAsg = (l) => assignments.find(a =>
+      a.table_code === l.table_code &&
+      (a.po_number || '') === (l.po_number || '') &&
+      (a.item_sku || '') === (l.item_sku || '') &&
+      (a.color || '') === (l.color || '')
+    )
+
+    // Universe = every PO that's either scheduled or recorded this week. Lines
+    // with no po_number ("Other/unplanned") don't create a PO row — they're not
+    // a schedulable PO — matching how they're treated everywhere else.
+    const poKeys = new Set()
+    for (const a of assignments) if (a.po_number) poKeys.add(a.po_number)
+    for (const l of opLines) if (l.po_number) poKeys.add(l.po_number)
+
+    const rows = []
+    for (const po of poKeys) {
+      const asgs = assignments.filter(a => a.po_number === po)
+      const lines = opLines.filter(l => l.po_number === po)
+
+      const schedYards = asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+      const schedCY = showCY ? asgs.reduce((s, a) => s + Number(a.planned_cy || 0), 0) : null
+
+      const recYards = lines.reduce((s, l) => s + Number(l.actual_yards || 0), 0)
+      const wasteYards = lines.reduce((s, l) => s + Number(l.waste_yards || 0), 0)
+
+      // Recorded color-yards — per line, derived, then summed. Never sum yards
+      // and apply one ratio (a multi-SKU PO can carry different ratios per line).
+      let recCY = null
+      if (showCY) {
+        recCY = 0
+        for (const l of lines) {
+          const yd = Number(l.actual_yards || 0)
+          if (yd <= 0) continue
+          const cy = deriveColorYards(yd, matchAsg(l))
+          if (cy != null) recCY += cy
+        }
+      }
+
+      // Remaining ALWAYS = scheduled − recorded (independent of checkboxes).
+      const remYards = schedYards - recYards
+      const remCY = showCY ? (schedCY - recCY) : null
+
+      // Status pill — checkboxes only.
+      const doneCount = lines.filter(l => l.is_complete).length
+      const totalLines = lines.length
+      const isComplete = totalLines >= 1 && doneCount === totalLines
+
+      const desc = asgs[0]?.line_description || lines[0]?.line_description || po
+      const productType = asgs[0]?.product_type || null
+      const scheduled = asgs.length > 0
+
+      rows.push({
+        po, desc, productType, scheduled,
+        schedYards, schedCY, recYards, recCY, wasteYards, remYards, remCY,
+        doneCount, totalLines, isComplete,
+        tables: [...new Set([...asgs.map(a => a.table_code), ...lines.map(l => l.table_code)])].filter(Boolean),
+      })
+    }
+
+    // In-progress first (that's the work list), then biggest scheduled first.
+    rows.sort((a, b) =>
+      (a.isComplete ? 1 : 0) - (b.isComplete ? 1 : 0) ||
+      b.schedYards - a.schedYards
+    )
+    return rows
+  }, [assignments, opLines, showCY])
+
+  const totals = useMemo(() => {
+    const t = { schedYards: 0, recYards: 0, schedCY: 0, recCY: 0, complete: 0, count: poRows.length }
+    for (const r of poRows) {
+      t.schedYards += r.schedYards
+      t.recYards += r.recYards
+      if (showCY) { t.schedCY += r.schedCY || 0; t.recCY += r.recCY || 0 }
+      if (r.isComplete) t.complete++
+    }
+    return t
+  }, [poRows, showCY])
+
+  return (
+    <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', margin: 0, marginBottom: 4 }}>
+          Status — Where Each PO Stands
+        </h2>
+        <div style={{ fontSize: 13, color: C.inkMid }}>
+          Scheduled vs recorded for the week. Recorded yardage burns down the remaining the moment it's entered; the In&nbsp;Progress / Complete pill is driven by the per-line Done checkboxes in Live Ops.
+        </div>
+      </div>
+
+      {/* Site toggle + week nav */}
+      <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <SiteChip active={site === 'passaic'} onClick={() => setSite('passaic')} color={C.navy}>Passaic · Screen Print</SiteChip>
+          <SiteChip active={site === 'bny'} onClick={() => setSite('bny')} color={C.amber}>BNY · Digital</SiteChip>
+        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setWeekStart(addWeeks(weekStart, -1))}
+          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>← Prev week</button>
+        <div style={{ textAlign: 'center', minWidth: 150 }}>
+          <div style={{ fontSize: 10, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Week</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{weekLabel(weekStart)}</div>
+        </div>
+        <button onClick={() => setWeekStart(addWeeks(weekStart, 1))}
+          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Next week →</button>
+        <button onClick={() => setWeekStart(defaultSchedulerWeek())}
+          style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Default week</button>
+      </div>
+
+      {/* View switcher — By PO (built) / By Material (next session) */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <ViewChip active={view === 'po'} onClick={() => setView('po')}>By PO</ViewChip>
+        <ViewChip active={view === 'material'} onClick={() => setView('material')}>By Material</ViewChip>
+      </div>
+
+      {loading && <div style={{ padding: 40, textAlign: 'center', color: C.inkLight, fontSize: 13 }}>Loading…</div>}
+
+      {!loading && view === 'po' && (
+        <ByPoView rows={poRows} totals={totals} showCY={showCY} weekLabelText={weekLabel(weekStart)} />
+      )}
+
+      {!loading && view === 'material' && (
+        <div style={{ background: '#fff', border: `1px dashed ${C.border}`, borderRadius: 10, padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 8 }}>
+            By-Material scorecard — coming next
+          </div>
+          <div style={{ fontSize: 12, color: C.inkMid, maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
+            This view will show completed-vs-scheduled by category (Grasscloth, Fabric, Wallpaper, Digital) in <em>both</em> yards and color-yards — the labor read. It's held for a hand tie-out of color-yards-completed-by-category first, so the number is trustworthy before it drives anything.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── By-PO view ─────────────────────────────────────────────────────────────
+
+function ByPoView({ rows, totals, showCY, weekLabelText }) {
+  if (rows.length === 0) {
+    return (
+      <div style={{ background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 10, padding: '20px 16px', fontSize: 13, color: C.inkMid }}>
+        <strong style={{ color: C.ink }}>Nothing scheduled or recorded for {weekLabelText}.</strong> Once POs are scheduled and actuals start coming in from Live Ops, each PO's progress shows here.
+      </div>
+    )
+  }
+
+  // Grid: PO | Material | Scheduled | Recorded | Remaining | (Passaic: CY sched/rec) | Status
+  const gridCols = showCY
+    ? 'minmax(200px, 2fr) 110px 92px 92px 92px 110px 150px'
+    : 'minmax(220px, 2fr) 120px 100px 100px 100px 150px'
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+      {/* Summary strip */}
+      <div style={{ padding: '12px 16px', background: C.parchment, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <SummaryStat label="POs" value={`${totals.complete} / ${totals.count} complete`} />
+        <SummaryStat label="Yards" value={`${fmt(totals.recYards)} / ${fmt(totals.schedYards)}`} sub="recorded / scheduled" />
+        {showCY && <SummaryStat label="Color-yards" value={`${fmt(Math.round(totals.recCY))} / ${fmt(Math.round(totals.schedCY))}`} sub="recorded / scheduled" />}
+      </div>
+
+      {/* Column header */}
+      <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${C.border}`, fontSize: 9, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+        <span>PO / job</span>
+        <span>Material</span>
+        <span style={{ textAlign: 'right' }}>Sched yd</span>
+        <span style={{ textAlign: 'right' }}>Rec'd yd</span>
+        <span style={{ textAlign: 'right' }}>Rem. yd</span>
+        {showCY && <span style={{ textAlign: 'right' }}>CY r/s</span>}
+        <span style={{ textAlign: 'center' }}>Status</span>
+      </div>
+
+      {rows.map((r, i) => (
+        <PoRow key={r.po} r={r} showCY={showCY} gridCols={gridCols} zebra={i % 2 === 1} />
+      ))}
+    </div>
+  )
+}
+
+function PoRow({ r, showCY, gridCols, zebra }) {
+  const pct = r.schedYards > 0
+    ? Math.min(100, Math.round((r.recYards / r.schedYards) * 100))
+    : (r.recYards > 0 ? 100 : 0)
+  const barColor = r.isComplete ? C.sage : pct > 0 ? C.gold : C.border
+  const over = r.recYards > r.schedYards && r.schedYards > 0
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, alignItems: 'center', background: zebra ? C.cream : '#fff' }}>
+      {/* PO + description + progress bar */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.desc}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+          <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>{r.po}</span>
+          {r.tables.length > 0 && <span style={{ fontSize: 9, color: C.inkLight }}>· {r.tables.slice(0, 3).join(', ')}{r.tables.length > 3 ? '…' : ''}</span>}
+          {!r.scheduled && <span style={{ fontSize: 8, padding: '0 4px', borderRadius: 2, background: C.amberBg, color: C.amber, fontWeight: 700 }}>UNSCHEDULED</span>}
+        </div>
+        <div style={{ height: 4, background: C.warm, borderRadius: 2, overflow: 'hidden', marginTop: 4 }}>
+          <div style={{ width: pct + '%', height: '100%', background: barColor }} />
+        </div>
+      </div>
+
+      {/* Material */}
+      <div style={{ fontSize: 11, color: C.inkMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.productType || '—'}</div>
+
+      {/* Scheduled yards */}
+      <div style={{ textAlign: 'right', fontSize: 12, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{fmt(r.schedYards)}</div>
+
+      {/* Recorded yards (+ waste under) */}
+      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: r.recYards > 0 ? C.ink : C.inkLight }}>{r.recYards > 0 ? fmt(r.recYards) : '—'}</div>
+        {r.wasteYards > 0 && <div style={{ fontSize: 8, color: C.inkLight }}>{fmt(r.wasteYards)} waste</div>}
+      </div>
+
+      {/* Remaining yards */}
+      <div style={{ textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: over ? C.gold : r.remYards <= 0 ? C.sage : C.inkMid, fontWeight: 600 }}>
+        {over ? `+${fmt(r.recYards - r.schedYards)}` : fmt(Math.max(0, r.remYards))}
+        {over && <div style={{ fontSize: 8, color: C.gold, fontWeight: 400 }}>over</div>}
+      </div>
+
+      {/* Color-yards recorded/scheduled (Passaic only) */}
+      {showCY && (
+        <div style={{ textAlign: 'right', fontSize: 11, fontVariantNumeric: 'tabular-nums', color: C.inkMid }}>
+          {(r.recCY != null || r.schedCY != null)
+            ? <>{fmt(Math.round(r.recCY || 0))}<span style={{ color: C.inkLight }}> / {fmt(Math.round(r.schedCY || 0))}</span></>
+            : '—'}
+        </div>
+      )}
+
+      {/* Status pill + lines-done detail */}
+      <div style={{ textAlign: 'center' }}>
+        <span style={{
+          display: 'inline-block', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 12, letterSpacing: '0.04em',
+          background: r.isComplete ? C.sageBg : C.goldBg,
+          color: r.isComplete ? C.sage : C.gold,
+        }}>
+          {r.isComplete ? '✓ Complete' : '○ In Progress'}
+        </span>
+        <div style={{ fontSize: 9, color: C.inkLight, marginTop: 3 }}>
+          {r.totalLines > 0 ? `${r.doneCount} of ${r.totalLines} line${r.totalLines !== 1 ? 's' : ''} done` : 'not started'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Small shared bits ──────────────────────────────────────────────────────
+
+function SiteChip({ active, onClick, color, children }) {
+  return (
+    <button onClick={onClick}
+      style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: `1px solid ${active ? color : C.border}`, background: active ? color : 'transparent', color: active ? '#fff' : C.inkMid }}>
+      {children}
+    </button>
+  )
+}
+
+function ViewChip({ active, onClick, children }) {
+  return (
+    <button onClick={onClick}
+      style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: `1px solid ${active ? C.ink : C.border}`, background: active ? C.ink : 'transparent', color: active ? '#fff' : C.inkMid }}>
+      {children}
+    </button>
+  )
+}
+
+function SummaryStat({ label, value, sub }) {
+  return (
+    <div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, color: C.inkLight, fontStyle: 'italic' }}>{sub}</div>}
+    </div>
+  )
+}
