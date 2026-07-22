@@ -268,7 +268,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     }
     if (filterNewGoods) list = list.filter(r => r.is_new_goods)
     // Status chips are multi-select OR — both off = no status filter,
-    // one on = that status, both on = either status. Matches Wendy's
+    // one on = that status, both on = either status. Matches the planner's
     // "scheduling what's available to print" framing.
     const activeStatusFilters = []
     if (filterApprovedToPrint) activeStatusFilters.push('Approved to Print')
@@ -896,10 +896,10 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
 // Full daily plan/actual grid. Sits at the bottom of each Passaic table card
 // and surfaces Sun-Sat performance at a glance — plan yards, actual yards,
 // variance, and crew. As Sami enters actuals in Live Ops, they flow up here
-// so the scheduler card doubles as a monitoring view for Wendy's 3pm check.
+// so the scheduler card doubles as a monitoring view for the 3pm check.
 //
 // Sun and Sat auto-hide when empty (most weeks), keeping the strip compact.
-// They appear as soon as Wendy plans weekend work in CrewModal.
+// They appear as soon as weekend work is planned in CrewModal.
 function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
   const forTable = (dailyOps || []).filter(r => r.table_code === tableCode)
   // Index by (day, shift). Per Peter 5/2/2026, Passaic 1st and 2nd are
@@ -1219,7 +1219,7 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
     if (!weeklyYards || weeklyYards <= 0) return
     // Split across the days that have operators assigned for THIS shift; if
     // none, fall back to all 7 days. Avoids the previous behavior of always
-    // dividing by 5 (which broke when Wendy planned weekend work).
+    // dividing by 5 (which broke when weekend work was planned).
     const populatedDays = activeRows.filter(r => r.operator_1 || r.operator_2)
     const denom = populatedDays.length > 0 ? populatedDays.length : 7
     const perDay = Math.round(weeklyYards / denom)
@@ -1262,8 +1262,8 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
     }
   }
 
-  // Tab badges — small dot when shift has any populated rows so Wendy can
-  // see at a glance which shifts she's already planned.
+  // Tab badges — small dot when shift has any populated rows so the planner can
+  // see at a glance which shifts he's already planned.
   const has1stData = rows1st.some(r => r.operator_1 || r.operator_2 || r.planned_yards !== '')
   const has2ndData = rows2nd.some(r => r.operator_1 || r.operator_2 || r.planned_yards !== '')
 
@@ -1485,7 +1485,7 @@ function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onAp
     }
   }
 
-  const SYSTEM_PROMPT = `You are Claude, acting as a production scheduling advisor for Peter Webster at Paramount Prints — the specialty screen-printing division of F. Schumacher & Co. You're working with Wendy, the production manager at the Passaic NJ plant.
+  const SYSTEM_PROMPT = `You are Claude, acting as a production scheduling advisor for Peter Webster at Paramount Prints — the specialty screen-printing division of F. Schumacher & Co. You're working with Ramon, the production planner who owns all hand-screen scheduling at the Passaic NJ plant.
 
 PASSAIC PLANT STRUCTURE:
 - 17 tables total: 2 Grasscloth (GC-1, GC-2), 9 Fabric (FAB-3 through FAB-11), 6 Wallpaper (WP-12 through WP-17)
@@ -1508,22 +1508,22 @@ SCHEDULING LOGIC:
 - Category routing: Grass POs → GC tables; Fabric/Strike-off → FAB tables; Paper/Panel → WP tables
 
 YOUR ROLE:
-You are a thinking partner, not a commander. Wendy owns the decisions. Your job is to break her out of the blank-slate freeze by proposing a starting draft she can react to, and to keep advising as she adjusts.
+You are a thinking partner, not a commander. Ramon owns the decisions. Your job is to break him out of the blank-slate freeze by proposing a starting draft he can react to, and to keep advising as he adjusts.
 
-Speak warmly, directly, with the tone of a colleague who's been in the plant. Use her name. Reference specific patterns, specific POs, specific tables when relevant — this isn't generic.`
+Speak warmly, directly, with the tone of a colleague who's been in the plant. Use his name. Reference specific patterns, specific POs, specific tables when relevant — this isn't generic.`
 
   async function generateOpening() {
     setStreaming(true); setError(null)
     const context = buildContextSummary()
-    const userMsg = `It's Monday morning. Wendy is opening the scheduler to plan the week of ${isoDate(weekStart)}. The board is currently ${context.current_assignments === 0 ? 'empty' : `partially filled with ${context.current_assignments} assignments`}.
+    const userMsg = `It's Monday morning. Ramon is opening the scheduler to plan the week of ${isoDate(weekStart)}. The board is currently ${context.current_assignments === 0 ? 'empty' : `partially filled with ${context.current_assignments} assignments`}.
 
 CURRENT STATE:
 ${JSON.stringify(context, null, 2)}
 
-Your task right now: write an opening message to Wendy (max ~180 words). Include:
+Your task right now: write an opening message to Ramon (max ~180 words). Include:
 1. A warm greeting by name
 2. A quick read of the state — how much WIP is schedulable, how aged, where the concentration is
-3. Your initial read on this week's strategy in 2-3 sentences (what you'd focus on if you were sitting next to her)
+3. Your initial read on this week's strategy in 2-3 sentences (what you'd focus on if you were sitting next to him)
 4. End by asking if there's anything you should know before you draft — rush orders, crew changes, patterns to avoid, Schumacher priorities, anything that's not in the data
 
 Don't draft a schedule yet. Just open the conversation.
@@ -1551,7 +1551,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     const dailyOps = await loadWeekDailyOps('passaic', weekStart)
     const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
 
-    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Wendy can accept/edit/reject.]`
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Ramon can accept/edit/reject.]`
     convo[convo.length - 1].content += contextNote
 
     try {
