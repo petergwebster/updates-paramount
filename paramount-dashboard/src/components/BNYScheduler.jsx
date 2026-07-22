@@ -127,6 +127,44 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
   const [activeDragPO, setActiveDragPO] = useState(null)
 
+  // CROSS-WEEK BURN-DOWN (Ramon's bug, same fix as PassaicScheduler): the
+  // `assignments` prop is week-scoped, so the pool's "remaining" only netted
+  // THIS week's plan. A PO fully planned in another week still showed its full
+  // yardage as available here. Fix: fetch each PO/line's planned yards across
+  // ALL OTHER weeks and subtract that too. Caps the PLAN only — Live Ops
+  // actuals (overproduction) are untouched.
+  const [otherWeeksByLine, setOtherWeeksByLine] = useState({})
+  const [otherWeeksByPO, setOtherWeeksByPO]     = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadOtherWeeks() {
+      const thisWeek = isoDate(weekStart)
+      const { data, error } = await supabase
+        .from('sched_assignments')
+        .select('po_number, item_sku, color, planned_yards, week_start')
+        .eq('site', 'bny')
+        .neq('week_start', thisWeek)
+      if (cancelled) return
+      if (error) { console.error('[BNY burn-down] load failed', error); setOtherWeeksByLine({}); setOtherWeeksByPO({}); return }
+      const byLine = {}, byPO = {}
+      for (const a of (data || [])) {
+        const yd = Number(a.planned_yards || 0)
+        if (yd <= 0) continue
+        if (a.item_sku) {
+          const k = schedLineKey(a)
+          byLine[k] = (byLine[k] || 0) + yd
+        } else {
+          byPO[a.po_number] = (byPO[a.po_number] || 0) + yd
+        }
+      }
+      setOtherWeeksByLine(byLine)
+      setOtherWeeksByPO(byPO)
+    }
+    loadOtherWeeks()
+    return () => { cancelled = true }
+  }, [weekStart, assignments])
+
   // Drag-and-drop (dnd-kit), same setup as the Passaic scheduler. Mouse: a 6px
   // move starts a drag (plain clicks still select). Touch: 200ms press-hold.
   // Click-to-assign is retained as the fallback. Drop targets are the
@@ -232,7 +270,12 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       .filter(r => (r.po_number && String(r.po_number).trim())
         || !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
-        const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+        // this week's plan + EVERY OTHER week's plan — nets globally so a PO
+        // burns down across all weeks. Current week excluded from the fetch, so
+        // this week's own plan isn't double-counted.
+        const already =
+            (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+          + (otherWeeksByLine[schedLineKey(r)] || 0) + (otherWeeksByPO[r.po_number] || 0)
         const written = Number(r.yards_written || 0)
         // No yardage in LIFT (memos/customs) — schedulable, but with no total to
         // burn down against, so we can't compute a "remaining".
@@ -241,7 +284,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
       .filter(r => r.unquantified || r.remaining_yards > 0)
-  }, [schedulableWip, assignedByLine, assignedByPOLegacy])
+  }, [schedulableWip, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO])
 
   const filteredPool = useMemo(() => {
     let list = pool

@@ -76,6 +76,49 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [weekDailyOps, setWeekDailyOps] = useState([])
   const [activeDragPO, setActiveDragPO] = useState(null)
 
+  // CROSS-WEEK BURN-DOWN (Ramon's bug): the `assignments` prop is week-scoped —
+  // the parent loads only the current week. So the pool's "remaining" only
+  // netted THIS week's plan, and a 300-yd PO fully planned in another week still
+  // showed 300 available here. Fix: fetch how much of each PO/line is planned in
+  // ALL OTHER weeks and subtract that too. Keyed two ways to mirror the in-week
+  // logic below — by line signature (PO+SKU+color) for rows with an item_sku,
+  // and by PO for rows without. This caps the PLAN only. Live Ops actuals are
+  // untouched — the floor can still overproduce; that's recorded, not capped.
+  const [otherWeeksByLine, setOtherWeeksByLine] = useState({})
+  const [otherWeeksByPO, setOtherWeeksByPO]     = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadOtherWeeks() {
+      const thisWeek = isoDate(weekStart)
+      const { data, error } = await supabase
+        .from('sched_assignments')
+        .select('po_number, item_sku, color, planned_yards, week_start')
+        .eq('site', 'passaic')
+        .neq('week_start', thisWeek)
+      if (cancelled) return
+      if (error) { console.error('[Passaic burn-down] load failed', error); setOtherWeeksByLine({}); setOtherWeeksByPO({}); return }
+      const byLine = {}, byPO = {}
+      for (const a of (data || [])) {
+        const yd = Number(a.planned_yards || 0)
+        if (yd <= 0) continue
+        if (a.item_sku) {
+          const k = schedLineKey(a)
+          byLine[k] = (byLine[k] || 0) + yd
+        } else {
+          byPO[a.po_number] = (byPO[a.po_number] || 0) + yd
+        }
+      }
+      setOtherWeeksByLine(byLine)
+      setOtherWeeksByPO(byPO)
+    }
+    loadOtherWeeks()
+    return () => { cancelled = true }
+    // Re-fetch when the week changes OR after any assignment write this week
+    // (assignments identity changes on reload), so planning in one week
+    // immediately reflects in the others.
+  }, [weekStart, assignments])
+
   // Drag-and-drop (dnd-kit). PointerSensor = mouse: a 6px move starts a drag,
   // so a plain click still selects. TouchSensor = the floor's tablets: a 200ms
   // press-and-hold starts a drag, so a tap/scroll on the pool doesn't grab a
@@ -177,7 +220,14 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       .filter(r => (r.po_number && String(r.po_number).trim())
         || !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
-        const already = (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+        // "already" = this week's plan (assignedByLine/PO) + EVERY OTHER week's
+        // plan (otherWeeksByLine/PO). Netting all weeks is what makes a PO burn
+        // down globally: plan 300 of a 300-yd PO anywhere and 0 remain to plan
+        // anywhere else. The current week is excluded from the other-weeks fetch,
+        // so this week's own plan is never double-counted.
+        const already =
+            (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+          + (otherWeeksByLine[schedLineKey(r)] || 0) + (otherWeeksByPO[r.po_number] || 0)
         const written = Number(r.yards_written || 0)
         // Memos / customs carry NO yardage in LIFT — schedulable, but with no
         // total to burn down against. Flagged so the qty is entered at drop time.
@@ -186,7 +236,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
       .filter(r => r.unquantified || r.remaining_yards > 0)
-  }, [wipRows, assignedByLine, assignedByPOLegacy])
+  }, [wipRows, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO])
 
   const filteredPool = useMemo(() => {
     let list = pool
