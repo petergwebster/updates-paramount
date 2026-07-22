@@ -370,40 +370,50 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     })
   }
 
-  async function commitAssignment({ po, tableCode, yards, editId, day }) {
+  async function commitAssignment({ po, tableCode, yards, editId, days }) {
     setAssigning(true)
     try {
       const colors = po.colors_count || null
       const cy = colors ? colors * yards : null
-      // DAILY SCHEDULER (Ramon's ask): Passaic POs can now be pinned to a
-      // specific weekday, the way BNY already is. `day` is null for "whole
-      // week / not day-assigned yet" — which is how all 841 legacy Passaic
-      // assignments are stored, so nothing breaks. Once a PO carries a day,
-      // Live Ops auto-pre-fills that day's line from it (the seed path already
-      // keys on day-specific assignments — same as BNY).
-      const dayVal = day || null
+      // DAILY SCHEDULER (Ramon's ask): Passaic POs can be pinned to a weekday,
+      // the way BNY already is. `days` is an ARRAY of weekday strings.
+      //   - []            → whole week (one row, day_of_week null) — the legacy
+      //     behavior all 841 pre-feature assignments use, so nothing breaks.
+      //   - ['Wed']       → one row pinned to Wednesday.
+      //   - ['Mon','Tue'] → MULTI-DAY (Ramon's follow-up): one row PER day, each
+      //     with the SAME yardage — for a job that runs the same amount daily.
+      // Once a PO carries a day, Live Ops auto-pre-fills that day's line.
+      const dayList = (days && days.length > 0) ? days : ['']
+      const numAssignments = dayList.length
       if (editId) {
-        // Edit mode — update the existing assignment's yards (+ recomputed CY)
-        // and its day. The table stays put; only the amount/day changes.
+        // Edit mode is always single-day — update the existing row's yards, CY
+        // and day. (The modal forces single-select in edit mode.)
+        const dayVal = dayList[0] || null
         const { error: ue } = await supabase.from('sched_assignments')
           .update({ planned_yards: yards, planned_cy: cy, day_of_week: dayVal })
           .eq('id', editId)
         if (ue) throw ue
       } else {
-        const { error: ie } = await supabase.from('sched_assignments').insert({
+        // One insert row per selected day — same yardage on each.
+        const rows = dayList.map(d => ({
           site: 'passaic', po_number: po.po_number,
           item_sku: po.item_sku || null, color: po.color || null,
           line_description: po.line_description, product_type: po.product_type,
           table_code: tableCode, week_start: isoDate(weekStart),
-          day_of_week: dayVal, shift: '1st', planned_yards: yards, planned_cy: cy,
+          day_of_week: d || null, shift: '1st', planned_yards: yards, planned_cy: cy,
           assigned_by: null, notes: null, status: 'planned',
-        })
+        }))
+        const { error: ie } = await supabase.from('sched_assignments').insert(rows)
         if (ie) throw ie
       }
       await onAssignmentsChange()
       if (!editId) {
-        if (po.unquantified || yards >= po.remaining_yards) setSelectedPO(null)
-        else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - yards, assigned_already: (po.assigned_already||0) + yards })
+        // Total planned = yards × number of days scheduled. Burn-down (which
+        // refetches on assignment change) will reconcile against the WIP total;
+        // this is just the optimistic local decrement for the selected PO.
+        const totalYards = yards * numAssignments
+        if (po.unquantified || totalYards >= po.remaining_yards) setSelectedPO(null)
+        else setSelectedPO({ ...po, remaining_yards: po.remaining_yards - totalYards, assigned_already: (po.assigned_already||0) + totalYards })
       }
       setAssignModal(null)
     } catch (e) {
@@ -583,7 +593,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           isEdit={!!assignModal.editId}
           initialDay={assignModal.day || ''}
           onCancel={() => setAssignModal(null)}
-          onConfirm={(yards, day) => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId, day })}
+          onConfirm={(yards, days) => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId, days })}
           busy={assigning}
         />
       )}
@@ -1080,21 +1090,31 @@ function FilterChip({ active, onClick, color, children }) {
 
 function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
-  // DAILY SCHEDULER: which weekday this PO runs on. '' = not day-assigned (the
-  // legacy "whole week" behavior, still valid — go-forward only, nothing that's
-  // already scheduled changes). Pinning a day is what lets Live Ops pre-fill
-  // that day's line automatically, the way BNY already does.
-  const [day, setDay] = useState(initialDay || '')
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-  const cy = po.colors_count ? po.colors_count * yards : 0
+  // DAILY SCHEDULER: which weekday(s) this PO runs on. `days` is an ARRAY.
+  //   []       = not day-assigned (legacy "whole week"; the floor picks it in
+  //              Live Ops). Still fully valid — go-forward only.
+  //   ['Wed']  = pinned to one day; Live Ops pre-fills that day.
+  //   2+ days  = Ramon's multi-day ask: schedule the SAME yardage on each
+  //              selected day in one action (e.g. a job that runs 300/day).
+  // Edit mode is single-day only (pickDay forces a single selection).
+  const [days, setDays] = useState(initialDay ? [initialDay] : [])
+  function pickDay(d) {
+    if (isEdit) { setDays([d]); return }
+    setDays(prev => prev.includes(d)
+      ? prev.filter(x => x !== d)
+      : [...prev, d].sort((a, b) => WEEKDAYS.indexOf(a) - WEEKDAYS.indexOf(b)))
+  }
+  const numDays = days.length === 0 ? 1 : days.length
+  const multiDay = days.length >= 2
+  const perDayCy = po.colors_count ? po.colors_count * yards : 0
+  const totalYards = yards * numDays
   const maxY = po.unquantified ? 0 : po.remaining_yards
-  // Overschedule allowed (Peter 6/30): the floor schedules beyond WIP qty for
-  // MTO/custom/Hosp and prints past nominal capacity when needed. Only a
-  // non-positive entry is invalid; going over is permitted and just flagged.
-  // Live Ops captures what actually ran, so over-100% on the board is accurate.
-  const over = yards > maxY
-  // Strike-offs (27" and other sub-yard samples) consume <1 yard — allow
-  // fractional yards. Any positive amount is valid; only zero/negative blocks.
+  // Overschedule allowed (Peter 6/30): schedule beyond WIP qty / nominal
+  // capacity when needed — flagged, not blocked. With multi-day, "over" is
+  // judged on the TOTAL across all selected days. Only a non-positive per-day
+  // entry is invalid. Strike-offs (<1 yd samples) allow fractional yards.
+  const over = totalYards > maxY
   const invalid = !(yards > 0)
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
@@ -1116,33 +1136,47 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', onCance
             can pre-fill that day's line automatically (like BNY). Leaving it on
             "Whole week" keeps the old behavior: the PO sits on the table for the
             week and the floor picks it from the Live Ops dropdown. */}
-        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Day</label>
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>
+          Day{!isEdit && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: C.inkLight }}> · tap more than one to schedule several days at once</span>}
+        </label>
         <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
-          <button onClick={() => setDay('')}
-            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, background: day === '' ? C.navy : 'transparent', color: day === '' ? '#fff' : C.inkMid, border: `1px solid ${day === '' ? C.navy : C.border}`, borderRadius: 4, cursor: 'pointer' }}>
+          <button onClick={() => setDays([])}
+            style={{ padding: '5px 10px', fontSize: 11, fontWeight: 600, background: days.length === 0 ? C.navy : 'transparent', color: days.length === 0 ? '#fff' : C.inkMid, border: `1px solid ${days.length === 0 ? C.navy : C.border}`, borderRadius: 4, cursor: 'pointer' }}>
             Whole week
           </button>
-          {WEEKDAYS.map(d => (
-            <button key={d} onClick={() => setDay(d)}
-              style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: day === d ? C.navy : 'transparent', color: day === d ? '#fff' : C.inkMid, border: `1px solid ${day === d ? C.navy : C.border}`, borderRadius: 4, cursor: 'pointer' }}>
-              {d}
-            </button>
-          ))}
+          {WEEKDAYS.map(d => {
+            const on = days.includes(d)
+            return (
+              <button key={d} onClick={() => pickDay(d)}
+                style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: on ? C.navy : 'transparent', color: on ? '#fff' : C.inkMid, border: `1px solid ${on ? C.navy : C.border}`, borderRadius: 4, cursor: 'pointer' }}>
+                {d}
+              </button>
+            )
+          })}
         </div>
         <div style={{ fontSize: 11, color: C.inkLight, marginBottom: 12, fontStyle: 'italic' }}>
-          {day
-            ? `Pinned to ${day} — Live Ops will pre-fill this job on ${day}.`
-            : 'Not pinned to a day — sits on the table all week; the floor picks it in Live Ops.'}
+          {days.length === 0
+            ? 'Not pinned to a day — sits on the table all week; the floor picks it in Live Ops.'
+            : days.length === 1
+              ? `Pinned to ${days[0]} — Live Ops will pre-fill this job on ${days[0]}.`
+              : `${days.length} days (${days.join(', ')}) — one assignment each, same yardage. Live Ops pre-fills all ${days.length}.`}
         </div>
 
         <div style={{ padding: '10px 14px', background: over ? C.amberBg : C.goldBg, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.ink }}>
-          This assignment: <strong>{fmt(yards)} yards × {po.colors_count || 0} colors = {fmt(cy)} CY</strong>
-          {yards < maxY && <div style={{ fontSize: 11, color: C.inkMid, marginTop: 4 }}>Remaining {fmt(maxY - yards)} yards will stay in the pool.</div>}
-          {over && <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 600 }}>Overscheduling {fmt(yards - maxY)} yd beyond the {fmt(maxY)} yd on the WIP — intentional; Live Ops captures actuals.</div>}
+          {multiDay ? (
+            <>
+              This assignment: <strong>{fmt(yards)} yd × {days.length} days = {fmt(totalYards)} yd total</strong>
+              <div style={{ fontSize: 11, color: C.inkMid, marginTop: 2 }}>{po.colors_count || 0} colors → {fmt(perDayCy)} CY each day · {days.join(', ')}</div>
+            </>
+          ) : (
+            <>This assignment: <strong>{fmt(yards)} yards × {po.colors_count || 0} colors = {fmt(perDayCy)} CY</strong></>
+          )}
+          {!over && totalYards < maxY && <div style={{ fontSize: 11, color: C.inkMid, marginTop: 4 }}>Remaining {fmt(maxY - totalYards)} yards will stay in the pool.</div>}
+          {over && <div style={{ fontSize: 11, color: C.amber, marginTop: 4, fontWeight: 600 }}>Overscheduling {fmt(totalYards - maxY)} yd beyond the {fmt(maxY)} yd on the WIP — intentional; Live Ops captures actuals.</div>}
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>
-          <button onClick={() => onConfirm(yards, day)} disabled={invalid || busy}
+          <button onClick={() => onConfirm(yards, days)} disabled={invalid || busy}
             style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
             {busy ? (isEdit ? 'Saving…' : 'Assigning…') : (isEdit ? 'Save changes' : 'Confirm assignment')}
           </button>
