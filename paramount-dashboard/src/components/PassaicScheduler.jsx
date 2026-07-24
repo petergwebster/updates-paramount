@@ -286,8 +286,16 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const filteredPool = useMemo(() => {
     let list = pool
     if (poolFilter) {
-      const q = poolFilter.toLowerCase()
-      list = list.filter(r => (r.po_number||'').toLowerCase().includes(q) || (r.line_description||'').toLowerCase().includes(q))
+      // Prefix-insensitive PO match: some older orders are bare numbers (e.g.
+      // "204094") while newer ones carry a "PO" prefix, so strip a leading "po"
+      // from BOTH the query and the PO number before matching. Description still
+      // matches on the raw query. Fixes Ramon searching "PO204094" for "204094".
+      const q = poolFilter.toLowerCase().trim()
+      const core = q.replace(/^po/, '')
+      list = list.filter(r => {
+        const po = (r.po_number || '').toLowerCase()
+        return po.includes(q) || po.replace(/^po/, '').includes(core) || (r.line_description||'').toLowerCase().includes(q)
+      })
     }
     if (filterSch === 'sch') list = list.filter(r => (r.customer_type||'').toLowerCase() === 'schumacher')
     if (filterSch === '3p')  list = list.filter(r => (r.customer_type||'').toLowerCase().includes('3rd'))

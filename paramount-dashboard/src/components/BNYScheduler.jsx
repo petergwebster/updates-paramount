@@ -289,11 +289,15 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const filteredPool = useMemo(() => {
     let list = pool
     if (poolFilter) {
-      const q = poolFilter.toLowerCase()
-      list = list.filter(r =>
-        (r.po_number||'').toLowerCase().includes(q) ||
-        (r.line_description||'').toLowerCase().includes(q)
-      )
+      // Prefix-insensitive PO match (see PassaicScheduler): bare-number POs like
+      // "204094" and "PO"-prefixed POs should both match either query form.
+      const q = poolFilter.toLowerCase().trim()
+      const core = q.replace(/^po/, '')
+      list = list.filter(r => {
+        const po = (r.po_number || '').toLowerCase()
+        return po.includes(q) || po.replace(/^po/, '').includes(core) ||
+          (r.line_description||'').toLowerCase().includes(q)
+      })
     }
     if (filterBucket)    list = list.filter(r => r.bny_bucket === filterBucket)
     if (filterHighColor) list = list.filter(r => (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD)
