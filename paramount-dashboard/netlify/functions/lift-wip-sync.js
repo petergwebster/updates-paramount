@@ -32,9 +32,11 @@ const SUPABASE_URL   = process.env.VITE_SUPABASE_URL
 const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // How many recent snapshots to keep (best-effort prune each run so the table
-// stays bounded under an hourly cadence). Manual uploads are also snapshots and
-// count toward this; bump it if you want more history.
-const KEEP_SNAPSHOTS = 12
+// stays bounded). Raised 12 -> 240 (2026-07-24): at 12 the table held only
+// ~3-4 hours, so a dropped order had no recent-good snapshot to fall back to
+// and post-hoc diagnosis was impossible. 240 keeps ~3+ days even at the current
+// (buggy) 3x/hour cadence. Manual uploads also count toward this.
+const KEEP_SNAPSHOTS = 240
 
 // ─── LIFT fetch (win1252 CSV, per the bridge) ──────────────────────────────
 function reportUrl(report) {
@@ -357,6 +359,26 @@ async function sbInsert(table, body, opts = {}) {
   return opts.returnRepresentation ? res.json() : null
 }
 
+// Baseline for the completeness guard: the LARGEST recent snapshot (max over
+// the last few), so a single mild dip can't lower the bar and let a truncated
+// pull slip through. A rolling max still tracks legitimate hour-to-hour
+// invoicing shrink, so this won't freeze the feed under normal operation.
+async function getRecentSnapshotBaseline() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/sched_snapshots?select=total_rows,passaic_orders,bny_orders&order=uploaded_at.desc&limit=6`,
+      { headers: SB_HEADERS })
+    if (!res.ok) return null
+    const arr = await res.json()
+    if (!arr.length) return null
+    return {
+      total_rows:     Math.max(...arr.map(s => s.total_rows     || 0)),
+      passaic_orders: Math.max(...arr.map(s => s.passaic_orders || 0)),
+      bny_orders:     Math.max(...arr.map(s => s.bny_orders     || 0)),
+    }
+  } catch { return null }
+}
+
 async function pruneOldSnapshots() {
   // Best-effort: keep the newest KEEP_SNAPSHOTS; never fatal.
   try {
@@ -431,6 +453,34 @@ const runSync = async (event) => {
       const sample = site => rows.filter(r => r.site === site).slice(0, 3)
       result.samples = { passaic: sample('passaic'), bny: sample('bny') }
       result.orders_headers = ordersHeaders
+      return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
+    }
+
+    // ── Completeness guard ────────────────────────────────────────────────
+    // The failure that lost live orders (2026-07-24): LIFT returns HTTP 200 but
+    // a TRUNCATED body, we build a short snapshot, write it as the new current,
+    // and pruneOldSnapshots() then deletes the good history -- blanking the
+    // scheduling pool with nothing to recover from. Refuse any pull that's
+    // implausibly small, or catastrophically smaller than the recent baseline.
+    // Freezing on the last good snapshot is the safe failure mode:
+    // stale-but-complete beats fresh-but-truncated.
+    const GUARD_FLOOR = 0.70   // reject a >30% single-pull drop; invoicing never does this in one hour
+    const baseline = await getRecentSnapshotBaseline()
+    let guardTrip = null
+    if (rows.length < 200) {
+      guardTrip = `only ${rows.length} rows parsed (<200 floor) -- LIFT pull looks truncated`
+    } else if (baseline) {
+      if (summary.passaic.orders < baseline.passaic_orders * GUARD_FLOOR)
+        guardTrip = `passaic ${summary.passaic.orders} < 70% of recent max ${baseline.passaic_orders}`
+      else if (summary.bny.orders < baseline.bny_orders * GUARD_FLOOR)
+        guardTrip = `bny ${summary.bny.orders} < 70% of recent max ${baseline.bny_orders}`
+      else if (rows.length < baseline.total_rows * GUARD_FLOOR)
+        guardTrip = `total ${rows.length} < 70% of recent max ${baseline.total_rows}`
+    }
+    if (guardTrip) {
+      console.error('lift-wip-sync GUARD refused partial pull --', guardTrip)
+      result.skipped = true
+      result.guard_tripped = guardTrip
       return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
     }
 
