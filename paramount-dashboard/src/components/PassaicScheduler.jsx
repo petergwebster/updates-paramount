@@ -87,10 +87,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   // the parent loads only the current week. So the pool's "remaining" only
   // netted THIS week's plan, and a 300-yd PO fully planned in another week still
   // showed 300 available here. Fix: fetch how much of each PO/line is planned in
-  // ALL OTHER weeks and subtract that too. Keyed two ways to mirror the in-week
+  // FUTURE weeks and subtract that too. Keyed two ways to mirror the in-week
   // logic below — by line signature (PO+SKU+color) for rows with an item_sku,
   // and by PO for rows without. This caps the PLAN only. Live Ops actuals are
   // untouched — the floor can still overproduce; that's recorded, not capped.
+  //
+  // 2026-07-24: net only CURRENT + FUTURE weeks (was ALL other weeks). Stale
+  // plans from PAST weeks that never ran were burning a still-live PO down to
+  // zero, so it vanished from the pool and could not be rescheduled — e.g. the
+  // Monkey Madness new goods carried April/May/June ghost assignments that kept
+  // them hidden even after this week's plan was removed. A past week is over; if
+  // the order is still in WIP it needs scheduling now, not netting-out.
   const [otherWeeksByLine, setOtherWeeksByLine] = useState({})
   const [otherWeeksByPO, setOtherWeeksByPO]     = useState({})
 
@@ -102,7 +109,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         .from('sched_assignments')
         .select('po_number, item_sku, color, planned_yards, week_start')
         .eq('site', 'passaic')
-        .neq('week_start', thisWeek)
+        .gt('week_start', thisWeek)   // FUTURE weeks only — past-week ghosts must not bury live WIP
       if (cancelled) return
       if (error) { console.error('[Passaic burn-down] load failed', error); setOtherWeeksByLine({}); setOtherWeeksByPO({}); return }
       const byLine = {}, byPO = {}
