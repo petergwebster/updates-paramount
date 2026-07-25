@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, isoDate, weekLabel, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
+import { C, fmt, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, DAY_INDEX } from '../lib/scheduleUtils'
 import { loadWeekDailyOpLines, deriveColorYards } from '../lib/dailyOps'
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -14,9 +14,12 @@ import { loadWeekDailyOpLines, deriveColorYards } from '../lib/dailyOps'
 //      zero) moves the numbers; the checkbox does not.
 //
 //   2. STATUS PILL (In Progress / Complete). Driven ONLY by the per-line Done
-//      checkboxes in Live Ops (sched_daily_ops_lines.is_complete). A PO reads
-//      Complete only when it has ≥1 recorded line AND every recorded line is
-//      checked. Nothing checked = In Progress, even at 100% of yards.
+//      checkboxes in Live Ops (sched_daily_ops_lines.is_complete), and ONLY on
+//      the LAST day the PO actually ran. Sami ticks "done" on the day the PO
+//      finishes — not retroactively on every earlier day it touched — so that
+//      final tick is what flips the pill. Nothing ticked = In Progress, even at
+//      100% of yards. (Ramon, 7/22: the old rule required every day to be
+//      ticked, leaving finished POs stuck In Progress.)
 //
 // Color-yards is DERIVED, never stored on the PO: deriveColorYards(actual, asg)
 // = actual × (planned_cy / planned_yards), per line, then summed. Same function
@@ -107,10 +110,28 @@ export default function StatusTab() {
       const remYards = schedYards - recYards
       const remCY = showCY ? (schedCY - recCY) : null
 
-      // Status pill — checkboxes only.
+      // Status pill — checkboxes only, and only the LAST day counts.
+      //
+      // "Last day" = the latest day (by DAY_INDEX) carrying a line with real
+      // activity: recorded yards, recorded waste, or an explicit done tick.
+      // Empty pre-filled lines are deliberately ignored — BNY seeds a line per
+      // scheduled PO per day, so an untouched straggler day must not hold a
+      // finished PO open. Every active line ON that last day must be ticked, so
+      // a PO running on several tables the final day still needs them all in.
+      const activeLines = lines.filter(l =>
+        Number(l.actual_yards || 0) > 0 || Number(l.waste_yards || 0) > 0 || l.is_complete
+      )
+      let lastDayLines = []
+      if (activeLines.length > 0) {
+        const lastIdx = Math.max(...activeLines.map(l => DAY_INDEX[l.day_of_week] ?? -1))
+        lastDayLines = activeLines.filter(l => (DAY_INDEX[l.day_of_week] ?? -1) === lastIdx)
+      }
+      const isComplete = lastDayLines.length > 0 && lastDayLines.every(l => l.is_complete)
+      const lastDayLabel = lastDayLines[0]?.day_of_week || null
+      const lastDayDone = lastDayLines.filter(l => l.is_complete).length
+      const lastDayTotal = lastDayLines.length
       const doneCount = lines.filter(l => l.is_complete).length
       const totalLines = lines.length
-      const isComplete = totalLines >= 1 && doneCount === totalLines
 
       const desc = asgs[0]?.line_description || lines[0]?.line_description || po
       const productType = asgs[0]?.product_type || null
@@ -119,7 +140,7 @@ export default function StatusTab() {
       rows.push({
         po, desc, productType, scheduled,
         schedYards, schedCY, recYards, recCY, wasteYards, remYards, remCY,
-        doneCount, totalLines, isComplete,
+        doneCount, totalLines, isComplete, lastDayLabel, lastDayDone, lastDayTotal,
         tables: [...new Set([...asgs.map(a => a.table_code), ...lines.map(l => l.table_code)])].filter(Boolean),
       })
     }
@@ -302,8 +323,13 @@ function PoRow({ r, showCY, gridCols, zebra }) {
           {r.isComplete ? '✓ Complete' : '○ In Progress'}
         </span>
         <div style={{ fontSize: 9, color: C.inkLight, marginTop: 3 }}>
-          {r.totalLines > 0 ? `${r.doneCount} of ${r.totalLines} line${r.totalLines !== 1 ? 's' : ''} done` : 'not started'}
+          {r.lastDayLabel
+            ? `${r.lastDayLabel}: ${r.lastDayDone} of ${r.lastDayTotal} done`
+            : 'not started'}
         </div>
+        {r.lastDayLabel && r.totalLines > r.lastDayTotal && (
+          <div style={{ fontSize: 8, color: C.inkLight }}>{r.doneCount}/{r.totalLines} across all days</div>
+        )}
       </div>
     </div>
   )

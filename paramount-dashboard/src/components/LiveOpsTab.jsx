@@ -390,6 +390,13 @@ export default function LiveOpsTab({ currentUser } = {}) {
           is single-pass — color-yards is meaningless for BNY).               */}
       {!loading && <KpiStrip site={site} weekStart={weekStart} dailyOps={dailyOps} opLines={opLines} assignments={assignments} />}
 
+      {/* Day totals — Ramon's asks: a daily total per day, and waste by day with a
+          running weekly total. The KPI strip above is week-scoped; this bar is
+          THIS day vs week-to-date, so the floor can see where the day landed
+          without leaving the entry screen. */}
+      {!loading && <DayTotals site={site} dayOfWeek={dayOfWeek} dayLabel={dayLabel}
+        dailyOps={dailyOps} opLines={opLines} assignments={assignments} />}
+
       {/* No-plan-data warning — only if neither explicit targets nor PO assignments exist */}
       {!loading && !dailyOps.some(r => r.planned_yards != null) && assignments.length === 0 && (
         <div style={{ background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.inkMid }}>
@@ -493,6 +500,137 @@ export default function LiveOpsTab({ currentUser } = {}) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DayTotals — "where did THIS day land, and where's the week?"
+
+   Ramon asked for two things that are really one bar: a daily total per day,
+   and waste by day plus a running total. Both read off the same rows the entry
+   grid writes, so they're always in step with what's on screen.
+
+   Yards / waste come from the header rows (sched_daily_ops), which are the
+   rolled-up sums of the per-PO lines — the same source the KPI strip and
+   Heartbeat use, so nothing can drift. Color-yards is derived per line via
+   deriveColorYards (yards × the PO's planned cy/yd), never re-derived from a
+   header total — the one canonical definition.
+
+   NOTE: waste here is RAW recorded waste. Ramon's allowance thresholds (48 yd
+   grasscloth / 25 fabric / 30 wallpaper) are deliberately NOT applied yet — the
+   UNIT is still unconfirmed (per run? per PO? per table per day?), and that
+   choice changes every waste number downstream. Raw totals are unambiguous
+   today; the threshold layer goes in once Ramon confirms the unit.
+   ═════════════════════════════════════════════════════════════════════ */
+function DayTotals({ site, dayOfWeek, dayLabel, dailyOps, opLines, assignments }) {
+  const showCY = site === 'passaic'
+
+  const stats = useMemo(() => {
+    const sum = (rows, f) => rows.reduce((s, r) => s + Number(r[f] || 0), 0)
+    const dayOps  = dailyOps.filter(o => o.site === site && o.day_of_week === dayOfWeek)
+    const weekOps = dailyOps.filter(o => o.site === site)
+
+    // Color-yards, derived per line then summed — a multi-SKU PO can carry
+    // different cy/yd ratios per line, so never sum yards and apply one ratio.
+    const cyOf = (lines) => {
+      if (!showCY) return null
+      let t = 0
+      for (const l of lines) {
+        const yd = Number(l.actual_yards || 0)
+        if (yd <= 0) continue
+        const asg = assignments.find(a =>
+          a.site === site &&
+          a.table_code === l.table_code &&
+          (a.po_number || '') === (l.po_number || '') &&
+          (a.item_sku || '') === (l.item_sku || '') &&
+          (a.color || '') === (l.color || '')
+        )
+        const cy = deriveColorYards(yd, asg)
+        if (cy != null) t += cy
+      }
+      return t
+    }
+    const dayLines  = opLines.filter(l => l.site === site && l.day_of_week === dayOfWeek)
+    const weekLines = opLines.filter(l => l.site === site)
+
+    return {
+      dayYards:  sum(dayOps, 'actual_yards'),
+      dayWaste:  sum(dayOps, 'waste_yards'),
+      weekYards: sum(weekOps, 'actual_yards'),
+      weekWaste: sum(weekOps, 'waste_yards'),
+      dayCY:  cyOf(dayLines),
+      weekCY: cyOf(weekLines),
+      dayTables: dayOps.filter(o => o.actual_yards != null).length,
+    }
+  }, [site, dayOfWeek, dailyOps, opLines, assignments, showCY])
+
+  // Waste as a share of everything that ran (good + waste) — unit-independent,
+  // so it's meaningful now without waiting on the allowance decision.
+  const pct = (w, y) => (y + w) > 0 ? Math.round((w / (y + w)) * 1000) / 10 : null
+  const dayPct  = pct(stats.dayWaste, stats.dayYards)
+  const weekPct = pct(stats.weekWaste, stats.weekYards)
+
+  const nothingYet = stats.dayYards === 0 && stats.dayWaste === 0
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+      <TotalsCard
+        eyebrow={dayOfWeek ? `${dayLabel} · this day` : 'Selected day'}
+        accent={C.navy}
+        yards={stats.dayYards}
+        waste={stats.dayWaste}
+        wastePct={dayPct}
+        cy={showCY ? stats.dayCY : null}
+        note={nothingYet ? 'Nothing recorded yet today' : `${stats.dayTables} table${stats.dayTables !== 1 ? 's' : ''} recorded`}
+      />
+      <TotalsCard
+        eyebrow="Week to date"
+        accent={C.inkLight}
+        yards={stats.weekYards}
+        waste={stats.weekWaste}
+        wastePct={weekPct}
+        cy={showCY ? stats.weekCY : null}
+        note="All days entered so far this week"
+      />
+    </div>
+  )
+}
+
+function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 16px' }}>
+      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 8 }}>
+        {eyebrow}
+      </div>
+      <div style={{ display: 'flex', gap: 22, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: yards > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+            {yards > 0 ? fmt(yards) : '—'}
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yds</span>
+          </div>
+          <div style={{ fontSize: 9, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Produced</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: waste > 0 ? C.amber : C.inkLight, lineHeight: 1.1 }}>
+            {waste > 0 ? fmt(waste) : '—'}
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yds</span>
+          </div>
+          <div style={{ fontSize: 9, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+            Waste{wastePct != null && <span style={{ color: C.amber, marginLeft: 4 }}>{wastePct}%</span>}
+          </div>
+        </div>
+        {cy != null && (
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: cy > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+              {cy > 0 ? fmt(Math.round(cy)) : '—'}
+              <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>cyds</span>
+            </div>
+            <div style={{ fontSize: 9, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Color-yards</div>
+          </div>
+        )}
+      </div>
+      {note && <div style={{ fontSize: 10, color: C.inkLight, fontStyle: 'italic', marginTop: 6 }}>{note}</div>}
     </div>
   )
 }

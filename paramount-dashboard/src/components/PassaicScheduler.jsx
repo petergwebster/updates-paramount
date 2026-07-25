@@ -1163,6 +1163,14 @@ function AssignmentCard({ a, onRemove, onEdit }) {
         <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={(e) => { e.stopPropagation(); onRemove() }} title="Remove assignment">×</span>
       </div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.line_description}</div>
+      {/* Colorway (Ramon #1): the pool card already carries SKU · colour, but once
+          a job was placed the colourway disappeared — so two colourways of the
+          same pattern on the board were indistinguishable. */}
+      {(a.item_sku || a.color) && (
+        <div style={{ color: C.inkLight, fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {a.item_sku || ''}{a.item_sku && a.color ? ' · ' : ''}{a.color || ''}
+        </div>
+      )}
       <div style={{ color: C.inkLight, fontSize: 9 }}>{fmt(a.planned_yards)}yd · {fmt(a.planned_cy || 0)} CY</div>
       {/* PO · colours · age — Ramon's request: the scheduled card should carry the
           same identifying detail as the pool card. */}
