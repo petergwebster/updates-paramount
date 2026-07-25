@@ -35,10 +35,10 @@
 
 const { schedule } = require('@netlify/functions')
 
-const SUB        = process.env.SHAREFILE_SUBDOMAIN
-const CLIENT_ID  = process.env.SHAREFILE_CLIENT_ID
-const CLIENT_SEC = process.env.SHAREFILE_CLIENT_SECRET
-const SEED_TOKEN = process.env.SHAREFILE_REFRESH_TOKEN
+const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
+const CLIENT_ID  = (process.env.SHAREFILE_CLIENT_ID      || '').trim()
+const CLIENT_SEC = (process.env.SHAREFILE_CLIENT_SECRET  || '').trim()
+const SEED_TOKEN = (process.env.SHAREFILE_REFRESH_TOKEN  || '').trim()
 const SB_URL     = process.env.VITE_SUPABASE_URL
 const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -243,6 +243,26 @@ async function runSync(event) {
   try { if (event && event.body) opts = JSON.parse(event.body) || {} } catch { /* cron sends no body */ }
 
   const result = { ran_at: new Date().toISOString(), dryRun: !!opts.dryRun }
+
+  // diag mode: report the SHAPE of each credential, never the value. Lengths
+  // and whitespace flags are enough to catch a bad paste (wrong field copied,
+  // truncated string, trailing newline) without putting a secret on screen.
+  if (opts.diag) {
+    const shape = (raw) => {
+      if (raw == null || raw === '') return 'MISSING'
+      const t = raw.trim()
+      return `len ${raw.length}` + (t.length !== raw.length ? ` (TRIMS TO ${t.length} \u2014 has surrounding whitespace)` : '')
+    }
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      subdomain:     SUB || 'MISSING',
+      client_id:     shape(process.env.SHAREFILE_CLIENT_ID),
+      client_secret: shape(process.env.SHAREFILE_CLIENT_SECRET),
+      refresh_token: shape(process.env.SHAREFILE_REFRESH_TOKEN),
+      supabase_url:  SB_URL ? 'set' : 'MISSING',
+      supabase_key:  SB_KEY ? 'set' : 'MISSING',
+      note: 'refresh_token length should match token.json exactly (74 as of 2026-07-25).',
+    }, null, 2) }
+  }
   try {
     for (const [k, v] of Object.entries({ SHAREFILE_SUBDOMAIN: SUB, SHAREFILE_CLIENT_ID: CLIENT_ID, SHAREFILE_CLIENT_SECRET: CLIENT_SEC, VITE_SUPABASE_URL: SB_URL, SUPABASE_SERVICE_ROLE_KEY: SB_KEY })) {
       if (!v) throw new Error(`Missing env var ${k}`)
