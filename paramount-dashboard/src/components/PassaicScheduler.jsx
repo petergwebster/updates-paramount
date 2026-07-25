@@ -30,6 +30,23 @@ const PASSAIC_TARGETS = {
 const MIX_TARGET_SCH = 0.60
 const HIGH_COLOR_THRESHOLD = 6
 
+// ── Table-spread guidance (Ramon, 7/22) ──────────────────────────────
+// A 100+ yard job needs enough tables running in parallel to finish inside the
+// day. High-colour work is slower per table and ties up more screens, so it
+// spreads across FEWER tables; low-colour work can run wide.
+//   6+ colours,  100+ yd → 2 tables
+//   ≤5 colours,  100+ yd → 4 tables
+// ADVISORY ONLY — it tells the planner the target and offers the per-table
+// split, but never blocks a placement. Same philosophy as overscheduling:
+// flag, don't forbid. Ramon owns the call; the floor has days this doesn't fit.
+const SPREAD_MIN_YARDS = 100
+function spreadTargetFor(colors, jobYards) {
+  if (!(Number(jobYards) >= SPREAD_MIN_YARDS)) return null
+  const c = Number(colors || 0)
+  if (c <= 0) return null   // unknown colour count — stay silent rather than guess
+  return c >= HIGH_COLOR_THRESHOLD ? 2 : 4
+}
+
 // Run-order comparator for cards within a day group (Ramon's reorder ask).
 // sort_order is the saved sequence; NULL (never reordered) sorts last, then by
 // id so the order is stable and deterministic.
@@ -660,6 +677,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           po={assignModal.po} tableCode={assignModal.tableCode} proposed={assignModal.proposed_yards}
           isEdit={!!assignModal.editId}
           initialDay={assignModal.day || ''}
+          poTables={[...new Set(enrichedAssignments
+            .filter(a => a.po_number === assignModal.po.po_number)
+            .map(a => a.table_code))]}
           onCancel={() => setAssignModal(null)}
           onConfirm={(yards, days) => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId, days })}
           busy={assigning}
@@ -1194,7 +1214,7 @@ function FilterChip({ active, onClick, color, children }) {
   )
 }
 
-function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', onCancel, onConfirm, busy }) {
+function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', poTables = [], onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
   // DAILY SCHEDULER: which weekday(s) this PO runs on. `days` is an ARRAY.
@@ -1222,6 +1242,14 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', onCance
   // entry is invalid. Strike-offs (<1 yd samples) allow fractional yards.
   const over = totalYards > maxY
   const invalid = !(yards > 0)
+
+  // Table-spread guidance. Job size is the WHOLE order (remaining + already
+  // placed), so the target doesn't shrink as the planner fills tables.
+  const jobTotal = Number(po.remaining_yards || 0) + Number(po.assigned_already || 0)
+  const spreadTarget = spreadTargetFor(po.colors_count, jobTotal)
+  const perTable = spreadTarget ? Math.round(jobTotal / spreadTarget) : 0
+  // Tables this PO already occupies this week, plus the one being placed now.
+  const tablesCount = new Set([...(poTables || []), tableCode]).size
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
@@ -1230,6 +1258,26 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', onCance
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
           PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {po.unquantified ? 'no yardage in LIFT — enter qty' : `${fmt(po.remaining_yards)} yards remaining`}
         </div>
+        {/* Table-spread guidance — advisory, never blocking. */}
+        {spreadTarget && (
+          <div style={{ padding: '10px 12px', background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 6, marginBottom: 14, fontSize: 11, color: C.inkMid, lineHeight: 1.6 }}>
+            <div style={{ color: C.ink }}>
+              <strong>{po.colors_count} colors · {fmt(jobTotal)} yd</strong> — run this across{' '}
+              <strong>{spreadTarget} tables</strong> to finish it in the day (~{fmt(perTable)} yd each).
+            </div>
+            <div style={{ marginTop: 3, color: tablesCount >= spreadTarget ? C.sage : C.inkMid, fontWeight: 600 }}>
+              {tablesCount >= spreadTarget
+                ? `✓ On ${tablesCount} table${tablesCount !== 1 ? 's' : ''} — meets the guide.`
+                : `Currently on ${tablesCount} of ${spreadTarget} — ${spreadTarget - tablesCount} more table${spreadTarget - tablesCount !== 1 ? 's' : ''} to go.`}
+            </div>
+            {!isEdit && (
+              <button onClick={() => setYards(perTable)}
+                style={{ marginTop: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: C.navy, border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer' }}>
+                Use {fmt(perTable)} yd (1 of {spreadTarget})
+              </button>
+            )}
+          </div>
+        )}
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Yards for this table</label>
         <input type="number" value={yards} onChange={e => setYards(parseFloat(e.target.value) || 0)} min={0} step="any"
           style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 8 }} />
