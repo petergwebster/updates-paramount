@@ -221,14 +221,7 @@ export default function StatusTab() {
       )}
 
       {!loading && view === 'material' && (
-        <div style={{ background: '#fff', border: `1px dashed ${C.border}`, borderRadius: 10, padding: 40, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 8 }}>
-            By-Material scorecard — coming next
-          </div>
-          <div style={{ fontSize: 12, color: C.inkMid, maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
-            This view will show completed-vs-scheduled by category (Grasscloth, Fabric, Wallpaper, Digital) in <em>both</em> yards and color-yards — the labor read. It's held for a hand tie-out of color-yards-completed-by-category first, so the number is trustworthy before it drives anything.
-          </div>
-        </div>
+        <ByMaterialView assignments={assignments} opLines={opLines} site={site} weekLabelText={weekLabel(weekStart)} />
       )}
     </div>
   )
@@ -355,6 +348,189 @@ function PoRow({ r, showCY, gridCols, zebra }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── By-Material view ─────────────────────────────────────────────────
+// Ramon: "a chart per material (grasscloth, fabric, wallpaper) showing the
+// week's trend, completed vs planned."
+//
+// Category comes from the TABLE CODE prefix — GC → Grasscloth, FAB → Fabric,
+// WP → Wallpaper — the same mapping the weekly production summary uses, so the
+// two can't disagree. BNY is a single Digital category.
+//
+// HONEST LIMITATION, surfaced in the UI rather than papered over: Passaic POs
+// are usually assigned to a TABLE for the week, not pinned to a weekday. So the
+// per-day PLANNED bars only reflect work that was actually day-assigned, and
+// anything left unpinned is called out under the chart and counted in the week
+// total. The alternative — silently spreading the weekly plan across five days —
+// would invent a daily target nobody set. Once Passaic is scheduled by day, the
+// planned bars fill in automatically with no code change.
+//
+// YARDS ONLY for now. The color-yards cut of this same view is deliberately
+// held until color-yards-completed-by-category is tied out by hand — it's the
+// labor number, and it's headed for Perdoo, so it has to be right before it's
+// shown.
+
+const MATERIAL_DEFS = {
+  passaic: [
+    { key: 'grass',     label: 'Grasscloth', color: C.sage  },
+    { key: 'fabric',    label: 'Fabric',     color: C.amber },
+    { key: 'wallpaper', label: 'Wallpaper',  color: C.navy  },
+  ],
+  bny: [
+    { key: 'digital',   label: 'Digital',    color: C.navy  },
+  ],
+}
+
+function materialOfTable(tableCode, site) {
+  if (site !== 'passaic') return 'digital'
+  const t = String(tableCode || '').toUpperCase()
+  if (t.startsWith('GC'))  return 'grass'
+  if (t.startsWith('FAB')) return 'fabric'
+  if (t.startsWith('WP'))  return 'wallpaper'
+  return 'other'
+}
+
+function ByMaterialView({ assignments, opLines, site, weekLabelText }) {
+  const cats = useMemo(() => {
+    const defs = MATERIAL_DEFS[site] || MATERIAL_DEFS.bny
+    const blank = () => ({ plannedWeek: 0, plannedByDay: {}, actualByDay: {}, actualWeek: 0, wasteWeek: 0, pos: new Set() })
+    const map = {}
+    for (const d of defs) map[d.key] = blank()
+    map.other = blank()
+
+    for (const a of assignments) {
+      const m = map[materialOfTable(a.table_code, site)] || map.other
+      const yd = Number(a.planned_yards || 0)
+      m.plannedWeek += yd
+      if (a.day_of_week) m.plannedByDay[a.day_of_week] = (m.plannedByDay[a.day_of_week] || 0) + yd
+      if (a.po_number) m.pos.add(a.po_number)
+    }
+    for (const l of opLines) {
+      const m = map[materialOfTable(l.table_code, site)] || map.other
+      const yd = Number(l.actual_yards || 0)
+      m.actualWeek += yd
+      m.wasteWeek  += Number(l.waste_yards || 0)
+      if (l.day_of_week) m.actualByDay[l.day_of_week] = (m.actualByDay[l.day_of_week] || 0) + yd
+      if (l.po_number) m.pos.add(l.po_number)
+    }
+
+    const out = defs.map(d => ({ ...d, ...map[d.key] }))
+    // Surface anything that didn't map to a known table prefix — silently
+    // dropping it would hide real production.
+    if (map.other.plannedWeek > 0 || map.other.actualWeek > 0) {
+      out.push({ key: 'other', label: 'Other / unmapped table', color: C.inkLight, ...map.other })
+    }
+    return out
+  }, [assignments, opLines, site])
+
+  // Weekdays always render; weekend days only when something happened on them.
+  const days = useMemo(() => {
+    const has = (d) => cats.some(c => (c.plannedByDay[d] || 0) > 0 || (c.actualByDay[d] || 0) > 0)
+    const out = []
+    if (has('Sun')) out.push('Sun')
+    out.push('Mon', 'Tue', 'Wed', 'Thu', 'Fri')
+    if (has('Sat')) out.push('Sat')
+    return out.sort((a, b) => (DAY_INDEX[a] ?? 0) - (DAY_INDEX[b] ?? 0))
+  }, [cats])
+
+  const anything = cats.some(c => c.plannedWeek > 0 || c.actualWeek > 0)
+  if (!anything) {
+    return (
+      <div style={{ background: C.parchment, border: `1px solid ${C.border}`, borderRadius: 10, padding: '20px 16px', fontSize: 13, color: C.inkMid }}>
+        <strong style={{ color: C.ink }}>Nothing scheduled or recorded for {weekLabelText}.</strong> Once POs are scheduled and actuals come in from Live&nbsp;Ops, each material shows its week here.
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: cats.length > 1 ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr', gap: 12 }}>
+        {cats.map(c => <MaterialCard key={c.key} c={c} days={days} />)}
+      </div>
+      <div style={{ marginTop: 12, fontSize: 11, color: C.inkLight, fontStyle: 'italic', lineHeight: 1.6 }}>
+        Yards only for now. The color-yards cut of this view — the labor read — comes once color-yards-completed-by-category is tied out by hand, so the number is trustworthy before anyone leans on it.
+      </div>
+    </div>
+  )
+}
+
+function MaterialCard({ c, days }) {
+  const pct = c.plannedWeek > 0
+    ? Math.round((c.actualWeek / c.plannedWeek) * 100)
+    : (c.actualWeek > 0 ? 100 : 0)
+  const pinnedPlan = Object.values(c.plannedByDay).reduce((s, v) => s + v, 0)
+  const unpinned = Math.max(0, c.plannedWeek - pinnedPlan)
+  const wastePct = (c.actualWeek + c.wasteWeek) > 0
+    ? Math.round((c.wasteWeek / (c.actualWeek + c.wasteWeek)) * 1000) / 10
+    : null
+
+  // Scale bars within this material only — grasscloth and fabric run at very
+  // different volumes, so a shared scale would flatten the smaller one.
+  const max = Math.max(1, ...days.map(d => Math.max(c.plannedByDay[d] || 0, c.actualByDay[d] || 0)))
+  const H = 74
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${c.color}`, borderRadius: 10, padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{c.label}</span>
+        <span style={{ fontSize: 10, color: C.inkLight }}>{c.pos.size} PO{c.pos.size !== 1 ? 's' : ''}</span>
+      </div>
+
+      {/* Week headline — completed vs planned */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: c.actualWeek > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+          {c.actualWeek > 0 ? fmt(c.actualWeek) : '—'}
+        </span>
+        <span style={{ fontSize: 12, color: C.inkLight }}>/ {fmt(c.plannedWeek)} yd planned</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: pct >= 95 ? C.sage : pct >= 60 ? C.gold : C.inkMid }}>{pct}%</span>
+      </div>
+      <div style={{ height: 6, background: C.warm, borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+        <div style={{ width: Math.min(100, pct) + '%', height: '100%', background: c.color }} />
+      </div>
+      <div style={{ fontSize: 10, color: C.inkLight, marginBottom: 10 }}>
+        {c.wasteWeek > 0
+          ? <>{fmt(c.wasteWeek)} yd waste{wastePct != null && <span style={{ color: C.amber, fontWeight: 600 }}> · {wastePct}%</span>}</>
+          : 'No waste recorded'}
+      </div>
+
+      {/* Day-by-day: planned (pale) vs completed (solid) */}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: H + 16 }}>
+        {days.map(d => {
+          const p = c.plannedByDay[d] || 0
+          const a = c.actualByDay[d] || 0
+          const hp = p > 0 ? Math.max(2, Math.round((p / max) * H)) : 0
+          const ha = a > 0 ? Math.max(2, Math.round((a / max) * H)) : 0
+          return (
+            <div key={d} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: H }}>
+                <div title={`${d} · ${fmt(p)} yd planned`}
+                  style={{ width: 9, height: hp, background: C.warm, borderRadius: '2px 2px 0 0' }} />
+                <div title={`${d} · ${fmt(a)} yd completed`}
+                  style={{ width: 9, height: ha, background: c.color, borderRadius: '2px 2px 0 0' }} />
+              </div>
+              <span style={{ fontSize: 8, color: C.inkLight, fontWeight: 600 }}>{d}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, fontSize: 8, color: C.inkLight }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ width: 8, height: 8, background: C.warm, borderRadius: 2, display: 'inline-block' }} /> Planned
+        </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ width: 8, height: 8, background: c.color, borderRadius: 2, display: 'inline-block' }} /> Completed
+        </span>
+      </div>
+
+      {unpinned > 0 && (
+        <div style={{ fontSize: 9, color: C.inkLight, fontStyle: 'italic', marginTop: 6, lineHeight: 1.5 }}>
+          {fmt(unpinned)} yd of the plan isn't assigned to a day — counted in the week total above, but it can't show in the daily bars.
+        </div>
+      )}
     </div>
   )
 }
