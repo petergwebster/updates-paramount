@@ -187,6 +187,15 @@ export default function AdminFinancials() {
         const { error } = await supabase.from("financial_transactions").delete().eq("fiscal_month", m);
         if (error) throw new Error("Clearing " + m + ": " + error.message);
       }
+      //    Undated rows (NULL fiscal_month) are the GP "Balance Brought Forward"
+      //    opening balances, dated the day before the fiscal year starts so they
+      //    fall outside the fiscal calendar. A month-scoped delete can never match
+      //    a NULL, so without this they survive the replace AND get re-inserted on
+      //    every upload — silently compounding. The file is YTD and authoritative.
+      {
+        const { error } = await supabase.from("financial_transactions").delete().is("fiscal_month", null);
+        if (error) throw new Error("Clearing undated rows: " + error.message);
+      }
       // 2) Bulk insert in chunks (Supabase caps ~1000/call)
       const CHUNK = 500;
       for (let i = 0; i < transactions.length; i += CHUNK) {

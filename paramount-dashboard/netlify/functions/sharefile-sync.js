@@ -234,6 +234,14 @@ async function ingestJen(token, opts, result) {
   for (const m of months) {
     await sb(`financial_transactions?fiscal_month=eq.${encodeURIComponent(m)}`, { method: 'DELETE' })
   }
+  // Rows whose trx_date falls outside the fiscal calendar carry a NULL
+  // fiscal_month — in practice the GP "Balance Brought Forward" opening
+  // balances, dated the day before the fiscal year starts. A month-scoped
+  // delete can never match a NULL, so without this they survive the replace
+  // AND get re-inserted every run: 4 more rows and ~$1.5M of phantom inventory
+  // per week, growing silently. Jen's file is year-to-date and authoritative,
+  // so clearing them alongside the dated rows is correct.
+  await sb('financial_transactions?fiscal_month=is.null', { method: 'DELETE' })
   const CHUNK = 500
   for (let i = 0; i < transactions.length; i += CHUNK) {
     await sb('financial_transactions', { method: 'POST', body: JSON.stringify(transactions.slice(i, i + CHUNK)) })
