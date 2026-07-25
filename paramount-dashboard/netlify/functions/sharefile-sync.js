@@ -33,13 +33,16 @@
 // integration_state table and fall back to the env seed only on first run.
 // ===========================================================================
 
-// MODULE FORMAT: this function is ESM (package.json has "type": "module").
-// That is deliberate. The shared parser in src/lib is ESM, and only a STATIC
-// import is traceable by Netlify's bundler — a dynamic import() of a relative
-// path is not, and the parser silently gets left out of the bundle
-// ("Cannot find module /var/task/src/lib/purchasesWorkbook.js", proven
-// 2026-07-25). lift-wip-sync.js remains CommonJS; the two formats coexist fine.
-import { schedule } from '@netlify/functions'
+// MODULE FORMAT: ESM (package.json has "type": "module"). Deliberate, and
+// arrived at the hard way on 2026-07-25:
+//   - CJS + dynamic import() of the parser -> parser silently not bundled
+//     ("Cannot find module /var/task/src/lib/purchasesWorkbook.js").
+//   - ESM + schedule() from @netlify/functions -> the helper ships as CJS and
+//     the ESM loader cannot resolve it ("...dist/main.cjs" not found).
+// So: ESM with a STATIC parser import (traceable by the bundler) and the
+// schedule declared via the exported `config` object, which needs no helper
+// library at all. lift-wip-sync.js stays CommonJS with schedule(); the two
+// formats coexist fine.
 import * as XLSX from 'xlsx'
 import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
 
@@ -289,8 +292,19 @@ async function runSync(event) {
   }
 }
 
-// Schedule lives HERE, in code. The netlify.toml schedule block silently fails
-// to register on this site (proven 2026-07-07) — a toml-scheduled function
-// deploys clean, reports no error, and never fires. Daily 13:00 UTC (9am ET).
+// The schedule is declared HERE, in code. The netlify.toml schedule block
+// silently fails to register on this site (proven 2026-07-07) — a toml-scheduled
+// function deploys clean, reports no error, and never fires.
+// Daily 13:00 UTC (9am ET): Jen's file lands early Sunday, but a Sunday-only
+// cron has no recovery, and the run exits in ~1s when nothing has changed.
 export { runSync }
-export const handler = schedule('0 13 * * *', runSync)
+
+export default async () => {
+  const res = await runSync(null)
+  return new Response(res.body, {
+    status: res.statusCode,
+    headers: res.headers || { 'Content-Type': 'application/json' },
+  })
+}
+
+export const config = { schedule: '0 13 * * *' }
