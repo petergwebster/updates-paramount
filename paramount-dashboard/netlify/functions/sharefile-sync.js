@@ -45,6 +45,7 @@
 // formats coexist fine.
 import * as XLSX from 'xlsx'
 import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
+import { parseVenaWorkbook } from '../../src/lib/venaWorkbook.js'
 
 const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
 const CLIENT_ID  = (process.env.SHAREFILE_CLIENT_ID      || '').trim()
@@ -59,6 +60,11 @@ const STATE_KEY = 'sharefile_last_ingested'
 
 // Where Jen's weekly workbook lives, relative to "Shared Folders".
 const JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases']
+
+// Where Abigail's Vena monthly close lands. Folder name is misspelled on
+// ShareFile ("Parmount") — that is the real name, do not "fix" it.
+const VENA_PATH = ['Parmount Monthly Results']
+const VENA_RE = /^Paramount Results vs Forecast.*\.xlsx$/i
 
 // Guard floor, matching AdminFinancials.jsx and lift-wip-sync: a real
 // year-to-date ledger does not lose 30% of its rows in a week.
@@ -252,6 +258,64 @@ async function ingestJen(token, opts, result) {
   console.log(`sharefile-sync: loaded ${transactions.length} txns from ${file.Name} (${months.join(', ')})`)
 }
 
+// ─── Vena monthly close ──────────────────────────────────────────
+async function ingestVena(token, opts, result) {
+  const folderId = await resolvePath(VENA_PATH, token)
+  const file = await newestFile(folderId, token, n => VENA_RE.test(n) && !/^~\$/.test(n))
+  if (!file) { result.vena = { skipped: 'no "Paramount Results vs Forecast" file found' }; return }
+
+  const fingerprint = `${file.Name}|${file.FileSizeBytes}|${file.ClientModifiedDate || file.ProgenyEditDate || ''}`
+  const prior = (await stateGet(STATE_KEY)) || {}
+  if (!opts.force && prior.vena === fingerprint) {
+    result.vena = { skipped: 'unchanged since last run', file: file.Name }
+    return
+  }
+
+  const buf = await downloadBuffer(file.Id, token)
+  const wb = XLSX.read(buf, { type: 'buffer' })
+  const parsed = parseVenaWorkbook(XLSX, wb, { fileName: file.Name })
+  const { rows, summary } = parsed
+
+  result.vena = {
+    file: file.Name,
+    period: parsed.period,
+    cost_centers: summary.costCenters,
+    timeframes: summary.timeframes,
+    scenarios: summary.scenarios,
+    rows: rows.length,
+    check_610: summary.check_610,
+    warnings: parsed.warnings.length ? parsed.warnings : null,
+  }
+
+  // SANITY GUARD: if the 610 revenue tie-out point comes back empty the sheet
+  // shape has moved and the parse has silently degraded. Refuse rather than
+  // write a half-read P&L — the whole point of ingesting Vena is that it is the
+  // authoritative number.
+  if (summary.check_610.revenue == null || summary.check_610.ebitdap == null) {
+    result.vena.written = false
+    result.vena.guard_tripped = '610 revenue/EBITDAP not found — sheet shape may have changed'
+    console.error('sharefile-sync GUARD refused Vena workbook — 610 tie-out missing')
+    return
+  }
+  if (opts.dryRun) { result.vena.written = false; result.vena.dryRun = true; return }
+
+  // Upsert on the primary key (period, cost_center, timeframe, scenario,
+  // line_key). No delete step is needed: reloading a period simply overwrites
+  // it, which is idempotent by construction.
+  const CHUNK = 500
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    await sb('vena_monthly', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(rows.slice(i, i + CHUNK)),
+    })
+  }
+
+  await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, vena: fingerprint, vena_at: new Date().toISOString() })
+  result.vena.written = true
+  console.log(`sharefile-sync: loaded ${rows.length} Vena rows for ${parsed.period} from ${file.Name}`)
+}
+
 // ─── main ──────────────────────────────────────────────────────────────────
 async function runSync(event) {
   let opts = {}
@@ -288,10 +352,9 @@ async function runSync(event) {
     try { await ingestJen(token, opts, result) }
     catch (e) { console.error('jen feed:', e); result.jen = { error: e.message } }
 
-    // Vena monthly: PENDING. financials_monthly has no revenue or EBITDA
-    // columns and cannot express Actual/Forecast/PY, so the Vena P&L needs its
-    // own table before this feed can be written. Deliberately not guessed at.
-    result.vena = { skipped: 'pending vena_monthly schema decision' }
+    // Vena monthly close — independent of the Jen feed above.
+    try { await ingestVena(token, opts, result) }
+    catch (e) { console.error('vena feed:', e); result.vena = { error: e.message } }
 
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
   } catch (err) {
