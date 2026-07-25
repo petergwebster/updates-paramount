@@ -17,10 +17,14 @@
 //   - Value columns are NOT at fixed positions. Three header rows describe
 //     them: year, period, scenario (the scenario row is the one containing
 //     "Actual"; year is two rows above it, period one row above).
-//   - The sheet carries MONTH, QTD and YTD blocks side by side, each with its
-//     own scenario columns. The period header cell is the discriminator:
-//     6 -> month, "6 QTD" -> qtd, "6 YTD" -> ytd. Column position is NOT
-//     reliable and must not be hard-coded.
+//   - The sheet carries MONTH, QTD, YTD and FULL-YEAR blocks side by side,
+//     each with its own scenario columns. The period header cell is the
+//     discriminator: 6 -> month, "6 QTD" -> qtd, "6 YTD" -> ytd (through the
+//     report month), "12 YTD" -> fy (the full-year forecast/plan/PY, which
+//     sits at columns 52-56 in the June file). Treating "6 YTD" and "12 YTD"
+//     alike collapses 1,333 rows and lets the full year silently overwrite
+//     year-to-date. Column position is NOT reliable and must not be
+//     hard-coded.
 //   - Rows labelled "MultiDynamic: Account" are Vena scaffolding, not data.
 // ---------------------------------------------------------------------------
 
@@ -31,10 +35,18 @@ const MONTHS = ['january','february','march','april','may','june','july',
 const isNum = v => typeof v === 'number' && isFinite(v)
 const snake = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 
-function timeframeOf(periodCell) {
+// month | qtd | ytd | fy. "6 YTD" on a June report is year-to-date; "12 YTD"
+// on that same report is the FULL YEAR. They are different figures in adjacent
+// column blocks, so they must not share a key. In a December report the two
+// genuinely coincide and collapsing them is harmless.
+function timeframeOf(periodCell, reportMonth) {
   const s = String(periodCell == null ? '' : periodCell).toUpperCase()
-  if (s.includes('YTD')) return 'ytd'
+  const n = parseInt(s, 10)
   if (s.includes('QTD')) return 'qtd'
+  if (s.includes('YTD')) {
+    if (Number.isFinite(n) && reportMonth != null && n !== Number(reportMonth)) return 'fy'
+    return 'ytd'
+  }
   return 'month'
 }
 
@@ -89,7 +101,7 @@ function parseVarianceSheet(XLSX, sheet, costCenter, ctx) {
     cols.push({
       c,
       scenario_label: lab.trim(),
-      timeframe: timeframeOf(perRow[c]),
+      timeframe: timeframeOf(perRow[c], ctx.reportMonth),
       scenario: scenarioOf(lab, year, ctx.reportYear),
       year,
     })
