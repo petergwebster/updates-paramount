@@ -5,6 +5,7 @@ import {
   weekLabel,
   DAY_NAMES_FULL, dayOfWeekFiscal,
   PASSAIC_OPERATORS, BNY_OPERATORS_ALL,
+  schedLineKey,
 
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards, loadWeekDailyOpNotes, insertDailyOpNote, updateDailyOpNote, deleteDailyOpNote, NOTE_CATEGORIES } from '../lib/dailyOps'
@@ -78,6 +79,28 @@ export default function LiveOpsTab({ currentUser } = {}) {
   // Cleared when the day changes (each day starts fresh; persisted 2nd-shift
   // rows surface from sched_daily_ops automatically). Keyed by table code.
   const [expandedSecondShifts, setExpandedSecondShifts] = useState(() => new Set())
+
+  // TINT FLAGS — set by Ramon in the scheduler, read-only here. Lives in
+  // sched_po_flags (keyed PO + SKU + colour) so it survives the hourly LIFT
+  // feed replacing sched_wip_rows. Purely a visual heads-up for the floor:
+  // tinting already counts inside the colour count, so no number moves.
+  const [tintFlags, setTintFlags] = useState({})
+  useEffect(() => {
+    let cancelled = false
+    async function loadTintFlags() {
+      const { data, error } = await supabase
+        .from('sched_po_flags')
+        .select('po_number, item_sku, color, needs_tint')
+        .eq('needs_tint', true)
+      if (cancelled) return
+      if (error) { console.error('[tint flags] load failed', error); return }
+      const m = {}
+      for (const f of (data || [])) m[schedLineKey(f)] = true
+      setTintFlags(m)
+    }
+    loadTintFlags()
+    return () => { cancelled = true }
+  }, [])
 
   // Week that contains the selected date. mondayOf is now an alias for
   // sundayOf post Phase A — returns the Sunday week_start, matching the
@@ -451,6 +474,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   seedAssignments={firstCell?.seedAssignments || []}
                   cellLines={cellLinesFor(t.code, '1st')}
                   cellNotes={cellNotesFor(t.code, '1st')}
+                  tintFlags={tintFlags}
                   weekStart={weekStart}
                   dayOfWeek={dayOfWeek}
                   canEnterActuals={true}
@@ -470,6 +494,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                     seedAssignments={secondCell?.seedAssignments || []}
                     cellLines={cellLinesFor(t.code, '2nd')}
                     cellNotes={cellNotesFor(t.code, '2nd')}
+                    tintFlags={tintFlags}
                     weekStart={weekStart}
                     dayOfWeek={dayOfWeek}
                     canEnterActuals={true}
@@ -648,7 +673,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], cellNotes = [], weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], cellNotes = [], tintFlags = {}, weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
   // Cell-level fields — crew + notes stay per table/day/shift.
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
@@ -1057,8 +1082,11 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           const expColors = (matchedAsg && Number(matchedAsg.planned_yards) > 0 && Number(matchedAsg.planned_cy) > 0)
             ? Math.round(Number(matchedAsg.planned_cy) / Number(matchedAsg.planned_yards))
             : null
+          // Tinting flag — set by Ramon at scheduling time. Read-only here.
+          const lineTint = !!(l.po_number && tintFlags[schedLineKey(l)])
           return (
           <div key={l._key} style={{ display: 'grid', gridTemplateColumns: lineGridCols, gap: 8, alignItems: 'center', marginBottom: 5 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
             {poOptions.length > 0 ? (
               <select value={lineKeyOf(l)} onChange={e => pickPO(l._key, e.target.value)} disabled={!canEnterActuals}
                 style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: '#fff', boxSizing: 'border-box' }}>
@@ -1081,6 +1109,15 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                 placeholder="PO or description (optional)" disabled={!canEnterActuals}
                 style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, boxSizing: 'border-box' }} />
             )}
+            {/* TINT — "this item has a tint". Visual reference only; the tint is
+                already inside the colour count, so nothing is added to it. */}
+            {lineTint && (
+              <span title="This item has a tint — tinting needed before printing (already counted in the colour count)"
+                style={{ flexShrink: 0, fontSize: 8, fontWeight: 700, letterSpacing: '0.04em', padding: '2px 5px', borderRadius: 3, background: C.amberBg, color: C.amber, border: `1px solid ${C.amber}`, whiteSpace: 'nowrap' }}>
+                TINT
+              </span>
+            )}
+            </div>
             <input type="number" value={l.actual_yards} onChange={e => updateLine(l._key, { actual_yards: e.target.value })}
               placeholder="—" min={0} step="any" disabled={!canEnterActuals}
               style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, textAlign: 'right', boxSizing: 'border-box' }} />

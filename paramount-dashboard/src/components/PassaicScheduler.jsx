@@ -100,6 +100,48 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [weekDailyOps, setWeekDailyOps] = useState([])
   const [activeDragPO, setActiveDragPO] = useState(null)
 
+  // TINT FLAGS (Ramon). "Tinting?" is a property of the JOB, not of a WIP
+  // snapshot — and sched_wip_rows is wholly replaced by the hourly LIFT feed, so
+  // a flag stored on the pool row would vanish within the hour. sched_po_flags
+  // is keyed on business identity (PO + SKU + colour) instead, so it survives
+  // every refresh. Tinting ALREADY counts inside colors_count, so this changes
+  // no maths anywhere — it's purely a heads-up for the floor.
+  const [tintFlags, setTintFlags] = useState({})   // schedLineKey -> true
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadTintFlags() {
+      const { data, error } = await supabase
+        .from('sched_po_flags')
+        .select('po_number, item_sku, color, needs_tint')
+        .eq('needs_tint', true)
+      if (cancelled) return
+      if (error) { console.error('[tint flags] load failed', error); return }
+      const m = {}
+      for (const f of (data || [])) m[schedLineKey(f)] = true
+      setTintFlags(m)
+    }
+    loadTintFlags()
+    return () => { cancelled = true }
+  }, [])
+
+  async function toggleTint(row, next) {
+    const key = schedLineKey(row)
+    setTintFlags(prev => ({ ...prev, [key]: next }))   // optimistic
+    const { error } = await supabase.from('sched_po_flags').upsert({
+      po_number: row.po_number,
+      item_sku: row.item_sku || '',
+      color: row.color || '',
+      needs_tint: next,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'po_number,item_sku,color' })
+    if (error) {
+      console.error('[tint flags] save failed', error)
+      alert('Could not save the tinting flag: ' + (error.message || error))
+      setTintFlags(prev => ({ ...prev, [key]: !next }))   // roll back
+    }
+  }
+
   // CROSS-WEEK BURN-DOWN (Ramon's bug): the `assignments` prop is week-scoped —
   // the parent loads only the current week. So the pool's "remaining" only
   // netted THIS week's plan, and a 300-yd PO fully planned in another week still
@@ -372,10 +414,11 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         customer_type: src.customer_type || null,
         colors_count: src.colors_count || null,
         age_days: src.age_days ?? null,
+        needs_tint: !!tintFlags[schedLineKey(a)],
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
       }
     })
-  }, [assignments, wipByPO, wipByLine])
+  }, [assignments, wipByPO, wipByLine, tintFlags])
 
   const mixTotals = useMemo(() => {
     const t = {
@@ -619,6 +662,8 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
             {filteredPool.map(r => (
               <PoolCard key={r.id} r={r}
                 selected={selectedPO?.po_number === r.po_number}
+                tint={!!tintFlags[schedLineKey(r)]}
+                onToggleTint={(v) => toggleTint(r, v)}
                 onToggle={() => setSelectedPO(selectedPO?.po_number === r.po_number ? null : r)} />
             ))}
           </div>
@@ -850,7 +895,7 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 // Draggable pool card. Keeps the original click-to-select behavior (onToggle)
 // AND becomes a drag source. The PointerSensor's 6px activation constraint
 // means a plain click still selects; a drag needs deliberate movement.
-function PoolCard({ r, selected, onToggle }) {
+function PoolCard({ r, selected, tint, onToggleTint, onToggle }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `pool-${r.id}`, data: { po: r } })
   const isSch = (r.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (r.customer_type||'').toLowerCase().includes('3rd')
@@ -889,6 +934,17 @@ function PoolCard({ r, selected, onToggle }) {
         <span>·</span>
         <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
       </div>
+      {/* Tinting flag — set at scheduling time, surfaces as a TINT chip on the
+          placed card and in Live Ops. stopPropagation on both click and
+          pointerdown so ticking it neither selects the PO nor starts a drag. */}
+      <label
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 5, fontSize: 9, fontWeight: tint ? 700 : 400, color: tint ? C.gold : C.inkLight, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!tint} onChange={(e) => onToggleTint(e.target.checked)}
+          style={{ width: 12, height: 12, accentColor: C.gold, cursor: 'pointer', margin: 0 }} />
+        Tinting?
+      </label>
     </div>
   )
 }
@@ -1198,6 +1254,7 @@ function AssignmentCard({ a, onRemove, onEdit }) {
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
         {highColor && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.rose, color: '#fff', fontWeight: 700 }}>{a.colors_count}c</span>}
         {a.shift === '2nd' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700, letterSpacing: '0.04em' }}>2ND</span>}
+        {a.needs_tint && <span title="This job needs tinting" style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.amber, color: '#fff', fontWeight: 700, letterSpacing: '0.04em' }}>TINT</span>}
         {a.assigned_by === 'claude' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>✦</span>}
         <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={(e) => { e.stopPropagation(); onRemove() }} title="Remove assignment">×</span>
       </div>
