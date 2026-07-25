@@ -15,9 +15,11 @@
 // financial data.
 // ===========================================================================
 
-const { runSync } = require('./sharefile-sync')
+// MODULE FORMAT: ESM, matching sharefile-sync.js (see the note there — the
+// shared parser must be statically imported to survive bundling).
+import { runSync } from './sharefile-sync.js'
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,

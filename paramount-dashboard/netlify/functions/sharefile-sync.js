@@ -33,7 +33,15 @@
 // integration_state table and fall back to the env seed only on first run.
 // ===========================================================================
 
-const { schedule } = require('@netlify/functions')
+// MODULE FORMAT: this function is ESM (package.json has "type": "module").
+// That is deliberate. The shared parser in src/lib is ESM, and only a STATIC
+// import is traceable by Netlify's bundler — a dynamic import() of a relative
+// path is not, and the parser silently gets left out of the bundle
+// ("Cannot find module /var/task/src/lib/purchasesWorkbook.js", proven
+// 2026-07-25). lift-wip-sync.js remains CommonJS; the two formats coexist fine.
+import { schedule } from '@netlify/functions'
+import * as XLSX from 'xlsx'
+import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
 
 const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
 const CLIENT_ID  = (process.env.SHAREFILE_CLIENT_ID      || '').trim()
@@ -173,10 +181,6 @@ async function downloadBuffer(itemId, token) {
 
 // ─── Jen's weekly GP workbook ──────────────────────────────────────────────
 async function ingestJen(token, opts, result) {
-  const XLSX = require('xlsx')
-  // The parser is ESM in src/lib; dynamic import bridges the CJS boundary.
-  const { parsePurchasesWorkbook } = await import('../../src/lib/purchasesWorkbook.js')
-
   const folderId = await resolvePath(JEN_PATH, token)
   const file = await newestFile(folderId, token, n => /\.xlsx$/i.test(n) && !/^~\$/.test(n))
   if (!file) { result.jen = { skipped: 'no .xlsx found in Purchases' }; return }
@@ -288,5 +292,5 @@ async function runSync(event) {
 // Schedule lives HERE, in code. The netlify.toml schedule block silently fails
 // to register on this site (proven 2026-07-07) — a toml-scheduled function
 // deploys clean, reports no error, and never fires. Daily 13:00 UTC (9am ET).
-exports.runSync = runSync
-exports.handler = schedule('0 13 * * *', runSync)
+export { runSync }
+export const handler = schedule('0 13 * * *', runSync)
