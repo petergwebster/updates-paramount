@@ -113,6 +113,7 @@ function parseTxnSheet(XLSX, sheet, srcTab, fileName){
   const cRef=colIndex(hdr,'Reference');
   const cMaster=colIndex(hdr,'Originating Master Name','Master Name');
   const cDoc=colIndex(hdr,'Originating Document Number','Document Number');
+  const cJe=colIndex(hdr,'Journal Entry');
   const cVoid=colIndex(hdr,'Voided');
   const out=[];
   for(let i=1;i<rows.length;i++){
@@ -140,6 +141,7 @@ function parseTxnSheet(XLSX, sheet, srcTab, fileName){
       reference:cRef>=0?(r[cRef]||null):null,
       master_name:cMaster>=0?(r[cMaster]||null):null,
       document_number:cDoc>=0?String(r[cDoc]||'')||null:null,
+      journal_entry:cJe>=0?(num(r[cJe])||null):null,
       voided:cVoid>=0?String(r[cVoid]||'').toLowerCase()==='yes':false,
       source_file:fileName||null,
     });
@@ -207,10 +209,13 @@ function parseAP(XLSX, sheet, asOf, fileName){
   return out;
 }
 
-// ---- as-of date from filename (e.g. "...as_of_6_25_26") ---------------------
+// ---- as-of date from filename --------------------------------------------
+// Accepts "as of 7.22.26", "as_of_6_25_26", "as-of-6/25/26". The DOT form is
+// what Jen's Automation file actually uses; without it the parser silently
+// falls back to the max transaction date instead of her real report date.
 function asOfFromName(fileName){
   if(!fileName)return null;
-  const m=String(fileName).match(/as[_\s-]*of[_\s-]*(\d{1,2})[_\-\/](\d{1,2})[_\-\/](\d{2,4})/i);
+  const m=String(fileName).match(/as[_\s.-]*of[_\s.-]*(\d{1,2})[._\-\/](\d{1,2})[._\-\/](\d{2,4})/i);
   if(!m)return null;
   let yr=+m[3]; if(yr<100)yr+=2000;
   return `${yr}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`;

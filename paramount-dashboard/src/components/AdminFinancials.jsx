@@ -101,6 +101,8 @@ export default function AdminFinancials() {
   const [saveMsg, setSaveMsg]   = useState(null);
   const [history, setHistory]   = useState([]);
   const [loadingHist, setLoadingHist] = useState(false);
+  const [guardTripped, setGuardTripped]   = useState(false);
+  const [overrideGuard, setOverrideGuard] = useState(false);
 
   useEffect(() => { loadHistory(); }, []);
 
@@ -125,6 +127,7 @@ export default function AdminFinancials() {
 
   async function handleFile(f) {
     setFile(f); setParsed(null); setSaveMsg(null); setBusy(true); setStatus("Reading workbook…");
+    setGuardTripped(false); setOverrideGuard(false);
     try {
       const XLSX = await loadSheetJS();
       const wb   = XLSX.read(await f.arrayBuffer(), { type:"array" });
@@ -144,6 +147,39 @@ export default function AdminFinancials() {
     try {
       const { transactions, aging, summary, asOfDate } = parsed;
       const months = summary.fiscalMonths.length ? summary.fiscalMonths : [...new Set(transactions.map(t=>t.fiscal_month).filter(Boolean))];
+
+      // 0) COMPLETENESS GUARD — a truncated export must never wipe good months.
+      //    The load below DELETES every fiscal month present in the file before
+      //    inserting, so a half-run GP export would quietly replace real data with
+      //    less of it. Same principle as the LIFT feed guard: a real year-to-date
+      //    ledger does not lose 30% of its rows in a week. Stale-but-complete
+      //    beats fresh-but-truncated.
+      const GUARD_FLOOR = 0.70;
+      const incomingByMonth = {};
+      for (const t of transactions) {
+        if (t.fiscal_month) incomingByMonth[t.fiscal_month] = (incomingByMonth[t.fiscal_month] || 0) + 1;
+      }
+      const shortfalls = [];
+      for (const m of months) {
+        const { count, error } = await supabase
+          .from("financial_transactions")
+          .select("*", { count: "exact", head: true })
+          .eq("fiscal_month", m);
+        if (error) throw new Error("Checking " + m + ": " + error.message);
+        const have = count || 0, coming = incomingByMonth[m] || 0;
+        if (have > 0 && coming < have * GUARD_FLOOR) {
+          shortfalls.push(`${monthLabel(m)} — file has ${coming.toLocaleString()} rows vs ${have.toLocaleString()} already loaded`);
+        }
+      }
+      if (shortfalls.length && !overrideGuard) {
+        setGuardTripped(true);
+        setSaveMsg({ type:"error", text:
+          "⚠ Completeness guard: this workbook looks truncated, so nothing was changed. " +
+          shortfalls.join(" · ") +
+          ". Re-run the export and try again — or tick 'Load anyway' if the drop is genuine." });
+        setSaving(false);
+        return;
+      }
 
       // 1) Replace-by-window: delete existing txns for every fiscal month in the file.
       //    OpEx / COGS / CapEx / cash-flow ALWAYS refresh — never locked.
@@ -242,6 +278,12 @@ export default function AdminFinancials() {
               {saving ? "Saving…" : `Save ${s.txnCount.toLocaleString()} transactions`}
             </button>
             {saveMsg && <div style={{fontSize:13,fontWeight:500,color:saveMsg.type==="error"?"#b91c1c":"#15803d"}}>{saveMsg.text}</div>}
+            {guardTripped && (
+              <label style={{display:"flex",alignItems:"center",gap:7,fontSize:13,color:"#b45309",cursor:"pointer"}}>
+                <input type="checkbox" checked={overrideGuard} onChange={e=>setOverrideGuard(e.target.checked)} />
+                Load anyway — I've checked the export and the drop is real
+              </label>
+            )}
           </div>
         </div>
       )}
