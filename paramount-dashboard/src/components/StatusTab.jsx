@@ -133,6 +133,18 @@ export default function StatusTab() {
       const doneCount = lines.filter(l => l.is_complete).length
       const totalLines = lines.length
 
+      // Colours finished vs expected (Ramon) — how many screens are down on an
+      // in-progress PO. MAX across the PO's lines, never a sum: colours are
+      // cumulative progress on the same job ("5 of 6 screens down"), so
+      // re-recording on a later day restates the same total rather than adding
+      // to it. Expected comes from the SAME planned ratio deriveColorYards uses,
+      // so colours-expected and colour-yards can never disagree.
+      const colorVals = lines.map(l => l.colors_done).filter(v => v != null && v !== '').map(Number)
+      const colorsDone = colorVals.length > 0 ? Math.max(...colorVals) : null
+      const pcy = Number(asgs[0]?.planned_cy || 0)
+      const pyd = Number(asgs[0]?.planned_yards || 0)
+      const colorsExpected = (pcy > 0 && pyd > 0) ? Math.round(pcy / pyd) : null
+
       const desc = asgs[0]?.line_description || lines[0]?.line_description || po
       const productType = asgs[0]?.product_type || null
       const scheduled = asgs.length > 0
@@ -141,6 +153,7 @@ export default function StatusTab() {
         po, desc, productType, scheduled,
         schedYards, schedCY, recYards, recCY, wasteYards, remYards, remCY,
         doneCount, totalLines, isComplete, lastDayLabel, lastDayDone, lastDayTotal,
+        colorsDone, colorsExpected,
         tables: [...new Set([...asgs.map(a => a.table_code), ...lines.map(l => l.table_code)])].filter(Boolean),
       })
     }
@@ -329,6 +342,17 @@ function PoRow({ r, showCY, gridCols, zebra }) {
         </div>
         {r.lastDayLabel && r.totalLines > r.lastDayTotal && (
           <div style={{ fontSize: 8, color: C.inkLight }}>{r.doneCount}/{r.totalLines} across all days</div>
+        )}
+        {/* Colours finished vs expected — productivity read on in-progress work.
+            Hidden once complete (the pill says it) and when there's no planned
+            colour count to compare against. */}
+        {!r.isComplete && r.colorsExpected != null && (
+          <div style={{ fontSize: 9, marginTop: 3, color: r.colorsDone != null ? C.inkMid : C.inkLight }}>
+            <strong style={{ color: r.colorsDone != null ? C.ink : C.inkLight, fontWeight: 700 }}>
+              {r.colorsDone != null ? r.colorsDone : '—'}
+            </strong>
+            {' / '}{r.colorsExpected} colors
+          </div>
         )}
       </div>
     </div>

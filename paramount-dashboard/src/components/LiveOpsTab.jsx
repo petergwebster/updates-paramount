@@ -685,6 +685,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         po_number: l.po_number, item_sku: l.item_sku, color: l.color,
         line_description: l.line_description,
         actual_yards: l.actual_yards ?? '', waste_yards: l.waste_yards ?? '',
+        colors_done: l.colors_done ?? '',
         is_complete: !!l.is_complete,
       }))
     } else if (op?.actual_yards != null || op?.waste_yards != null) {
@@ -694,6 +695,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         id: null, po_number: null, item_sku: null, color: null,
         line_description: 'Recorded total',
         actual_yards: op.actual_yards ?? '', waste_yards: op.waste_yards ?? '',
+        colors_done: '',
         is_complete: false,
       })]
     } else if (seedAssignments.length > 0) {
@@ -704,10 +706,10 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         id: null,
         po_number: a.po_number || null, item_sku: a.item_sku || null, color: a.color || null,
         line_description: a.line_description || a.po_number || null,
-        actual_yards: '', waste_yards: '', is_complete: false,
+        actual_yards: '', waste_yards: '', colors_done: '', is_complete: false,
       }))
     } else {
-      seed = [mk({ id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', is_complete: false })]
+      seed = [mk({ id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', colors_done: '', is_complete: false })]
     }
     setLines(seed)
     setDeletedIds([])
@@ -748,7 +750,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     })
   }
   function addLine() {
-    setLines(prev => [...prev, { _key: `l${keyRef.current++}`, id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', is_complete: false }])
+    setLines(prev => [...prev, { _key: `l${keyRef.current++}`, id: null, po_number: null, item_sku: null, color: null, line_description: null, actual_yards: '', waste_yards: '', colors_done: '', is_complete: false }])
   }
   function removeLine(key) {
     setLines(prev => {
@@ -788,7 +790,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     .join('\n')
 
   const num = (v) => (v === '' || v == null ? null : Number(v))
-  const isBlankLine = (l) => num(l.actual_yards) == null && num(l.waste_yards) == null && !l.po_number && !l.line_description
+  const isBlankLine = (l) => num(l.actual_yards) == null && num(l.waste_yards) == null && num(l.colors_done) == null && !l.po_number && !l.line_description
   const rolledActual = lines.reduce((s, l) => s + (num(l.actual_yards) || 0), 0)
   const rolledWaste  = lines.reduce((s, l) => s + (num(l.waste_yards) || 0), 0)
   const anyActual    = lines.some(l => num(l.actual_yards) != null)
@@ -812,6 +814,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           line_description: l.line_description || null,
           actual_yards: num(l.actual_yards),
           waste_yards: num(l.waste_yards),
+          colors_done: num(l.colors_done),
           is_complete: !!l.is_complete,
         }
         if (l.id) {
@@ -909,11 +912,13 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
   const lineKeyOf = (l) => (l.po_number ? `${l.po_number}|${l.item_sku || ''}|${l.color || ''}` : '__other')
 
   // Passaic lines get a read-only color-yards column (yards × the PO's planned
-  // cy/yd ratio). BNY is digital — no color-yards. Both get a Done checkbox
-  // (per line item per table per day) — the completion signal the Status tab
-  // reads. Nothing checked = in progress, even with yardage recorded.
+  // cy/yd ratio) plus a colours-finished entry (Ramon: track screens completed
+  // vs expected on an in-progress PO). BNY is digital — single-pass, so neither
+  // applies. Both sites get a Done checkbox (per line item per table per day) —
+  // the completion signal the Status tab reads. Nothing checked = in progress,
+  // even with yardage recorded.
   const lineGridCols = site === 'passaic'
-    ? 'minmax(170px, 1fr) 74px 74px 54px 40px 44px 26px'
+    ? 'minmax(150px, 1fr) 68px 68px 50px 62px 40px 44px 26px'
     : 'minmax(190px, 1fr) 86px 86px 40px 44px 26px'
 
   return (
@@ -1034,6 +1039,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           <span style={{ textAlign: 'right' }}>Actual yds</span>
           <span style={{ textAlign: 'right' }}>Waste</span>
           {site === 'passaic' && <span style={{ textAlign: 'right' }}>Color-yds</span>}
+          {site === 'passaic' && <span style={{ textAlign: 'center' }}>Colors</span>}
           <span style={{ textAlign: 'center' }}>Done</span>
           <span style={{ textAlign: 'center' }}>Note</span>
           <span />
@@ -1041,6 +1047,12 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
         {lines.map(l => {
           const matchedAsg = cellAssignments.find(a => `${a.po_number}|${a.item_sku || ''}|${a.color || ''}` === lineKeyOf(l))
           const lineCY = site === 'passaic' ? deriveColorYards(num(l.actual_yards), matchedAsg) : null
+          // Expected colours for this PO — derived from the SAME planned ratio
+          // deriveColorYards uses (planned_cy / planned_yards), so "colours
+          // expected" and colour-yards can never disagree. One definition.
+          const expColors = (matchedAsg && Number(matchedAsg.planned_yards) > 0 && Number(matchedAsg.planned_cy) > 0)
+            ? Math.round(Number(matchedAsg.planned_cy) / Number(matchedAsg.planned_yards))
+            : null
           return (
           <div key={l._key} style={{ display: 'grid', gridTemplateColumns: lineGridCols, gap: 8, alignItems: 'center', marginBottom: 5 }}>
             {poOptions.length > 0 ? (
@@ -1075,6 +1087,18 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
               <div title={matchedAsg ? 'yards × planned colors' : 'no planned colors for this line'}
                 style={{ fontSize: 12, textAlign: 'right', color: lineCY != null ? C.inkMid : C.inkLight, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                 {lineCY != null ? fmt(lineCY) : '—'}
+              </div>
+            )}
+            {/* Colours finished vs expected (Ramon): how many screens are down on
+                an in-progress PO. Blank = not tracked; the Status tab only shows
+                it once someone enters a number, so it never implies "0 done". */}
+            {site === 'passaic' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}
+                title={expColors != null ? `Colours finished of ${expColors} expected` : 'Colours finished (no planned colour count for this line)'}>
+                <input type="number" value={l.colors_done ?? ''} onChange={e => updateLine(l._key, { colors_done: e.target.value })}
+                  placeholder="—" min={0} max={99} step={1} disabled={!canEnterActuals}
+                  style={{ width: 30, padding: '4px 2px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, textAlign: 'center', boxSizing: 'border-box' }} />
+                <span style={{ fontSize: 10, color: C.inkLight, whiteSpace: 'nowrap' }}>/{expColors != null ? expColors : '—'}</span>
               </div>
             )}
             {/* Done — per line item per table per day. This is the ONLY driver of
