@@ -428,6 +428,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       tableCode: a.table_code,
       proposed_yards: Number(a.planned_yards || 0),
       day: a.day_of_week || '',   // carry the existing day into the modal
+      shift: a.shift || '1st',    // and the existing shift
       po: {
         po_number: a.po_number,
         line_description: a.line_description,
@@ -440,7 +441,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     })
   }
 
-  async function commitAssignment({ po, tableCode, yards, editId, days }) {
+  async function commitAssignment({ po, tableCode, yards, editId, days, shift }) {
     setAssigning(true)
     try {
       const colors = po.colors_count || null
@@ -460,7 +461,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         // and day. (The modal forces single-select in edit mode.)
         const dayVal = dayList[0] || null
         const { error: ue } = await supabase.from('sched_assignments')
-          .update({ planned_yards: yards, planned_cy: cy, day_of_week: dayVal })
+          .update({ planned_yards: yards, planned_cy: cy, day_of_week: dayVal, shift: shift || '1st' })
           .eq('id', editId)
         if (ue) throw ue
       } else {
@@ -470,7 +471,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           item_sku: po.item_sku || null, color: po.color || null,
           line_description: po.line_description, product_type: po.product_type,
           table_code: tableCode, week_start: isoDate(weekStart),
-          day_of_week: d || null, shift: '1st', planned_yards: yards, planned_cy: cy,
+          day_of_week: d || null, shift: shift || '1st', planned_yards: yards, planned_cy: cy,
           assigned_by: null, notes: null, status: 'planned',
         }))
         const { error: ie } = await supabase.from('sched_assignments').insert(rows)
@@ -677,11 +678,12 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           po={assignModal.po} tableCode={assignModal.tableCode} proposed={assignModal.proposed_yards}
           isEdit={!!assignModal.editId}
           initialDay={assignModal.day || ''}
+          initialShift={assignModal.shift || '1st'}
           poTables={[...new Set(enrichedAssignments
             .filter(a => a.po_number === assignModal.po.po_number)
             .map(a => a.table_code))]}
           onCancel={() => setAssignModal(null)}
-          onConfirm={(yards, days) => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId, days })}
+          onConfirm={(yards, days, shift) => commitAssignment({ po: assignModal.po, tableCode: assignModal.tableCode, yards, editId: assignModal.editId, days, shift })}
           busy={assigning}
         />
       )}
@@ -993,9 +995,25 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
           {highlight ? 'Drop or click to assign' : 'Empty'}
         </div>
       )}
-      <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4, display: 'flex', gap: 10 }}>
+      <div style={{ fontSize: 9, color: C.inkLight, marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <span>Yards: <strong style={{ color: C.ink, fontWeight: 700 }}>{fmt(asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0))}</strong></span>
         <span>CY: <strong style={{ color: overCap ? C.rose : C.ink, fontWeight: 700 }}>{fmt(cyUsed)}</strong> / {fmt(t.capacity_cy)}</span>
+        {/* Shift split — only shown when 2nd shift actually has work on this
+            table, so the card stays quiet on single-shift tables. NOTE: the CY
+            capacity above is still the ONE-SHIFT figure; a table running both
+            shifts will read over capacity. That's honest for now — a two-shift
+            capacity model is a separate decision, not a display tweak. */}
+        {(() => {
+          const second = asgs.filter(a => a.shift === '2nd')
+          if (second.length === 0) return null
+          const y2 = second.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+          const y1 = asgs.filter(a => (a.shift || '1st') !== '2nd').reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+          return (
+            <span style={{ color: C.gold, fontWeight: 600 }}>
+              1st {fmt(y1)} · 2nd {fmt(y2)} yd
+            </span>
+          )
+        })()}
       </div>
       <CrewStrip tableCode={t.code} dailyOps={dailyOps}
         weeklyYards={asgs.reduce((s, a) => s + Number(a.planned_yards || 0), 0)} />
@@ -1179,6 +1197,7 @@ function AssignmentCard({ a, onRemove, onEdit }) {
         {isSch && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.navy, color: '#fff', fontWeight: 700 }}>SCH</span>}
         {is3P && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>3P</span>}
         {highColor && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.rose, color: '#fff', fontWeight: 700 }}>{a.colors_count}c</span>}
+        {a.shift === '2nd' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700, letterSpacing: '0.04em' }}>2ND</span>}
         {a.assigned_by === 'claude' && <span style={{ fontSize: 7, padding: '0 3px', borderRadius: 2, background: C.gold, color: '#fff', fontWeight: 700 }}>✦</span>}
         <span style={{ marginLeft: 'auto', cursor: 'pointer', color: C.inkLight, fontSize: 11 }} onClick={(e) => { e.stopPropagation(); onRemove() }} title="Remove assignment">×</span>
       </div>
@@ -1214,8 +1233,14 @@ function FilterChip({ active, onClick, color, children }) {
   )
 }
 
-function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', poTables = [], onCancel, onConfirm, busy }) {
+function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', initialShift = '1st', poTables = [], onCancel, onConfirm, busy }) {
   const [yards, setYards] = useState(proposed)
+  // SHIFT (Ramon): Passaic runs 1st and 2nd as INDEPENDENT crews, so a job has
+  // to say which one runs it. Live Ops already keys its rows by
+  // (table, day, shift) — scheduling to 2nd makes the job pre-fill the
+  // 2nd-shift row of that table instead of the 1st. Existing assignments all
+  // carry '1st', so nothing moves.
+  const [shift, setShift] = useState(initialShift === '2nd' ? '2nd' : '1st')
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
   // DAILY SCHEDULER: which weekday(s) this PO runs on. `days` is an ARRAY.
   //   []       = not day-assigned (legacy "whole week"; the floor picks it in
@@ -1316,6 +1341,26 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', poTable
               : `${days.length} days (${days.join(', ')}) — one assignment each, same yardage. Live Ops pre-fills all ${days.length}.`}
         </div>
 
+        {/* SHIFT PICKER — 1st and 2nd are separate crews at Passaic. */}
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Shift</label>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {['1st', '2nd'].map(s => {
+            const on = shift === s
+            const col = s === '2nd' ? C.gold : C.navy
+            return (
+              <button key={s} onClick={() => setShift(s)}
+                style={{ padding: '5px 14px', fontSize: 11, fontWeight: 600, background: on ? col : 'transparent', color: on ? '#fff' : C.inkMid, border: `1px solid ${on ? col : C.border}`, borderRadius: 4, cursor: 'pointer' }}>
+                {s} shift
+              </button>
+            )
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: C.inkLight, marginBottom: 12, fontStyle: 'italic' }}>
+          {shift === '2nd'
+            ? '3p–11p — this job pre-fills the 2nd-shift row for this table in Live Ops.'
+            : '6:30a–3p — the default crew.'}
+        </div>
+
         <div style={{ padding: '10px 14px', background: over ? C.amberBg : C.goldBg, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.ink }}>
           {multiDay ? (
             <>
@@ -1330,7 +1375,7 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', poTable
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>
-          <button onClick={() => onConfirm(yards, days)} disabled={invalid || busy}
+          <button onClick={() => onConfirm(yards, days, shift)} disabled={invalid || busy}
             style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
             {busy ? (isEdit ? 'Saving…' : 'Assigning…') : (isEdit ? 'Save changes' : 'Confirm assignment')}
           </button>

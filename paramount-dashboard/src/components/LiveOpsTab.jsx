@@ -194,24 +194,24 @@ export default function LiveOpsTab({ currentUser } = {}) {
           // Passaic: prefer explicit daily target. If not set, prefer
           // cell-level assignments (Wendy's CrewModal placements). Only fall
           // back to weekly÷5 when neither is set.
-          const onTable = assignments.filter(a => a.table_code === t.code)
-          const onCellThisShift = assignments.filter(a =>
-            a.table_code === t.code &&
-            a.day_of_week === dayOfWeek &&
-            ((a.shift || '1st') === shift)
+          // Scope everything to THIS shift. Passaic runs 1st and 2nd as
+          // independent crews, and the scheduler now writes a real shift onto
+          // each assignment — so a 2nd-shift job must not appear on the 1st-shift
+          // row and vice versa. Every legacy row carries '1st', so 1st shift
+          // behaves exactly as it did before.
+          const onTableThisShift = assignments.filter(a =>
+            a.table_code === t.code && ((a.shift || '1st') === shift)
           )
-          // Plan details: prefer cell-specific PO list when we have one;
-          // otherwise show all POs assigned to this table (1st-shift row only).
-          if (onCellThisShift.length > 0) {
-            plannedDetails = onCellThisShift.map(a => a.line_description || a.po_number)
-          } else {
-            plannedDetails = shift === '1st' ? onTable.map(a => a.line_description || a.po_number) : []
-          }
-          // Dropdown options: day-specific placements if any, else the table's
-          // full PO list on 1st shift (Passaic POs are usually assigned table-
-          // wide, not pinned to a weekday). Pre-seed only the day-specific ones
-          // so a table with many weekly POs doesn't spawn a blank line each.
-          cellAsg = onCellThisShift.length > 0 ? onCellThisShift : (shift === '1st' ? onTable : [])
+          const onCellThisShift = onTableThisShift.filter(a => a.day_of_week === dayOfWeek)
+          // Plan details: prefer the day-specific PO list; otherwise fall back to
+          // everything on this table for this shift (Passaic POs are often
+          // assigned table-wide rather than pinned to a weekday).
+          plannedDetails = (onCellThisShift.length > 0 ? onCellThisShift : onTableThisShift)
+            .map(a => a.line_description || a.po_number)
+          // Dropdown options follow the same precedence. Pre-seed only the
+          // day-specific ones so a table with many weekly POs doesn't spawn a
+          // blank line for each.
+          cellAsg = onCellThisShift.length > 0 ? onCellThisShift : onTableThisShift
           seedAsg = onCellThisShift
 
           if (op?.planned_yards != null) {
@@ -223,7 +223,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
               plannedYards = cellPlanned
               plannedSource = 'scheduled'
             } else if (shift === '1st' && PRODUCTION_WEEKDAYS.includes(dayOfWeek)) {
-              const weekly = onTable.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
+              const weekly = onTableThisShift.reduce((s, a) => s + Number(a.planned_yards || 0), 0)
               if (weekly > 0) {
                 plannedYards = Math.round(weekly / 5)
                 plannedSource = 'derived'
@@ -421,7 +421,11 @@ export default function LiveOpsTab({ currentUser } = {}) {
             const firstCell  = rowsByCell[`${t.code}|1st`]
             const secondCell = rowsByCell[`${t.code}|2nd`]
             // Show 2nd-shift row if saved data exists OR user has expanded.
-            const has2ndData = secondCell?.op != null
+            // Show the 2nd-shift row when it has saved data OR when anything is
+            // SCHEDULED to 2nd shift on this table — otherwise a job Ramon put on
+            // 2nd shift would be invisible to the floor until someone happened to
+            // click "add 2nd shift entry".
+            const has2ndData = secondCell?.op != null || (secondCell?.cellAssignments?.length || 0) > 0
             const showSecondShift = isPassaic && (has2ndData || expandedSecondShifts.has(t.code))
 
             const cat = categorize(t)
