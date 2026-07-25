@@ -57,6 +57,7 @@ const SB_KEY     = process.env.SUPABASE_SERVICE_ROLE_KEY
 const API = () => `https://${SUB}.sf-api.com/sf/v3`
 const TOKEN_KEY = 'sharefile_oauth'
 const STATE_KEY = 'sharefile_last_ingested'
+const HEALTH_KEY = 'sharefile_health'
 
 // Where Jen's weekly workbook lives, relative to "Shared Folders".
 const JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases']
@@ -356,9 +357,21 @@ async function runSync(event) {
     try { await ingestVena(token, opts, result) }
     catch (e) { console.error('vena feed:', e); result.vena = { error: e.message } }
 
+    // HEALTH RECORD — what the dashboard badge reads. Written on every run,
+    // success or failure. Recency matters as much as outcome: if this function
+    // stops firing entirely the badge must go red on STALENESS, because a
+    // silently unregistered cron is a failure mode this site has already had
+    // (the netlify.toml schedule deployed clean and never ticked).
+    result.ok = !result.jen?.error && !result.vena?.error
+              && !result.jen?.guard_tripped && !result.vena?.guard_tripped
+    try { await stateSet(HEALTH_KEY, result) } catch (e) { console.error('health write:', e) }
+
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
   } catch (err) {
     console.error('sharefile-sync error:', err)
+    // Record the failure too — a badge that only hears about successes is worse
+    // than no badge, because it goes quiet exactly when something is wrong.
+    try { await stateSet(HEALTH_KEY, { ...result, ok: false, error: err.message }) } catch { /* best effort */ }
     return { statusCode: 500, body: JSON.stringify({ ...result, error: err.message }, null, 2) }
   }
 }
