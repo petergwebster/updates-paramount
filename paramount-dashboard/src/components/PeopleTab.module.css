@@ -149,7 +149,7 @@
 .pillPto { background: var(--royal-light); color: var(--royal); }
 .pillBon { background: var(--green-light); color: var(--green); }
 .pillLow { background: var(--red-light); color: var(--red); }
-.pillLv  { background: #EEEDFE; color: #534AB7; }
+.pillLv  { background: var(--ink-5); color: var(--accent-mid); }
 .pillOk  { background: var(--ink-5); color: var(--ink-50); }
 
 /* ── Alert items (leaves, roles) ── */

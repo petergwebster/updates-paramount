@@ -388,7 +388,7 @@
   color: var(--muted, #6B6B72);
   font-weight: 600;
   border-bottom: 1px solid var(--linen, #E8E5DC);
-  background: #FAFAF7;
+  background: var(--ink-5);
 }
 .dataTable thead th.num { text-align: right; }
 .dataTable tbody td {
@@ -400,9 +400,9 @@
   font-variant-numeric: tabular-nums;
 }
 .dataTable tbody tr { cursor: pointer; }
-.dataTable tbody tr:hover { background: #FAFAF7; }
+.dataTable tbody tr:hover { background: var(--ink-5); }
 .dataTable tbody tr.crit { background: var(--red-tint, #F8DED9); }
-.dataTable tbody tr.crit:hover { background: #F4C9C2; }
+.dataTable tbody tr.crit:hover { background: var(--crimson-light); }
 .skuCell {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 12px;

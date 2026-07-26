@@ -260,7 +260,7 @@
 /* ── Setup banner ───────────────────────────────────────────────────────── */
 .setupBanner {
   background: var(--amber-light);
-  border-top: 1px solid #e8d88a;
+  border-top: 1px solid var(--border);
   padding: 10px 32px;
   font-size: 13px;
   color: var(--amber);

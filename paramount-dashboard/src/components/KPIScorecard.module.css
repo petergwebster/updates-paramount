@@ -397,7 +397,7 @@
 }
 .kpiCommentBtn:hover { border-color: var(--ink-30); color: var(--ink); }
 .kpiCommentBtnActive { color: var(--accent); border-color: var(--accent-light); background: var(--accent-light); }
-.kpiCommentBtnDraft { color: #4A154B; border-color: #e8d0e8; background: #f7eef7; }
+.kpiCommentBtnDraft { color: #4A154B; border-color: var(--border); background: var(--ink-5); }
 .kpiDraftDot { width: 5px; height: 5px; border-radius: 50%; background: #4A154B; flex-shrink: 0; }
 
 /* Big popup — matches CommentButton panel */
@@ -434,7 +434,7 @@
 
 .kpiCommentThread { display: flex; flex-direction: column; gap: 0; }
 .kpiComment { background: var(--ink-5); border-radius: var(--radius); padding: 9px 11px; border: 1px solid transparent; }
-.kpiCommentDraft { background: #f7eef7 !important; border: 1px dashed #c9a0c9 !important; }
+.kpiCommentDraft { background: var(--ink-5) !important; border: 1px dashed var(--ink-30) !important; }
 .kpiCommentMeta { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 5px; }
 .kpiCommentAvatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--cream);

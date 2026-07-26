@@ -77,6 +77,16 @@
   --gray:           #848A91;
   --gray-light:     #262A30;
 
+  /* Tints used by InventoryTab chips and totals. These were referenced as
+     fallbacks (--emerald-tint, #E4F0EA etc.) but NEVER DEFINED, so the light
+     fallback was always the live value — they stayed cream after the theme
+     flipped. Defining them here is the fix. If you add a new var(--x, #hex)
+     anywhere, define --x or the hex silently wins. */
+  --emerald-tint:   #1C2E24;
+  --amber-tint:     #2E2617;
+  --red-tint:       #2E1C19;
+  --perf-tint:      #1C2E35;
+
   /* ─── Generic accent (links, primary buttons, focus rings) ────────── */
   --accent:         #56937A;
   --accent-light:   #1D2E27;

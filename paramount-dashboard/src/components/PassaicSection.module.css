@@ -267,7 +267,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px white;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 .tDot_running { background: var(--emerald, #0F7A4E); animation: subtleBlink 2.4s ease-in-out infinite; }
 .tDot_idle    { background: var(--ink-20, #A6AEA8); box-shadow: 0 0 0 2px var(--linen, #BDC4BF); }
