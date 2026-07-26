@@ -100,7 +100,7 @@ function Box({ title, value, unit, sub, subTone, children, onClick }) {
         textAlign: 'left', background: C.parchment, border: `1px solid ${C.border}`,
         borderRadius: 12, padding: '15px 17px 16px', cursor: 'pointer',
         color: C.ink, fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
-        gap: 11, minHeight: 186, transition: 'border-color .15s',
+        gap: 11, minHeight: 168, transition: 'border-color .15s',
       }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = C.inkLight }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = C.border }}>
@@ -111,7 +111,7 @@ function Box({ title, value, unit, sub, subTone, children, onClick }) {
           {unit && <span style={{ fontSize: 10, color: C.inkLight }}>{unit}</span>}
         </span>
       </div>
-      <div style={{ marginTop: 'auto' }}>{children}</div>
+      <div style={{ height: 76, display: 'flex', alignItems: 'center' }}>{children}</div>
       {sub && (
         <span style={{ fontSize: 11, color: tone[subTone] || C.inkLight, lineHeight: 1.4 }}>{sub}</span>
       )}
@@ -126,17 +126,38 @@ export default function OpsHome({ onOpen }) {
     let dead = false
     ;(async () => {
       const wk = isoDate(sundayOf(new Date()))
+      const prevSunday = new Date(sundayOf(new Date()))
+      prevSunday.setDate(prevSunday.getDate() - 7)
+      const prevWk = isoDate(prevSunday)
+
       const snap = await supabase.from('sched_snapshots')
         .select('id').order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
+      if (dead) return
+
+      // WEEK FALLBACK: on a Sunday or an early Monday the current week is
+      // legitimately empty, and a home screen full of blank cards reads as
+      // broken rather than as "not started". So if this week has produced
+      // nothing yet, show LAST week and say so. Better a real number labelled
+      // honestly than a void.
+      let useWk = wk, isPrior = false
+      {
+        const { count } = await supabase.from('sched_daily_ops_lines')
+          .select('*', { count: 'exact', head: true }).eq('week_start', wk)
+        if (!dead && !count) {
+          const { count: pc } = await supabase.from('sched_daily_ops_lines')
+            .select('*', { count: 'exact', head: true }).eq('week_start', prevWk)
+          if (!dead && pc) { useWk = prevWk; isPrior = true }
+        }
+      }
       if (dead) return
 
       const [wipRes, asnRes, lineRes] = await Promise.all([
         snap.data?.id
           ? supabase.from('sched_wip_rows').select('age_days,is_new_goods').eq('snapshot_id', snap.data.id)
           : Promise.resolve({ data: [] }),
-        supabase.from('sched_assignments').select('planned_yards,product_type').eq('week_start', wk),
+        supabase.from('sched_assignments').select('planned_yards,product_type').eq('week_start', useWk),
         supabase.from('sched_daily_ops_lines')
-          .select('actual_yards,waste_yards,is_complete,work_date').eq('week_start', wk),
+          .select('actual_yards,waste_yards,is_complete,work_date').eq('week_start', useWk),
       ])
       if (dead) return
 
@@ -162,8 +183,8 @@ export default function OpsHome({ onOpen }) {
         else mat.fabric += y
       }
 
-      // Live ops — output by weekday.
-      const start = sundayOf(new Date())
+      // Live ops — output by weekday, anchored on whichever week we're showing.
+      const start = new Date(useWk + 'T00:00:00')
       const byDay = [0, 0, 0, 0, 0]              // Mon…Fri
       for (const l of lines) {
         if (!l.work_date) continue
@@ -178,13 +199,13 @@ export default function OpsHome({ onOpen }) {
 
       setD({ wipTotal: wip.length, age, ngTotal: ng.length, ngLate,
              mat, byDay, sched, actual, waste, done,
-             lineCount: lines.length, asnCount: asn.length })
+             lineCount: lines.length, asnCount: asn.length, isPrior })
     })()
     return () => { dead = true }
   }, [])
 
   const grid = {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 12, paddingTop: 6,
   }
 
@@ -205,7 +226,15 @@ export default function OpsHome({ onOpen }) {
   const attainCol = attain >= 95 ? C.sage : attain >= 75 ? C.amber : C.rose
 
   return (
-    <div style={grid}>
+    <div>
+      {d.isPrior && (
+        <div style={{ fontSize: 11, color: C.amber, marginBottom: 10, display: 'flex',
+                      alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber }} />
+          This week has no entries yet — showing last week
+        </div>
+      )}
+      <div style={grid}>
 
       <Box title="Pulse" value={fmt(d.actual)} unit="yds"
            sub={d.sched > 0 ? `against a ${fmt(d.sched)} yd plan` : 'Nothing scheduled yet'}
@@ -267,6 +296,7 @@ export default function OpsHome({ onOpen }) {
         ]} />
       </Box>
 
+      </div>
     </div>
   )
 }
