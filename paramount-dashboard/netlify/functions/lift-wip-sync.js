@@ -456,9 +456,34 @@ const runSync = async (event) => {
     if (!LIFT_BASE_URL) throw new Error('LIFT_BASE_URL not set in env')
     if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase env not set')
 
-    let dryRun = false
+    let dryRun = false, probe = null
     if (event && event.httpMethod === 'POST' && event.body) {
-      try { dryRun = !!JSON.parse(event.body).dryRun } catch { /* ignore */ }
+      try {
+        const b = JSON.parse(event.body)
+        dryRun = !!b.dryRun
+        probe  = b.probe || null
+      } catch { /* ignore */ }
+    }
+
+    // PROBE — fetch ANY LIFT report by name and return its headers plus a few
+    // sample rows, writing nothing. LIFT Reporting Services exposes twelve
+    // reports on the same base URL (orders, products, shipments, po,
+    // shipmentshub, InvoiceAdjustments, invoiceshub, printJobs, InvoiceSummary,
+    // CreditSummary, OnHandYards, po_details) and this feed only ever used two.
+    // Rather than guess at a schema, look.
+    if (probe) {
+      const text = await fetchCsv(probe)
+      const { headers, records } = parseCsv(text)
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          report: probe,
+          row_count: records.length,
+          headers,
+          sample: records.slice(0, 3),
+        }, null, 2),
+      }
     }
 
     const asOf = new Date()
