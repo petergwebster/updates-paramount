@@ -139,19 +139,20 @@ export default function VenaPnLTab() {
   const S = {
     wrap:  { padding: '24px 28px', maxWidth: 1180, margin: '0 auto' },
     bar:   { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 22 },
-    sel:   { padding: '7px 10px', fontSize: 13, border: '1px solid var(--ink-15, #d8d5cc)', borderRadius: 7, background: '#fff' },
+    sel:   { padding: '7px 10px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 7,
+             background: 'var(--surface)', color: 'var(--ink)' },
     th:    { fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
-             color: 'var(--ink-40, #8a8880)', padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' },
+             color: 'var(--ink-60)', padding: '8px 12px', textAlign: 'right', whiteSpace: 'nowrap' },
     thL:   { textAlign: 'left' },
     td:    { padding: '6px 12px', textAlign: 'right', fontSize: 13, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
     tdL:   { textAlign: 'left', fontSize: 13 },
-    note:  { fontSize: 12, color: 'var(--ink-40, #8a8880)', marginTop: 18, lineHeight: 1.6 },
+    note:  { fontSize: 12, color: 'var(--ink-60)', marginTop: 18, lineHeight: 1.6 },
   }
 
   if (!loading && !periods.length) return (
     <div style={S.wrap}>
       <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>Profit &amp; loss</h2>
-      <p style={{ fontSize: 14, color: 'var(--ink-50, #6b6a64)' }}>
+      <p style={{ fontSize: 14, color: 'var(--ink-60)' }}>
         No Vena periods loaded yet. The monthly close lands on ShareFile as
         &ldquo;Paramount Results vs Forecast_&lt;Month&gt; &lt;Year&gt;.xlsx&rdquo; and is picked up by the
         daily finance feed.
@@ -162,7 +163,7 @@ export default function VenaPnLTab() {
   return (
     <div style={S.wrap}>
       <div style={{ marginBottom: 4, fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
-                    textTransform: 'uppercase', color: 'var(--ink-40, #8a8880)' }}>
+                    textTransform: 'uppercase', color: 'var(--ink-60)' }}>
         Vena · monthly close
       </div>
       <h2 style={{ fontSize: 22, fontWeight: 600, margin: '0 0 18px' }}>Profit &amp; loss</h2>
@@ -185,17 +186,17 @@ export default function VenaPnLTab() {
         )}
       </div>
 
-      {err && <div style={{ color: '#b91c1c', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>{err}</div>}
       {loading ? (
-        <div style={{ fontSize: 13, color: 'var(--ink-40, #8a8880)' }}>Loading…</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>Loading…</div>
       ) : !visible.length ? (
-        <div style={{ fontSize: 13, color: 'var(--ink-40, #8a8880)' }}>
+        <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>
           Nothing for {CC_LABEL[costCenter]} · {TF_LABEL[timeframe]} in {period}.
         </div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--ink-15, #d8d5cc)' }}>
+            <tr style={{ borderBottom: '1px solid var(--border)' }}>
               <th style={{ ...S.th, ...S.thL }}>Line</th>
               <th style={S.th}>Actual</th>
               <th style={S.th}>{forecastHeader}</th>
@@ -218,20 +219,20 @@ export default function VenaPnLTab() {
               const varFc  = (actual != null && fc != null) ? actual - fc : null
               const share  = revenueLine?.actual ? pct(actual, revenueLine.actual) : null
               return (
-                <tr key={l.key} style={{ borderBottom: '1px solid rgba(0,0,0,0.045)' }}>
+                <tr key={l.key} style={{ borderBottom: '1px solid var(--ink-10)' }}>
                   <td style={{ ...S.td, ...S.tdL, fontWeight: strong ? 600 : 400,
                                paddingLeft: strong ? 12 : 26 }}>
                     {label}
-                    {l.account && <span style={{ color: 'var(--ink-35, #a3a199)', marginLeft: 8, fontSize: 11 }}>{l.account}</span>}
+                    {l.account && <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 11 }}>{l.account}</span>}
                   </td>
                   <td style={{ ...S.td, fontWeight: strong ? 600 : 400 }}>{fmt(actual)}</td>
                   <td style={S.td}>{fmt(fc)}</td>
                   <td style={S.td}>{fmt(pl)}</td>
                   <td style={S.td}>{fmt(py)}</td>
-                  <td style={{ ...S.td, color: varFc == null ? 'inherit' : varFc < 0 ? '#b91c1c' : '#15803d' }}>
+                  <td style={{ ...S.td, color: varFc == null ? 'inherit' : varFc < 0 ? 'var(--red)' : 'var(--green)' }}>
                     {varFc == null ? '—' : fmt(varFc)}
                   </td>
-                  <td style={{ ...S.td, color: 'var(--ink-40, #8a8880)' }}>
+                  <td style={{ ...S.td, color: 'var(--ink-60)' }}>
                     {share == null ? '—' : share.toFixed(1) + '%'}
                   </td>
                 </tr>

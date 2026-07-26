@@ -1,30 +1,50 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK THEME (2026-07-25)
+   The dashboard is an instrument panel, not a document — dark reads as the
+   serious working surface. Paramount's identity is WARM, so this is a warm
+   near-black (the old --ink) rather than a cold grey, and the brown accent is
+   lifted to --accent-mid so it doesn't go muddy on a dark ground.
+
+   NAMES ARE KEPT for compatibility — --ink is still "the text colour" and
+   --cream is still "the page", they have simply swapped ends of the scale.
+   The --ink-N ramp still runs from strongest contrast to weakest.
+
+   MIGRATION NOTE: anything hardcoding #fff or white will punch a light hole
+   through this. Use --surface / --surface-2 instead. Report previews that
+   mirror a printed PDF (MonthlyBriefs) are the deliberate exception and should
+   stay on paper white.
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --ink: #1a1814;
-  --ink-60: #6b6760;
-  --ink-30: #c4c2be;
-  --ink-10: #f0efe9;
-  --ink-5: #f8f7f4;
-  --cream: #faf9f6;
-  --accent: #8b4513;
-  --accent-light: #f5ede5;
-  --accent-mid: #c4783a;
-  --green: #1a7a3c;
-  --green-light: #e0f5e9;
-  --amber: #b37300;
-  --amber-light: #fff3c4;
-  --red: #c0201f;
-  --red-light: #fde0e0;
-  --gray: #5a5855;
-  --gray-light: #f0efe9;
-  --border: #e8e6e0;
-  --shadow-sm: 0 1px 3px rgba(26,24,20,0.06);
-  --shadow-md: 0 4px 16px rgba(26,24,20,0.08);
+  --ink: #f2f0ea;          /* primary text */
+  --ink-60: #a5a29b;       /* secondary text */
+  --ink-30: #6a665f;       /* muted text, strong borders */
+  --ink-10: #2b2823;       /* dividers, subtle fills */
+  --ink-5: #221f1b;        /* subtlest fill */
+  --cream: #171512;        /* page ground */
+  --surface: #201d19;      /* card */
+  --surface-2: #262320;    /* raised card, popover */
+  --accent: #c4783a;
+  --accent-light: #33251a;
+  --accent-mid: #d98f4f;
+  --green: #4aa86a;
+  --green-light: #1b2b20;
+  --amber: #d9962b;
+  --amber-light: #2f2614;
+  --red: #e4595a;
+  --red-light: #2f1c1c;
+  --gray: #a5a29b;
+  --gray-light: #2b2823;
+  --border: #322e28;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.45);
   --font-display: 'DM Serif Display', Georgia, serif;
   --font-body: 'DM Sans', system-ui, sans-serif;
   --radius: 6px;
   --radius-lg: 10px;
+
+  color-scheme: dark;
 }
 
 html { font-size: 15px; }
@@ -58,7 +78,7 @@ button.primary {
   color: var(--cream);
   border-color: var(--ink);
 }
-button.primary:hover { background: #2d2b27; }
+button.primary:hover { background: #ffffff; }
 button.accent {
   background: var(--accent);
   color: white;

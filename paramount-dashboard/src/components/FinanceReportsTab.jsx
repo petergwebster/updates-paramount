@@ -35,17 +35,17 @@ export default function FinanceReportsTab({
   const S = {
     wrap:   { padding: '24px 28px 8px', maxWidth: 1180, margin: '0 auto' },
     over:   { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
-              color: 'var(--ink-40, #8a8880)', marginBottom: 4 },
+              color: 'var(--ink-60)', marginBottom: 4 },
     h:      { fontSize: 22, fontWeight: 600, margin: '0 0 18px' },
     grid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))', gap: 10, marginBottom: 8 },
     card:   (on) => ({
               textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-              background: on ? 'var(--ink-90, #2b2a27)' : '#fff',
-              color: on ? '#fff' : 'inherit',
-              border: `1px solid ${on ? 'var(--ink-90, #2b2a27)' : 'var(--ink-15, #d8d5cc)'}`,
+              background: on ? 'var(--accent-light)' : 'var(--surface)',
+              color: 'var(--ink)',
+              border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
             }),
     cardT:  { fontSize: 13, fontWeight: 600, marginBottom: 3 },
-    cardS:  (on) => ({ fontSize: 11, lineHeight: 1.45, color: on ? 'rgba(255,255,255,0.72)' : 'var(--ink-40, #8a8880)' }),
+    cardS:  (on) => ({ fontSize: 11, lineHeight: 1.45, color: on ? 'var(--accent-mid)' : 'var(--ink-60)' }),
   }
 
   return (
