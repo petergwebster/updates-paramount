@@ -117,7 +117,13 @@
   --shadow-md:  0 4px 14px rgba(0,0,0,0.5);
 
   /* ─── Typography ──────────────────────────────────────────────────── */
-  --font-body:    'Chakra Petch', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  /* BODY IS A READING FACE, NOT A TECH FACE (corrected 2026-07-26). Chakra
+     Petch was briefly the body font and it reads fine on a label but is
+     genuinely tiring across a five-paragraph narrative — the exec recap and
+     the monthly brief are prose, and prose needs a face designed to disappear.
+     Orbitron stays on titles and figures via --font-display; --font-tech is
+     available where a techy label is wanted deliberately. */
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   /* 2026-07-26: TECH DISPLAY FACE. Orbitron — wide, geometric, uniform stroke.
      It is a DISPLAY face: excellent on titles and figures, genuinely hard to
      read below about 13px, so it is deliberately NOT the body font. Chakra
