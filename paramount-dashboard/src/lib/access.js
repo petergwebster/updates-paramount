@@ -36,7 +36,8 @@ export function destinationsFor(profile) {
   switch (profile.role) {
     case 'admin':
     case 'exec':
-      return ['finance', 'operations']
+      // Operations first — it is the working surface and the default door.
+      return ['operations', 'finance']
     case 'manager':
     case 'qa':
       return ['operations']

@@ -19,6 +19,7 @@ import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
 import OpsAttentionPanel from './components/OpsAttentionPanel'
 import OpsSectionGrid from './components/OpsSectionGrid'
+import OpsHome from './components/OpsHome'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -104,9 +105,14 @@ const QA_OPERATIONS_TABS = [
 /**
  * Default tab to land on when entering a destination.
  */
+// 2026-07-26: activeTab STARTS NULL — that is the HOME screen for a
+// destination. No tab strip is shown until a section is chosen, because until
+// then there is nothing to move between. Pick a box on Home and the tab strip
+// appears so you can move around without returning here.
 function defaultTabFor(destination, role) {
-  if (destination === 'finance')    return 'pnl'
-  if (destination === 'operations') return 'pulse'
+  // Operations opens on HOME (null). Finance still opens on the P&L until its
+  // own home screen is built — half a home screen is worse than none.
+  if (destination === 'finance') return 'pnl'
   return null
 }
 
@@ -550,7 +556,9 @@ export default function App() {
         )}
 
         {/* ── Tab nav (hidden on landing and in admin) ── */}
-        {!inAdmin && !isOnLanding && tabsForCurrentDestination.length > 1 && (
+        {/* Tab strip — only once a section is open. On Home there is nothing
+            to move between yet. */}
+        {!inAdmin && !isOnLanding && activeTab && tabsForCurrentDestination.length > 1 && (
           <nav className={styles.nav}>
             {tabsForCurrentDestination.map(t=>(
               <button
@@ -648,12 +656,12 @@ export default function App() {
                   <StatusTab />
                 )}
 
-                {/* Operations · Pulse — THE HUB. Tiles for the week's numbers,
-                    the daily chart and what needs attention, then a box per tab.
-                    The tab strip above still works for moving around once you
-                    are inside, so this is a starting point not a toll gate.
-                    The Heartbeat plant detail sits BELOW the hub — the hub is
-                    what you land on, the detail is there when you want it. */}
+                {/* HOME — no section chosen yet. Six boxes, no tab strip. */}
+                {destination === 'operations' && !activeTab && (
+                  <OpsHome onOpen={handleTabChange} />
+                )}
+
+                {/* Operations · Pulse — the week at a glance, once you're in. */}
                 {destination === 'operations' && activeTab==='pulse' && (
                   <>
                     <OpsPulseTiles onNavigate={handleTabChange} />
@@ -661,7 +669,6 @@ export default function App() {
                       <OpsDailyChart embedded />
                       <OpsAttentionPanel onNavigate={handleTabChange} embedded />
                     </div>
-                    <OpsSectionGrid onNavigate={handleTabChange} />
                     <HeartbeatPage
                       weekStart={currentWeek}
                       currentUser={userProfile?.full_name}
