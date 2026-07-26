@@ -125,4 +125,10 @@
      To revert the whole app, put the sans stack back on --font-display. */
   --font-display: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-tech:    'Chakra Petch', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* --font-serif was referenced by InventoryTab as var(--font-serif, Georgia,
+     ...) but NEVER DEFINED, so the Georgia fallback was silently the live
+     value and that tab stayed serif after everything else changed. Same class
+     of bug as the undefined colour tints. Defining it here is the fix.
+     RULE: if you write var(--x, fallback), define --x. */
+  --font-serif:   var(--font-display);
 }

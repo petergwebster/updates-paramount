@@ -88,7 +88,7 @@ function MachineLocationBlock({ label, sublabel, machines }) {
         borderBottom: `1px solid ${C.border}`,
       }}>
         <div style={{
-          fontFamily: 'Georgia, "Times New Roman", serif',
+          fontFamily: 'var(--font-display)',
           fontSize: 18,
           fontWeight: 700,
           color: C.ink,
