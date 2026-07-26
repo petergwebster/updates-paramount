@@ -15,6 +15,7 @@ import FinancialTab from './components/FinancialTab'
 import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
 import FeedHealthStrip from './components/FeedHealthStrip'
+import OpsPulseTiles from './components/OpsPulseTiles'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -638,13 +639,18 @@ export default function App() {
                   <StatusTab />
                 )}
 
-                {/* Operations · Pulse — the plant view, now the landing tab */}
+                {/* Operations · Pulse — the plant view, now the landing tab.
+                    The tile grid is the at-a-glance layer and doubles as
+                    navigation; the Heartbeat detail sits beneath it. */}
                 {destination === 'operations' && activeTab==='pulse' && (
-                  <HeartbeatPage
-                    weekStart={currentWeek}
-                    currentUser={userProfile?.full_name}
-                    userId={authUser?.id}
-                  />
+                  <>
+                    <OpsPulseTiles onNavigate={handleTabChange} />
+                    <HeartbeatPage
+                      weekStart={currentWeek}
+                      currentUser={userProfile?.full_name}
+                      userId={authUser?.id}
+                    />
+                  </>
                 )}
               </>
             )}
