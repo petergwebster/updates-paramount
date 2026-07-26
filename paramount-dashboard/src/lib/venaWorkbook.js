@@ -110,6 +110,7 @@ function parseVarianceSheet(XLSX, sheet, costCenter, ctx) {
 
   const out = []
   const seen = Object.create(null)
+  let order = 0
   for (let i = scRow + 3; i < grid.length; i++) {
     const r = grid[i] || []
     let lab = r[7]
@@ -131,6 +132,11 @@ function parseVarianceSheet(XLSX, sheet, costCenter, ctx) {
     seen[key] = (seen[key] || 0) + 1
     if (seen[key] > 1) key = `${key}_${seen[key]}`
 
+    // Row position in the printed sheet. A P&L only reads correctly in its own
+    // order and long format loses that, so carry it through rather than
+    // hardcoding a line list in the UI.
+    order += 1
+
     for (const col of cols) {
       const amt = r[col.c]
       if (!isNum(amt)) continue
@@ -144,6 +150,7 @@ function parseVarianceSheet(XLSX, sheet, costCenter, ctx) {
         scenario_label: col.scenario_label,
         line_key: key,
         line_label,
+        line_order: order,
         account_code,
         amount: Math.round(amt * 100) / 100,
         source_file: ctx.fileName,

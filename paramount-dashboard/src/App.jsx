@@ -12,6 +12,7 @@ import AdminLayout from './components/AdminLayout'
 import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
+import VenaPnLTab from './components/VenaPnLTab'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -62,6 +63,7 @@ const NJ_DAYS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PERFORMANCE_TABS = [
+  { id: 'pnl',        label: 'P&L', isNew: true },  // Vena monthly close — the authoritative P&L
   { id: 'dashboard',  label: 'Recap'      },  // weekly recap (was: Dashboard in exec mode)
   { id: 'capacity',   label: 'Dashboard'  },  // rich capacity/MTD/YTD view (ProductionDashboard)
   { id: 'financials', label: 'Financials' },
@@ -586,6 +588,11 @@ export default function App() {
 
             {!inAdmin && !isOnLanding && (
               <>
+                {/* Performance · P&L — Vena monthly close, the authoritative financial view */}
+                {destination === 'performance' && activeTab==='pnl' && (
+                  <VenaPnLTab />
+                )}
+
                 {/* Performance · Recap (the weekly recap) */}
                 {destination === 'performance' && activeTab==='dashboard' && (
                   <ExecutiveDashboardPage
