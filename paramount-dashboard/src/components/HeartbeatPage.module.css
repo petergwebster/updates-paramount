@@ -183,7 +183,7 @@
   font-family: Georgia, serif;
   font-style: italic;
   color: var(--ink-70);
-  background: white;
+  background: var(--surface);
   border-radius: 12px;
-  border: 1px solid var(--ink-10, #C5CCC8);
+  border: 1px solid var(--ink-10);
 }
