@@ -634,7 +634,7 @@ function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
       </div>
       <div style={{ display: 'flex', gap: 22, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: yards > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: yards > 0 ? C.navy : C.inkLight, lineHeight: 1.1 }}>
             {yards > 0 ? fmt(yards) : '—'}
             <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yds</span>
           </div>
@@ -651,7 +651,7 @@ function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
         </div>
         {cy != null && (
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: cy > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: cy > 0 ? C.navy : C.inkLight, lineHeight: 1.1 }}>
               {cy > 0 ? fmt(Math.round(cy)) : '—'}
               <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>cyds</span>
             </div>
@@ -991,7 +991,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       {/* Actual (total) — read-only; sum of the PO lines below */}
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actual (total)</label>
-        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: actual != null ? C.ink : C.inkLight, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: actual != null ? C.navy : C.inkLight, lineHeight: 1.4 }}>
           {actual != null ? fmt(actual) : '—'}
           {anyWaste && <span style={{ fontSize: 10, color: C.inkLight, fontWeight: 400, marginLeft: 6 }}>· {fmt(rolledWaste)} waste</span>}
         </div>
@@ -1160,7 +1160,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                 <button
                   onClick={() => setNotesScope({ key: lk, label: l.line_description || l.po_number, po_number: l.po_number, item_sku: l.item_sku || null, color: l.color || null, line_description: l.line_description || null })}
                   title={cnt ? `${cnt} note${cnt > 1 ? 's' : ''} on this PO` : 'Add a note for this PO'}
-                  style={{ padding: '3px 4px', border: `1px ${cnt ? 'solid' : 'dashed'} ${C.border}`, borderRadius: 4, fontSize: 10, color: cnt ? C.ink : C.inkLight, background: cnt ? C.warm : 'transparent', cursor: 'pointer', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                  style={{ padding: '3px 4px', border: `1px ${cnt ? 'solid' : 'dashed'} ${C.border}`, borderRadius: 4, fontSize: 10, color: cnt ? C.navy : C.inkLight, background: cnt ? C.warm : 'transparent', cursor: 'pointer', lineHeight: 1, whiteSpace: 'nowrap' }}>
                   {cnt ? `📝 ${cnt}` : '📝 +'}
                 </button>
               )
@@ -1429,7 +1429,7 @@ function KpiCard({
       </div>
 
       {/* Primary metric — yards */}
-      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-display)', color: hasData ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-display)', color: hasData ? C.navy : C.inkLight, lineHeight: 1.1 }}>
         {hasData ? fmt(primary) : '—'}
         <span style={{ fontSize: 12, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{primaryUnit}</span>
       </div>
@@ -1443,7 +1443,7 @@ function KpiCard({
           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 2 }}>
             {secondaryLabel}
           </div>
-          <div style={{ fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-display)', color: secondary > 0 ? C.ink : C.inkLight }}>
+          <div style={{ fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-display)', color: secondary > 0 ? C.navy : C.inkLight }}>
             {secondary > 0 ? fmt(Math.round(secondary)) : '—'}
             <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{secondaryUnit}</span>
           </div>

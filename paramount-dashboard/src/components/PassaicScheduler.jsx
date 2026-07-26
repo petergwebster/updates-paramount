@@ -1191,10 +1191,10 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
                 {shift}
               </span>
             </span>
-            <span style={{ textAlign: 'right', color: plan != null ? C.ink : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
+            <span style={{ textAlign: 'right', color: plan != null ? C.navy : C.inkLight, fontWeight: plan != null ? 600 : 400 }}>
               {plan != null ? fmt(plan) : '—'}
             </span>
-            <span style={{ textAlign: 'right', color: actual != null ? C.ink : C.inkLight, fontWeight: actual != null ? 600 : 400 }}>
+            <span style={{ textAlign: 'right', color: actual != null ? C.navy : C.inkLight, fontWeight: actual != null ? 600 : 400 }}>
               {actual != null ? fmt(actual) : '—'}
             </span>
             <span style={{ textAlign: 'right', color: deltaColor, fontWeight: 600 }}>
@@ -1698,7 +1698,7 @@ function ShiftTab({ label, sub, active, hasData, onClick }) {
         <div style={{
           fontSize: 13,
           fontWeight: active ? 700 : 600,
-          color: active ? C.ink : C.inkMid,
+          color: active ? C.navy : C.inkMid,
           fontFamily: 'var(--font-display)',
         }}>
           {label}

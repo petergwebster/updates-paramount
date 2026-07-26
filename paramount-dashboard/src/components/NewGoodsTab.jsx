@@ -280,9 +280,9 @@ export default function NewGoodsTab({ currentUser } = {}) {
                 <button key={s.id} onClick={() => setSite(s.id)}
                   style={{
                     padding: '12px 20px',
-                    background: active ? C.ink : 'var(--surface)',
+                    background: active ? C.navy : 'var(--surface)',
                     color: active ? '#fff' : C.inkMid,
-                    border: `1px solid ${active ? C.ink : C.border}`,
+                    border: `1px solid ${active ? C.navy : C.border}`,
                     borderRadius: 8,
                     fontSize: 13,
                     fontWeight: active ? 700 : 500,
@@ -534,7 +534,7 @@ function GroupSection({ groupName, items, site }) {
         onClick={() => setExpanded(e => !e)}
         style={{
           padding: '12px 16px',
-          background: C.ink, color: '#fff',
+          background: C.surface2, color: '#fff',
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           cursor: 'pointer',
           userSelect: 'none',

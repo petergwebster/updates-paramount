@@ -300,7 +300,7 @@ function PoRow({ r, showCY, gridCols, zebra }) {
 
       {/* Recorded yards (+ waste under) */}
       <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: r.recYards > 0 ? C.ink : C.inkLight }}>{r.recYards > 0 ? fmt(r.recYards) : '—'}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: r.recYards > 0 ? C.navy : C.inkLight }}>{r.recYards > 0 ? fmt(r.recYards) : '—'}</div>
         {r.wasteYards > 0 && <div style={{ fontSize: 8, color: C.inkLight }}>{fmt(r.wasteYards)} waste</div>}
       </div>
 
@@ -341,7 +341,7 @@ function PoRow({ r, showCY, gridCols, zebra }) {
             colour count to compare against. */}
         {!r.isComplete && r.colorsExpected != null && (
           <div style={{ fontSize: 9, marginTop: 3, color: r.colorsDone != null ? C.inkMid : C.inkLight }}>
-            <strong style={{ color: r.colorsDone != null ? C.ink : C.inkLight, fontWeight: 700 }}>
+            <strong style={{ color: r.colorsDone != null ? C.navy : C.inkLight, fontWeight: 700 }}>
               {r.colorsDone != null ? r.colorsDone : '—'}
             </strong>
             {' / '}{r.colorsExpected} colors
@@ -481,7 +481,7 @@ function MaterialCard({ c, days }) {
 
       {/* Week headline — completed vs planned */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: c.actualWeek > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: c.actualWeek > 0 ? C.navy : C.inkLight, lineHeight: 1.1 }}>
           {c.actualWeek > 0 ? fmt(c.actualWeek) : '—'}
         </span>
         <span style={{ fontSize: 12, color: C.inkLight }}>/ {fmt(c.plannedWeek)} yd planned</span>
@@ -549,7 +549,7 @@ function SiteChip({ active, onClick, color, children }) {
 function ViewChip({ active, onClick, children }) {
   return (
     <button onClick={onClick}
-      style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: `1px solid ${active ? C.ink : C.border}`, background: active ? C.ink : 'transparent', color: active ? '#fff' : C.inkMid }}>
+      style={{ padding: '7px 16px', fontSize: 12, fontWeight: 700, borderRadius: 6, cursor: 'pointer', border: `1px solid ${active ? C.navy : C.border}`, background: active ? C.navy : 'transparent', color: active ? '#fff' : C.inkMid }}>
       {children}
     </button>
   )

@@ -1011,7 +1011,7 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
         style={{
           width: '100%', fontSize: 10, padding: '2px 3px', borderRadius: 3,
           border: `1px solid ${C.border}`, background: assignments.length === 0 ? C.warm : 'var(--surface)',
-          color: cellOperator ? C.ink : C.inkLight, cursor: assignments.length === 0 ? 'not-allowed' : 'pointer',
+          color: cellOperator ? C.navy : C.inkLight, cursor: assignments.length === 0 ? 'not-allowed' : 'pointer',
         }}
       >
         <option value="">{assignments.length === 0 ? '—' : 'op?'}</option>

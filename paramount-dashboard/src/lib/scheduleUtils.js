@@ -42,19 +42,25 @@
 
 export const C = {
   // ── Base surfaces ──────────────────────────────────────────────────────
-  cream:     '#1A1D21',  // page background — dark (mirrors --paper)
-  parchment: '#23272C',  // card / section backgrounds (mirrors --surface)
+  cream:     '#14171A',  // page background — dark (mirrors --paper)
+  parchment: '#1D2126',  // card / section backgrounds (mirrors --surface)
+  surface2:  '#262B31',  // nested panel / SECTION HEADER / active chip bg
   warm:      '#2E3238',  // disabled buttons / muted fills
-  border:    '#3A3F46',  // card borders, dividers
+  border:    '#333940',  // card borders, dividers
 
   // ── Text ───────────────────────────────────────────────────────────────
   // NOTE: `ink` doubles as an ACTIVE-STATE BACKGROUND in several components
   // (selected site cards, active pills). Because `ink` and `cream` both flipped,
   // the usual ink-background / cream-text pairing still reads correctly — it is
   // simply inverted: a light chip on a dark page rather than the reverse.
-  ink:       '#E9E7E2',  // primary text + active state backgrounds
-  inkMid:    '#ADB2B8',  // secondary text, subheaders
-  inkLight:  '#848A91',  // tertiary text, captions
+  ink:       '#F4F3EF',  // PRIMARY TEXT ONLY — never a background.
+                         // It used to double as an active-state background back
+                         // when it was near-black. Now that it is near-white,
+                         // using it as a background produces an unreadable light
+                         // chip with light text on it. Use surface2 (neutral
+                         // active) or navy (accent active) instead.
+  inkMid:    '#A2A9B1',  // secondary text, subheaders
+  inkLight:  '#737A82',  // tertiary text, captions
 
   // ── Accent slots — REMAPPED to single-teal Cosmic identity ────────────
   // Pre-Path-A these were distinct colors per destination. Now all destination

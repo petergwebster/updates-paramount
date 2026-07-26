@@ -722,7 +722,7 @@ function DivisionPivot({ division, agg }) {
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       {/* Section header */}
-      <div style={{ padding: '12px 16px', background: C.ink, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ padding: '12px 16px', background: C.surface2, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
           {division}
         </h3>
@@ -816,9 +816,9 @@ function SiteToggle({ site, onChange, summary }) {
           <button key={s.id} onClick={() => onChange(s.id)}
             style={{
               padding: '12px 20px',
-              background: active ? C.ink : 'var(--surface)',
+              background: active ? C.navy : 'var(--surface)',
               color: active ? '#fff' : C.inkMid,
-              border: `1px solid ${active ? C.ink : C.border}`,
+              border: `1px solid ${active ? C.navy : C.border}`,
               borderRadius: 8,
               fontSize: 13,
               fontWeight: active ? 700 : 500,
@@ -877,8 +877,8 @@ function FilterRow({
                 padding: '5px 12px', fontSize: 11,
                 fontWeight: active ? 700 : 500,
                 borderRadius: 14,
-                border: `1px solid ${active ? C.ink : C.border}`,
-                background: active ? C.ink : 'transparent',
+                border: `1px solid ${active ? C.navy : C.border}`,
+                background: active ? C.navy : 'transparent',
                 color: active ? '#fff' : C.inkMid,
                 cursor: 'pointer',
               }}>
@@ -921,8 +921,8 @@ function FilterRow({
                   padding: '5px 12px', fontSize: 11,
                   fontWeight: active ? 700 : 500,
                   borderRadius: 14,
-                  border: `1px solid ${active ? C.ink : C.border}`,
-                  background: active ? C.ink : 'transparent',
+                  border: `1px solid ${active ? C.navy : C.border}`,
+                  background: active ? C.navy : 'transparent',
                   color: active ? '#fff' : C.inkMid,
                   cursor: 'pointer',
                 }}>
