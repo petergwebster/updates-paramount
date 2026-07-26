@@ -18,6 +18,7 @@ import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
 import OpsAttentionPanel from './components/OpsAttentionPanel'
+import OpsSectionGrid from './components/OpsSectionGrid'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -283,10 +284,13 @@ export default function App() {
         // between login and work is a room you walk through, not a place. Land
         // straight in; the destination switcher lives in the header.
         const dests = destinationsFor(profile)
-        if (dests.length) {
-          setDestination(dests[0])
-          setActiveTab(defaultTabFor(dests[0], profile?.role))
-          setCurrentWeek(defaultWeekForDestination(dests[0]))
+        // Operations is the default door for everyone who has it — it is the
+        // working surface. Finance is somewhere you go on purpose.
+        const home = dests.includes('operations') ? 'operations' : dests[0]
+        if (home) {
+          setDestination(home)
+          setActiveTab(defaultTabFor(home, profile?.role))
+          setCurrentWeek(defaultWeekForDestination(home))
         } else {
           setDestination('landing')
           setActiveTab(null)
@@ -395,10 +399,11 @@ export default function App() {
     if (profile?.role === 'admin') setAdminAuthenticated(true)
     // No chooser — land straight in. See the note in the bootstrap effect.
     const dests = destinationsFor(profile)
-    if (dests.length) {
-      setDestination(dests[0])
-      setActiveTab(defaultTabFor(dests[0], profile?.role))
-      setCurrentWeek(defaultWeekForDestination(dests[0]))
+    const home = dests.includes('operations') ? 'operations' : dests[0]
+    if (home) {
+      setDestination(home)
+      setActiveTab(defaultTabFor(home, profile?.role))
+      setCurrentWeek(defaultWeekForDestination(home))
     } else {
       setDestination('landing')
       setActiveTab(null)
@@ -643,14 +648,20 @@ export default function App() {
                   <StatusTab />
                 )}
 
-                {/* Operations · Pulse — the plant view, now the landing tab.
-                    The tile grid is the at-a-glance layer and doubles as
-                    navigation; the Heartbeat detail sits beneath it. */}
+                {/* Operations · Pulse — THE HUB. Tiles for the week's numbers,
+                    the daily chart and what needs attention, then a box per tab.
+                    The tab strip above still works for moving around once you
+                    are inside, so this is a starting point not a toll gate.
+                    The Heartbeat plant detail sits BELOW the hub — the hub is
+                    what you land on, the detail is there when you want it. */}
                 {destination === 'operations' && activeTab==='pulse' && (
                   <>
                     <OpsPulseTiles onNavigate={handleTabChange} />
-                    <OpsAttentionPanel onNavigate={handleTabChange} />
-                    <OpsDailyChart />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: 10, marginBottom: 26 }}>
+                      <OpsDailyChart embedded />
+                      <OpsAttentionPanel onNavigate={handleTabChange} embedded />
+                    </div>
+                    <OpsSectionGrid onNavigate={handleTabChange} />
                     <HeartbeatPage
                       weekStart={currentWeek}
                       currentUser={userProfile?.full_name}
