@@ -78,6 +78,36 @@ button.primary {
   color: var(--cream);
   border-color: var(--ink);
 }
+
+/* ── Native form controls ─────────────────────────────────────────────────
+   Browsers paint input / select / textarea WHITE by default. Nothing in the
+   codebase sets that, so no sweep can find it — it has to be stated here.
+   This is why the Live Ops entry grid and the Admin weekly-entry form stayed
+   bright after everything else went dark. */
+input, select, textarea {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-mid);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+input::placeholder, textarea::placeholder { color: var(--ink-30); }
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--ink-3);
+  color: var(--ink-30);
+}
+/* Checkboxes and radios keep the native widget but follow the theme. */
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--accent-mid);
+  width: auto;
+}
+
 button.primary:hover { background: #ffffff; }
 button.accent {
   background: var(--accent);

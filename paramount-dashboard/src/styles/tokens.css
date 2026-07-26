@@ -18,32 +18,33 @@
 
 :root {
   /* ─── Paper & Ink palette base — cream paper, white cards ────────── */
-  --paper:        #1A1D21;   /* main app background — slate */
+  --paper:        #14171A;   /* main app background — deeper, lets cards lift */
   --paper-light:  #22262B;   /* lighter wash */
-  --paper-soft:   #15181B;   /* deeper wash for headers / sections */
-  --cream:        #1A1D21;   /* alias for --paper */
-  --cream-dark:   #15181B;   /* alias for --paper-soft */
+  --paper-soft:   #101315;   /* chrome / header — deepest, frames the content */
+  --cream:        #14171A;   /* alias for --paper */
+  --cream-dark:   #101315;   /* alias for --paper-soft */
   --linen:        #262A30;   /* inactive bar / track surface */
-  --surface:      #23272C;   /* card surface — lifted off the page */
+  --surface:      #1D2126;   /* card surface — one clear step above the page */
+  --surface-2:    #262B31;   /* nested panel inside a card */
 
   /* ─── Ink scale (text + line work) ────────────────────────────────── */
-  --ink:     #E9E7E2;   /* primary text — warm off-white */
-  --ink-90:  #F4F2EE;   /* strongest / pressed-state */
-  --ink-80:  #E0DED9;   /* deeper */
-  --ink-70:  #CFCDC8;   /* deep secondary */
-  --ink-60:  #ADB2B8;   /* body text — most common usage */
-  --ink-50:  #999EA5;   /* secondary text / muted body */
-  --ink-40:  #848A91;   /* muted text / labels */
-  --ink-30:  #6C7178;   /* chart axis / very muted */
-  --ink-20:  #494E55;   /* heavy borders / disabled */
-  --ink-10:  #32363C;   /* dividers / standard borders */
-  --ink-05:  #292D32;   /* faint dividers */
-  --ink-5:   #262A30;   /* page-tint surface (hover bg, panels) */
-  --ink-3:   #212429;   /* very subtle surface tint */
+  --ink:     #F4F3EF;   /* headings + FIGURES — near-white, carries the weight */
+  --ink-90:  #FFFFFF;   /* the one true white — emphasis on dark chips */
+  --ink-80:  #E6E4DF;   /* strong secondary */
+  --ink-70:  #CBCFD4;   /* deep secondary */
+  --ink-60:  #A2A9B1;   /* body text — most common usage */
+  --ink-50:  #8D949C;   /* secondary text / muted body */
+  --ink-40:  #737A82;   /* labels, captions — clearly quieter than body */
+  --ink-30:  #5C636B;   /* chart axis, placeholders */
+  --ink-20:  #424951;   /* heavy borders / disabled */
+  --ink-10:  #2C3137;   /* dividers / standard borders */
+  --ink-05:  #24282D;   /* faint dividers */
+  --ink-5:   #212529;   /* page-tint surface (hover bg, panels) */
+  --ink-3:   #1B1F23;   /* very subtle surface tint */
 
   /* ─── Borders ─────────────────────────────────────────────────────── */
-  --border:        #3A3F46;
-  --border-light:  #2E3238;
+  --border:        #333940;
+  --border-light:  #262B31;
 
   /* ─── Destination accents — Paper & Ink three-tone ────────────────── */
   /* Performance / royal: muted forest green */
