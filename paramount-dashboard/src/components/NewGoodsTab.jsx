@@ -230,7 +230,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>
+            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'var(--font-display)' }}>
               Production · NEW Goods
             </h2>
             <p style={{ fontSize: 13, color: C.inkLight, margin: '4px 0 0' }}>
@@ -258,7 +258,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
       {!snapshot && !loading && (
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>✦</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'Georgia,serif', marginBottom: 8 }}>No NEW Goods data yet</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'var(--font-display)', marginBottom: 8 }}>No NEW Goods data yet</div>
           <div style={{ fontSize: 13, color: C.inkLight }}>Click "Refresh from Monday.com" to pull the latest pipeline.</div>
         </div>
       )}
@@ -290,7 +290,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
                     textAlign: 'left',
                     minWidth: 140,
                   }}>
-                  <div style={{ fontFamily: 'Georgia,serif', fontSize: 15 }}>{s.label}</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 15 }}>{s.label}</div>
                   <div style={{ fontSize: 10, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{sub}</div>
                 </button>
               )
@@ -513,7 +513,7 @@ function PipelineSummary({ site, groups, observation, snapshot, onOpenObservatio
             <div style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
               {g}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>
               {fmt(groups.get(g).length)}
             </div>
           </div>
@@ -539,7 +539,7 @@ function GroupSection({ groupName, items, site }) {
           cursor: 'pointer',
           userSelect: 'none',
         }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
           {groupName}
           <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.7)' }}>
             {fmt(items.length)} item{items.length === 1 ? '' : 's'}
@@ -830,7 +830,7 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
               ✦ Claude's Observations · {siteLabel}
             </h3>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>

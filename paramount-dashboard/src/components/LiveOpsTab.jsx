@@ -340,7 +340,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', margin: 0, marginBottom: 4 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)', margin: 0, marginBottom: 4 }}>
           Live Ops — Daily Actuals
         </h2>
         <div style={{ fontSize: 13, color: C.inkMid }}>
@@ -375,7 +375,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
           </button>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Week</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{weekLabel(weekStart)}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>{weekLabel(weekStart)}</div>
           </div>
           <button onClick={() => navigateWeek(1)}
             style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
@@ -391,7 +391,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
           </button>
           <div style={{ flex: 1, textAlign: 'center' }}>
             <div style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Day</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>
               {dayLabel} <span style={{ fontWeight: 400, color: C.inkMid }}>· {dateLabel}</span>
               {isToday && <span style={{ fontSize: 10, color: C.sage, fontWeight: 600, marginLeft: 6 }}>TODAY</span>}
               {isFuture && <span style={{ fontSize: 10, color: C.gold, fontWeight: 600, marginLeft: 6 }}>FUTURE</span>}
@@ -634,14 +634,14 @@ function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
       </div>
       <div style={{ display: 'flex', gap: 22, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: yards > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: yards > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
             {yards > 0 ? fmt(yards) : '—'}
             <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yds</span>
           </div>
           <div style={{ fontSize: 9, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>Produced</div>
         </div>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: waste > 0 ? C.amber : C.inkLight, lineHeight: 1.1 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: waste > 0 ? C.amber : C.inkLight, lineHeight: 1.1 }}>
             {waste > 0 ? fmt(waste) : '—'}
             <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>yds</span>
           </div>
@@ -651,7 +651,7 @@ function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
         </div>
         {cy != null && (
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia, serif', color: cy > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: cy > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
               {cy > 0 ? fmt(Math.round(cy)) : '—'}
               <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>cyds</span>
             </div>
@@ -991,7 +991,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       {/* Actual (total) — read-only; sum of the PO lines below */}
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Actual (total)</label>
-        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: actual != null ? C.ink : C.inkLight, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: actual != null ? C.ink : C.inkLight, lineHeight: 1.4 }}>
           {actual != null ? fmt(actual) : '—'}
           {anyWaste && <span style={{ fontSize: 10, color: C.inkLight, fontWeight: 400, marginLeft: 6 }}>· {fmt(rolledWaste)} waste</span>}
         </div>
@@ -1186,7 +1186,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
           <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
                   Notes · {(table.label || table.code)}{notesScope.key !== '__general' ? ` — ${notesScope.label}` : ''}
                 </div>
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
@@ -1429,7 +1429,7 @@ function KpiCard({
       </div>
 
       {/* Primary metric — yards */}
-      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Georgia, serif', color: hasData ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-display)', color: hasData ? C.ink : C.inkLight, lineHeight: 1.1 }}>
         {hasData ? fmt(primary) : '—'}
         <span style={{ fontSize: 12, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{primaryUnit}</span>
       </div>
@@ -1443,7 +1443,7 @@ function KpiCard({
           <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 2 }}>
             {secondaryLabel}
           </div>
-          <div style={{ fontSize: 16, fontWeight: 600, fontFamily: 'Georgia, serif', color: secondary > 0 ? C.ink : C.inkLight }}>
+          <div style={{ fontSize: 16, fontWeight: 600, fontFamily: 'var(--font-display)', color: secondary > 0 ? C.ink : C.inkLight }}>
             {secondary > 0 ? fmt(Math.round(secondary)) : '—'}
             <span style={{ fontSize: 11, fontWeight: 400, color: C.inkLight, marginLeft: 4 }}>{secondaryUnit}</span>
           </div>

@@ -523,7 +523,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         >→</button>
 
         <span style={{
-          fontFamily: 'Georgia, serif',
+          fontFamily: 'var(--font-display)',
           fontSize: 16,
           color: 'var(--ink, #3A3F45)',
           fontWeight: 500,

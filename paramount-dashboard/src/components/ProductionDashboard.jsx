@@ -678,7 +678,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     return (
                       <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
-                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'var(--font-display)' }}>{valStr}</div>
                         <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
                         {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
                       {k.sub2 && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:1, fontStyle:'italic' }}>{k.sub2}</div>}
@@ -802,7 +802,7 @@ export default function ProductionDashboard({ weekStart, dbReady, sendVersion, r
                     return (
                       <div key={k.label} style={{ flex:1, padding:'8px 12px', borderRight:i<arr.length-1?'1px solid var(--border)':'none' }}>
                         <div style={{ fontSize:9, fontWeight:700, letterSpacing:'0.07em', textTransform:'uppercase', color:'var(--ink-40)', marginBottom:3 }}>{k.label}</div>
-                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'Georgia,serif' }}>{valStr}</div>
+                        <div style={{ fontSize:14, fontWeight:700, color, fontFamily:'var(--font-display)' }}>{valStr}</div>
                         <div style={{ fontSize:10, color:'var(--ink-40)' }}>tgt {tgtStr}{pctVal!==null?' · '+pctVal+'%':''}</div>
                         {k.sub && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:2 }}>{k.sub}</div>}
                       {k.sub2 && <div style={{ fontSize:10, color:'var(--ink-40)', marginTop:1, fontStyle:'italic' }}>{k.sub2}</div>}

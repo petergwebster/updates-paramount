@@ -741,7 +741,7 @@ function DemandBar({ label, value }) {
 function EmptyState() {
   return (
     <div className={styles.empty}>
-      <h3 style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: 22 }}>No inventory data yet</h3>
+      <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 22 }}>No inventory data yet</h3>
       <p>Use the <strong>Refresh File</strong> button above to upload the latest API_Dashboard_MOS_3_0.xlsx
       from ShareFile. The Inventory tab will populate once the first snapshot is captured.</p>
     </div>

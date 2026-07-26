@@ -181,7 +181,7 @@ export default function StatusTab() {
     <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', margin: 0, marginBottom: 4 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)', margin: 0, marginBottom: 4 }}>
           Status — Where Each PO Stands
         </h2>
         <div style={{ fontSize: 13, color: C.inkMid }}>
@@ -200,7 +200,7 @@ export default function StatusTab() {
           style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>← Prev week</button>
         <div style={{ textAlign: 'center', minWidth: 150 }}>
           <div style={{ fontSize: 10, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Week</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{weekLabel(weekStart)}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>{weekLabel(weekStart)}</div>
         </div>
         <button onClick={() => setWeekStart(addWeeks(weekStart, 1))}
           style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Next week →</button>
@@ -475,13 +475,13 @@ function MaterialCard({ c, days }) {
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderLeft: `3px solid ${c.color}`, borderRadius: 10, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{c.label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>{c.label}</span>
         <span style={{ fontSize: 10, color: C.inkLight }}>{c.pos.size} PO{c.pos.size !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Week headline — completed vs planned */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 6 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: c.actualWeek > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: c.actualWeek > 0 ? C.ink : C.inkLight, lineHeight: 1.1 }}>
           {c.actualWeek > 0 ? fmt(c.actualWeek) : '—'}
         </span>
         <span style={{ fontSize: 12, color: C.inkLight }}>/ {fmt(c.plannedWeek)} yd planned</span>
@@ -559,7 +559,7 @@ function SummaryStat({ label, value, sub }) {
   return (
     <div>
       <div style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{value}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>{value}</div>
       {sub && <div style={{ fontSize: 9, color: C.inkLight, fontStyle: 'italic' }}>{sub}</div>}
     </div>
   )

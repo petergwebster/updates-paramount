@@ -155,7 +155,7 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
     <div>
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: C.ink, margin: 0, fontFamily: 'Georgia,serif' }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: C.ink, margin: 0, fontFamily: 'var(--font-display)' }}>
           {siteLabel} · New Goods
         </h3>
         <p style={{ fontSize: 12, color: C.inkLight, margin: '4px 0 0' }}>
@@ -290,7 +290,7 @@ function SummaryCard({ label, value }) {
   return (
     <div style={{ flex: 1, minWidth: 160, padding: '14px 18px', background: 'var(--surface)', color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8 }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Georgia,serif' }}>{value}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{value}</div>
     </div>
   )
 }

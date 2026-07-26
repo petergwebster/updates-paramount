@@ -588,7 +588,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabel(weekStart)}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>Week of {weekLabel(weekStart)}</div>
           <div style={{ fontSize: 11, color: C.inkLight }}>{enrichedAssignments.length} assignment{enrichedAssignments.length !== 1 ? 's' : ''}</div>
         </div>
         <button onClick={() => onWeekChange(defaultSchedulerWeek())} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Default week</button>
@@ -774,7 +774,7 @@ function Gauge({ label, value, target, pct, unit, isMoney, highlight }) {
     <div style={{ background: bg, border: `1px solid ${highlight ? C.navy : C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: subFg, marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: fg }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: fg }}>
           {isMoney ? fmtK(value) : fmt(value)}
         </span>
         <span style={{ fontSize: 11, color: subFg }}>/ {isMoney ? fmtK(target) : fmt(target)} {!isMoney && unit}</span>
@@ -793,9 +793,9 @@ function MixCard({ schPct, tpPct, onTarget, avgColors }) {
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Customer mix</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.navy }}>Sch {Math.round(schPct)}%</span>
+        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: C.navy }}>Sch {Math.round(schPct)}%</span>
         <span style={{ fontSize: 11, color: C.inkLight }}>·</span>
-        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.gold }}>3P {Math.round(tpPct)}%</span>
+        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: C.gold }}>3P {Math.round(tpPct)}%</span>
       </div>
       <div style={{ height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
         <div style={{ width: schPct + '%', background: C.navy }} />
@@ -1336,7 +1336,7 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', initial
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
       <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>{isEdit ? 'Edit · ' : 'Assign to '}{tableCode}</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
           PO: {po.po_number} · {po.product_type} · {po.colors_count || '—'} colors · {po.unquantified ? 'no yardage in LIFT — enter qty' : `${fmt(po.remaining_yards)} yards remaining`}
         </div>
@@ -1571,7 +1571,7 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
       <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(760px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Daily Plan · {tableCode}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-display)' }}>Daily Plan · {tableCode}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Week of {weekLabel(weekStart)} · set target yards and crew per shift</div>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 22, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
@@ -1630,7 +1630,7 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
             const isSaving = savingDay === `${r.day_of_week}|${activeShift}`
             return (
               <div key={r.day_of_week} style={{ display: 'grid', gridTemplateColumns: '60px 100px 1fr 1fr 90px', gap: 10, alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{r.day_of_week}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>{r.day_of_week}</div>
                 <input type="number" value={r.planned_yards} onChange={e => updateRow(r.day_of_week, { planned_yards: e.target.value })}
                   placeholder="yds"
                   style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: 'var(--surface)', boxSizing: 'border-box' }} />
@@ -1699,7 +1699,7 @@ function ShiftTab({ label, sub, active, hasData, onClick }) {
           fontSize: 13,
           fontWeight: active ? 700 : 600,
           color: active ? C.ink : C.inkMid,
-          fontFamily: 'Georgia,serif',
+          fontFamily: 'var(--font-display)',
         }}>
           {label}
         </div>
@@ -1995,7 +1995,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
       <div style={{ padding: '12px 16px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 18 }}>✦</span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Ask Claude · Scheduling</div>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)' }}>Ask Claude · Scheduling</div>
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.65)' }}>Opus 4.7 · Week of {weekLabel(weekStart)}</div>
         </div>
         <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
@@ -2085,7 +2085,7 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     .trim()
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
+      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)' }}>
         {displayText}
         {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
         {message.writingProposals && (

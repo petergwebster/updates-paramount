@@ -100,7 +100,7 @@ function MachineLocationBlock({ label, sublabel, machines }) {
           fontSize: 11,
           color: C.inkMid,
           fontStyle: 'italic',
-          fontFamily: 'Georgia, serif',
+          fontFamily: 'var(--font-display)',
         }}>
           {sublabel}
         </div>

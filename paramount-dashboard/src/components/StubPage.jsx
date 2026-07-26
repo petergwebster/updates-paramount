@@ -32,7 +32,7 @@ export default function StubPage({ title, eyebrow, description, note }) {
           fontSize: 30,
           fontWeight: 700,
           color: 'var(--ink)',
-          fontFamily: 'Georgia, serif',
+          fontFamily: 'var(--font-display)',
           lineHeight: 1.15,
         }}>
           {title}
@@ -59,7 +59,7 @@ export default function StubPage({ title, eyebrow, description, note }) {
         lineHeight: 1.7,
       }}>
         <div style={{
-          fontFamily: 'Georgia, serif',
+          fontFamily: 'var(--font-display)',
           fontSize: 18,
           fontWeight: 700,
           color: 'var(--ink)',

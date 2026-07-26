@@ -939,7 +939,7 @@ const PP_STYLES = {
     transition: 'width 0.3s ease',
   },
   barValue: {
-    fontFamily: 'Georgia, serif',
+    fontFamily: 'var(--font-display)',
     fontSize: '1.5rem',
     fontWeight: 600,
     color: PP_COLORS.ink,
@@ -1076,7 +1076,7 @@ function PlantPulse({ yards, pace, hasActuals, label = 'Yards', unit = 'yds' }) 
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: PP_COLORS.muted, textTransform: 'uppercase', marginBottom: 2 }}>
               1st Shift · 6:30a–3p
             </div>
-            <div style={{ color: PP_COLORS.ink, fontFamily: 'Georgia,serif', fontWeight: 600 }}>
+            <div style={{ color: PP_COLORS.ink, fontFamily: 'var(--font-display)', fontWeight: 600 }}>
               {fmt(yards.shift1.scheduled)} sched
               <span style={{ color: PP_COLORS.muted, fontWeight: 400 }}> · </span>
               {fmt(yards.shift1.actual)} actual
@@ -1086,7 +1086,7 @@ function PlantPulse({ yards, pace, hasActuals, label = 'Yards', unit = 'yds' }) 
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: PP_COLORS.muted, textTransform: 'uppercase', marginBottom: 2 }}>
               2nd Shift · 3p–11p
             </div>
-            <div style={{ color: PP_COLORS.ink, fontFamily: 'Georgia,serif', fontWeight: 600 }}>
+            <div style={{ color: PP_COLORS.ink, fontFamily: 'var(--font-display)', fontWeight: 600 }}>
               {fmt(yards.shift2.scheduled)} sched
               <span style={{ color: PP_COLORS.muted, fontWeight: 400 }}> · </span>
               {fmt(yards.shift2.actual)} actual
@@ -1178,7 +1178,7 @@ const SP_STYLES = {
     borderBottom: `1px solid ${SP_COLORS.linen}`,
   },
   title: {
-    fontFamily: 'Georgia, serif',
+    fontFamily: 'var(--font-display)',
     fontSize: '1.4rem',
     color: SP_COLORS.ink,
     fontWeight: 600,
@@ -2052,7 +2052,7 @@ function OperatorScorecard({ label, sublabel, accent, operators, showColorYards 
       gap: 14,
     }}>
       <div style={{ borderLeft: `3px solid ${accent}`, paddingLeft: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: PP_COLORS.ink, fontFamily: 'Georgia,serif' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: PP_COLORS.ink, fontFamily: 'var(--font-display)' }}>
           {label}
         </div>
         <div style={{ fontSize: 11, color: PP_COLORS.muted, marginTop: 2 }}>{sublabel}</div>
@@ -2135,7 +2135,7 @@ function OperatorRow({ op, rank, isLast, rankColor, showColorYards }) {
         alignItems: 'center',
       }}>
         <span style={{
-          fontFamily: 'Georgia,serif',
+          fontFamily: 'var(--font-display)',
           color: rankColor,
           fontWeight: rank < 3 ? 700 : 600,
         }}>
@@ -2147,14 +2147,14 @@ function OperatorRow({ op, rank, isLast, rankColor, showColorYards }) {
         <span style={{
           textAlign: 'right',
           color: hasTarget ? PP_COLORS.ink : PP_COLORS.muted,
-          fontFamily: 'Georgia,serif',
+          fontFamily: 'var(--font-display)',
         }}>
           {hasTarget ? fmt(op.targetYards) : '—'}
         </span>
         <span style={{
           textAlign: 'right',
           color: hasActual ? PP_COLORS.ink : PP_COLORS.muted,
-          fontFamily: 'Georgia,serif',
+          fontFamily: 'var(--font-display)',
           fontWeight: 600,
         }}>
           {hasActual ? fmt(op.actualYards) : '—'}
@@ -2295,7 +2295,7 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
 
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${dgLinen}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-      <div style={{ padding: '10px 14px', background: dgPaper, borderBottom: `1px solid ${dgLinen}`, fontSize: 12, fontWeight: 700, color: dgInk, fontFamily: 'Georgia,serif', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ padding: '10px 14px', background: dgPaper, borderBottom: `1px solid ${dgLinen}`, fontSize: 12, fontWeight: 700, color: dgInk, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
         {label}
       </div>

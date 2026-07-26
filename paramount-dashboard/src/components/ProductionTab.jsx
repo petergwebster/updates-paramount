@@ -435,7 +435,7 @@ function Bubble({ label, value, sub, color }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(255,255,255,0.06)', borderRadius:7, padding:'7px 12px', minWidth:88, gap:1 }}>
       <div style={{ fontSize:9, color:'rgba(212,168,67,0.65)', fontWeight:'bold', letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
-      <div style={{ fontSize:15, fontWeight:'bold', color:color||'var(--ink-5)', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
+      <div style={{ fontSize:15, fontWeight:'bold', color:color||'var(--ink-5)', fontFamily:'var(--font-display)', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
       {sub && <div style={{ fontSize:9, color:'rgba(250,247,242,0.45)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
     </div>
   )
@@ -660,7 +660,7 @@ export function OperatorScorecard({ops, facility}) {
   const maxYds=ranked[0][1].yds
   return (
     <div style={{marginTop:32}}>
-      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:4,fontFamily:'Georgia, serif'}}>Operator Scorecard · {facility}</div>
+      <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:4,fontFamily:'var(--font-display)'}}>Operator Scorecard · {facility}</div>
       <div style={{fontSize:13,color:'#9C8F87',marginBottom:16}}>Ranked by yards produced this week</div>
       <div style={{background:'var(--surface)',border:'1px solid #E8DDD0',borderRadius:8,overflow:'hidden'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
@@ -717,7 +717,7 @@ export function ConsolidatedProductionSummary({ bnyT, njT, weekNum }) {
   const card = (label, value, sub, color, bg='#fff') => (
     <div style={{ background:bg, border:'1px solid #E8DDD0', borderRadius:10, padding:'16px 20px', flex:1, minWidth:140 }}>
       <div style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', color:'#9C8F87', marginBottom:8 }}>{label}</div>
-      <div style={{ fontSize:22, fontWeight:700, color:color||'#2C2420', fontFamily:'Georgia, serif', lineHeight:1.1 }}>{value}</div>
+      <div style={{ fontSize:22, fontWeight:700, color:color||'#2C2420', fontFamily:'var(--font-display)', lineHeight:1.1 }}>{value}</div>
       {sub && <div style={{ fontSize:12, color:'#9C8F87', marginTop:4 }}>{sub}</div>}
     </div>
   )
@@ -814,7 +814,7 @@ export function BNYTab({ weekStart }) {
   const printerStats = calcPrinterStats(digital?.ops)
 
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
+    <div style={{fontFamily:'var(--font-display)', background:'var(--ink-5)', minHeight:'100vh'}}>
       <FacilityKPIBar totals={digitalT} budget={DIGITAL_BUDGET} facilityLabel="Digital — Brooklyn + Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
@@ -842,7 +842,7 @@ export function PassaicTab({ weekStart }) {
   const printerStats = calcPrinterStats(hs?.ops)
 
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
+    <div style={{fontFamily:'var(--font-display)', background:'var(--ink-5)', minHeight:'100vh'}}>
       <FacilityKPIBar totals={hsT} budget={HS_BUDGET} facilityLabel="Hand Screen — Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
@@ -867,7 +867,7 @@ export function PassaicTab({ weekStart }) {
 export default function ProductionTab({ weekStart }) {
   const { digital, hs, loading, error, todayIdx } = useProductionData(weekStart)
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
+    <div style={{fontFamily:'var(--font-display)', background:'var(--ink-5)', minHeight:'100vh'}}>
       <div style={{padding:'24px'}}>
         {error   && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
         {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading...</div>}

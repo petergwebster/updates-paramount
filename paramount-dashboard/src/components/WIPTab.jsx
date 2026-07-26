@@ -523,7 +523,7 @@ export default function WIPTab() {
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>Production · WIP</h2>
+            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'var(--font-display)' }}>Production · WIP</h2>
             <div style={{ margin: '6px 0 0' }}>
               <LiftFreshnessBadge />
             </div>
@@ -568,7 +568,7 @@ export default function WIPTab() {
       {!snapshot && !loading && (
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>⌘</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'Georgia,serif', marginBottom: 8 }}>No WIP data yet</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'var(--font-display)', marginBottom: 8 }}>No WIP data yet</div>
           <div style={{ fontSize: 13, color: C.inkLight }}>Click "Upload LIFT WIP" to load the latest export.</div>
         </div>
       )}
@@ -672,7 +672,7 @@ function SnapshotSummary({ snapshot, summary }) {
             <div style={{
               fontSize: 22, fontWeight: 700,
               color: c.dim ? C.inkLight : C.ink,
-              fontFamily: 'Georgia,serif',
+              fontFamily: 'var(--font-display)',
             }}>
               {fmt(c.value)}
             </div>
@@ -723,7 +723,7 @@ function DivisionPivot({ division, agg }) {
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       {/* Section header */}
       <div style={{ padding: '12px 16px', background: C.ink, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
           {division}
         </h3>
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -826,7 +826,7 @@ function SiteToggle({ site, onChange, summary }) {
               textAlign: 'left',
               minWidth: 140,
             }}>
-            <div style={{ fontFamily: 'Georgia,serif', fontSize: 15 }}>{s.label}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 15 }}>{s.label}</div>
             <div style={{ fontSize: 10, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>{sub}</div>
           </button>
         )
@@ -984,7 +984,7 @@ function AgingCards({ buckets, activeFilters, onToggle }) {
                 </span>
                 <span style={{ fontSize: 9, color: C.inkLight }}>{b.sub}</span>
               </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: active ? tone.fg : C.ink, fontFamily: 'Georgia,serif', lineHeight: 1.1 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: active ? tone.fg : C.ink, fontFamily: 'var(--font-display)', lineHeight: 1.1 }}>
                 {fmt(data.orders)}
               </div>
               <div style={{ fontSize: 10, color: C.inkLight, marginTop: 4 }}>

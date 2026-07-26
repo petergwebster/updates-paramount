@@ -557,7 +557,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabelFiscal(weekStart)}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)' }}>Week of {weekLabelFiscal(weekStart)}</div>
           <div style={{ fontSize: 11, color: C.inkLight }}>{enrichedAssignments.length} assignment{enrichedAssignments.length !== 1 ? 's' : ''}</div>
         </div>
         <button onClick={() => onWeekChange(defaultSchedulerWeek())} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>Default week</button>
@@ -798,7 +798,7 @@ function YardsSplitGauge({ totals, pct }) {
     <div style={{ background: C.navy, color: '#fff', border: `1px solid ${C.navy}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)', marginBottom: 6 }}>Yards · Total</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif' }}>{fmt(totals.yards)}</span>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)' }}>{fmt(totals.yards)}</span>
         <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>/ {fmt(BNY_TARGETS.total_yards)} yd</span>
       </div>
       <div style={{ height: 6, background: 'rgba(255,255,255,0.15)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
@@ -821,7 +821,7 @@ function Gauge({ label, value, target, pct, isMoney, highlight }) {
     <div style={{ background: bg, border: `1px solid ${highlight ? C.navy : C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: subFg, marginBottom: 6 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Georgia,serif', color: fg }}>
+        <span style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-display)', color: fg }}>
           {isMoney ? fmtK(value) : fmt(value)}
         </span>
         {target != null && (
@@ -849,9 +849,9 @@ function MixCard({ schPct, tpPct, onTarget }) {
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Customer mix</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.navy }}>Sch {Math.round(schPct)}%</span>
+        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: C.navy }}>Sch {Math.round(schPct)}%</span>
         <span style={{ fontSize: 11, color: C.inkLight }}>·</span>
-        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.gold }}>3P {Math.round(tpPct)}%</span>
+        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: C.gold }}>3P {Math.round(tpPct)}%</span>
       </div>
       <div style={{ height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
         <div style={{ width: schPct + '%', background: C.navy }} />
@@ -885,7 +885,7 @@ function BucketCard({ bucket, totals }) {
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: col, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{bucket}</div>
-      <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.ink }}>
+      <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-display)', color: C.ink }}>
         {fmt(curYd)}
         {target != null && <span style={{ fontSize: 10, color: C.inkLight, fontWeight: 400 }}> / {fmt(target)}</span>}
       </div>
@@ -1163,7 +1163,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>
           {isEdit ? 'Edit · ' : 'Assign to '}{machine} · {DAY_LABELS[dayOfWeek]}
         </div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'var(--font-display)', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
           PO {po.po_number} · {po.bny_bucket || po.product_type} · {po.colors_count || '—'} colors · {po.unquantified ? 'no yardage in LIFT — enter qty' : `${fmt(po.remaining_yards)} yards remaining`}
         </div>
@@ -1619,7 +1619,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
       <div style={{ padding: '12px 16px', background: C.amber, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 18 }}>✦</span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Ask Claude · BNY Scheduling</div>
+          <div style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)' }}>Ask Claude · BNY Scheduling</div>
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>Opus 4.7 · Week of {weekLabelFiscal(weekStart)}</div>
         </div>
         <button onClick={onClose} style={{ background: 'transparent', color: '#fff', border: 'none', fontSize: 20, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
@@ -1711,7 +1711,7 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     .trim()
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
+      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-display)' }}>
         {displayText}
         {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
         {message.writingProposals && (

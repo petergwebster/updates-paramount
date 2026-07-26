@@ -96,7 +96,7 @@ export default function SchedulerTab() {
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'Georgia,serif' }}>Production · Scheduler</h2>
+            <h2 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: C.ink, fontFamily: 'var(--font-display)' }}>Production · Scheduler</h2>
             <div style={{ margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <LiftFreshnessBadge />
               {!snapshot && <span style={{ fontSize: 11, color: C.inkLight }}>No data yet — upload on the WIP tab</span>}
@@ -130,7 +130,7 @@ export default function SchedulerTab() {
       {!snapshot && !loading && (
         <div style={{ textAlign: 'center', padding: '80px 20px' }}>
           <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.2 }}>⌘</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'Georgia,serif', marginBottom: 8 }}>No WIP data yet</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: C.inkMid, fontFamily: 'var(--font-display)', marginBottom: 8 }}>No WIP data yet</div>
           <div style={{ fontSize: 13, color: C.inkLight }}>Head to the WIP tab and upload the latest LIFT export to get started.</div>
         </div>
       )}
