@@ -247,23 +247,10 @@ function buildRows(ordersText, productsText, asOf) {
     if (!poNumber && !orderNumber) continue // not a real line
 
     const orderStatus = clean(pick(rec, ['ORDER_STATUS', 'STATUS']))
-
-    // Ledger first — before any filter can drop this line.
-    if (orderNumber) {
-      const ly = toNum(pick(rec, ['TOTAL_YARDS', 'YARDS_WRITTEN', 'YARDS']))
-      const li = toNum(pick(rec, ['ORDERED_SALES', 'INCOME_WRITTEN']))
-      const cur = ledgerMap.get(orderNumber) || {
-        order_number: orderNumber, po_number: poNumber || null,
-        yards_written: 0, income_written: 0, last_status: null,
-      }
-      cur.yards_written  += ly
-      cur.income_written += li
-      if (orderStatus) cur.last_status = orderStatus
-      if (!cur.po_number && poNumber) cur.po_number = poNumber
-      ledgerMap.set(orderNumber, cur)
-    }
-
-    if (TERMINAL_STATUSES.has(orderStatus)) { terminalSkipped++; continue }
+    // Terminal orders must still reach the LEDGER — that is its whole purpose —
+    // so hold the flag here and drop them from `rows` further down, AFTER the
+    // product-master lookup has let us apply the same ground/fee exclusion.
+    const isTerminal = TERMINAL_STATUSES.has(orderStatus)
 
     const divisionRaw = clean(pick(rec, ['ORDER_TYPE', 'DIVISION']))
     const itemSku = clean(pick(rec, ['ITEM_SKU']))
@@ -314,6 +301,27 @@ function buildRows(ordersText, productsText, asOf) {
       site, customer_type: customerType3p,
       category_customer_mto: categoryCustomerMto, customer_name_clean: customerName,
     })
+
+    // ORDER LEDGER — written HERE, after the ground/fee exclusion and after the
+    // site is known, so it counts the same yards the WIP rows do. Writing it
+    // earlier (first attempt) included kitted GROUNDS and packing fees, which
+    // roughly doubles Passaic: June read 169,188 invoiced yards against a real
+    // ~33,000 on the deck. Terminal orders still land here — they are dropped
+    // from `rows` on the next line, not from the ledger.
+    if (orderNumber) {
+      const cur = ledgerMap.get(orderNumber) || {
+        order_number: orderNumber, po_number: poNumber || null, site,
+        customer_type: customerType3p, product_type: productType || null,
+        yards_written: 0, income_written: 0, colors_count: colorsCount, last_status: null,
+      }
+      cur.yards_written  += yardsWritten
+      cur.income_written += incomeWritten
+      if (orderStatus) cur.last_status = orderStatus
+      if (!cur.po_number && poNumber) cur.po_number = poNumber
+      ledgerMap.set(orderNumber, cur)
+    }
+
+    if (isTerminal) { terminalSkipped++; continue }
 
     rows.push({
       site,
