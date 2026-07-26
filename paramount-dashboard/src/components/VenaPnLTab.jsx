@@ -145,8 +145,8 @@ export default function VenaPnLTab() {
             borderRadius: 7, background: 'var(--surface)', color: 'var(--ink)' },
     th:   { fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',
             color: 'var(--ink-60)', padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap',
-            position: 'sticky', top: 0, zIndex: 2, background: 'var(--paper)',
-            borderBottom: '1px solid var(--border)' },
+            position: 'sticky', top: 0, zIndex: 3, background: 'var(--surface)',
+            boxShadow: 'inset 0 -1px 0 var(--border)' },
     thL:  { textAlign: 'left' },
     td:   { padding: '6px 12px', textAlign: 'right', fontSize: 13,
             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
@@ -265,9 +265,14 @@ export default function VenaPnLTab() {
         </div>
       ) : (
         <>
-          {/* border-collapse: separate is REQUIRED — `collapse` silently breaks
-              position: sticky on <th> in every browser. Row borders therefore
-              live on the cells, not the <tr>. */}
+          {/* The table gets its OWN scroll container. Sticky <th> positions against
+              the nearest scrolling ancestor — if that is the page, the header slides
+              underneath the app chrome (which is itself sticky at top:0) and simply
+              vanishes. Scrolling here instead makes it self-contained and means we
+              don't have to hardcode the chrome height.
+              border-collapse must be `separate`; `collapse` silently kills sticky. */}
+          <div style={{ maxHeight: 'calc(100vh - 330px)', minHeight: 260, overflowY: 'auto',
+                        border: '1px solid var(--border-light)', borderRadius: 8 }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
@@ -285,6 +290,7 @@ export default function VenaPnLTab() {
               {showBelow && below.flatMap((b, i) => renderBlock(b, i + 1000))}
             </tbody>
           </table>
+          </div>
 
           {below.length > 0 && (
             <button onClick={() => setBelow(v => !v)}
