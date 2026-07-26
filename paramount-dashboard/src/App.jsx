@@ -14,6 +14,7 @@ import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
+import FeedHealthStrip from './components/FeedHealthStrip'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -483,6 +484,10 @@ export default function App() {
           )}
 
           <div className={styles.headerRight}>
+            {/* Feed health — visible from every destination. Managing to the dash
+                means trusting the feeds, so this must never require navigation. */}
+            <FeedHealthStrip />
+
             {sessionCommentCount > 0 || notifySuccess || notifying ? (
               <div className={styles.sendUpdateArea}>
                 {notifySuccess ? (
