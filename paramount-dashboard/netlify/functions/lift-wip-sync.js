@@ -262,6 +262,16 @@ function buildRows(ordersText, productsText, asOf) {
     const yardsWritten = toNum(pick(rec, ['TOTAL_YARDS', 'YARDS_WRITTEN', 'YARDS']))
     const qtyInvoiced = toNum(pick(rec, ['QTY_INVOICED', 'SUM_OF_QTY_INVOICED']))
     const incomeWritten = toNum(pick(rec, ['ORDERED_SALES', 'INCOME_WRITTEN']))
+    // LIFT already dates its own invoicing — orders.csv carries INVOICE_DATE,
+    // YARDS_INVOICED and INVOICED_REVENUE alongside the order. No GP join, no
+    // derivation: invoiced yards for a period = sum(yards_invoiced) where
+    // invoice_date falls in it.
+    const invoiceDate     = parseDate(pick(rec, ['INVOICE_DATE']))
+    const yardsInvoiced   = toNum(pick(rec, ['YARDS_INVOICED']))
+    const invoicedRevenue = toNum(pick(rec, ['INVOICED_REVENUE']))
+    const printedDate     = parseDate(pick(rec, ['PRINTED_DATE']))
+    const qtyPrinted      = toNum(pick(rec, ['QTY_PRINTED']))
+    const invoiceStatus   = clean(pick(rec, ['INVOICE_STATUS']))
 
     // Enrich from the product master (product_type, color, colors) by SKU.
     const pm = prod.get(itemSku) || {}
@@ -320,11 +330,22 @@ function buildRows(ordersText, productsText, asOf) {
         order_number: orderNumber, po_number: poNumber || null, site,
         customer_type: customerType3p, product_type: productType || null,
         yards_written: 0, qty_invoiced: 0, income_written: 0,
+        yards_invoiced: 0, invoiced_revenue: 0, qty_printed: 0,
+        invoice_date: null, printed_date: null, invoice_status: null,
         colors_count: colorsCount, last_status: null,
       }
-      cur.yards_written  += yardsWritten
-      cur.qty_invoiced   += qtyInvoiced
-      cur.income_written += incomeWritten
+      cur.yards_written    += yardsWritten
+      cur.qty_invoiced     += qtyInvoiced
+      cur.income_written   += incomeWritten
+      cur.yards_invoiced   += yardsInvoiced
+      cur.invoiced_revenue += invoicedRevenue
+      cur.qty_printed      += qtyPrinted
+      // Dates: keep the LATEST seen across the order's lines.
+      const iso = d => d ? d.toISOString().slice(0, 10) : null
+      const inv = iso(invoiceDate), prn = iso(printedDate)
+      if (inv && (!cur.invoice_date || inv > cur.invoice_date)) cur.invoice_date = inv
+      if (prn && (!cur.printed_date || prn > cur.printed_date)) cur.printed_date = prn
+      if (invoiceStatus) cur.invoice_status = invoiceStatus
       if (orderStatus) cur.last_status = orderStatus
       if (!cur.po_number && poNumber) cur.po_number = poNumber
       ledgerMap.set(orderNumber, cur)
