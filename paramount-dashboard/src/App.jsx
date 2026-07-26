@@ -20,6 +20,7 @@ import OpsDailyChart from './components/OpsDailyChart'
 import OpsAttentionPanel from './components/OpsAttentionPanel'
 import OpsSectionGrid from './components/OpsSectionGrid'
 import OpsHome from './components/OpsHome'
+import FinanceHome from './components/FinanceHome'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -110,9 +111,7 @@ const QA_OPERATIONS_TABS = [
 // then there is nothing to move between. Pick a box on Home and the tab strip
 // appears so you can move around without returning here.
 function defaultTabFor(destination, role) {
-  // Operations opens on HOME (null). Finance still opens on the P&L until its
-  // own home screen is built — half a home screen is worse than none.
-  if (destination === 'finance') return 'pnl'
+  // Both destinations open on HOME (null) — six boxes, no tab strip.
   return null
 }
 
@@ -659,6 +658,9 @@ export default function App() {
                 {/* HOME — no section chosen yet. Six boxes, no tab strip. */}
                 {destination === 'operations' && !activeTab && (
                   <OpsHome onOpen={handleTabChange} />
+                )}
+                {destination === 'finance' && !activeTab && (
+                  <FinanceHome onOpen={handleTabChange} />
                 )}
 
                 {/* Operations · Pulse — the week at a glance, once you're in. */}

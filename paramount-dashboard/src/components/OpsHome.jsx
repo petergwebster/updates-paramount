@@ -8,7 +8,7 @@ import OpsAttentionPanel from './OpsAttentionPanel'
 // what last week did — that is the difference between a readout and a signal.
 // `goodDown` inverts the colouring for metrics where less is better (waste,
 // aged WIP), because a falling number is not automatically bad.
-function Delta({ now, prev, goodDown, suffix = 'vs last week' }) {
+export function Delta({ now, prev, goodDown, suffix = 'vs last week' }) {
   if (prev == null || prev === 0 || now == null) return null
   const pct = ((now - prev) / Math.abs(prev)) * 100
   if (!isFinite(pct)) return null
@@ -47,7 +47,7 @@ function Delta({ now, prev, goodDown, suffix = 'vs last week' }) {
 const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
 
 // ─── Ring: a single percentage, read at a glance ───────────────────────────
-function Ring({ pct, color, caption }) {
+export function Ring({ pct, color, caption }) {
   const p = Math.max(0, Math.min(100, pct || 0))
   const R = 30, CIRC = 2 * Math.PI * R
   return (
@@ -69,7 +69,7 @@ function Ring({ pct, color, caption }) {
 }
 
 // ─── Columns: shape over a small number of categories ──────────────────────
-function Columns({ bars, height = 62 }) {
+export function Columns({ bars, height = 62 }) {
   const peak = Math.max(1, ...bars.map(b => b.v))
   return (
     <div>
@@ -91,7 +91,7 @@ function Columns({ bars, height = 62 }) {
 }
 
 // ─── Stacked horizontal bar with a small legend ────────────────────────────
-function StackBar({ segs }) {
+export function StackBar({ segs }) {
   const total = segs.reduce((s, x) => s + x.v, 0)
   return (
     <div>
@@ -115,7 +115,7 @@ function StackBar({ segs }) {
   )
 }
 
-function Box({ title, value, unit, sub, subTone, delta, children, onClick }) {
+export function Box({ title, value, unit, sub, subTone, delta, children, onClick }) {
   const tone = { good: C.sage, warn: C.amber, bad: C.rose }
   return (
     <button onClick={onClick}
