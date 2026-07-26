@@ -18,75 +18,75 @@
 
 :root {
   /* ─── Paper & Ink palette base — cream paper, white cards ────────── */
-  --paper:        #F5F1E8;   /* main app background — cream */
-  --paper-light:  #FAF7F0;   /* lighter wash */
-  --paper-soft:   #EBE6D9;   /* deeper wash for headers / sections */
-  --cream:        #F5F1E8;   /* alias for --paper */
-  --cream-dark:   #EBE6D9;   /* alias for --paper-soft */
-  --linen:        #EBE6D9;   /* inactive bar / track surface */
-  --surface:      #FFFFFF;   /* card surface — pure white */
+  --paper:        #1A1D21;   /* main app background — slate */
+  --paper-light:  #22262B;   /* lighter wash */
+  --paper-soft:   #15181B;   /* deeper wash for headers / sections */
+  --cream:        #1A1D21;   /* alias for --paper */
+  --cream-dark:   #15181B;   /* alias for --paper-soft */
+  --linen:        #262A30;   /* inactive bar / track surface */
+  --surface:      #23272C;   /* card surface — lifted off the page */
 
   /* ─── Ink scale (text + line work) ────────────────────────────────── */
-  --ink:     #3A3F45;   /* primary text — clear dark slate gray */
-  --ink-90:  #2D3138;   /* pressed-state / dark variants */
-  --ink-80:  #353940;   /* deeper slate */
-  --ink-70:  #404550;   /* deep secondary */
-  --ink-60:  #5A6068;   /* body text — most common usage */
-  --ink-50:  #6B7280;   /* secondary text / muted body */
-  --ink-40:  #7A7E85;   /* muted text / labels */
-  --ink-30:  #94979D;   /* chart axis / very muted */
-  --ink-20:  #B8BBC0;   /* heavy borders / disabled */
-  --ink-10:  #D5D7DA;   /* dividers / standard borders */
-  --ink-05:  #E5E6E8;   /* faint dividers */
-  --ink-5:   #EBE6D9;   /* page-tint surface (hover bg, panels) — warm */
-  --ink-3:   #F0ECE0;   /* very subtle surface tint — warm */
+  --ink:     #E9E7E2;   /* primary text — warm off-white */
+  --ink-90:  #F4F2EE;   /* strongest / pressed-state */
+  --ink-80:  #E0DED9;   /* deeper */
+  --ink-70:  #CFCDC8;   /* deep secondary */
+  --ink-60:  #ADB2B8;   /* body text — most common usage */
+  --ink-50:  #999EA5;   /* secondary text / muted body */
+  --ink-40:  #848A91;   /* muted text / labels */
+  --ink-30:  #6C7178;   /* chart axis / very muted */
+  --ink-20:  #494E55;   /* heavy borders / disabled */
+  --ink-10:  #32363C;   /* dividers / standard borders */
+  --ink-05:  #292D32;   /* faint dividers */
+  --ink-5:   #262A30;   /* page-tint surface (hover bg, panels) */
+  --ink-3:   #212429;   /* very subtle surface tint */
 
   /* ─── Borders ─────────────────────────────────────────────────────── */
-  --border:        #B8BBC0;
-  --border-light:  #D5D7DA;
+  --border:        #3A3F46;
+  --border-light:  #2E3238;
 
   /* ─── Destination accents — Paper & Ink three-tone ────────────────── */
   /* Performance / royal: muted forest green */
-  --royal:               #2E5043;
-  --royal-deep:          #1F3A30;
-  --royal-light:         #E2EBE5;
+  --royal:               #56937A;
+  --royal-deep:          #3B6A57;
+  --royal-light:         #1D2E27;
 
   /* Heartbeat / blood-orange: brick (toned down from oxblood) */
-  --blood-orange:        #6B3A38;
-  --blood-orange-deep:   #4A2826;
-  --blood-orange-light:  #F0E0DE;
+  --blood-orange:        #B26B67;
+  --blood-orange-deep:   #7E4744;
+  --blood-orange-light:  #2E2020;
 
   /* Operations / saffron: dark slate (matches ink) */
-  --saffron:             #3A3F45;
-  --saffron-deep:        #2D3138;
-  --saffron-light:       #D5D7DA;
+  --saffron:             #C7CBD1;
+  --saffron-deep:        #E4E7EB;
+  --saffron-light:       #2E3238;
 
   /* ─── Status colors — toned DOWN from prior loud values ───────────── */
-  --emerald:        #3D6E52;
-  --emerald-deep:   #2A4D3A;
-  --emerald-light:  #E8EFE9;
-  --crimson:        #A8362C;
-  --crimson-deep:   #7A271F;
-  --crimson-light:  #F2DCD6;
-  --green:          #3D6E52;
-  --green-light:    #E8EFE9;
-  --red:            #A8362C;
-  --red-light:      #F2DCD6;
-  --amber:          #B07A2D;
-  --amber-light:    #F5EBD8;
-  --gray:           #7A7E85;
-  --gray-light:     #EBE6D9;
+  --emerald:        #55A47C;
+  --emerald-deep:   #3D7458;
+  --emerald-light:  #1C2E24;
+  --crimson:        #D96F63;
+  --crimson-deep:   #A8443A;
+  --crimson-light:  #2E1C19;
+  --green:          #55A47C;
+  --green-light:    #1C2E24;
+  --red:            #D96F63;
+  --red-light:      #2E1C19;
+  --amber:          #D6A250;
+  --amber-light:    #2E2617;
+  --gray:           #848A91;
+  --gray-light:     #262A30;
 
   /* ─── Generic accent (links, primary buttons, focus rings) ────────── */
-  --accent:         #2E5043;
-  --accent-light:   #E2EBE5;
-  --accent-mid:     #4D7A65;
+  --accent:         #56937A;
+  --accent-light:   #1D2E27;
+  --accent-mid:     #74B195;
 
   /* ─── Layout ──────────────────────────────────────────────────────── */
   --radius:     6px;
   --radius-lg:  10px;
-  --shadow-sm:  0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md:  0 4px 12px rgba(0,0,0,0.08);
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.45);
+  --shadow-md:  0 4px 14px rgba(0,0,0,0.5);
 
   /* ─── Typography ──────────────────────────────────────────────────── */
   --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
