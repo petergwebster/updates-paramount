@@ -58,7 +58,8 @@ function Ring({ pct, color, caption }) {
                 strokeDasharray={`${(p / 100) * CIRC} ${CIRC}`} strokeLinecap="round"
                 transform="rotate(-90 38 38)" />
         <text x="38" y="42" textAnchor="middle" fill={C.ink}
-              style={{ fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+              style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                       fontFamily: 'var(--font-display)' }}>
           {Math.round(p)}%
         </text>
       </svg>
@@ -127,9 +128,11 @@ function Box({ title, value, unit, sub, subTone, delta, children, onClick }) {
       onMouseEnter={e => { e.currentTarget.style.borderColor = C.inkLight }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = C.border }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 17, fontWeight: 600, color: C.ink }}>{title}</span>
+        <span style={{ fontSize: 16, fontWeight: 500, color: C.ink, letterSpacing: '0.06em',
+                       fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>{title}</span>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-          <span style={{ fontSize: 26, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+          <span style={{ fontSize: 26, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+                         fontFamily: 'var(--font-display)', letterSpacing: '0.01em' }}>{value}</span>
           {unit && <span style={{ fontSize: 11, color: C.inkLight }}>{unit}</span>}
         </span>
       </div>

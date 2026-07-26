@@ -117,11 +117,12 @@
   --shadow-md:  0 4px 14px rgba(0,0,0,0.5);
 
   /* ─── Typography ──────────────────────────────────────────────────── */
-  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-  /* 2026-07-26: display face switched from Georgia to the body sans. The
-     dashboard is an instrument panel read at speed, not a document — serif
-     headings read editorial and slow the scan. Reports that represent a
-     printed page (MonthlyBriefs) keep Georgia via their own stylesheet.
-     To revert the whole app, put Georgia back on this one line. */
-  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --font-body:    'Chakra Petch', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  /* 2026-07-26: TECH DISPLAY FACE. Orbitron — wide, geometric, uniform stroke.
+     It is a DISPLAY face: excellent on titles and figures, genuinely hard to
+     read below about 13px, so it is deliberately NOT the body font. Chakra
+     Petch is the techy-but-readable middle for labels and secondary text.
+     To revert the whole app, put the sans stack back on --font-display. */
+  --font-display: 'Orbitron', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-tech:    'Chakra Petch', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
