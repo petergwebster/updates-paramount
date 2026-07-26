@@ -2,14 +2,19 @@
  * access.js — central source of truth for who can access what.
  *
  * Two concepts:
- *   1. Destination access: which of {performance, operations, heartbeat} a user can enter
+ *   1. Destination access: which of {performance, operations} a user can enter
  *   2. Super-admin: who can access User Management (only Peter)
  *
  * Roles (set in profiles.role column):
- *   - admin     — Peter, Brynn, Wendy: full access to all three destinations
- *   - exec      — leadership team: full access to all three destinations
- *   - manager   — Chandler, Shelby: Operations + Heartbeat
- *   - qa        — Sami: Operations + Heartbeat
+ *   - admin     — Peter, Brynn, Wendy: full access to all destinations
+ *   - exec      — leadership team: full access to all destinations
+ *   - manager   — Chandler, Shelby: Operations only
+ *   - qa        — Sami: Operations only
+ *
+ * 2026-07-25: Heartbeat is no longer its own destination. Its Pulse page is now
+ * the LANDING TAB of Operations — the plant view and the working surface belong
+ * together. Consequence: manager and qa users now have exactly ONE destination,
+ * so the chooser is skipped for them entirely and they land straight on the floor.
  *
  * Inactive users (profiles.active = false) get no destinations regardless of role.
  *
@@ -22,7 +27,7 @@ export const SUPER_ADMIN_EMAIL = 'pwebster@fsco.com'
 /**
  * Returns the array of destinations a user can access.
  * @param {object} profile - row from `profiles` table
- * @returns {string[]} - subset of ['performance', 'operations', 'heartbeat']
+ * @returns {string[]} - subset of ['performance', 'operations']
  */
 export function destinationsFor(profile) {
   if (!profile) return []
@@ -31,10 +36,10 @@ export function destinationsFor(profile) {
   switch (profile.role) {
     case 'admin':
     case 'exec':
-      return ['performance', 'operations', 'heartbeat']
+      return ['performance', 'operations']
     case 'manager':
     case 'qa':
-      return ['operations', 'heartbeat']
+      return ['operations']
     default:
       // Unknown role — give nothing. Safer than guessing.
       return []
@@ -75,17 +80,8 @@ export const DESTINATIONS = {
     name: 'Operations',
     shortName: 'Operations',
     mission: 'The Engineers · Daily Drivers',
-    tagline: 'For our NASA engineers. Plan the week, run the floor, capture the shift.',
-    accessSummary: 'Live Ops · Scheduler · WIP',
+    tagline: 'For our NASA engineers. The pulse of the plant, then plan the week, run the floor, capture the shift.',
+    accessSummary: 'Pulse · Scheduler · Live Ops · WIP',
     accentClass: 'operations',
-  },
-  heartbeat: {
-    id: 'heartbeat',
-    name: "Paramount's Heartbeat",
-    shortName: 'Heartbeat',
-    mission: 'Real-time · The Pulse',
-    tagline: 'Our goals and how we\'re doing on the journey, right now. The pulse of the plant — Passaic and Brooklyn.',
-    accessSummary: 'Plant rollup · Passaic · Brooklyn',
-    accentClass: 'heartbeat',
   },
 }

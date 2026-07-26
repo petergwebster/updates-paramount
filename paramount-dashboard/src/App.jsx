@@ -49,15 +49,14 @@ const NJ_DAYS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // DESTINATION / TAB DEFINITIONS
 //
-// Phase A change: Executive/Operations mode toggle is REPLACED with the
-// three-destination model (Performance / Operations / Heartbeat). Users land
-// on the chooser (LandingPage) after login and pick a destination.
+// 2026-07-25: reduced from three destinations to TWO — Performance and
+// Operations. Heartbeat's Pulse page became the Operations LANDING TAB, so the
+// floor has one door. Users with a single destination skip the chooser entirely.
 //
 // The `destination` state can be:
-//   'landing'     — the chooser is showing
+//   'landing'     — the chooser is showing (only when the user has 2+)
 //   'performance' — Paramount Performance destination
 //   'operations'  — Operations destination
-//   'heartbeat'   — Paramount's Heartbeat destination
 //
 // Inside each destination, the tab structure is destination-specific.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,8 +70,10 @@ const PERFORMANCE_TABS = [
 ]
 
 // Operations tab order reflects the actual flow:
-// WIP (the universe) → Scheduler (commit the week) → Live Ops (capture execution).
+// Pulse (where the plant stands) → WIP (the universe) → Scheduler (commit the
+// week) → Live Ops (capture execution) → Status.
 const OPERATIONS_TABS = [
+  { id: 'pulse',     label: 'Pulse'      },
   { id: 'wip',       label: 'WIP'        },
   { id: 'newgoods',  label: 'NEW Goods'  },
   { id: 'scheduler', label: 'Scheduler'  },
@@ -82,15 +83,10 @@ const OPERATIONS_TABS = [
 
 // QA users get a stripped-down Operations tab list (no WIP — Sami's role doesn't need the universe view)
 const QA_OPERATIONS_TABS = [
+  { id: 'pulse',     label: 'Pulse'     },
   { id: 'scheduler', label: 'Scheduler' },
   { id: 'liveops',   label: 'Live Ops'  },
   { id: 'status',    label: 'Status'    },
-]
-
-// Heartbeat is a single-page deep view, so no tab strip is shown.
-// The `'pulse'` id is just an internal route identifier.
-const HEARTBEAT_TABS = [
-  { id: 'pulse', label: 'Pulse' },
 ]
 
 /**
@@ -98,8 +94,7 @@ const HEARTBEAT_TABS = [
  */
 function defaultTabFor(destination, role) {
   if (destination === 'performance') return 'dashboard'
-  if (destination === 'operations')  return role === 'qa' ? 'scheduler' : 'wip'
-  if (destination === 'heartbeat')   return 'pulse'
+  if (destination === 'operations')  return 'pulse'
   return null
 }
 
@@ -109,7 +104,6 @@ function defaultTabFor(destination, role) {
 function tabsFor(destination, role) {
   if (destination === 'performance') return PERFORMANCE_TABS
   if (destination === 'operations')  return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
-  if (destination === 'heartbeat')   return HEARTBEAT_TABS
   return []
 }
 
@@ -273,8 +267,17 @@ export default function App() {
           // silently showing "no destinations available".
           console.error('[Auth] Profile could not be loaded — user will see no destinations. Sign out and back in.')
         }
-        setDestination('landing')
-        setActiveTab(null)
+        // Land straight in when there is only one destination. Most of the team
+        // now has just Operations, so the chooser would be a pointless click.
+        const dests = destinationsFor(profile)
+        if (dests.length === 1) {
+          setDestination(dests[0])
+          setActiveTab(defaultTabFor(dests[0], profile?.role))
+          setCurrentWeek(defaultWeekForDestination(dests[0]))
+        } else {
+          setDestination('landing')
+          setActiveTab(null)
+        }
       }
       setAuthLoading(false)
     }
@@ -377,9 +380,16 @@ export default function App() {
     setAuthUser(user); setUserProfile(profile)
     if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
     if (profile?.role === 'admin') setAdminAuthenticated(true)
-    // Every user lands on the chooser
-    setDestination('landing')
-    setActiveTab(null)
+    // Only show the chooser when there is an actual choice to make.
+    const dests = destinationsFor(profile)
+    if (dests.length === 1) {
+      setDestination(dests[0])
+      setActiveTab(defaultTabFor(dests[0], profile?.role))
+      setCurrentWeek(defaultWeekForDestination(dests[0]))
+    } else {
+      setDestination('landing')
+      setActiveTab(null)
+    }
     setInAdmin(false)
   }
 
@@ -502,8 +512,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Destination nav (replaces old Executive/Operations mode toggle) ── */}
-        {!inAdmin && !isOnLanding && (
+        {/* ── Destination nav — only shown when the user has more than one ── */}
+        {!inAdmin && !isOnLanding && destinationsFor(userProfile).length > 1 && (
           <div className={styles.modeToggleRow}>
             <DestinationNav
               userProfile={userProfile}
@@ -618,8 +628,8 @@ export default function App() {
                   <StatusTab />
                 )}
 
-                {/* Heartbeat · The deep operational view */}
-                {destination === 'heartbeat' && activeTab==='pulse' && (
+                {/* Operations · Pulse — the plant view, now the landing tab */}
+                {destination === 'operations' && activeTab==='pulse' && (
                   <HeartbeatPage
                     weekStart={currentWeek}
                     currentUser={userProfile?.full_name}
