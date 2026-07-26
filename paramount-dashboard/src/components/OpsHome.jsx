@@ -1,6 +1,28 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
+import OpsAttentionPanel from './OpsAttentionPanel'
+
+// ─── Delta chip ────────────────────────────────────────────────
+// A bare number tells you nothing. 17,897 yards is only meaningful against
+// what last week did — that is the difference between a readout and a signal.
+// `goodDown` inverts the colouring for metrics where less is better (waste,
+// aged WIP), because a falling number is not automatically bad.
+function Delta({ now, prev, goodDown, suffix = 'vs last week' }) {
+  if (prev == null || prev === 0 || now == null) return null
+  const pct = ((now - prev) / Math.abs(prev)) * 100
+  if (!isFinite(pct)) return null
+  const up = pct >= 0
+  const good = goodDown ? !up : up
+  const col = Math.abs(pct) < 1 ? C.inkLight : good ? C.sage : C.rose
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: col }}>
+      <span style={{ fontSize: 9 }}>{up ? '\u25B2' : '\u25BC'}</span>
+      {Math.abs(pct) < 1 ? 'flat' : `${Math.abs(pct).toFixed(0)}%`}
+      <span style={{ color: C.inkLight }}>{suffix}</span>
+    </span>
+  )
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OpsHome — the Operations home screen. Six boxes, one per section.
@@ -92,7 +114,7 @@ function StackBar({ segs }) {
   )
 }
 
-function Box({ title, value, unit, sub, subTone, children, onClick }) {
+function Box({ title, value, unit, sub, subTone, delta, children, onClick }) {
   const tone = { good: C.sage, warn: C.amber, bad: C.rose }
   return (
     <button onClick={onClick}
@@ -112,6 +134,7 @@ function Box({ title, value, unit, sub, subTone, children, onClick }) {
         </span>
       </div>
       <div style={{ height: 104, display: 'flex', alignItems: 'center' }}>{children}</div>
+      {delta}
       {sub && (
         <span style={{ fontSize: 12, color: tone[subTone] || C.inkLight, lineHeight: 1.45 }}>{sub}</span>
       )}
@@ -203,9 +226,25 @@ export default function OpsHome({ onOpen }) {
       const waste  = lines.reduce((s, l) => s + num(l.waste_yards), 0)
       const done   = lines.filter(l => l.is_complete).length
 
+      // Comparison week — whatever sits one week before the week we're showing.
+      const cmpSunday = new Date(useWk + 'T00:00:00')
+      cmpSunday.setDate(cmpSunday.getDate() - 7)
+      const cmpWk = isoDate(cmpSunday)
+      const [cmpAsnRes, cmpLineRes] = await Promise.all([
+        supabase.from('sched_assignments').select('planned_yards').eq('week_start', cmpWk),
+        supabase.from('sched_daily_ops_lines').select('actual_yards,waste_yards').eq('week_start', cmpWk),
+      ])
+      if (dead) return
+      const cmpAsn = cmpAsnRes.data || [], cmpLines = cmpLineRes.data || []
+      const prevSched  = cmpAsn.reduce((s, a) => s + num(a.planned_yards), 0)
+      const prevActual = cmpLines.reduce((s, l) => s + num(l.actual_yards), 0)
+      const prevWaste  = cmpLines.reduce((s, l) => s + num(l.waste_yards), 0)
+      const prevWastePct = (prevActual + prevWaste) > 0 ? (prevWaste / (prevActual + prevWaste)) * 100 : null
+
       setD({ wipTotal: wip.length, age, ngTotal: ng.length, ngLate,
              mat, byDay, sched, actual, waste, done,
-             lineCount: lines.length, asnCount: asn.length, isPrior })
+             lineCount: lines.length, asnCount: asn.length, isPrior,
+             prevSched, prevActual, prevWastePct })
     })()
     return () => { dead = true }
   }, [])
@@ -245,6 +284,7 @@ export default function OpsHome({ onOpen }) {
       <Box title="Pulse" value={fmt(d.actual)} unit="yds"
            sub={d.sched > 0 ? `against a ${fmt(d.sched)} yd plan` : 'Nothing scheduled yet'}
            subTone={d.sched === 0 ? undefined : attain >= 95 ? 'good' : attain >= 75 ? 'warn' : 'bad'}
+           delta={<Delta now={d.actual} prev={d.prevActual} />}
            onClick={go('pulse')}>
         <Ring pct={attain} color={attainCol} caption={'of the week\u2019s plan produced so far'} />
       </Box>
@@ -271,6 +311,7 @@ export default function OpsHome({ onOpen }) {
 
       <Box title="Scheduler" value={fmt(d.sched)} unit="yds"
            sub={`${d.asnCount} assignment${d.asnCount !== 1 ? 's' : ''} on the board`}
+           delta={<Delta now={d.sched} prev={d.prevSched} />}
            onClick={go('scheduler')}>
         <Columns bars={[
           { v: d.mat.grass,  color: C.sage,      label: 'Grass' },
@@ -283,6 +324,7 @@ export default function OpsHome({ onOpen }) {
            unit={d.actual > 0 ? 'waste' : 'no entry'}
            sub={d.actual > 0 ? `${fmt(d.waste)} yd of ${fmt(d.actual + d.waste)} run` : 'Nothing recorded this week'}
            subTone={d.actual > 0 ? (wastePct <= 3 ? 'good' : wastePct <= 6 ? 'warn' : 'bad') : undefined}
+           delta={<Delta now={wastePct} prev={d.prevWastePct} goodDown />}
            onClick={go('liveops')}>
         <Columns bars={[
           { v: d.byDay[0], color: C.yards, label: 'Mon' },
@@ -302,6 +344,12 @@ export default function OpsHome({ onOpen }) {
         ]} />
       </Box>
 
+      </div>
+
+      {/* The alerts list — the one thing here that is judgement rather than a
+          number, so it belongs on the home screen, not buried inside a tab. */}
+      <div style={{ marginTop: 16 }}>
+        <OpsAttentionPanel onNavigate={onOpen} />
       </div>
     </div>
   )

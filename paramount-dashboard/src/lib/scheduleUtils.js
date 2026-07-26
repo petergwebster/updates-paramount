@@ -42,11 +42,11 @@
 
 export const C = {
   // ── Base surfaces ──────────────────────────────────────────────────────
-  cream:     '#14171A',  // page background — dark (mirrors --paper)
-  parchment: '#1D2126',  // card / section backgrounds (mirrors --surface)
-  surface2:  '#262B31',  // nested panel / SECTION HEADER / active chip bg
-  warm:      '#2E3238',  // disabled buttons / muted fills
-  border:    '#333940',  // card borders, dividers
+  cream:     '#0F1318',  // page background — cool blue-black (mirrors --paper)
+  parchment: '#161C25',  // card / section backgrounds (mirrors --surface)
+  surface2:  '#1E2632',  // nested panel / SECTION HEADER / active chip bg
+  warm:      '#212936',  // disabled buttons / muted fills / bar tracks
+  border:    '#2A3340',  // card borders, dividers
 
   // ── Text ───────────────────────────────────────────────────────────────
   // NOTE: `ink` doubles as an ACTIVE-STATE BACKGROUND in several components

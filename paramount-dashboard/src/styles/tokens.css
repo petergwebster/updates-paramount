@@ -18,14 +18,14 @@
 
 :root {
   /* ─── Paper & Ink palette base — cream paper, white cards ────────── */
-  --paper:        #14171A;   /* main app background — deeper, lets cards lift */
+  --paper:        #0F1318;   /* main app background — cool blue-black */
   --paper-light:  #22262B;   /* lighter wash */
-  --paper-soft:   #101315;   /* chrome / header — deepest, frames the content */
-  --cream:        #14171A;   /* alias for --paper */
-  --cream-dark:   #101315;   /* alias for --paper-soft */
-  --linen:        #262A30;   /* inactive bar / track surface */
-  --surface:      #1D2126;   /* card surface — one clear step above the page */
-  --surface-2:    #262B31;   /* nested panel inside a card */
+  --paper-soft:   #0A0E12;   /* chrome / header — deepest, frames the content */
+  --cream:        #0F1318;   /* alias for --paper */
+  --cream-dark:   #0A0E12;   /* alias for --paper-soft */
+  --linen:        #212936;   /* inactive bar / track surface */
+  --surface:      #161C25;   /* card surface — one clear step above the page */
+  --surface-2:    #1E2632;   /* nested panel inside a card */
 
   /* ─── Ink scale (text + line work) ────────────────────────────────── */
   --ink:     #F4F3EF;   /* headings + FIGURES — near-white, carries the weight */
@@ -37,14 +37,14 @@
   --ink-40:  #737A82;   /* labels, captions — clearly quieter than body */
   --ink-30:  #5C636B;   /* chart axis, placeholders */
   --ink-20:  #424951;   /* heavy borders / disabled */
-  --ink-10:  #2C3137;   /* dividers / standard borders */
-  --ink-05:  #24282D;   /* faint dividers */
-  --ink-5:   #212529;   /* page-tint surface (hover bg, panels) */
-  --ink-3:   #1B1F23;   /* very subtle surface tint */
+  --ink-10:  #252E3A;   /* dividers / standard borders */
+  --ink-05:  #1E262F;   /* faint dividers */
+  --ink-5:   #1A212B;   /* page-tint surface (hover bg, panels) */
+  --ink-3:   #141A22;   /* very subtle surface tint */
 
   /* ─── Borders ─────────────────────────────────────────────────────── */
-  --border:        #333940;
-  --border-light:  #262B31;
+  --border:        #2A3340;
+  --border-light:  #1E2632;
 
   /* ─── Destination accents — Paper & Ink three-tone ────────────────── */
   /* Performance / royal: muted forest green */
