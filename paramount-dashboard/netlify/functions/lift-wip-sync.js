@@ -232,6 +232,13 @@ function buildRows(ordersText, productsText, asOf) {
   requireHeader(O.headerNorm, ['ITEM_SKU'], 'item_sku', seen)
 
   const rows = []
+  // ORDER LEDGER — aggregated per ORDER (GP invoices at order level, and an
+  // order can carry several SKU lines). Populated for EVERY line including
+  // terminal ones, BEFORE the WIP filter drops them. That is the entire point:
+  // an invoiced order vanishes from sched_wip_rows, so if its yardage is not
+  // recorded here it is unrecoverable. GP's financial_transactions.reference
+  // carries this same order number, so invoice → ledger → yards.
+  const ledgerMap = new Map()
   let terminalSkipped = 0, missingColorSku = 0, unknownSite = 0, groundFeeSkipped = 0
 
   for (const rec of O.records) {
@@ -240,6 +247,22 @@ function buildRows(ordersText, productsText, asOf) {
     if (!poNumber && !orderNumber) continue // not a real line
 
     const orderStatus = clean(pick(rec, ['ORDER_STATUS', 'STATUS']))
+
+    // Ledger first — before any filter can drop this line.
+    if (orderNumber) {
+      const ly = toNum(pick(rec, ['TOTAL_YARDS', 'YARDS_WRITTEN', 'YARDS']))
+      const li = toNum(pick(rec, ['ORDERED_SALES', 'INCOME_WRITTEN']))
+      const cur = ledgerMap.get(orderNumber) || {
+        order_number: orderNumber, po_number: poNumber || null,
+        yards_written: 0, income_written: 0, last_status: null,
+      }
+      cur.yards_written  += ly
+      cur.income_written += li
+      if (orderStatus) cur.last_status = orderStatus
+      if (!cur.po_number && poNumber) cur.po_number = poNumber
+      ledgerMap.set(orderNumber, cur)
+    }
+
     if (TERMINAL_STATUSES.has(orderStatus)) { terminalSkipped++; continue }
 
     const divisionRaw = clean(pick(rec, ['ORDER_TYPE', 'DIVISION']))
@@ -340,7 +363,8 @@ function buildRows(ordersText, productsText, asOf) {
     if ('revenue' in s) s.revenue += r.income_written
   }
 
-  return { rows, summary, notes, ordersHeaders: seen, productCount: prod.size }
+  return { rows, summary, notes, ordersHeaders: seen, productCount: prod.size,
+           ledger: Array.from(ledgerMap.values()) }
 }
 
 // ─── Supabase REST helpers (raw fetch, same as lock-wip) ───────────────────
@@ -357,6 +381,17 @@ async function sbInsert(table, body, opts = {}) {
   })
   if (!res.ok) throw new Error(`Supabase insert ${table} failed: ${await res.text()}`)
   return opts.returnRepresentation ? res.json() : null
+}
+
+// Upsert on a primary key — PostgREST merge-duplicates. Columns not sent are
+// left alone, so `first_seen` survives every later touch.
+async function sbUpsert(table, body, onConflict) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal,resolution=merge-duplicates' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Supabase upsert ${table} failed: ${await res.text()}`)
 }
 
 // Baseline for the completeness guard: the LARGEST recent snapshot (max over
@@ -411,7 +446,7 @@ const runSync = async (event) => {
 
     const asOf = new Date()
     const [ordersText, productsText] = await Promise.all([fetchCsv('orders'), fetchCsv('products')])
-    const { rows, summary, notes, ordersHeaders, productCount } = buildRows(ordersText, productsText, asOf)
+    const { rows, summary, notes, ordersHeaders, productCount, ledger } = buildRows(ordersText, productsText, asOf)
 
     const result = {
       dryRun,
@@ -425,6 +460,7 @@ const runSync = async (event) => {
       },
       passaic_yards: Math.round(summary.passaic.yards),
       bny_yards: Math.round(summary.bny.yards),
+      ledger_orders: ledger.length,
       notes,
     }
 
@@ -509,6 +545,25 @@ const runSync = async (event) => {
     }
 
     await pruneOldSnapshots()
+
+    // ORDER LEDGER — permanent, never pruned. Deliberately written AFTER the
+    // guard so a truncated pull can't poison it, and in its own try/catch so a
+    // ledger failure can never fail the snapshot the floor depends on. This is
+    // the record that makes INVOICED YARDS derivable: an order leaves
+    // sched_wip_rows when LIFT invoices it, but its yardage stays here, and
+    // GP's financial_transactions.reference joins straight to order_number.
+    try {
+      const B = 500
+      for (let i = 0; i < ledger.length; i += B) {
+        await sbUpsert('order_ledger',
+          ledger.slice(i, i + B).map(o => ({ ...o, last_seen: new Date().toISOString() })),
+          'order_number')
+      }
+      result.ledger_upserted = ledger.length
+    } catch (e) {
+      console.error('(note) order_ledger upsert failed — snapshot still written:', e.message)
+      result.ledger_error = e.message
+    }
     result.snapshot_id = snapshotId
     console.log(`lift-wip-sync: wrote snapshot ${snapshotId} with ${rows.length} rows`)
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
