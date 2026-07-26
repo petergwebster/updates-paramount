@@ -77,9 +77,21 @@ export const C = {
   // These power aging cards (60/90/90+), Plant Pulse miss bars, status pills,
   // and anywhere operational signal matters more than visual cohesion.
   // Hex values match prior Couture so behavior in status contexts is identical.
-  sage:    '#55A47C', sageBg:  '#1C2E24',   // emerald — Ready / on-track / good
-  amber:   '#D6A250', amberBg: '#2E2617',   // amber — May be late / awaiting / warn
-  rose:    '#D96F63', roseBg:  '#2E1C19',   // crimson — Late / on hold / misses / bad
+  sage:    '#3DD68C', sageBg:  '#102C21',   // emerald — Ready / on-track / good
+  amber:   '#F5B544', amberBg: '#2E2410',   // amber — May be late / awaiting / warn
+  rose:    '#F2555A', roseBg:  '#2E1417',   // crimson — Late / on hold / misses / bad
+
+  // ── DATA SERIES — every core metric owns a colour, everywhere ─────────
+  // Learn once that blue is yards and violet is colour-yards, and you stop
+  // reading labels. Saturated deliberately: muted colour on dark reads grey.
+  yards:       '#4EA8DE',   // yards produced
+  coloryards:  '#A78BFA',   // colour-yards — the Passaic labour unit
+  waste:       '#F2555A',   // waste — always this red, never anything else
+  scheduled:   '#F5B544',   // the plan / commitment
+  budget:      '#5C636B',   // the target — quiet on purpose, it is a reference
+  revenue:     '#3DD68C',   // money
+  siteNJ:      '#E8825A',   // Passaic · hand-screen
+  siteBNY:     '#4EA8DE',   // Brooklyn · digital
 }
 
 // ─── Named accent exports ─────────────────────────────────────────────────

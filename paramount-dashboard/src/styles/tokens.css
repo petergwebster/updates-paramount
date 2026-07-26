@@ -63,18 +63,18 @@
   --saffron-light:       #2E3238;
 
   /* ─── Status colors — toned DOWN from prior loud values ───────────── */
-  --emerald:        #55A47C;
-  --emerald-deep:   #3D7458;
-  --emerald-light:  #1C2E24;
-  --crimson:        #D96F63;
-  --crimson-deep:   #A8443A;
-  --crimson-light:  #2E1C19;
-  --green:          #55A47C;
-  --green-light:    #1C2E24;
-  --red:            #D96F63;
-  --red-light:      #2E1C19;
-  --amber:          #D6A250;
-  --amber-light:    #2E2617;
+  --emerald:        #3DD68C;
+  --emerald-deep:   #2FA86E;
+  --emerald-light:  #102C21;
+  --crimson:        #F2555A;
+  --crimson-deep:   #C0392F;
+  --crimson-light:  #2E1417;
+  --green:          #3DD68C;
+  --green-light:    #102C21;
+  --red:            #F2555A;
+  --red-light:      #2E1417;
+  --amber:          #F5B544;
+  --amber-light:    #2E2410;
   --gray:           #848A91;
   --gray-light:     #262A30;
 
@@ -83,15 +83,32 @@
      fallback was always the live value — they stayed cream after the theme
      flipped. Defining them here is the fix. If you add a new var(--x, #hex)
      anywhere, define --x or the hex silently wins. */
-  --emerald-tint:   #1C2E24;
-  --amber-tint:     #2E2617;
-  --red-tint:       #2E1C19;
-  --perf-tint:      #1C2E35;
+  --emerald-tint:   #102C21;
+  --amber-tint:     #2E2410;
+  --red-tint:       #2E1417;
+  --perf-tint:      #10263A;
 
   /* ─── Generic accent (links, primary buttons, focus rings) ────────── */
-  --accent:         #56937A;
-  --accent-light:   #1D2E27;
-  --accent-mid:     #74B195;
+  --accent:         #4FB98A;
+  --accent-light:   #12301F;
+
+  /* ─── DATA SERIES PALETTE ───────────────────────────────────
+     Every core metric OWNS a colour and keeps it everywhere — tile, chart,
+     table, bar. That consistency is what makes a dense dashboard scannable:
+     you learn once that blue is yards and violet is colour-yards, and after
+     that you read shape instead of labels.
+     Saturated on purpose. Muted colour on a dark ground reads as grey. */
+  --yards:        #4EA8DE;   /* yards produced — the primary output metric */
+  --coloryards:   #A78BFA;   /* colour-yards — the Passaic labour unit */
+  --waste:        #F2555A;   /* waste — always the same red, never anything else */
+  --scheduled:    #F5B544;   /* the plan / commitment line */
+  --budget:       #5C636B;   /* the target — deliberately quiet, it is a reference */
+  --revenue:      #3DD68C;   /* money */
+
+  /* Site identity — the split that runs through everything */
+  --site-nj:      #E8825A;   /* Passaic · hand-screen */
+  --site-bny:     #4EA8DE;   /* Brooklyn · digital */
+  --accent-mid:     #6FD3A6;
 
   /* ─── Layout ──────────────────────────────────────────────────────── */
   --radius:     6px;

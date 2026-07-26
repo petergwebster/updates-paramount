@@ -16,6 +16,7 @@ import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
 import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
+import OpsDailyChart from './components/OpsDailyChart'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -645,6 +646,7 @@ export default function App() {
                 {destination === 'operations' && activeTab==='pulse' && (
                   <>
                     <OpsPulseTiles onNavigate={handleTabChange} />
+                    <OpsDailyChart />
                     <HeartbeatPage
                       weekStart={currentWeek}
                       currentUser={userProfile?.full_name}
