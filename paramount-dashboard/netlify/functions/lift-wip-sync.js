@@ -308,13 +308,22 @@ function buildRows(ordersText, productsText, asOf) {
     // roughly doubles Passaic: June read 169,188 invoiced yards against a real
     // ~33,000 on the deck. Terminal orders still land here — they are dropped
     // from `rows` on the next line, not from the ledger.
+    //
+    // TWO YARD FIGURES, DELIBERATELY: yards_written is TOTAL_YARDS (what the
+    // order was written for); qty_invoiced is what LIFT actually invoiced. An
+    // order can be partly invoiced, so written always runs above invoiced —
+    // using written for "invoiced yards" overstated June Passaic by ~32%.
+    // This is the same written / produced / invoiced distinction slide 4 of the
+    // month-end deck is built on.
     if (orderNumber) {
       const cur = ledgerMap.get(orderNumber) || {
         order_number: orderNumber, po_number: poNumber || null, site,
         customer_type: customerType3p, product_type: productType || null,
-        yards_written: 0, income_written: 0, colors_count: colorsCount, last_status: null,
+        yards_written: 0, qty_invoiced: 0, income_written: 0,
+        colors_count: colorsCount, last_status: null,
       }
       cur.yards_written  += yardsWritten
+      cur.qty_invoiced   += qtyInvoiced
       cur.income_written += incomeWritten
       if (orderStatus) cur.last_status = orderStatus
       if (!cur.po_number && poNumber) cur.po_number = poNumber
