@@ -554,7 +554,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       marginLeft: 'calc((100% - max(100%, min(1600px, 100vw - 40px))) / 2)',
     }}>
       {/* Week navigator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabelFiscal(weekStart)}</div>
@@ -599,7 +599,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         gridTemplateColumns: '260px 1fr',
         gap: 14, marginTop: 16,
       }}>
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
@@ -846,7 +846,7 @@ function Gauge({ label, value, target, pct, isMoney, highlight }) {
 function MixCard({ schPct, tpPct, onTarget }) {
   const deltaFromTarget = schPct - MIX_TARGET_SCH * 100
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Customer mix</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.navy }}>Sch {Math.round(schPct)}%</span>
@@ -883,7 +883,7 @@ function BucketCard({ bucket, totals }) {
   const rev = totals.buckets_revenue[bucket] || 0
   const barColor = pct == null ? col : pct >= 95 ? C.sage : pct >= 75 ? C.gold : pct >= 50 ? C.amber : C.rose
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: col, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{bucket}</div>
       <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.ink }}>
         {fmt(curYd)}
@@ -997,7 +997,7 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
         if (canAssign) onClick()
       }}
       style={{
-        background: dropActive ? C.goldBg : '#fff',
+        background: dropActive ? C.goldBg : 'var(--surface)',
         border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${dropActive ? C.gold : highlight ? C.amber : over ? C.rose : C.border}`,
         borderRadius: 6, padding: 4, minHeight: 110,
         cursor: canAssign ? 'pointer' : 'default',
@@ -1010,7 +1010,7 @@ function MachineDayCell({ machine, dayOfWeek, locationKey, assignments, selected
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%', fontSize: 10, padding: '2px 3px', borderRadius: 3,
-          border: `1px solid ${C.border}`, background: assignments.length === 0 ? C.warm : '#fff',
+          border: `1px solid ${C.border}`, background: assignments.length === 0 ? C.warm : 'var(--surface)',
           color: cellOperator ? C.ink : C.inkLight, cursor: assignments.length === 0 ? 'not-allowed' : 'pointer',
         }}
       >
@@ -1133,7 +1133,7 @@ function PoolCardBNY({ r, selected, onToggle }) {
 // Compact drag preview following the cursor/finger during a BNY drag.
 function DragCardBNY({ r }) {
   return (
-    <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.amber}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
+    <div style={{ padding: '8px 12px', background: 'var(--surface)', border: `2px solid ${C.amber}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
       <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}{r.bny_bucket ? ` · ${r.bny_bucket}` : ''}</div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
       <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards ?? r.planned_yards)} yd</div>
@@ -1159,7 +1159,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onCancel()}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 24, width: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>
           {isEdit ? 'Edit · ' : 'Assign to '}{machine} · {DAY_LABELS[dayOfWeek]}
         </div>
@@ -1179,7 +1179,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
 
         <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: C.inkLight, marginBottom: 4 }}>Operator</label>
         <select value={operator} onChange={e => setOperator(e.target.value)}
-          style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 12, background: '#fff' }}>
+          style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, boxSizing: 'border-box', marginBottom: 12, background: 'var(--surface)' }}>
           <option value="">— choose later —</option>
           {operatorList.map(op => <option key={op} value={op}>{op}</option>)}
         </select>
@@ -1611,7 +1611,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}>
       <div style={{
-        background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
+        background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12,
         width: 'min(1100px, 92vw)', height: 'min(820px, 92vh)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -1643,14 +1643,14 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
         <div style={{ padding: '8px 12px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 4, flexWrap: 'wrap', background: C.parchment }}>
           {quickChips.map(chip => (
             <button key={chip.label} onClick={() => setInput(chip.text)}
-              style={{ padding: '4px 10px', fontSize: 10, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', color: C.inkMid }}>
+              style={{ padding: '4px 10px', fontSize: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', color: C.inkMid }}>
               {chip.label}
             </button>
           ))}
         </div>
       )}
 
-      <div style={{ padding: 12, borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+      <div style={{ padding: 12, borderTop: `1px solid ${C.border}`, background: 'var(--surface)' }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <textarea
             value={input}
@@ -1663,7 +1663,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
             rows={2}
             style={{
               flex: 1, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6,
-              fontSize: 12, fontFamily: 'inherit', resize: 'none', background: streaming ? C.cream : '#fff',
+              fontSize: 12, fontFamily: 'inherit', resize: 'none', background: streaming ? C.cream : 'var(--surface)',
               boxSizing: 'border-box',
             }}
           />
@@ -1711,7 +1711,7 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     .trim()
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
+      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
         {displayText}
         {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
         {message.writingProposals && (

@@ -37,7 +37,7 @@
 }
 
 .actual {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 24px;
   font-weight: 700;
   color: var(--ink);
@@ -58,7 +58,7 @@
   color: var(--ink-40);
   font-style: italic;
   margin-bottom: 6px;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .delta {

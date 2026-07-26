@@ -25,7 +25,7 @@
 }
 
 .title {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 32px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -35,7 +35,7 @@
 }
 
 .sub {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 13px;
   font-style: italic;
   color: var(--ink-50, #5C6770);
@@ -66,7 +66,7 @@
 }
 
 .summaryNum {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 24px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -99,7 +99,7 @@
   padding: 64px 24px;
   font-style: italic;
   color: var(--ink-50, #5C6770);
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 /* ─── Table ─── */
@@ -141,7 +141,7 @@
 }
 
 .userName {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink, #212A31);
   font-size: 14px;
@@ -260,7 +260,7 @@
   font-size: 11px;
   color: var(--ink-50, #5C6770);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   line-height: 1.6;
 }
 .footnote strong, .footnote code {
@@ -307,7 +307,7 @@
 }
 
 .modalTitle {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -316,7 +316,7 @@
 }
 
 .modalBody {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 15px;
   line-height: 1.6;
   color: var(--ink-90, #2A323A);
@@ -371,14 +371,14 @@
   text-align: center;
 }
 .deniedTitle {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
   color: var(--crimson-deep, #831A0E);
   margin-bottom: 8px;
 }
 .deniedBody {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-style: italic;
   color: var(--ink-60, #5C6770);
   font-size: 14px;

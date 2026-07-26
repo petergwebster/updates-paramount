@@ -280,7 +280,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
                 <button key={s.id} onClick={() => setSite(s.id)}
                   style={{
                     padding: '12px 20px',
-                    background: active ? C.ink : '#fff',
+                    background: active ? C.ink : 'var(--surface)',
                     color: active ? '#fff' : C.inkMid,
                     border: `1px solid ${active ? C.ink : C.border}`,
                     borderRadius: 8,
@@ -319,7 +319,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
                 fontSize: 13,
                 border: `1px solid ${C.border}`,
                 borderRadius: 6,
-                background: '#fff',
+                background: 'var(--surface)',
                 color: C.ink,
               }}
             />
@@ -344,7 +344,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
                   fontWeight: lateOnly ? 700 : 600,
                   borderRadius: 14,
                   border: `1px solid ${lateOnly ? STATUS_BAD : C.border}`,
-                  background: lateOnly ? STATUS_BAD_BG : '#fff',
+                  background: lateOnly ? STATUS_BAD_BG : 'var(--surface)',
                   color: lateOnly ? STATUS_BAD : C.inkMid,
                   cursor: 'pointer',
                 }}>
@@ -361,7 +361,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
                       fontWeight: active ? 700 : 600,
                       borderRadius: 14,
                       border: `1px solid ${active ? tone.fg : tone.border}`,
-                      background: active ? tone.bg : '#fff',
+                      background: active ? tone.bg : 'var(--surface)',
                       color: active ? tone.fg : C.inkMid,
                       cursor: 'pointer',
                     }}>
@@ -384,7 +384,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
 
           {/* ── Group sections ───────────────────────────────────────── */}
           {visibleItems.length === 0 ? (
-            <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
+            <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
               No items match the current filter.
             </div>
           ) : (
@@ -479,7 +479,7 @@ function PipelineSummary({ site, groups, observation, snapshot, onOpenObservatio
   }
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', background: C.parchment, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pipeline</span>
@@ -529,7 +529,7 @@ function GroupSection({ groupName, items, site }) {
   const [expanded, setExpanded] = useState(true)
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div
         onClick={() => setExpanded(e => !e)}
         style={{
@@ -814,7 +814,7 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: '#fff',
+          background: 'var(--surface)',
           borderRadius: 12,
           maxWidth: 760, width: '100%',
           maxHeight: '85vh',
@@ -935,7 +935,7 @@ function ObservationsModal({ site, snapshot, observation, loading, error, onClos
               <button onClick={onRerun}
                 style={{
                   padding: '7px 14px',
-                  background: isStaleObs ? accent : '#fff',
+                  background: isStaleObs ? accent : 'var(--surface)',
                   color: isStaleObs ? '#fff' : accent,
                   border: `1px solid ${accent}`, borderRadius: 6,
                   fontSize: 12, fontWeight: 700,

@@ -621,7 +621,7 @@ export default function WIPTab() {
 
           {/* ── Division pivot for active site ────────────────────────── */}
           {divisionsToRender.length === 0 ? (
-            <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
+            <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '40px 20px', textAlign: 'center', color: C.inkLight, fontSize: 13, fontStyle: 'italic' }}>
               No rows match the current filter.
             </div>
           ) : (
@@ -653,7 +653,7 @@ function SnapshotSummary({ snapshot, summary }) {
   if (tail > 0) cells.push({ label: 'Unclassified', value: tail, dim: true })
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', background: C.parchment, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Last upload</span>
         <span style={{ fontSize: 11, color: C.inkLight }}>
@@ -720,7 +720,7 @@ function DivisionPivot({ division, agg }) {
   }, { yards: 0, income: 0, qtyInvoiced: 0 })
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       {/* Section header */}
       <div style={{ padding: '12px 16px', background: C.ink, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
@@ -816,7 +816,7 @@ function SiteToggle({ site, onChange, summary }) {
           <button key={s.id} onClick={() => onChange(s.id)}
             style={{
               padding: '12px 20px',
-              background: active ? C.ink : '#fff',
+              background: active ? C.ink : 'var(--surface)',
               color: active ? '#fff' : C.inkMid,
               border: `1px solid ${active ? C.ink : C.border}`,
               borderRadius: 8,
@@ -860,7 +860,7 @@ function FilterRow({
 
   return (
     <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
+      background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10,
       padding: '12px 16px', marginBottom: 16,
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
@@ -970,7 +970,7 @@ function AgingCards({ buckets, activeFilters, onToggle }) {
             <button key={b.id} onClick={() => onToggle(b.id)}
               style={{
                 padding: '14px 16px',
-                background: active ? tone.bg : '#fff',
+                background: active ? tone.bg : 'var(--surface)',
                 border: `1px solid ${active ? tone.accent : C.border}`,
                 borderLeft: `4px solid ${tone.accent}`,
                 borderRadius: 8,

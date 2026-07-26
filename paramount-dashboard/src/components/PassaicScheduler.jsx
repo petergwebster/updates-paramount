@@ -585,7 +585,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   return (
     <div>
       {/* Week navigator */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8 }}>
         <button onClick={() => onWeekChange(addWeeks(weekStart, -1))} style={{ padding: '6px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, cursor: 'pointer', fontSize: 13, color: C.inkMid }}>← Prev week</button>
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>Week of {weekLabel(weekStart)}</div>
@@ -632,7 +632,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         gap: 16, marginTop: 16,
       }}>
         {/* POOL */}
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'sticky', top: 16, maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 14px', background: C.parchment, borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Unscheduled Pool</div>
             <div style={{ fontSize: 13, color: C.ink, fontWeight: 600 }}>{filteredPool.length} POs to schedule</div>
@@ -790,7 +790,7 @@ function Gauge({ label, value, target, pct, unit, isMoney, highlight }) {
 function MixCard({ schPct, tpPct, onTarget, avgColors }) {
   const deltaFromTarget = schPct - MIX_TARGET_SCH * 100
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px' }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>Customer mix</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia,serif', color: C.navy }}>Sch {Math.round(schPct)}%</span>
@@ -822,7 +822,7 @@ function CategoryStrip({ totals }) {
         const tgt = PASSAIC_TARGETS[c.key]
         const cyPct = Math.round((t.cy / tgt.cy) * 100)
         return (
-          <div key={c.key} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px' }}>
+          <div key={c.key} style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: c.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{c.label}</span>
               <span style={{ fontSize: 10, color: C.inkLight }}>{tgt.tables} table{tgt.tables !== 1 ? 's' : ''}</span>
@@ -952,7 +952,7 @@ function PoolCard({ r, selected, tint, onToggleTint, onToggle }) {
 // Compact card that follows the cursor/finger during a drag (DragOverlay).
 function DragCard({ r }) {
   return (
-    <div style={{ padding: '8px 12px', background: '#fff', border: `2px solid ${C.navy}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
+    <div style={{ padding: '8px 12px', background: 'var(--surface)', border: `2px solid ${C.navy}`, borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,0.25)', fontSize: 12, maxWidth: 280, cursor: 'grabbing' }}>
       <div style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</div>
       <div style={{ color: C.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.line_description}</div>
       <div style={{ fontSize: 10, color: C.inkLight }}>{fmt(r.remaining_yards ?? r.planned_yards)} yd · {r.product_type}</div>
@@ -975,7 +975,7 @@ function TableCard({ t, category, asgs, canAssign, dragFits, onTableClick, onRem
     <div ref={setNodeRef}
       onClick={() => canAssign && onTableClick(t.code)}
       style={{
-        background: dropActive ? C.goldBg : '#fff',
+        background: dropActive ? C.goldBg : 'var(--surface)',
         border: `${highlight ? 2 : 1}px ${highlight ? 'dashed' : 'solid'} ${dropActive ? C.gold : highlight ? C.navy : overCap ? C.rose : C.border}`,
         borderRadius: 8, padding: 8, minHeight: 220,
         cursor: canAssign ? 'pointer' : 'default',
@@ -1334,7 +1334,7 @@ function AssignModal({ po, tableCode, proposed, isEdit, initialDay = '', initial
   const tablesCount = new Set([...(poTables || []), tableCode]).size
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.target === e.currentTarget && onCancel()}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: 24, width: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 }}>{isEdit ? 'Edit · ' : 'Assign to '}{tableCode}</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif', marginBottom: 12 }}>{po.line_description}</div>
         <div style={{ fontSize: 12, color: C.inkMid, marginBottom: 16 }}>
@@ -1568,7 +1568,7 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
     <div
       onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(760px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(760px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>Daily Plan · {tableCode}</div>
@@ -1633,14 +1633,14 @@ function CrewModal({ tableCode, weekStart, weeklyYards, onClose }) {
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{r.day_of_week}</div>
                 <input type="number" value={r.planned_yards} onChange={e => updateRow(r.day_of_week, { planned_yards: e.target.value })}
                   placeholder="yds"
-                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff', boxSizing: 'border-box' }} />
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: 'var(--surface)', boxSizing: 'border-box' }} />
                 <select value={r.operator_1} onChange={e => updateRow(r.day_of_week, { operator_1: e.target.value })}
-                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: 'var(--surface)' }}>
                   <option value="">— Operator 1 —</option>
                   {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
                 <select value={r.operator_2} onChange={e => updateRow(r.day_of_week, { operator_2: e.target.value })}
-                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: '#fff' }}>
+                  style={{ padding: '7px 10px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 12, background: 'var(--surface)' }}>
                   <option value="">— Operator 2 —</option>
                   {PASSAIC_OPERATORS.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
@@ -1685,7 +1685,7 @@ function ShiftTab({ label, sub, active, hasData, onClick }) {
       style={{
         flex: 1,
         padding: '12px 16px',
-        background: active ? '#fff' : 'transparent',
+        background: active ? 'var(--surface)' : 'transparent',
         border: 'none',
         borderBottom: active ? `2px solid ${C.navy}` : '2px solid transparent',
         cursor: 'pointer',
@@ -1987,7 +1987,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}>
       <div style={{
-        background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12,
+        background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12,
         width: 'min(1100px, 92vw)', height: 'min(820px, 92vh)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
@@ -2019,14 +2019,14 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
         <div style={{ padding: '8px 12px', borderTop: `1px solid ${C.border}`, display: 'flex', gap: 4, flexWrap: 'wrap', background: C.parchment }}>
           {quickChips.map(chip => (
             <button key={chip.label} onClick={() => setInput(chip.text)}
-              style={{ padding: '4px 10px', fontSize: 10, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', color: C.inkMid }}>
+              style={{ padding: '4px 10px', fontSize: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', color: C.inkMid }}>
               {chip.label}
             </button>
           ))}
         </div>
       )}
 
-      <div style={{ padding: 12, borderTop: `1px solid ${C.border}`, background: '#fff' }}>
+      <div style={{ padding: 12, borderTop: `1px solid ${C.border}`, background: 'var(--surface)' }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <textarea
             value={input}
@@ -2039,7 +2039,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
             rows={2}
             style={{
               flex: 1, padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6,
-              fontSize: 12, fontFamily: 'inherit', resize: 'none', background: streaming ? C.cream : '#fff',
+              fontSize: 12, fontFamily: 'inherit', resize: 'none', background: streaming ? C.cream : 'var(--surface)',
               boxSizing: 'border-box',
             }}
           />
@@ -2085,7 +2085,7 @@ function MessageBubble({ message, onApplyProposals, applying }) {
     .trim()
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
+      <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: '10px 10px 10px 2px', padding: '10px 14px', fontSize: 12, lineHeight: 1.6, color: C.ink, whiteSpace: 'pre-wrap', fontFamily: 'Georgia,serif' }}>
         {displayText}
         {message.streaming && !message.writingProposals && <span style={{ display: 'inline-block', width: 6, height: 12, background: C.inkMid, marginLeft: 3, animation: 'blink 1s infinite' }} />}
         {message.writingProposals && (

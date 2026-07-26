@@ -50,7 +50,7 @@
   display: inline-block;
 }
 .heroTitle {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 64px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -67,7 +67,7 @@
   font-weight: 700;
 }
 .heroSub {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 19px;
   font-style: italic;
   color: var(--ink-50, #5C6770);
@@ -178,7 +178,7 @@
 }
 
 .tileName {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -189,7 +189,7 @@
   z-index: 1;
 }
 .tileTag {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 14px;
   font-style: italic;
   color: var(--ink-50, #5C6770);
@@ -285,7 +285,7 @@
   font-size: 10px;
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   text-align: right;
   line-height: 1.4;
 }
@@ -296,7 +296,7 @@
   color: var(--ink-30, #8E9A9F);
   font-size: 12px;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   padding: 0 24px 56px;
   max-width: 720px;
   margin: 0 auto;
@@ -311,7 +311,7 @@
   border: 1px solid var(--saffron-light, #D4D8DA);
   border-left: 3px solid var(--saffron, #2E3944);
   border-radius: 8px;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-style: italic;
   color: var(--ink-50, #5C6770);
   font-size: 14px;

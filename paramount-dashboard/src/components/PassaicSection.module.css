@@ -36,7 +36,7 @@
 }
 
 .catName {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -47,7 +47,7 @@
   font-size: 11px;
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 .catTablesCount {
   font-size: 10px;
@@ -87,11 +87,11 @@
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
   margin-top: 6px;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .yardsBig {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 22px;
   color: var(--ink, #212A31);
@@ -108,7 +108,7 @@
   color: var(--ink-30, #8E9A9F);
   margin-top: 8px;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   padding-top: 6px;
   border-top: 1px dashed var(--ink-10, #C5CCC8);
 }
@@ -162,7 +162,7 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .floorTitle {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -173,7 +173,7 @@
   font-size: 12px;
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   margin: 0 0 22px;
 }
 .floorSection {
@@ -202,7 +202,7 @@
   letter-spacing: 0.04em;
   text-transform: none;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 .tablesGrid {
   display: grid;
@@ -245,7 +245,7 @@
   opacity: 0.65;
 }
 .tNumber {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 16px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -338,11 +338,11 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: none;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-style: italic;
 }
 .watchHeadline {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 36px;
   font-weight: 700;
   line-height: 1;
@@ -361,7 +361,7 @@
   color: var(--ink-50, #5C6770);
   margin-bottom: 18px;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 .watchBars { display: flex; flex-direction: column; gap: 10px; }
 .watchBarRow {
@@ -389,7 +389,7 @@
 .watchBar_mid  { background: var(--amber); }
 .watchBar_high { background: var(--red); }
 .watchPctVal {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   text-align: right;
   color: var(--ink, #212A31);
@@ -402,7 +402,7 @@
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px dashed var(--ink-10, #C5CCC8);
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-style: italic;
   line-height: 1.55;
 }
@@ -444,7 +444,7 @@
   padding-top: 8px;
   border-top: 1px dashed var(--ink-10, #C5CCC8);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 .curveAxis strong {
   color: var(--ink, #212A31);
@@ -466,7 +466,7 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
 }
 .jobsTitle {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -481,7 +481,7 @@
   color: var(--ink-30, #8E9A9F);
   font-weight: 400;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 .jobItem {
   display: grid;
@@ -494,7 +494,7 @@
 }
 .jobItem:last-child { border-bottom: none; }
 .jobName {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink, #212A31);
   font-size: 14px;
@@ -505,7 +505,7 @@
   color: var(--ink-30, #8E9A9F);
   display: block;
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   margin-top: 2px;
   font-weight: 400;
 }
@@ -522,7 +522,7 @@
 .jobBadge_crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
 .jobBadge_neutral { background: var(--linen, #BDC4BF); color: var(--ink-50, #5C6770); }
 .jobNum {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink, #212A31);
   font-size: 15px;

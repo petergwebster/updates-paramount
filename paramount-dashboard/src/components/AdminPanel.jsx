@@ -475,7 +475,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           onClick={() => setEffectiveWeek(prev => subWeeks(prev, 1))}
           style={{
             padding: '4px 10px',
-            background: 'white',
+            background: 'var(--surface)',
             border: '1px solid var(--border-light, #D5D7DA)',
             borderRadius: 4,
             fontSize: 13,
@@ -510,7 +510,7 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
           onClick={() => setEffectiveWeek(prev => addWeeks(prev, 1))}
           style={{
             padding: '4px 10px',
-            background: 'white',
+            background: 'var(--surface)',
             border: '1px solid var(--border-light, #D5D7DA)',
             borderRadius: 4,
             fontSize: 13,

@@ -88,7 +88,7 @@
 .layer_actualMiss  .layerBarFill { background: var(--red); }
 
 .layerVal {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
   color: var(--ink, #212A31);
@@ -104,7 +104,7 @@
   border-top: 1px dashed var(--ink-10, #C5CCC8);
   font-size: 11px;
   color: var(--ink-50, #5C6770);
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-style: italic;
   line-height: 1.5;
 }

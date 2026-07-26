@@ -210,7 +210,7 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
             </button>
           </div>
           {showPreClass && (
-            <div style={{ marginTop: 10, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ marginTop: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '110px 110px 1fr 130px 130px 100px', gap: 0, padding: '8px 12px', background: C.parchment, fontSize: 10, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.inkLight }}>
                 <span>PO</span><span>Order #</span><span>Pattern</span><span>Material</span><span>Status</span><span style={{ textAlign: 'right' }}>Yards</span>
               </div>
@@ -233,20 +233,20 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
       <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <input type="text" placeholder="Filter by PO, pattern, SKU, color, material…"
           value={filter} onChange={e => setFilter(e.target.value)}
-          style={{ padding: '7px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, minWidth: 320, background: '#fff', color: C.ink, flex: 1, maxWidth: 480 }} />
+          style={{ padding: '7px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, minWidth: 320, background: 'var(--surface)', color: C.ink, flex: 1, maxWidth: 480 }} />
         <span style={{ fontSize: 12, color: C.inkLight }}>{sorted.length} of {newGoods.length}</span>
         <span style={{ fontSize: 11, color: C.inkLight, fontStyle: 'italic' }}>Click any column header to sort</span>
       </div>
 
       {/* Main list */}
       {newGoods.length === 0 && (
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 40, textAlign: 'center', color: C.inkLight, fontSize: 13 }}>
+        <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, padding: 40, textAlign: 'center', color: C.inkLight, fontSize: 13 }}>
           No New Goods POs for {siteLabel}.
         </div>
       )}
 
       {newGoods.length > 0 && (
-        <div style={{ background: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 10, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '110px 100px 1fr 110px 100px 1.2fr 140px 70px 60px', gap: 0, padding: '10px 14px', background: C.parchment, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.inkLight }}>
             <SortHdr field="po">PO</SortHdr>
             <SortHdr field="po">Order #</SortHdr>
@@ -288,7 +288,7 @@ export default function NewGoodsView({ wipRows, unknownRows, site, siteLabel }) 
 
 function SummaryCard({ label, value }) {
   return (
-    <div style={{ flex: 1, minWidth: 160, padding: '14px 18px', background: '#fff', color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+    <div style={{ flex: 1, minWidth: 160, padding: '14px 18px', background: 'var(--surface)', color: C.ink, border: `1px solid ${C.border}`, borderRadius: 8 }}>
       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Georgia,serif' }}>{value}</div>
     </div>
@@ -310,7 +310,7 @@ function NewGoodsAgingBar({ byAge }) {
   if (total === 0) return null
 
   return (
-    <div style={{ background: '#fff', borderRadius: 10, border: `1px solid ${C.border}`, padding: '14px 18px', marginBottom: 20 }}>
+    <div style={{ background: 'var(--surface)', borderRadius: 10, border: `1px solid ${C.border}`, padding: '14px 18px', marginBottom: 20 }}>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.inkLight, marginBottom: 12 }}>New Goods aging by order date</div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 110 }}>
         {order.filter(b => (byAge.buckets[b] || 0) > 0).map(b => {

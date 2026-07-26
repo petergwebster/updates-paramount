@@ -49,7 +49,7 @@ export default function StubPage({ title, eyebrow, description, note }) {
       </div>
 
       <div style={{
-        background: 'white',
+        background: 'var(--surface)',
         border: '1px dashed var(--ink-20)',
         borderRadius: 8,
         padding: '60px 40px',

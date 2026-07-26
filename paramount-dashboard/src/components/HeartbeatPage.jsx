@@ -882,7 +882,7 @@ const PP_PILL_TONES = {
 
 const PP_STYLES = {
   card: {
-    background: '#fff',
+    background: 'var(--surface)',
     border: `1px solid ${PP_COLORS.linen}`,
     borderRadius: 6,
     padding: '1.5rem',
@@ -1162,7 +1162,7 @@ const SP_STYLES = {
     marginTop: '0.5rem',
   },
   card: {
-    background: '#fff',
+    background: 'var(--surface)',
     border: `1px solid ${SP_COLORS.linen}`,
     borderRadius: 6,
     padding: '1.25rem',
@@ -2043,7 +2043,7 @@ function OperatorScorecard({ label, sublabel, accent, operators, showColorYards 
 
   return (
     <div style={{
-      background: '#fff',
+      background: 'var(--surface)',
       border: `1px solid ${PP_COLORS.linen}`,
       borderRadius: 6,
       padding: '1.25rem',
@@ -2294,7 +2294,7 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
   }
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${dgLinen}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${dgLinen}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
       <div style={{ padding: '10px 14px', background: dgPaper, borderBottom: `1px solid ${dgLinen}`, fontSize: 12, fontWeight: 700, color: dgInk, fontFamily: 'Georgia,serif', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: accent }} />
         {label}
@@ -2323,7 +2323,7 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
         const isSecond = r.shift === '2nd'
         return (
           <div key={`${r.table.code}|${r.shift}`} style={{ display: 'grid', gridTemplateColumns: `130px repeat(${DG_DAYS.length}, 1fr) 90px`, gap: 1, background: dgLinen, padding: '0 1px' }}>
-            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: dgInk }}>
+            <div style={{ background: 'var(--surface)', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: dgInk }}>
               {r.table.label || r.table.code}
               {isSecond && <span style={{ color: dgGold, fontWeight: 700 }}> · 2nd</span>}
             </div>
@@ -2334,7 +2334,7 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
                 : c.plan > 0 && Math.abs(delta) / c.plan < 0.15 ? dgGold
                 : delta < 0 ? dgRose : dgGold
               return (
-                <div key={idx} style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>
+                <div key={idx} style={{ background: 'var(--surface)', padding: '6px 8px', fontSize: 10, textAlign: 'center' }}>
                   <div style={{ color: dgInkMid }}>
                     {c.plan != null ? fmt(c.plan) : '—'}
                     <span style={{ color: dgInkLite }}> / </span>
@@ -2350,7 +2350,7 @@ function DayGrid({ label, site, tables, assignments, dailyOps, accent }) {
                 </div>
               )
             })}
-            <div style={{ background: '#fff', padding: '6px 8px', fontSize: 10, textAlign: 'right' }}>
+            <div style={{ background: 'var(--surface)', padding: '6px 8px', fontSize: 10, textAlign: 'right' }}>
               <div style={{ color: dgInkMid }}>
                 {fmt(weekPlan)} <span style={{ color: dgInkLite }}>/</span> <span style={{ color: dgInk, fontWeight: 700 }}>{fmt(weekActual)}</span>
               </div>
@@ -2410,7 +2410,7 @@ function RecentNotes({ dailyOps }) {
   if (notes.length === 0) {
     return (
       <div style={{
-        background: '#fff', border: `1px solid ${rnLinen}`, borderRadius: 10,
+        background: 'var(--surface)', border: `1px solid ${rnLinen}`, borderRadius: 10,
         padding: '20px 18px', fontSize: 13, color: rnInkLite, fontStyle: 'italic',
       }}>
         No notes yet for this week. Notes appear here as Sami, Wendy, and Chandler add them in Live Ops.
@@ -2422,7 +2422,7 @@ function RecentNotes({ dailyOps }) {
   const siteShort = { passaic: 'Passaic', bny: 'BNY' }
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${rnLinen}`, borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${rnLinen}`, borderRadius: 10, overflow: 'hidden' }}>
       {notes.map((n, i) => (
         <div key={i} style={{
           padding: '12px 16px',

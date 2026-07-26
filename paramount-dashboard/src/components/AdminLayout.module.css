@@ -2,7 +2,7 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 28px 24px 80px;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
 }
 
 /* ── Page header ─────────────────────────────────────────────────────────── */
@@ -140,7 +140,7 @@
 
 .systemTitle {
   margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
   color: var(--ink);

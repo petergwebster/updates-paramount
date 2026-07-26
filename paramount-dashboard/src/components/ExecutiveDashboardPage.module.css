@@ -27,7 +27,7 @@
 
 .title {
   margin: 0 0 6px;
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-display);
   font-size: 32px;
   font-weight: 700;
   color: var(--ink);
@@ -35,7 +35,7 @@
 }
 
 .fiscalLabel {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: 13px;
   color: var(--ink-40);
   font-style: italic;
@@ -57,7 +57,7 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--ink);
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .preparedSub {
@@ -65,7 +65,7 @@
   color: var(--ink-40);
   font-style: italic;
   margin-top: 2px;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 /* ── KPI Status Strip ─────────────────────────────────────────────── */

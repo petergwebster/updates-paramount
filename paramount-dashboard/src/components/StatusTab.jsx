@@ -190,7 +190,7 @@ export default function StatusTab() {
       </div>
 
       {/* Site toggle + week nav */}
-      <div style={{ marginBottom: 16, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: 16, padding: '12px 16px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 6 }}>
           <SiteChip active={site === 'passaic'} onClick={() => setSite('passaic')} color={C.navy}>Passaic · Screen Print</SiteChip>
           <SiteChip active={site === 'bny'} onClick={() => setSite('bny')} color={C.amber}>BNY · Digital</SiteChip>
@@ -244,7 +244,7 @@ function ByPoView({ rows, totals, showCY, weekLabelText }) {
     : 'minmax(220px, 2fr) 120px 100px 100px 100px 150px'
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
       {/* Summary strip */}
       <div style={{ padding: '12px 16px', background: C.parchment, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <SummaryStat label="POs" value={`${totals.complete} / ${totals.count} complete`} />
@@ -278,7 +278,7 @@ function PoRow({ r, showCY, gridCols, zebra }) {
   const over = r.recYards > r.schedYards && r.schedYards > 0
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, alignItems: 'center', background: zebra ? C.cream : '#fff' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, alignItems: 'center', background: zebra ? C.cream : 'var(--surface)' }}>
       {/* PO + description + progress bar */}
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.desc}</div>
@@ -473,7 +473,7 @@ function MaterialCard({ c, days }) {
   const H = 74
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${c.color}`, borderRadius: 10, padding: '14px 16px' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderLeft: `3px solid ${c.color}`, borderRadius: 10, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, fontFamily: 'Georgia,serif' }}>{c.label}</span>
         <span style={{ fontSize: 10, color: C.inkLight }}>{c.pos.size} PO{c.pos.size !== 1 ? 's' : ''}</span>

@@ -349,7 +349,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
       </div>
 
       {/* Site toggle + week + day navigators */}
-      <div style={{ marginBottom: 20, padding: '12px 16px', background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10 }}>
+      <div style={{ marginBottom: 20, padding: '12px 16px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10 }}>
         {/* Row 1: site toggle + Today */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -438,7 +438,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
       )}
 
       {!loading && (
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
           {tables.map((t, i) => {
             const isPassaic = site === 'passaic'
             const firstCell  = rowsByCell[`${t.code}|1st`]
@@ -511,7 +511,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   <div style={{
                     marginTop: -1,
                     padding: '0 16px 8px 16px',
-                    background: '#fff',
+                    background: 'var(--surface)',
                     borderBottom: `1px solid ${C.border}`,
                     position: 'relative',
                   }}>
@@ -628,7 +628,7 @@ function DayTotals({ site, dayOfWeek, dayLabel, dailyOps, opLines, assignments }
 
 function TotalsCard({ eyebrow, accent, yards, waste, wastePct, cy, note }) {
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 16px' }}>
+    <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderLeft: `3px solid ${accent}`, borderRadius: 8, padding: '12px 16px' }}>
       <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.inkLight, marginBottom: 8 }}>
         {eyebrow}
       </div>
@@ -1004,7 +1004,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Operator 1</label>
         <select value={op1} onChange={e => setOp1(e.target.value)}
-          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, background: '#fff', boxSizing: 'border-box' }}>
+          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, background: 'var(--surface)', boxSizing: 'border-box' }}>
           <option value="">— pick —</option>
           {operatorList.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -1014,7 +1014,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       <div>
         <label style={{ fontSize: 9, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Operator 2</label>
         <select value={op2} onChange={e => setOp2(e.target.value)}
-          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, background: '#fff', boxSizing: 'border-box' }}>
+          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, background: 'var(--surface)', boxSizing: 'border-box' }}>
           <option value="">— pick —</option>
           {operatorList.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -1089,7 +1089,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
             {poOptions.length > 0 ? (
               <select value={lineKeyOf(l)} onChange={e => pickPO(l._key, e.target.value)} disabled={!canEnterActuals}
-                style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: '#fff', boxSizing: 'border-box' }}>
+                style={{ width: '100%', padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 11, background: 'var(--surface)', boxSizing: 'border-box' }}>
                 {/* Ramon's request: show the planned yards (and color-yards on
                     Passaic) right in the dropdown, so the floor can see what the
                     job was scheduled for while entering what actually ran. */}
@@ -1183,7 +1183,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       {notesScope && (
         <div onClick={(e) => e.target === e.currentTarget && setNotesScope(null)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 12, width: 'min(640px, 94vw)', maxHeight: '92vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <div style={{ padding: '14px 18px', background: C.navy, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'Georgia,serif' }}>
@@ -1215,7 +1215,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   <div key={n._key} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, background: C.warm }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <select value={n.category} onChange={e => updateNote(n._key, { category: e.target.value })}
-                        style={{ padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#fff', color: C.ink, cursor: 'pointer' }}>
+                        style={{ padding: '5px 8px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'var(--surface)', color: C.ink, cursor: 'pointer' }}>
                         {NOTE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <div style={{ flex: 1 }} />
@@ -1225,7 +1225,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                     <textarea value={n.note_text} onChange={e => updateNote(n._key, { note_text: e.target.value })}
                       autoFocus={idx === notesInScope.length - 1}
                       rows={3} placeholder="What happened — waste cause, setup issue, interruption…"
-                      style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 64, lineHeight: 1.5, background: '#fff' }} />
+                      style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', minHeight: 64, lineHeight: 1.5, background: 'var(--surface)' }} />
                   </div>
                 ))}
                 <button onClick={addNote}
@@ -1241,7 +1241,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                     Assign to (optional)
                   </label>
                   <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: C.ink, cursor: 'pointer' }}>
+                    style={{ width: '100%', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: 'var(--surface)', color: C.ink, cursor: 'pointer' }}>
                     <option value="">— No assignment —</option>
                     {NOTE_ASSIGNEES.map(name => (
                       <option key={name} value={name}>{name}</option>
@@ -1415,7 +1415,7 @@ function KpiCard({
   const hasData = primary > 0 || emptyOK
   return (
     <div style={{
-      background: '#fff',
+      background: 'var(--surface)',
       border: `1px solid ${C.border}`,
       borderLeft: `3px solid ${accent}`,
       borderRadius: 8,

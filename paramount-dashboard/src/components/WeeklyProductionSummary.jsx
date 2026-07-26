@@ -125,7 +125,7 @@ export default function WeeklyProductionSummary({ authUser }) {
         <label style={{ fontSize: 11, fontWeight: 700, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', flexDirection: 'column', gap: 4 }}>
           Week
           <select value={weekKey} onChange={e => { setWeekKey(e.target.value); reset() }} disabled={busy}
-            style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, fontWeight: 400, color: C.ink, background: '#fff', minWidth: 210 }}>
+            style={{ padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, fontWeight: 400, color: C.ink, background: 'var(--surface)', minWidth: 210 }}>
             {weekOptions.map(w => <option key={w.key} value={w.key}>{w.label}</option>)}
           </select>
         </label>
@@ -176,7 +176,7 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
             {isSaving ? 'Saving…' : unsaved ? 'Unsaved changes' : lastSaveAt ? `Saved ${format(new Date(lastSaveAt), 'h:mm a')}` : 'Draft'}
           </span>
           <button onClick={onSave} disabled={isSaving}
-            style={{ padding: '8px 16px', background: unsaved ? '#fff' : 'rgba(255,255,255,0.2)', color: unsaved ? C.navy : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ padding: '8px 16px', background: unsaved ? 'var(--surface)' : 'rgba(255,255,255,0.2)', color: unsaved ? C.navy : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Save &amp; Lock
           </button>
         </div>
@@ -374,7 +374,7 @@ function HistoryList({ items, weekLabel, loadedFromId, onLoad }) {
           const active = loadedFromId === it.id
           return (
             <div key={it.id} onClick={() => onLoad(it.id)}
-              style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, background: active ? '#fff' : 'transparent', border: `1px solid ${active ? C.border : 'transparent'}` }}>
+              style={{ cursor: 'pointer', padding: '6px 8px', borderRadius: 6, background: active ? 'var(--surface)' : 'transparent', border: `1px solid ${active ? C.border : 'transparent'}` }}>
               <div style={{ fontSize: 12, color: C.ink }}>
                 {it.saved_at ? format(new Date(it.saved_at), 'MMM d · h:mm a') : '—'}
                 {active && <span style={{ fontSize: 10, color: C.green, fontWeight: 700 }}> · VIEWING</span>}

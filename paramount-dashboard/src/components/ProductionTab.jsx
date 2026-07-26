@@ -187,8 +187,8 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
   const GREEN    = '#2E7D32'
   const AMBER    = '#E65100'
   const RED      = '#C62828'
-  const CREAM    = '#FAF7F2'
-  const BORDER   = '#E8DDD0'
+  const CREAM    = 'var(--ink-5)'
+  const BORDER   = 'var(--border)'
 
   const fmtN  = n => n!==null&&n!==undefined ? Number(n).toLocaleString() : '—'
   const pctC  = p => p===null ? LIGHT : p>=95 ? GREEN : p>=80 ? AMBER : RED
@@ -259,7 +259,7 @@ export async function generateLiveOpsPDF({ data, dayCols, totals, budget, facili
 
     for (const sec of data.sections) {
       checkPage(60)
-      doc.setFillColor('#E8DDD0'); doc.rect(L, y, PW, 16, 'F')
+      doc.setFillColor('var(--border)'); doc.rect(L, y, PW, 16, 'F')
       setFont(8, '#5C4F47', true)
       doc.text(`>> ${sec.label}`, L+6, y+11)
       y += 16
@@ -435,7 +435,7 @@ function Bubble({ label, value, sub, color }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', background:'rgba(255,255,255,0.06)', borderRadius:7, padding:'7px 12px', minWidth:88, gap:1 }}>
       <div style={{ fontSize:9, color:'rgba(212,168,67,0.65)', fontWeight:'bold', letterSpacing:'0.07em', textTransform:'uppercase', whiteSpace:'nowrap' }}>{label}</div>
-      <div style={{ fontSize:15, fontWeight:'bold', color:color||'#FAF7F2', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
+      <div style={{ fontSize:15, fontWeight:'bold', color:color||'var(--ink-5)', fontFamily:'Georgia, serif', whiteSpace:'nowrap', lineHeight:1.2 }}>{value}</div>
       {sub && <div style={{ fontSize:9, color:'rgba(250,247,242,0.45)', whiteSpace:'nowrap', marginTop:1 }}>{sub}</div>}
     </div>
   )
@@ -537,9 +537,9 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
 
   return (
     <div style={{marginBottom:20}}>
-      <div style={{background:'#E8DDD0',padding:'6px 12px',fontWeight:'bold',fontSize:12,color:'#5C4F47',letterSpacing:'0.05em',textTransform:'uppercase',borderRadius:'4px 4px 0 0'}}>▸ {sec.label}</div>
+      <div style={{background:'var(--border)',padding:'6px 12px',fontWeight:'bold',fontSize:12,color:'#5C4F47',letterSpacing:'0.05em',textTransform:'uppercase',borderRadius:'4px 4px 0 0'}}>▸ {sec.label}</div>
       <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,background:'#fff',border:'1px solid #E8DDD0'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,background:'var(--surface)',border:'1px solid #E8DDD0'}}>
           <thead>
             <tr>
               <th style={{background:'#2C2420',color:'#D4A843',padding:'7px 12px',textAlign:'left',fontSize:11,fontWeight:'bold',minWidth:130,position:'sticky',left:0}}>Machine / Table</th>
@@ -556,7 +556,7 @@ function SectionTable({sec, dayDates, dayCols, todayIdx, daysIn, satDate, sunDat
           </thead>
           <tbody>
             {sec.machines.map((m,mi)=>{
-              const bg=mi%2===0?'#fff':'#FAF7F2'
+              const bg=mi%2===0?'#fff':'var(--ink-5)'
               const fullSched = m.wkSched+(m.satSched||0)+(m.sunSched||0)
               const fullActual = m.wkActual!==null||m.satActual!==null||m.sunActual!==null
                 ? (m.wkActual||0)+(m.satActual||0)+(m.sunActual||0) : null
@@ -662,7 +662,7 @@ export function OperatorScorecard({ops, facility}) {
     <div style={{marginTop:32}}>
       <div style={{fontSize:16,fontWeight:'bold',color:'#2C2420',marginBottom:4,fontFamily:'Georgia, serif'}}>Operator Scorecard · {facility}</div>
       <div style={{fontSize:13,color:'#9C8F87',marginBottom:16}}>Ranked by yards produced this week</div>
-      <div style={{background:'#fff',border:'1px solid #E8DDD0',borderRadius:8,overflow:'hidden'}}>
+      <div style={{background:'var(--surface)',border:'1px solid #E8DDD0',borderRadius:8,overflow:'hidden'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead>
             <tr style={{background:'#2C2420'}}>
@@ -680,7 +680,7 @@ export function OperatorScorecard({ops, facility}) {
               const barPct=Math.round(d.yds/maxYds*100)
               const medal=idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':null
               return (
-                <tr key={name} style={{background:idx%2===0?'#fff':'#FAF7F2'}}>
+                <tr key={name} style={{background:idx%2===0?'var(--surface)':'var(--ink-5)'}}>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',color:'#9C8F87',textAlign:'center',fontWeight:'bold'}}>{medal||idx+1}</td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',color:'#2C2420',fontWeight:idx<3?'bold':'normal'}}>{name}</td>
                   <td style={{padding:'8px 12px',borderBottom:'1px solid #F2EDE4',textAlign:'right',fontWeight:'bold',color:'#2C2420'}}>{fmt(d.yds)}</td>
@@ -814,7 +814,7 @@ export function BNYTab({ weekStart }) {
   const printerStats = calcPrinterStats(digital?.ops)
 
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
       <FacilityKPIBar totals={digitalT} budget={DIGITAL_BUDGET} facilityLabel="Digital — Brooklyn + Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
@@ -842,7 +842,7 @@ export function PassaicTab({ weekStart }) {
   const printerStats = calcPrinterStats(hs?.ops)
 
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
       <FacilityKPIBar totals={hsT} budget={HS_BUDGET} facilityLabel="Hand Screen — Passaic"
         printerStats={printerStats} weekNum={weekNum} weekInfo={weekInfo}
         todayLabel={todayLabel} onRefresh={reload} loading={loading} lastRefresh={lastRefresh}/>
@@ -867,7 +867,7 @@ export function PassaicTab({ weekStart }) {
 export default function ProductionTab({ weekStart }) {
   const { digital, hs, loading, error, todayIdx } = useProductionData(weekStart)
   return (
-    <div style={{fontFamily:'Georgia, serif', background:'#FAF7F2', minHeight:'100vh'}}>
+    <div style={{fontFamily:'Georgia, serif', background:'var(--ink-5)', minHeight:'100vh'}}>
       <div style={{padding:'24px'}}>
         {error   && <div style={{background:'#FFF3E0',border:'1px solid #FFB74D',borderRadius:8,padding:16,color:'#E65100',marginBottom:16}}>⚠ {error}</div>}
         {loading && <div style={{color:'#9C8F87',padding:40,textAlign:'center',fontSize:14}}>Loading...</div>}

@@ -79,7 +79,7 @@
 .dot_inPrep  { background: var(--amber); }
 .dot_blocked { background: var(--red); }
 .legendNum {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink, #212A31);
   letter-spacing: -0.01em;
@@ -130,7 +130,7 @@
   font-weight: 600;
 }
 .detailRowYds {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-weight: 700;
   color: var(--ink, #212A31);
   letter-spacing: -0.01em;
@@ -139,12 +139,12 @@
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
   font-size: 10px;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .empty {
   font-size: 11px;
   color: var(--ink-30, #8E9A9F);
   font-style: italic;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
 }
