@@ -42,34 +42,38 @@
 
 export const C = {
   // ── Base surfaces ──────────────────────────────────────────────────────
-  cream:     '#D3D9D4',  // page background (was #FAF7F2)
-  parchment: '#E8EBE9',  // card / section backgrounds (was #F2EDE4)
-  warm:      '#BDC4BF',  // disabled buttons / muted fills (was #E8DDD0)
-  border:    '#A6AEA8',  // card borders, dividers (was #DDD4C8)
+  cream:     '#1A1D21',  // page background — dark (mirrors --paper)
+  parchment: '#23272C',  // card / section backgrounds (mirrors --surface)
+  warm:      '#2E3238',  // disabled buttons / muted fills
+  border:    '#3A3F46',  // card borders, dividers
 
   // ── Text ───────────────────────────────────────────────────────────────
-  ink:       '#212A31',  // primary text + active state backgrounds (was #2C2420)
-  inkMid:    '#2E3944',  // secondary text, subheaders (was #5C4F47)
-  inkLight:  '#748D92',  // tertiary text, captions (was #9C8F87)
+  // NOTE: `ink` doubles as an ACTIVE-STATE BACKGROUND in several components
+  // (selected site cards, active pills). Because `ink` and `cream` both flipped,
+  // the usual ink-background / cream-text pairing still reads correctly — it is
+  // simply inverted: a light chip on a dark page rather than the reverse.
+  ink:       '#E9E7E2',  // primary text + active state backgrounds
+  inkMid:    '#ADB2B8',  // secondary text, subheaders
+  inkLight:  '#848A91',  // tertiary text, captions
 
   // ── Accent slots — REMAPPED to single-teal Cosmic identity ────────────
   // Pre-Path-A these were distinct colors per destination. Now all destination
   // accents resolve to teal variants. Status loudness is preserved separately.
-  navy:        '#124E66',   // Performance/scheduled (was #1E3A5F royal blue)
-  navyLight:   '#D9E2E5',   // light teal-tinted bg (was #E8EEF5)
-  gold:        '#2E3944',   // Operations chrome — collapsed to slate (was #B8860B)
-  goldLight:   '#748D92',   // (was #D4A843)
-  goldBg:      '#E8EBE9',   // (was #FDF8EC) — soft Cosmic parchment
-  slate:       '#2E3944',   // unchanged purpose, Cosmic-aligned (was #4A5568)
-  slateBg:     '#E8EBE9',   // (was #EDF2F7)
+  navy:        '#3E8FA8',   // scheduled / primary accent — lifted teal
+  navyLight:   '#1C2E35',   // teal-tinted panel bg
+  gold:        '#ADB2B8',   // Operations chrome — slate
+  goldLight:   '#848A91',
+  goldBg:      '#23272C',
+  slate:       '#ADB2B8',
+  slateBg:     '#23272C',
 
   // ── Status colors — kept LOUD per design directive ─────────────────────
   // These power aging cards (60/90/90+), Plant Pulse miss bars, status pills,
   // and anywhere operational signal matters more than visual cohesion.
   // Hex values match prior Couture so behavior in status contexts is identical.
-  sage:    '#0F7A4E', sageBg:  '#E6F2EA',   // emerald — Ready / on-track / good
-  amber:   '#A87A2E', amberBg: '#FCF3DC',   // amber — May be late / awaiting / warn
-  rose:    '#C12B1A', roseBg:  '#FCE2DE',   // crimson — Late / on hold / misses / bad
+  sage:    '#55A47C', sageBg:  '#1C2E24',   // emerald — Ready / on-track / good
+  amber:   '#D6A250', amberBg: '#2E2617',   // amber — May be late / awaiting / warn
+  rose:    '#D96F63', roseBg:  '#2E1C19',   // crimson — Late / on hold / misses / bad
 }
 
 // ─── Named accent exports ─────────────────────────────────────────────────
@@ -77,22 +81,22 @@ export const C = {
 // from these names (rather than C.X) makes intent explicit at the call site.
 
 // Destination accents — single-teal Cosmic identity
-export const ACCENT_PERF       = '#124E66'   // Performance — deep teal
-export const ACCENT_HEART      = '#0E3D52'   // Heartbeat   — darker teal (distinguishable)
-export const ACCENT_OPS        = '#2E3944'   // Operations  — charcoal slate
-export const ACCENT_TEAL       = '#124E66'   // generic accent alias
-export const ACCENT_DEEP_TEAL  = '#0E3D52'   // generic deep alias
+export const ACCENT_PERF       = '#3E8FA8'   // Finance    — mid teal
+export const ACCENT_HEART      = '#2E7D9A'   // Pulse      — deeper teal
+export const ACCENT_OPS        = '#7A8088'   // Operations — slate
+export const ACCENT_TEAL       = '#3E8FA8'   // generic accent alias
+export const ACCENT_DEEP_TEAL  = '#2E7D9A'   // generic deep alias
 
 // Status loudness tokens — same hex as C.sage / C.amber / C.rose, named for intent
-export const STATUS_GOOD       = '#0F7A4E'   // emerald
-export const STATUS_GOOD_BG    = '#E6F2EA'
-export const STATUS_GOOD_BORDER= '#9DCAB1'
-export const STATUS_WARN       = '#A87A2E'   // amber
-export const STATUS_WARN_BG    = '#FCF3DC'
-export const STATUS_WARN_BORDER= '#E5C883'
-export const STATUS_BAD        = '#C12B1A'   // crimson
-export const STATUS_BAD_BG     = '#FCE2DE'
-export const STATUS_BAD_BORDER = '#E8A0A0'
+export const STATUS_GOOD       = '#55A47C'   // emerald
+export const STATUS_GOOD_BG    = '#1C2E24'
+export const STATUS_GOOD_BORDER= '#2F5C43'
+export const STATUS_WARN       = '#D6A250'   // amber
+export const STATUS_WARN_BG    = '#2E2617'
+export const STATUS_WARN_BORDER= '#5C4A24'
+export const STATUS_BAD        = '#D96F63'   // crimson
+export const STATUS_BAD_BG     = '#2E1C19'
+export const STATUS_BAD_BORDER = '#5C2F2B'
 
 
 // ─── Number / money formatters ─────────────────────────────────────────────
