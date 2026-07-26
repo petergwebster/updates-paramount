@@ -149,7 +149,8 @@ export default function VenaPnLTab() {
             borderBottom: '1px solid var(--border)' },
     thL:  { textAlign: 'left' },
     td:   { padding: '6px 12px', textAlign: 'right', fontSize: 13,
-            fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+            fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+            borderBottom: '1px solid var(--ink-10)' },
     tdL:  { textAlign: 'left', fontSize: 13 },
     note: { fontSize: 12, color: 'var(--ink-60)', marginTop: 18, lineHeight: 1.6 },
   }
@@ -165,7 +166,8 @@ export default function VenaPnLTab() {
     const share  = revenueLine?.actual ? pct(actual, revenueLine.actual) : null
     return [
       <td key="l" style={{ ...S.td, ...S.tdL, fontWeight: strong ? 600 : 400,
-                           paddingLeft: strong ? 12 : 30 }}>
+                           paddingLeft: strong ? 12 : 30,
+                           borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>
         {detailCount ? <span style={{ color: 'var(--ink-40)', marginRight: 7, fontSize: 10 }}>
           {isOpen ? '▾' : '▸'}</span> : null}
         {label}
@@ -173,7 +175,8 @@ export default function VenaPnLTab() {
         {detailCount && !isOpen ? <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 10 }}>
           {detailCount} lines</span> : null}
       </td>,
-      <td key="a" style={{ ...S.td, fontWeight: strong ? 600 : 400 }}>{fmt(actual)}</td>,
+      <td key="a" style={{ ...S.td, fontWeight: strong ? 600 : 400,
+                           borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(actual)}</td>,
       <td key="f" style={S.td}>{fmt(fc)}</td>,
       <td key="p" style={S.td}>{fmt(pl)}</td>,
       <td key="y" style={S.td}>{fmt(py)}</td>,
@@ -193,20 +196,19 @@ export default function VenaPnLTab() {
     const out = []
     if (blk.summary && blk.detail.length) {
       out.push(
-        <tr key={key + '-s'} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+        <tr key={key + '-s'} style={{ cursor: 'pointer' }}
             onClick={() => setOpen(o => ({ ...o, [key]: !o[key] }))}>
           {lineCells(blk.summary, true, isOpen, blk.detail.length)}
         </tr>)
       if (isOpen) blk.detail.forEach(l => out.push(
-        <tr key={l.key} style={{ borderBottom: '1px solid var(--ink-10)', background: 'var(--ink-3)' }}>
+        <tr key={l.key} style={{ background: 'var(--ink-3)' }}>
           {lineCells(l, false)}
         </tr>))
     } else if (blk.summary) {
-      out.push(<tr key={key + '-s'} style={{ borderBottom: '1px solid var(--border)' }}>
-        {lineCells(blk.summary, true)}</tr>)
+      out.push(<tr key={key + '-s'}>{lineCells(blk.summary, true)}</tr>)
     } else {
       blk.detail.forEach(l => out.push(
-        <tr key={l.key} style={{ borderBottom: '1px solid var(--ink-10)' }}>{lineCells(l, false)}</tr>))
+        <tr key={l.key}>{lineCells(l, false)}</tr>))
     }
     return out
   }
@@ -263,7 +265,10 @@ export default function VenaPnLTab() {
         </div>
       ) : (
         <>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          {/* border-collapse: separate is REQUIRED — `collapse` silently breaks
+              position: sticky on <th> in every browser. Row borders therefore
+              live on the cells, not the <tr>. */}
+          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={{ ...S.th, ...S.thL }}>Line</th>

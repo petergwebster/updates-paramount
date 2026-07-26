@@ -97,6 +97,12 @@ export default function FinancialTab({ weekStart }) {
   // only trusts it when its key matches the currently-selected (month, week) -- so a stale
   // response from rapid week-scrolling is simply never displayed (race-proof by construction).
   const [data, setData]         = useState({ key: null, mtd: [], ytd: [], aging: [] })
+  // Third-party vs FSCO intercompany split of AR receipts. NOT available from
+  // finance_rollup, which aggregates by category and business unit only — so it
+  // is fetched separately. This matters because most "cash in" is FSCO paying
+  // itself: July 2026 was $1,085,556 intercompany against $95,450 of real
+  // third-party money. A single "net cash flow" number hides that entirely.
+  const [cashSplit, setCashSplit] = useState({ key: null, third: 0, inter: 0 })
   const [loading, setLoading]   = useState(false)
   const [narrative, setNarrative] = useState('')
   const [genBusy, setGenBusy]   = useState(false)
@@ -178,6 +184,23 @@ export default function FinancialTab({ weekStart }) {
       ytd: roll.filter(r => r.scope === 'YTD'),
       aging: agRes.data || [],
     })
+
+    // AR receipts split by counterparty. Every FSCO entity is named
+    // "F. SCHUMACHER & CO - <something>", so the match is reliable.
+    try {
+      const { data: rcv } = await supabase.from('financial_transactions')
+        .select('master_name,net,fiscal_week')
+        .eq('fiscal_month', fm).eq('source_tab', 'ar_received')
+      let third = 0, inter = 0
+      for (const r of (rcv || [])) {
+        if (wk !== 99 && (r.fiscal_week || 0) > wk) continue
+        const n = Math.abs(r.net || 0)
+        if (/schumacher|fsco/i.test(r.master_name || '')) inter += n
+        else third += n
+      }
+      setCashSplit({ key, third, inter })
+    } catch { setCashSplit({ key, third: 0, inter: 0 }) }
+
     setLoading(false)
   }
 
@@ -320,9 +343,10 @@ export default function FinancialTab({ weekStart }) {
               <div className={styles.cardSplit}>Material {fmtD(sumWhere(rows,c=>c==='material_inventory'))} · Ink {fmtD(sumWhere(rows,c=>c==='ink'))} · Frt {fmtD(sumWhere(rows,c=>c==='freight'))}</div>
             </div>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>OpEx {scope}</div>
+              <div className={styles.cardLabel}>OpEx purchases {scope}</div>
               <div className={styles.cardVal}>{fmtD(opexTotal(null))}</div>
               <div className={styles.cardSplit}>NJ {fmtD(opexTotal('NJ'))} · BNY {fmtD(opexTotal('BNY'))} · Shared {fmtD(opexTotal('Shared'))}</div>
+              <div style={{fontSize:10,color:'var(--amber)',marginTop:4}}>Purchased OpEx only — excludes payroll. See P&amp;L for full OpEx.</div>
             </div>
             <div className={styles.card}>
               <div className={styles.cardLabel}>CapEx {scope}</div>
@@ -330,9 +354,10 @@ export default function FinancialTab({ weekStart }) {
               <div className={styles.cardSplit}>NJ {fmtD(capex('NJ'))} · BNY {fmtD(capex('BNY'))}</div>
             </div>
             <div className={styles.card}>
-              <div className={styles.cardLabel}>Net Cash Flow {scope}</div>
-              <div className={styles.cardVal}>{fmtD(Math.abs(arRecv) - apPaid)}</div>
-              <div className={styles.cardSplit}>AR in {fmtD(Math.abs(arRecv))} · AP out {fmtD(apPaid)}</div>
+              <div className={styles.cardLabel}>3rd-party receipts {scope}</div>
+              <div className={styles.cardVal}>{fmtD(cashSplit.key === currentKey ? cashSplit.third : null)}</div>
+              <div className={styles.cardSplit}>Intercompany {fmtD(cashSplit.key === currentKey ? cashSplit.inter : null)} · AP out {fmtD(apPaid)}</div>
+              <div style={{fontSize:10,color:'var(--amber)',marginTop:4}}>Money from outside FSCO. Not net cash — payroll is not in this feed.</div>
             </div>
           </div>
 
@@ -385,7 +410,7 @@ export default function FinancialTab({ weekStart }) {
 
           {/* Cash flow strip */}
           <div className={styles.section}>
-            <div className={styles.sectionTitle}>Cash Flow -- AR In / AP Out</div>
+            <div className={styles.sectionTitle}>Cash Flow -- AR In / AP Out <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>· AR received includes FSCO intercompany</span></div>
             <div style={{display:'flex',flexWrap:'wrap'}}>
               {[
                 ['AR Invoiced', arInv, false],
