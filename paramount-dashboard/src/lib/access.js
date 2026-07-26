@@ -2,7 +2,7 @@
  * access.js — central source of truth for who can access what.
  *
  * Two concepts:
- *   1. Destination access: which of {performance, operations} a user can enter
+ *   1. Destination access: which of {finance, operations} a user can enter
  *   2. Super-admin: who can access User Management (only Peter)
  *
  * Roles (set in profiles.role column):
@@ -27,7 +27,7 @@ export const SUPER_ADMIN_EMAIL = 'pwebster@fsco.com'
 /**
  * Returns the array of destinations a user can access.
  * @param {object} profile - row from `profiles` table
- * @returns {string[]} - subset of ['performance', 'operations']
+ * @returns {string[]} - subset of ['finance', 'operations']
  */
 export function destinationsFor(profile) {
   if (!profile) return []
@@ -36,7 +36,7 @@ export function destinationsFor(profile) {
   switch (profile.role) {
     case 'admin':
     case 'exec':
-      return ['performance', 'operations']
+      return ['finance', 'operations']
     case 'manager':
     case 'qa':
       return ['operations']
@@ -66,13 +66,13 @@ export function isSuperAdmin(authUser) {
  * Display metadata for each destination — used by LandingPage and DestinationNav.
  */
 export const DESTINATIONS = {
-  performance: {
-    id: 'performance',
-    name: 'Paramount Performance',
-    shortName: 'Performance',
-    mission: 'Mission Control · The Journey',
-    tagline: 'Our journey to the moon. The weekly results, the quarterly arc, the score on the board.',
-    accessSummary: 'Recap · Financials · People · Inventory',
+  finance: {
+    id: 'finance',
+    name: 'Finance',
+    shortName: 'Finance',
+    mission: 'The Numbers · The Close',
+    tagline: 'The P&L as closed, the spend behind it, and the reports that go out.',
+    accessSummary: 'P&L · Spend detail · Inventory · Reports',
     accentClass: 'performance',
   },
   operations: {

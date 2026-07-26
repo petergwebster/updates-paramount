@@ -13,6 +13,7 @@ import LoginScreen from './components/LoginScreen'
 import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import VenaPnLTab from './components/VenaPnLTab'
+import FinanceReportsTab from './components/FinanceReportsTab'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -62,13 +63,17 @@ const NJ_DAYS = [
 // Inside each destination, the tab structure is destination-specific.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PERFORMANCE_TABS = [
-  { id: 'pnl',        label: 'P&L', isNew: true },  // Vena monthly close — the authoritative P&L
-  { id: 'dashboard',  label: 'Recap'      },  // weekly recap (was: Dashboard in exec mode)
-  { id: 'capacity',   label: 'Dashboard'  },  // rich capacity/MTD/YTD view (ProductionDashboard)
-  { id: 'financials', label: 'Financials' },
-  { id: 'people',     label: 'People'     },
-  { id: 'inventory',  label: 'Inventory', isNew: true },
+// Finance tab order: the closed P&L first, then the spend behind it, then the
+// stock it bought, then what goes out. Recap and Capacity are no longer tabs —
+// they live inside Reports, because that is what they are.
+// AR/AP still sits inside Spend detail (FinancialTab); splitting it into its own
+// tab is a follow-up, not a fiction to add here before it exists.
+const FINANCE_TABS = [
+  { id: 'pnl',        label: 'P&L', isNew: true },
+  { id: 'spend',      label: 'Spend detail' },
+  { id: 'inventory',  label: 'Inventory' },
+  { id: 'people',     label: 'People' },
+  { id: 'reports',    label: 'Reports' },
 ]
 
 // Operations tab order reflects the actual flow:
@@ -95,8 +100,8 @@ const QA_OPERATIONS_TABS = [
  * Default tab to land on when entering a destination.
  */
 function defaultTabFor(destination, role) {
-  if (destination === 'performance') return 'dashboard'
-  if (destination === 'operations')  return 'pulse'
+  if (destination === 'finance')    return 'pnl'
+  if (destination === 'operations') return 'pulse'
   return null
 }
 
@@ -104,8 +109,8 @@ function defaultTabFor(destination, role) {
  * Tab list for the current destination.
  */
 function tabsFor(destination, role) {
-  if (destination === 'performance') return PERFORMANCE_TABS
-  if (destination === 'operations')  return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
+  if (destination === 'finance')    return FINANCE_TABS
+  if (destination === 'operations') return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
   return []
 }
 
@@ -151,8 +156,8 @@ function getPriorWeekStart() {
 }
 // Pick the right default for a given destination.
 function defaultWeekForDestination(destination) {
-  if (destination === 'performance') return getPriorWeekStart()
-  // operations, heartbeat, landing → current week
+  if (destination === 'finance') return getPriorWeekStart()
+  // operations, landing → current week
   return getCurrentWeekStart()
 }
 function weekKey(date) { return format(date, 'yyyy-MM-dd') }
@@ -429,8 +434,8 @@ export default function App() {
     setInAdmin(v => !v)
   }
 
-  // Week nav is shown in destinations that have a week-based view (Performance recap)
-  const showWeekNav = destination === 'performance' && !inAdmin
+  // Week nav is shown where a week-based view needs it (Finance reports)
+  const showWeekNav = destination === 'finance' && !inAdmin
 
   const fiscalLabel = getFiscalLabel(currentWeek)
   const weekLabel   = `Week of ${format(currentWeek, 'MMMM d, yyyy')}`
@@ -588,34 +593,29 @@ export default function App() {
 
             {!inAdmin && !isOnLanding && (
               <>
-                {/* Performance · P&L — Vena monthly close, the authoritative financial view */}
-                {destination === 'performance' && activeTab==='pnl' && (
+                {/* Finance · P&L — Vena monthly close, the authoritative financial view */}
+                {destination === 'finance' && activeTab==='pnl' && (
                   <VenaPnLTab />
                 )}
-
-                {/* Performance · Recap (the weekly recap) */}
-                {destination === 'performance' && activeTab==='dashboard' && (
-                  <ExecutiveDashboardPage
+                {destination === 'finance' && activeTab==='spend' && (
+                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+                )}
+                {destination === 'finance' && activeTab==='inventory' && (
+                  <InventoryTab profile={userProfile} />
+                )}
+                {destination === 'finance' && activeTab==='people' && (
+                  <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
+                )}
+                {destination === 'finance' && activeTab==='reports' && (
+                  <FinanceReportsTab
                     weekStart={currentWeek}
                     weekData={weekData}
                     dbReady={dbReady}
                     commentProps={commentProps}
                     currentUser={userProfile?.full_name}
                     userId={authUser?.id}
+                    authUser={authUser}
                   />
-                )}
-                {destination === 'performance' && activeTab==='capacity' && (
-                    <ProductionDashboard weekStart={currentWeek} readOnly={true} />
-                  )}
-
-                {destination === 'performance' && activeTab==='financials' && (
-                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
-                )}
-                {destination === 'performance' && activeTab==='people' && (
-                  <PeopleTab weekStart={weekKey(currentWeek)} readOnly={true} {...commentProps}/>
-                )}
-                {destination === 'performance' && activeTab==='inventory' && (
-                  <InventoryTab profile={userProfile} />
                 )}
 
                 {/* Operations · Live Ops, Scheduler, WIP */}
