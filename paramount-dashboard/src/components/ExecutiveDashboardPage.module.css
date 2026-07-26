@@ -139,7 +139,7 @@
 
 /* ── Sub-panel container for ProductionDashboard / KPIScorecard ─── */
 .subPanel {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10);
   border-radius: 8px;
   padding: 20px;

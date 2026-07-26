@@ -79,7 +79,7 @@
 
 /* ── Cards ── */
 .card {
-  background: #fff;
+  background: var(--surface);
   border: 0.5px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
   padding: 1rem 1.25rem;
@@ -220,7 +220,7 @@
 
 .rosterToggle {
   width: 100%;
-  background: #fff;
+  background: var(--surface);
   border: 0.5px solid rgba(0,0,0,0.12);
   border-radius: 12px;
   padding: 14px 1.25rem;
@@ -270,7 +270,7 @@
 
 /* ── Roster body (expanded) ── */
 .rosterBody {
-  background: #fff;
+  background: var(--surface);
   border: 0.5px solid rgba(0,0,0,0.12);
   border-top: none;
   border-radius: 0 0 12px 12px;

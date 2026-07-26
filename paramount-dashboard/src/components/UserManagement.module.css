@@ -59,7 +59,7 @@
 .summaryItem {
   text-align: center;
   padding: 12px 18px;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10, #C5CCC8);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(16,18,24,0.04);
@@ -104,7 +104,7 @@
 
 /* ─── Table ─── */
 .table {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10, #C5CCC8);
   border-radius: 12px;
   overflow: hidden;
@@ -177,7 +177,7 @@
   padding: 6px 8px;
   border: 1px solid var(--ink-20, #A6AEA8);
   border-radius: 6px;
-  background: white;
+  background: var(--surface);
   color: var(--ink, #212A31);
   cursor: pointer;
   width: 100%;
@@ -235,7 +235,7 @@
   font-size: 11px;
   font-weight: 700;
   padding: 6px 12px;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-20, #A6AEA8);
   color: var(--ink, #212A31);
   border-radius: 6px;
@@ -268,7 +268,7 @@
   font-style: normal;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 10px;
-  background: white;
+  background: var(--surface);
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--ink-10, #C5CCC8);
@@ -297,7 +297,7 @@
 }
 
 .modal {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   padding: 28px 32px;
   max-width: 480px;
@@ -336,7 +336,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   border: 1px solid var(--ink-20, #A6AEA8);
-  background: white;
+  background: var(--surface);
   color: var(--ink, #212A31);
   border-radius: 7px;
   cursor: pointer;
@@ -364,7 +364,7 @@
   max-width: 480px;
   margin: 96px auto;
   padding: 32px 36px;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--crimson-light, #FCE2DE);
   border-left: 4px solid var(--crimson, #C12B1A);
   border-radius: 10px;

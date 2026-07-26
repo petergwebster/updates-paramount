@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   border-radius: 8px;
   padding: 14px 18px;
@@ -134,7 +134,7 @@
   gap: 14px;
 }
 .siteCard, .totalCard {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   border-radius: 10px;
   padding: 18px 20px;
@@ -233,7 +233,7 @@
   gap: 18px;
 }
 .catCard {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   border-radius: 10px;
   padding: 22px;
@@ -330,7 +330,7 @@
 .backBtn:hover { color: var(--perf-deep, #0B3A4D); text-decoration: underline; }
 
 .panel {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   border-radius: 10px;
   overflow: hidden;
@@ -357,7 +357,7 @@
   flex-wrap: wrap;
 }
 .chip {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   color: var(--ink, #101218);
   padding: 4px 10px;
@@ -439,7 +439,7 @@
 
 /* ---------- SKU drill ---------- */
 .drill {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--linen, #E8E5DC);
   border-radius: 10px;
   overflow: hidden;
@@ -589,7 +589,7 @@
   text-align: center;
   padding: 48px 24px;
   color: var(--muted, #6B6B72);
-  background: white;
+  background: var(--surface);
   border: 1px dashed var(--linen, #E8E5DC);
   border-radius: 10px;
 }

@@ -45,7 +45,7 @@
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
 .sidebar {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10);
   border-radius: 8px;
   padding: 14px 10px;
@@ -122,7 +122,7 @@
 
 /* ── Content area ────────────────────────────────────────────────────────── */
 .content {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10);
   border-radius: 8px;
   padding: 24px 28px;

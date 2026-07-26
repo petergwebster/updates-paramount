@@ -1,5 +1,5 @@
 .block {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--ink-10);
   border-radius: 10px;
   padding: 22px 26px 18px;
@@ -158,7 +158,7 @@
 .editorTextarea:focus {
   outline: none;
   border-color: var(--ink-40);
-  background: white;
+  background: var(--surface);
 }
 
 .editorActions {
@@ -225,7 +225,7 @@
 }
 
 .modal {
-  background: white;
+  background: var(--surface);
   border-radius: 10px;
   padding: 24px;
   width: 100%;

@@ -7,11 +7,11 @@
 /* Section tabs */
 .sectionTabs { display: flex; gap: 4px; background: var(--ink-5); padding: 4px; border-radius: var(--radius); width: fit-content; }
 .sectionTab { padding: 8px 18px; font-size: 13px; font-weight: 400; border-radius: calc(var(--radius) - 2px); border: none; background: transparent; color: var(--ink-60); cursor: pointer; transition: all 0.15s; }
-.sectionTab:hover { background: white; color: var(--ink); }
-.sectionTabActive { background: white; color: var(--ink); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.sectionTab:hover { background: var(--surface); color: var(--ink); }
+.sectionTabActive { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
 /* Panel */
-.panel { background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; }
 .panelActions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
 .savedMsg { font-size: 13px; color: var(--green); font-weight: 500; }
 
@@ -45,7 +45,7 @@
 .narrativeBlockHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .narrativeBlockTitle { font-size: 14px; font-weight: 500; color: var(--ink); }
 .narrativeBlockSub { font-size: 12px; color: var(--ink-60); margin-top: 2px; }
-.narrativeTextarea { width: 100%; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); resize: vertical; background: white; }
+.narrativeTextarea { width: 100%; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); resize: vertical; background: var(--surface); }
 .generateBtn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 12px; font-weight: 500; background: var(--ink); color: var(--cream); border: none; border-radius: var(--radius); cursor: pointer; white-space: nowrap; transition: all 0.15s; }
 .generateBtn:hover:not(:disabled) { background: var(--ink-80); }
 .generateBtn:disabled { opacity: 0.5; cursor: default; }
@@ -65,13 +65,13 @@
 .kpiInputName { font-size: 13px; font-weight: 500; color: var(--ink); }
 .kpiInputRight { display: flex; align-items: center; gap: 8px; }
 .chevron { font-size: 10px; color: var(--ink-60); }
-.kpiInputExpanded { padding: 12px 14px; border-top: 1px solid var(--border); background: white; }
+.kpiInputExpanded { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface); }
 .kpiDesc { font-size: 12px; color: var(--ink-60); margin-bottom: 6px; }
 .kpiTarget { font-size: 12px; color: var(--ink-60); margin-bottom: 10px; }
 
 /* Status picker */
 .statusPicker { display: flex; gap: 6px; flex-wrap: wrap; }
-.statusBtn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 12px; border-radius: var(--radius); border: 1px solid var(--border); background: white; cursor: pointer; transition: all 0.15s; color: var(--ink-60); }
+.statusBtn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: all 0.15s; color: var(--ink-60); }
 .statusBtn:hover { border-color: var(--ink-30); color: var(--ink); }
 .statusActive_green { background: var(--green-light); border-color: var(--green); color: var(--green); font-weight: 500; }
 .statusActive_amber { background: var(--amber-light); border-color: var(--amber); color: var(--amber); font-weight: 500; }
@@ -80,7 +80,7 @@
 
 /* Weekly log */
 .dayTabs { display: flex; gap: 4px; margin-bottom: 12px; }
-.dayTab { display: flex; align-items: center; padding: 7px 14px; font-size: 13px; border-radius: var(--radius); border: 1px solid var(--border); background: white; cursor: pointer; color: var(--ink-60); transition: all 0.15s; position: relative; }
+.dayTab { display: flex; align-items: center; padding: 7px 14px; font-size: 13px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--ink-60); transition: all 0.15s; position: relative; }
 .dayTab:hover { background: var(--ink-5); color: var(--ink); }
 .dayTabActive { background: var(--ink); color: var(--cream); border-color: var(--ink); font-weight: 500; }
 .dayHasEntry { width: 5px; height: 5px; background: var(--accent); border-radius: 50%; position: absolute; top: 5px; right: 5px; }
@@ -88,5 +88,5 @@
 .dayHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
 .dayTitle { font-size: 15px; font-weight: 500; }
 .statusRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.dayTextarea { width: 100%; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); resize: vertical; background: white; }
+.dayTextarea { width: 100%; font-size: 13px; line-height: 1.6; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--font-body); resize: vertical; background: var(--surface); }
 .concernsPanel { background: var(--ink-5); border-radius: var(--radius); padding: 16px; margin-top: 4px; }

@@ -3,7 +3,7 @@
    ═════════════════════════════════════════════════════════════════ */
 
 .catTable {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
@@ -153,7 +153,7 @@
    Floor plan
    ═════════════════════════════════════════════════════════════════ */
 .floorPlan {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   padding: 24px 24px 20px;
   margin-bottom: 24px;
@@ -214,7 +214,7 @@
 .tCell {
   aspect-ratio: 1;
   border-radius: 7px;
-  background: white;
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(16,18,24,0.05);
   padding: 7px 5px;
   display: flex;
@@ -311,7 +311,7 @@
   margin-bottom: 18px;
 }
 .watchCard {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   padding: 22px 24px;
   box-shadow: 0 2px 4px rgba(16,18,24,0.06), 0 8px 24px rgba(16,18,24,0.07);
@@ -457,7 +457,7 @@
    Top complexity jobs
    ═════════════════════════════════════════════════════════════════ */
 .jobsList {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   padding: 22px 24px 16px;
   margin-bottom: 18px;

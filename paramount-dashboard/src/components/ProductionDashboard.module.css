@@ -13,7 +13,7 @@
 }
 
 .emptyState {
-  text-align: center; padding: 60px 24px; background: white;
+  text-align: center; padding: 60px 24px; background: var(--surface);
   border: 1px dashed var(--border); border-radius: var(--radius-lg);
   color: var(--ink-60); font-size: 14px;
 }
@@ -22,7 +22,7 @@
 .summaryGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
 
 .facilityCard {
-  background: white; border: 1px solid var(--border);
+  background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); padding: 20px 24px;
   display: flex; flex-direction: column; gap: 16px;
 }
@@ -81,7 +81,7 @@
 .commentary { font-size: 13px; color: var(--ink-60); line-height: 1.6; background: var(--ink-5); border-radius: var(--radius); padding: 10px 12px; border-left: 3px solid var(--ink-30); }
 
 /* HISTORY TABLE */
-.historySection { background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; }
+.historySection { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; }
 .historySectionTitle { font-size: 13px; font-weight: 500; letter-spacing: 0.04em; color: var(--ink-60); text-transform: uppercase; margin-bottom: 14px; }
 
 .tableWrap { overflow-x: auto; }
@@ -91,7 +91,7 @@
 
 .targetRow td { font-size: 12px; color: var(--ink-60); font-style: italic; background: var(--ink-5); }
 .dataRow td { }
-.currentRow { background: white; font-weight: 500; }
+.currentRow { background: var(--surface); font-weight: 500; }
 .historicalRow { background: var(--ink-5); color: var(--ink-60); }
 .weekCell { font-size: 12px; white-space: nowrap; }
 .totalCell { font-weight: 500; }
@@ -106,7 +106,7 @@
 
 /* EDIT */
 .editGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
-.editSection { background: white; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; }
+.editSection { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; }
 .editSectionHeader { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .editSectionHeader h3 { font-size: 16px; }
 .editSubHeader { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-60); margin-bottom: 10px; margin-top: 4px; }
@@ -131,7 +131,7 @@
 .mtdTarget { text-align: right; font-size: 12px; color: var(--ink-60); }
 .mtdOver { text-align: right; font-weight: 500; color: var(--green); }
 .mtdUnder { text-align: right; font-weight: 500; color: var(--red); }
-.mtdBoldRow td { font-weight: 600; border-top: 1px solid var(--ink-30); background: white; }
+.mtdBoldRow td { font-weight: 600; border-top: 1px solid var(--ink-30); background: var(--surface); }
 
 /* Machine drilldown */
 .machineSection { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }

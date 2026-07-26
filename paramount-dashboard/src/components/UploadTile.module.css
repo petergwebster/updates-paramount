@@ -1,5 +1,5 @@
 .tile {
-  background: white;
+  background: var(--surface);
   border-radius: 14px;
   padding: 22px 24px 20px;
   border: 1px solid var(--ink-05, #DCE0DD);
@@ -149,7 +149,7 @@
 }
 .dropZone:hover {
   border-color: var(--ink-50, #5C6770);
-  background: white;
+  background: var(--surface);
 }
 .dropZoneActive {
   border-color: var(--emerald, #0F7A4E);
@@ -177,7 +177,7 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: white;
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
