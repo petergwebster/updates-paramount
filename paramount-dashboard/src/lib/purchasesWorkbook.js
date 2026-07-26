@@ -85,22 +85,60 @@ function categoryFor(tab, code){
 }
 
 // ---- tab name -> source_tab key --------------------------------------------
+// ORDER MATTERS. "SALES AR INVOICED" must be tested before the bare
+// "AR INVOICED" rule, and AP before AR, because Jen's 7.26 file renamed the
+// AP-INVOICED tab to "AR INVOICED" while leaving AP account codes (2110) in it.
+// Names in this workbook are not trustworthy — see reclassifyByAccount below,
+// which corrects the key from the data when the name lies.
 const TAB_MAP=[
   [/inventory.*ink.*freight/i,'inventory_ink_freight'],
-  [/sales.*ar.*invoiced|ar.*invoiced/i,'sales_ar_invoiced'],
+  [/sales.*ar.*invoiced/i,'sales_ar_invoiced'],
   [/ar.*received/i,'ar_received'],
   [/ap.*invoiced/i,'ap_invoiced'],
   [/ap.*paid/i,'ap_paid'],
   [/opex.*t.*e|opex/i,'opex_te'],
   [/capex/i,'capex'],
+  [/ar.*invoiced/i,'sales_ar_invoiced'],   // last resort — may be corrected below
 ];
 function tabKey(name){ for(const [re,key] of TAB_MAP){ if(re.test(name))return key; } return null; }
+
+// The workbook's tab NAMES have changed twice now (punctuation dropped in the
+// 7.26 file, and AP-INVOICED renamed to "AR INVOICED"). Account codes have not.
+// So after parsing, check the dominant GL prefix and correct the key if the tab
+// name contradicted it — 1xxx is a receivable/asset, 2xxx is a payable.
+// Filing AP under AR would silently corrupt both sides of the balance sheet,
+// which is exactly the kind of error that ties out at the headline and not in
+// the detail.
+function reclassifyByAccount(rows, key, tabName, warnings){
+  if(!rows.length) return key;
+  const counts={};
+  for(const r of rows){ const p=String(r.account_code||'')[0]; if(p) counts[p]=(counts[p]||0)+1; }
+  const dominant=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  if(!dominant) return key;
+  const isPayable = dominant==='2';
+  if(key==='sales_ar_invoiced' && isPayable){
+    warnings.push(`Tab "${tabName}" is named AR but carries ${dominant}xxx payable accounts — loaded as AP invoiced. Worth telling the sender.`);
+    return 'ap_invoiced';
+  }
+  if(key==='ap_invoiced' && dominant==='1'){
+    warnings.push(`Tab "${tabName}" is named AP but carries ${dominant}xxx receivable accounts — loaded as AR invoiced. Worth telling the sender.`);
+    return 'sales_ar_invoiced';
+  }
+  return key;
+}
 
 // ---- transactional tab parser ----------------------------------------------
 function parseTxnSheet(XLSX, sheet, srcTab, fileName){
   const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:null,raw:true});
   if(!rows.length)return [];
-  const hdr=rows[0];
+  // FIND the header row rather than assuming row 0. The 7.26 file has an empty
+  // first row with the header on row 2, which made every column lookup return
+  // -1 and every data row get skipped — the parser reported 0 transactions and
+  // the guard correctly refused to write. The aging parsers already did this;
+  // the transactional one did not.
+  const hi=findHeaderRow(rows,'Object','TRX Date');
+  if(hi<0)return [];
+  const hdr=rows[hi];
   const cObj=colIndex(hdr,'Object','Main Account Segment');
   const cDate=colIndex(hdr,'TRX Date','Document Date');
   const cPid=colIndex(hdr,'Period ID');
@@ -116,7 +154,7 @@ function parseTxnSheet(XLSX, sheet, srcTab, fileName){
   const cJe=colIndex(hdr,'Journal Entry');
   const cVoid=colIndex(hdr,'Voided');
   const out=[];
-  for(let i=1;i<rows.length;i++){
+  for(let i=hi+1;i<rows.length;i++){
     const r=rows[i]; if(!r||r[cObj]==null)continue;
     const acct=cAcct>=0?String(r[cAcct]||''):'';
     const code=cObj>=0?String(r[cObj]).trim():'';
@@ -151,7 +189,7 @@ function parseTxnSheet(XLSX, sheet, srcTab, fileName){
 
 // ---- aging parsers ---------------------------------------------------------
 function findHeaderRow(rows, ...must){
-  for(let i=0;i<Math.min(rows.length,6);i++){
+  for(let i=0;i<Math.min(rows.length,8);i++){
     const H=(rows[i]||[]).map(norm);
     if(must.every(m=>H.some(h=>h.includes(norm(m)))))return i;
   }
@@ -229,7 +267,13 @@ export function parsePurchasesWorkbook(XLSX, workbook, opts={}){
   for(const name of workbook.SheetNames){
     const key=tabKey(name);
     const sheet=workbook.Sheets[name];
-    if(key){ transactions=transactions.concat(parseTxnSheet(XLSX,sheet,key,fileName)); }
+    if(key){
+      const parsed=parseTxnSheet(XLSX,sheet,key,fileName);
+      if(!parsed.length) continue;                       // empty duplicate tabs, e.g. "CAPEX SPEND (2)"
+      const fixed=reclassifyByAccount(parsed,key,name,warnings);
+      if(fixed!==key){ for(const r of parsed){ r.source_tab=fixed; r.category=categoryFor(fixed,r.account_code); } }
+      transactions=transactions.concat(parsed);
+    }
   }
   // as-of date: filename, else max trx date
   let asOf=asOfFromName(fileName) || opts.asOf || null;
