@@ -17,6 +17,7 @@ import FinanceReportsTab from './components/FinanceReportsTab'
 import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
+import OpsAttentionPanel from './components/OpsAttentionPanel'
 import AdminPeople from './components/AdminPeople'
 import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPDF } from './components/ProductionTab'
 import WIPTab from './components/WIPTab'
@@ -277,10 +278,12 @@ export default function App() {
           // silently showing "no destinations available".
           console.error('[Auth] Profile could not be loaded — user will see no destinations. Sign out and back in.')
         }
-        // Land straight in when there is only one destination. Most of the team
-        // now has just Operations, so the chooser would be a pointless click.
+        // 2026-07-26: THE LANDING PAGE IS GONE. It served three people — everyone
+        // else has a single destination and already skipped it. A welcome screen
+        // between login and work is a room you walk through, not a place. Land
+        // straight in; the destination switcher lives in the header.
         const dests = destinationsFor(profile)
-        if (dests.length === 1) {
+        if (dests.length) {
           setDestination(dests[0])
           setActiveTab(defaultTabFor(dests[0], profile?.role))
           setCurrentWeek(defaultWeekForDestination(dests[0]))
@@ -390,9 +393,9 @@ export default function App() {
     setAuthUser(user); setUserProfile(profile)
     if (profile?.full_name) localStorage.setItem('pp_commenter', profile.full_name)
     if (profile?.role === 'admin') setAdminAuthenticated(true)
-    // Only show the chooser when there is an actual choice to make.
+    // No chooser — land straight in. See the note in the bootstrap effect.
     const dests = destinationsFor(profile)
-    if (dests.length === 1) {
+    if (dests.length) {
       setDestination(dests[0])
       setActiveTab(defaultTabFor(dests[0], profile?.role))
       setCurrentWeek(defaultWeekForDestination(dests[0]))
@@ -646,6 +649,7 @@ export default function App() {
                 {destination === 'operations' && activeTab==='pulse' && (
                   <>
                     <OpsPulseTiles onNavigate={handleTabChange} />
+                    <OpsAttentionPanel onNavigate={handleTabChange} />
                     <OpsDailyChart />
                     <HeartbeatPage
                       weekStart={currentWeek}
