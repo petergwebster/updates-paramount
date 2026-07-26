@@ -767,7 +767,7 @@ function MixGauges({ totals }) {
 
 function Gauge({ label, value, target, pct, unit, isMoney, highlight }) {
   const col = pct >= 95 ? C.sage : pct >= 75 ? C.gold : pct >= 50 ? C.amber : C.rose
-  const bg = highlight ? C.navy : '#fff'
+  const bg = highlight ? C.navy : 'var(--surface)'
   const fg = highlight ? '#fff' : C.ink
   const subFg = highlight ? 'rgba(255,255,255,0.65)' : C.inkLight
   return (

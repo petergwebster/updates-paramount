@@ -176,7 +176,7 @@ function Preview({ data, narrative, onNarrative, onSave, isSaving, unsaved, last
             {isSaving ? 'Saving…' : unsaved ? 'Unsaved changes' : lastSaveAt ? `Saved ${format(new Date(lastSaveAt), 'h:mm a')}` : 'Draft'}
           </span>
           <button onClick={onSave} disabled={isSaving}
-            style={{ padding: '8px 16px', background: unsaved ? 'var(--surface)' : 'rgba(255,255,255,0.2)', color: unsaved ? C.navy : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            style={{ padding: '8px 16px', background: unsaved ? 'var(--surface)' : 'rgba(255,255,255,0.2)', color: unsaved ? C.navy : 'var(--surface)', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             Save &amp; Lock
           </button>
         </div>
