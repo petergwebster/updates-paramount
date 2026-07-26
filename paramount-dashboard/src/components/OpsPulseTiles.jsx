@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
+import { C, sundayOf, isoDate, fmt, schedLineKey } from '../lib/scheduleUtils'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OpsPulseTiles — the at-a-glance grid at the top of Operations · Pulse.
@@ -19,7 +19,13 @@ import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
 //   scheduled   = Σ sched_assignments.planned_yards
 //   actual      = Σ sched_daily_ops_lines.actual_yards
 //   waste %     = waste ÷ (actual + waste)
-//   color-yards = Passaic only — BNY carries no planned_cy, by design
+//   color-yards = PER LINE: actual yards x THAT PO's planned cy/yd ratio,
+//                 Passaic only. Do NOT use a blended week-average ratio — the
+//                 per-PO ratio ranges 1 to 12 across Passaic, so averaging it
+//                 and applying it to a different mix of actual output overstates
+//                 badly (14,310 vs the correct 7,875 on the week of Jul 19).
+//                 This mirrors deriveColorYards() in dailyOps.js. BNY carries no
+//                 planned_cy and is excluded rather than counted as zero.
 // ═══════════════════════════════════════════════════════════════════════════
 
 const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
@@ -71,9 +77,10 @@ export default function OpsPulseTiles({ onNavigate }) {
       const wk = isoDate(sundayOf(new Date()))
 
       const [asnRes, lineRes, snapRes] = await Promise.all([
-        supabase.from('sched_assignments').select('site,planned_yards,planned_cy').eq('week_start', wk),
+        supabase.from('sched_assignments')
+          .select('site,po_number,item_sku,color,planned_yards,planned_cy').eq('week_start', wk),
         supabase.from('sched_daily_ops_lines')
-          .select('site,actual_yards,waste_yards,is_complete').eq('week_start', wk),
+          .select('site,po_number,item_sku,color,actual_yards,waste_yards,is_complete').eq('week_start', wk),
         supabase.from('sched_snapshots').select('id').order('uploaded_at', { ascending: false }).limit(1).maybeSingle(),
       ])
       if (dead) return
@@ -90,19 +97,30 @@ export default function OpsPulseTiles({ onNavigate }) {
       if (dead) return
 
       const sched   = asn.reduce((s, a) => s + num(a.planned_yards), 0)
-      const schedNJ = asn.filter(a => a.site === 'passaic').reduce((s, a) => s + num(a.planned_yards), 0)
       const plannedCy = asn.filter(a => a.site === 'passaic').reduce((s, a) => s + num(a.planned_cy), 0)
 
       const actual   = lines.reduce((s, l) => s + num(l.actual_yards), 0)
-      const actualNJ = lines.filter(l => l.site === 'passaic').reduce((s, l) => s + num(l.actual_yards), 0)
       const waste    = lines.reduce((s, l) => s + num(l.waste_yards), 0)
       const done     = lines.filter(l => l.is_complete).length
 
-      // Passaic colour-yards = actual yards x the week's planned cy/yd ratio.
-      // Same derivation as deriveColorYards(); BNY has no planned_cy so it is
-      // excluded rather than counted as zero.
-      const ratio  = schedNJ > 0 ? plannedCy / schedNJ : 0
-      const actCy  = Math.round(actualNJ * ratio)
+      // Colour-yards, PER LINE against that PO's own ratio — see the note above.
+      // A line with no matching assignment ("Other / unplanned") contributes 0,
+      // which is the same known-correct quirk the weekly summary has.
+      const asnByKey = new Map()
+      for (const a of asn) {
+        const k = schedLineKey(a)
+        if (!asnByKey.has(k)) asnByKey.set(k, a)
+      }
+      let actCy = 0
+      for (const l of lines) {
+        if (l.site !== 'passaic') continue
+        const a = asnByKey.get(schedLineKey(l))
+        if (!a) continue
+        const py = num(a.planned_yards)
+        if (py <= 0) continue
+        actCy += num(l.actual_yards) * (num(a.planned_cy) / py)
+      }
+      actCy = Math.round(actCy)
 
       setD({
         sched, actual, waste, done, lines: lines.length,
