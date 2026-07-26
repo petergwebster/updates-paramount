@@ -98,22 +98,22 @@ function Box({ title, value, unit, sub, subTone, children, onClick }) {
     <button onClick={onClick}
       style={{
         textAlign: 'left', background: C.parchment, border: `1px solid ${C.border}`,
-        borderRadius: 12, padding: '15px 17px 16px', cursor: 'pointer',
+        borderRadius: 12, padding: '20px 22px 22px', cursor: 'pointer',
         color: C.ink, fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
-        gap: 11, minHeight: 168, transition: 'border-color .15s',
+        gap: 14, minHeight: 232, transition: 'border-color .15s',
       }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = C.inkLight }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = C.border }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>{title}</span>
-        <span style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-          <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
-          {unit && <span style={{ fontSize: 10, color: C.inkLight }}>{unit}</span>}
+        <span style={{ fontSize: 17, fontWeight: 600, color: C.ink }}>{title}</span>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+          <span style={{ fontSize: 26, fontWeight: 600, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+          {unit && <span style={{ fontSize: 11, color: C.inkLight }}>{unit}</span>}
         </span>
       </div>
-      <div style={{ height: 76, display: 'flex', alignItems: 'center' }}>{children}</div>
+      <div style={{ height: 104, display: 'flex', alignItems: 'center' }}>{children}</div>
       {sub && (
-        <span style={{ fontSize: 11, color: tone[subTone] || C.inkLight, lineHeight: 1.4 }}>{sub}</span>
+        <span style={{ fontSize: 12, color: tone[subTone] || C.inkLight, lineHeight: 1.45 }}>{sub}</span>
       )}
     </button>
   )
@@ -136,17 +136,23 @@ export default function OpsHome({ onOpen }) {
 
       // WEEK FALLBACK: on a Sunday or an early Monday the current week is
       // legitimately empty, and a home screen full of blank cards reads as
-      // broken rather than as "not started". So if this week has produced
-      // nothing yet, show LAST week and say so. Better a real number labelled
-      // honestly than a void.
+      // broken rather than as "not started". So if nothing has been PRODUCED
+      // yet, show last week and say so.
+      //
+      // Test on PRODUCTION, not on row count. The scheduler pre-creates a line
+      // per PO, so a week can carry hundreds of rows and zero actual yards —
+      // counting rows picks that week and then reports 0 against a full plan,
+      // which is worse than showing nothing.
       let useWk = wk, isPrior = false
       {
-        const { count } = await supabase.from('sched_daily_ops_lines')
-          .select('*', { count: 'exact', head: true }).eq('week_start', wk)
-        if (!dead && !count) {
-          const { count: pc } = await supabase.from('sched_daily_ops_lines')
-            .select('*', { count: 'exact', head: true }).eq('week_start', prevWk)
-          if (!dead && pc) { useWk = prevWk; isPrior = true }
+        const { data: cur } = await supabase.from('sched_daily_ops_lines')
+          .select('actual_yards').eq('week_start', wk)
+        const curProduced = (cur || []).reduce((s, l) => s + num(l.actual_yards), 0)
+        if (!dead && curProduced === 0) {
+          const { data: pv } = await supabase.from('sched_daily_ops_lines')
+            .select('actual_yards').eq('week_start', prevWk)
+          const prevProduced = (pv || []).reduce((s, l) => s + num(l.actual_yards), 0)
+          if (!dead && prevProduced > 0) { useWk = prevWk; isPrior = true }
         }
       }
       if (dead) return
@@ -206,13 +212,13 @@ export default function OpsHome({ onOpen }) {
 
   const grid = {
     display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 12, paddingTop: 6,
+    gap: 16, paddingTop: 8,
   }
 
   if (!d) return (
     <div style={grid}>
       {[0,1,2,3,4,5].map(i => (
-        <div key={i} style={{ minHeight: 186, borderRadius: 12, background: C.parchment,
+        <div key={i} style={{ minHeight: 232, borderRadius: 12, background: C.parchment,
                               border: `1px solid ${C.border}` }} />
       ))}
     </div>
