@@ -7,12 +7,17 @@ import styles from './DestinationNav.module.css'
  * once a user has entered a destination.
  *
  * Shows ONLY destinations the user has access to. If the user only has access
- * to one destination, no toggle is shown (just the brand and back button hidden).
+ * to one destination, no toggle is shown at all.
+ *
+ * 2026-07-25: the "← Welcome" button was removed. With two destinations the
+ * chooser is a detour, not a destination — you land in one and switch between
+ * them here. The Welcome page still exists as the login landing for users who
+ * have a genuine choice to make.
  *
  * Props:
  *   userProfile — for computing access
  *   activeDestination — current destination id
- *   onChange — (destinationId) => void; passing 'landing' returns to chooser
+ *   onChange — (destinationId) => void
  */
 export default function DestinationNav({ userProfile, activeDestination, onChange }) {
   const accessible = destinationsFor(userProfile)
@@ -22,14 +27,6 @@ export default function DestinationNav({ userProfile, activeDestination, onChang
 
   return (
     <div className={styles.nav}>
-      <button
-        type="button"
-        className={`${styles.navBtn} ${styles.back}`}
-        onClick={() => onChange('landing')}
-        title="Back to Welcome"
-      >
-        ← Welcome
-      </button>
       {accessible.map(destId => {
         const dest = DESTINATIONS[destId]
         const isActive = activeDestination === destId

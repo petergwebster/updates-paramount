@@ -462,31 +462,30 @@ export default function App() {
         {/* ── Header top row: brand left, week-nav center (exec only), user+gear right ── */}
         <div className={styles.headerTop}>
           <div className={styles.brand}>
-            <img src="/ParamountLogo.png" alt="Paramount Prints" className={styles.brandLogo}/>
+            <div className={styles.brandMark}>PP</div>
             <div className={styles.brandText}>
               <div className={styles.brandName}>Paramount Prints</div>
-              <div className={styles.brandSub}>Operations Dashboard</div>
+              <div className={styles.brandSub}>
+                {destination === 'finance' ? 'Finance and reporting' : 'Operations dashboard'}
+              </div>
             </div>
           </div>
-
-          {showWeekNav ? (
-            <div className={styles.weekNav}>
-              <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
-              <div className={styles.weekLabelStack}>
-                <span className={styles.weekLabel}>{weekLabel}</span>
-                {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
-              </div>
-              <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
-              <button onClick={()=>setCurrentWeek(getPriorWeekStart())} className={styles.weekTodayBtn}>Last week</button>
-            </div>
-          ) : (
-            <div className={styles.headerCenter}/>
-          )}
 
           <div className={styles.headerRight}>
             {/* Feed health — visible from every destination. Managing to the dash
                 means trusting the feeds, so this must never require navigation. */}
             <FeedHealthStrip />
+
+            {showWeekNav && (
+              <div className={styles.weekNav}>
+                <button onClick={()=>setCurrentWeek(w=>subWeeks(w,1))} className={styles.weekBtn}>←</button>
+                <div className={styles.weekLabelStack}>
+                  <span className={styles.weekLabel}>{format(currentWeek, 'MMM d')}</span>
+                  {fiscalLabel && <span className={styles.fiscalLabel}>{fiscalLabel}</span>}
+                </div>
+                <button onClick={()=>setCurrentWeek(w=>addWeeks(w,1))} className={styles.weekBtn}>→</button>
+              </div>
+            )}
 
             {sessionCommentCount > 0 || notifySuccess || notifying ? (
               <div className={styles.sendUpdateArea}>
@@ -506,7 +505,6 @@ export default function App() {
             ) : null}
 
             <div className={styles.userPill} title={userProfile?.full_name}>
-              <div className={styles.userAvatar}>{userInitials}</div>
               <span className={styles.userName}>{firstName}</span>
             </div>
 
