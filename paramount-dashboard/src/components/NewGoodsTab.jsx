@@ -241,7 +241,7 @@ export default function NewGoodsTab({ currentUser } = {}) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={() => runRefresh('manual')} disabled={refreshing}
-              style={{ padding: '9px 20px', background: refreshing ? C.warm : C.ink, color: refreshing ? C.inkLight : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: refreshing ? 'not-allowed' : 'pointer' }}>
+              style={{ padding: '9px 20px', background: refreshing ? C.warm : C.surface2, color: refreshing ? C.inkLight : '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: refreshing ? 'not-allowed' : 'pointer' }}>
               {refreshing ? 'Refreshing…' : '↻ Refresh from Monday.com'}
             </button>
           </div>

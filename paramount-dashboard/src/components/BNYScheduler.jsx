@@ -1193,7 +1193,7 @@ function AssignModalBNY({ po, machine, dayOfWeek, location, proposed, isEdit, in
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: C.inkMid }}>Cancel</button>
           <button onClick={() => onConfirm(yards, operator)} disabled={invalid || busy}
-            style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.ink, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
+            style={{ padding: '8px 16px', background: invalid || busy ? C.warm : C.surface2, color: invalid || busy ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: invalid || busy ? 'not-allowed' : 'pointer' }}>
             {busy ? (isEdit ? 'Saving…' : 'Assigning…') : (isEdit ? 'Save changes' : 'Confirm assignment')}
           </button>
         </div>
@@ -1669,7 +1669,7 @@ When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences
           />
           <button onClick={() => sendMessage(input)} disabled={streaming || !input.trim()}
             style={{
-              padding: '0 16px', background: (streaming || !input.trim()) ? C.warm : C.ink,
+              padding: '0 16px', background: (streaming || !input.trim()) ? C.warm : C.surface2,
               color: (streaming || !input.trim()) ? C.inkLight : '#fff',
               border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
               cursor: (streaming || !input.trim()) ? 'not-allowed' : 'pointer',
@@ -1732,7 +1732,7 @@ function MessageBubble({ message, onApplyProposals, applying }) {
             {message.proposals.length > 8 && <div>+ {message.proposals.length - 8} more</div>}
           </div>
           <button onClick={() => onApplyProposals(message.proposals)} disabled={applying}
-            style={{ padding: '6px 14px', background: applying ? C.warm : C.ink, color: applying ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: applying ? 'not-allowed' : 'pointer' }}>
+            style={{ padding: '6px 14px', background: applying ? C.warm : C.surface2, color: applying ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: applying ? 'not-allowed' : 'pointer' }}>
             {applying ? 'Applying…' : 'Apply all to board'}
           </button>
         </div>

@@ -1052,7 +1052,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
       {/* Save */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'stretch' }}>
         <button onClick={handleSave} disabled={saving}
-          style={{ padding: '8px 10px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: saving ? 'none' : '0 1px 3px rgba(0,0,0,0.2)' }}>
+          style={{ padding: '8px 10px', background: saving ? C.warm : C.surface2, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', boxShadow: saving ? 'none' : '0 1px 3px rgba(0,0,0,0.2)' }}>
           {saving ? 'Saving…' : 'Save'}
         </button>
         {savedAt && (
@@ -1279,7 +1279,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                     Cancel
                   </button>
                   <button onClick={async () => { await handleSave(); setNotesScope(null) }} disabled={saving}
-                    style={{ padding: '8px 18px', background: saving ? C.warm : C.ink, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    style={{ padding: '8px 18px', background: saving ? C.warm : C.surface2, color: saving ? C.inkLight : '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
                     {saving ? 'Saving…' : 'Save & close'}
                   </button>
                 </div>
