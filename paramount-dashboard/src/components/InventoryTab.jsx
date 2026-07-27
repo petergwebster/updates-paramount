@@ -1,817 +1,371 @@
-// src/components/InventoryTab.jsx
+import React, { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../supabase'
+import { C, fmt } from '../lib/scheduleUtils'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// InventoryTab — month-end substrate position, from `inventory_snapshot`.
 //
-// Performance > Inventory tab. Three drill levels:
-//   1. Overview — summary trend cards (BNY / Passaic / All) + cross-cutting alarm
-//      banner + three category cards (Schumacher / Screen Print / Digital).
-//   2. Bucket detail — filtered SKU table for a chosen bucket.
-//   3. SKU detail — full row context for a chosen SKU.
+// REPLACES the MOS workbook (API_Dashboard_MOS_3_0.xlsx), which was a manual
+// upload and reached 84 days stale. Source is now the two ShareFile workbooks,
+// ingested daily by sharefile-sync.
 //
-// Inline upload bar at the top — same parser+persist flow as the admin
-// LIFT Data Refresh tile. Brynn refreshes here without leaving the tab.
+// WHAT CHANGED, and why it is not a like-for-like port: MOS carried per-SKU
+// targets, lead times, buy recommendations and oversold flags. None of those
+// exist in the new source. But the month-end DECK never used them either — it
+// computes cover the simple way:
 //
-// Source: API_Dashboard_MOS_3_0.xlsx, sheet "MOS Material - Color".
-// ----------------------------------------------------------------------------
+//     174,935 yards on hand ÷ 11,304 yards average weekly consumption
+//                                          = 15.5 weeks run-out buffer
+//
+// So cover is derived from CONSUMPTION, not from a target table, and both
+// inputs are in the data. Nothing essential was lost.
+//
+// AS-OF: the workbook carries no date of its own; we record ShareFile's
+// modified date. Refreshes are ad-hoc during a month and final at close, so:
+// a snapshot dated inside the CURRENT calendar month is PROVISIONAL, and the
+// last snapshot of a completed month IS that month's close. Nobody has to flag
+// anything — it resolves itself when the month rolls over.
+//
+// This is SUBSTRATE ONLY. The workbooks say "NO INK or Other" at the top, so
+// this is not total inventory value and must not be presented as such.
+// ═══════════════════════════════════════════════════════════════════════════
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
-import { supabase } from '../supabase';
-import { parseMosMaterialColor } from '../lib/parsers/parseMosMaterialColor';
-import { persistSnapshot } from '../lib/persistSnapshot';
-import styles from './InventoryTab.module.css';
+const SITES = [
+  { id: 'passaic', label: 'Passaic',  color: C.siteNJ },
+  { id: 'bny',     label: 'Brooklyn', color: C.siteBNY },
+]
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
+const money = (v) => {
+  const n = num(v), a = Math.abs(n), s = n < 0 ? '-' : ''
+  if (a >= 1_000_000) return `${s}$${(a / 1_000_000).toFixed(2)}M`
+  if (a >= 1_000)     return `${s}$${Math.round(a / 1000).toLocaleString()}K`
+  return `${s}$${Math.round(a).toLocaleString()}`
+}
+const dateLabel = (d) => {
+  if (!d) return '—'
+  const [y, m, day] = String(d).slice(0, 10).split('-')
+  return `${Number(day)} ${MONTHS[Number(m) - 1]} ${y}`
+}
 
-const BUCKETS = ['Schumacher', 'Screen Print', 'Digital'];
+// WEEKS OF COVER — the deck's method. Sold-per-LIFT is a MONTH of consumption,
+// so a week is that ÷ 4.33. Returns null rather than Infinity when nothing sold,
+// because "infinite cover" is a division artefact, not a fact about the floor.
+const weeksCover = (onHand, soldMonth) => {
+  const weekly = num(soldMonth) / 4.33
+  if (weekly <= 0) return null
+  return onHand / weekly
+}
 
-// BNY/Passaic mapping for the finance summary card.
-//   BNY      = Digital
-//   Passaic  = Screen Print + Schumacher (Schumacher ground physically lives at Passaic)
-const SITE_MAP = {
-  BNY:     ['Digital'],
-  Passaic: ['Screen Print', 'Schumacher'],
-};
+export default function InventoryTab() {
+  const [rows, setRows]   = useState([])
+  const [asOf, setAsOf]   = useState(null)
+  const [dates, setDates] = useState([])
+  const [site, setSite]   = useState('all')
+  const [sortShort, setSortShort] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr]     = useState(null)
 
-// Bucket-card framing copy (different per bucket per the bucket-behavior wrinkle).
-const BUCKET_FRAMING = {
-  'Schumacher':   { label: 'Exception monitor',                 leadLabel: 'SKUs oversold' },
-  'Screen Print': { label: 'MOS health · primary signal',       leadLabel: 'below target MOS' },
-  'Digital':      { label: 'Full list · fast turn',             leadLabel: 'below target' },
-};
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      const { data, error } = await supabase.from('inventory_snapshot')
+        .select('as_of').order('as_of', { ascending: false })
+      if (dead) return
+      if (error) { setErr(error.message); setLoading(false); return }
+      const uniq = [...new Set((data || []).map(r => r.as_of))]
+      setDates(uniq)
+      setAsOf(a => a || uniq[0] || null)
+      if (!uniq.length) setLoading(false)
+    })()
+    return () => { dead = true }
+  }, [])
 
-// Format helpers
-const fmtInt = (n) => (n == null || isNaN(n)) ? '—' : Math.round(n).toLocaleString();
-const fmtDec1 = (n) => (n == null || isNaN(n)) ? '—' : Number(n).toFixed(1);
-const fmtUsd = (n) => (n == null || isNaN(n)) ? '—' : '$' + Math.round(n).toLocaleString();
-const fmtSign = (n) => {
-  if (n == null || isNaN(n)) return '—';
-  const v = Math.round(Number(n));
-  return v < 0 ? `−${Math.abs(v).toLocaleString()}` : v.toLocaleString();
-};
-const fmtDate = (iso) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-const relTime = (iso) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  const hrs = (Date.now() - d.getTime()) / 3.6e6;
-  if (hrs < 1)   return `${Math.round(hrs * 60)} min ago`;
-  if (hrs < 48)  return `${Math.round(hrs)} hrs ago`;
-  return `${Math.round(hrs / 24)} days ago`;
-};
+  useEffect(() => {
+    if (!asOf) return
+    let dead = false
+    setLoading(true)
+    ;(async () => {
+      const { data, error } = await supabase.from('inventory_snapshot')
+        .select('*').eq('as_of', asOf).limit(2000)
+      if (dead) return
+      if (error) setErr(error.message)
+      else { setRows(data || []); setErr(null) }
+      setLoading(false)
+    })()
+    return () => { dead = true }
+  }, [asOf])
 
-// ============================================================================
-// Top-level component
-// ============================================================================
-export default function InventoryTab({ profile }) {
-  const [view, setView] = useState('overview');
-  const [selectedBucket, setSelectedBucket] = useState(null);
-  const [selectedSku, setSelectedSku] = useState(null);
+  const view = useMemo(
+    () => site === 'all' ? rows : rows.filter(r => r.site === site),
+    [rows, site])
 
-  const [rows, setRows] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [snapshotInfo, setSnapshotInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [uploadState, setUploadState] = useState({ stage: 'idle' });
+  const agg = (list) => {
+    const onHand = list.reduce((s, r) => s + num(r.on_hand_curr), 0)
+    const prev   = list.reduce((s, r) => s + num(r.on_hand_prev), 0)
+    const value  = list.reduce((s, r) => s + num(r.on_hand_curr) * num(r.cost_per_yard), 0)
+    const short  = list.reduce((s, r) => s + num(r.yards_short), 0)
+    const shortC = list.reduce((s, r) => s + num(r.cost_short), 0)
+    const recvd  = list.reduce((s, r) => s + num(r.recvd_yards), 0)
+    const recvdC = list.reduce((s, r) => s + num(r.recvd_cost), 0)
+    const sold   = list.reduce((s, r) => s + num(r.sold_lift), 0)
+    return { onHand, prev, value, short, shortC, recvd, recvdC, sold,
+             skus: list.length, cover: weeksCover(onHand, sold) }
+  }
 
-  useEffect(() => { loadInventory(); /* eslint-disable-next-line */ }, []);
+  const total = agg(view)
 
-  async function loadInventory() {
-    setLoading(true);
-    const [{ data: rowData }, { data: histData }] = await Promise.all([
-      supabase.from('v_current_mos_material_color').select('*'),
-      supabase.from('v_inventory_bucket_history').select('*').order('uploaded_at', { ascending: true }),
-    ]);
-    setRows(rowData || []);
-    setHistory(histData || []);
-    if (rowData && rowData.length > 0) {
-      setSnapshotInfo({
-        uploaded_at: rowData[0].snapshot_uploaded_at,
-        uploaded_by: rowData[0].snapshot_uploaded_by,
-      });
+  // Provisional while the snapshot sits inside the current calendar month.
+  const isProvisional = useMemo(() => {
+    if (!asOf) return false
+    const now = new Date()
+    return String(asOf).slice(0, 7) === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }, [asOf])
+
+  // Material-group roll-up, biggest first.
+  const byGroup = useMemo(() => {
+    const m = new Map()
+    for (const r of view) {
+      const k = r.category || r.material_group || 'Unclassified'
+      if (!m.has(k)) m.set(k, [])
+      m.get(k).push(r)
     }
-    setLoading(false);
+    return [...m.entries()]
+      .map(([k, list]) => ({ key: k, ...agg(list) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
+  }, [view])
+
+  const skuRows = useMemo(() => {
+    const list = [...view]
+    list.sort((a, b) => sortShort
+      ? num(b.yards_short) - num(a.yards_short) || num(b.on_hand_curr) - num(a.on_hand_curr)
+      : num(b.on_hand_curr) * num(b.cost_per_yard) - num(a.on_hand_curr) * num(a.cost_per_yard))
+    return list.slice(0, 60)
+  }, [view, sortShort])
+
+  const S = {
+    wrap:  { padding: '24px 28px', maxWidth: 1240, margin: '0 auto' },
+    over:  { fontSize: 10, fontWeight: 700, letterSpacing: '0.12em',
+             textTransform: 'uppercase', color: C.inkLight, marginBottom: 4 },
+    h:     { fontSize: 22, fontWeight: 600, margin: '0 0 6px' },
+    card:  { background: C.parchment, border: `1px solid ${C.border}`,
+             borderRadius: 12, padding: '16px 18px' },
+    lab:   { fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+             textTransform: 'uppercase', color: C.inkLight, marginBottom: 6 },
+    big:   { fontSize: 26, fontWeight: 600, fontFamily: 'var(--font-display)',
+             fontVariantNumeric: 'tabular-nums', lineHeight: 1 },
+    sub:   { fontSize: 11, color: C.inkLight, marginTop: 6, lineHeight: 1.45 },
+    th:    { fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+             color: C.inkLight, padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap',
+             position: 'sticky', top: 0, background: C.parchment, zIndex: 2,
+             boxShadow: `inset 0 -1px 0 ${C.border}` },
+    td:    { padding: '6px 10px', textAlign: 'right', fontSize: 12,
+             fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+             borderBottom: `1px solid ${C.warm}` },
+    pill:  (on, col) => ({ padding: '6px 14px', fontSize: 12, borderRadius: 7, cursor: 'pointer',
+             border: `1px solid ${on ? col : C.border}`, fontFamily: 'inherit',
+             background: on ? col : 'transparent', color: on ? '#fff' : C.inkMid }),
   }
 
-  async function handleUpload(file) {
-    if (!file) return;
-    try {
-      setUploadState({ stage: 'reading', filename: file.name });
-      const buf = await file.arrayBuffer();
-
-      setUploadState({ stage: 'parsing', filename: file.name });
-      const parseStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
-      const parsed = parseMosMaterialColor(wb);
-      const parseDurationMs = Math.round(
-        (typeof performance !== 'undefined' ? performance.now() : Date.now()) - parseStart
-      );
-
-      const rowCount = parsed.material_color?.length || 0;
-      if (rowCount === 0) {
-        setUploadState({ stage: 'error', message: 'No rows parsed — check sheet name "MOS Material - Color"' });
-        return;
-      }
-
-      setUploadState({ stage: 'persisting', filename: file.name, count: rowCount });
-
-      // Get current auth user for the persistSnapshot call
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-
-      const result = await persistSnapshot({
-        fileKind: 'mos_material_color',
-        sourceFile: file.name,
-        fileSizeBytes: file.size,
-        source: 'manual_upload',
-        authUser: authUser ? { id: authUser.id, email: authUser.email } : null,
-        parsedData: parsed,
-        errors: {},
-        parseDurationMs,
-      });
-
-      if (!result.ok) {
-        setUploadState({ stage: 'error', message: result.error || 'Upload failed' });
-        return;
-      }
-
-      const written = result.rows_written?.material_color ?? rowCount;
-      setUploadState({ stage: 'success', filename: file.name, count: written });
-      await loadInventory();
-    } catch (err) {
-      console.error('[Inventory upload]', err);
-      setUploadState({ stage: 'error', message: err.message || String(err) });
-    }
-  }
-
-  // Bucket-level aggregates
-  const bucketStats = useMemo(() => buildBucketStats(rows), [rows]);
-  const allOversold = useMemo(() => rows.filter(r => (r.available_on_hand_with_open_pos ?? 0) < 0), [rows]);
-  const totalBuyRec = useMemo(
-    () => rows.reduce((sum, r) => sum + Math.max(0, r.calc_buy_yards_plus_2_months || 0), 0),
-    [rows]
-  );
-  const longLeadAtRisk = useMemo(
-    () => rows.filter(r => (r.months_of_lead_time ?? 0) >= 5 && (r.var_mos_vs_target_plus_2 ?? 0) < 0).length,
-    [rows]
-  );
-
-  if (loading) {
-    return <div className={styles.tab}><div className={styles.empty}>Loading inventory…</div></div>;
-  }
-
-  const noData = rows.length === 0;
-
-  return (
-    <div className={styles.tab}>
-      <Header />
-      <UploadBar
-        snapshotInfo={snapshotInfo}
-        uploadState={uploadState}
-        onFile={handleUpload}
-      />
-
-      {noData ? (
-        <EmptyState />
-      ) : view === 'overview' ? (
-        <OverviewView
-          rows={rows}
-          history={history}
-          bucketStats={bucketStats}
-          alarmStats={{ oversold: allOversold.length, totalBuy: totalBuyRec, longLead: longLeadAtRisk }}
-          onSelectBucket={(b) => { setSelectedBucket(b); setView('bucket'); }}
-          onShowAllOversold={() => { setSelectedBucket('__OVERSOLD__'); setView('bucket'); }}
-        />
-      ) : view === 'bucket' ? (
-        <BucketView
-          bucket={selectedBucket}
-          rows={rows}
-          onBack={() => setView('overview')}
-          onSelectSku={(sku) => { setSelectedSku(sku); setView('sku'); }}
-        />
-      ) : (
-        <SkuView
-          sku={selectedSku}
-          row={rows.find(r => r.replacement_ground === selectedSku)}
-          onBack={() => setView('bucket')}
-        />
-      )}
+  if (!loading && !dates.length) return (
+    <div style={S.wrap}>
+      <h2 style={S.h}>Inventory</h2>
+      <p style={{ fontSize: 14, color: C.inkMid }}>
+        No inventory snapshots loaded yet. The workbooks live on ShareFile under
+        Inventory Reports and are picked up by the daily finance feed.
+      </p>
     </div>
-  );
-}
+  )
 
-// ============================================================================
-// Header + UploadBar
-// ============================================================================
-function Header() {
   return (
-    <div className={styles.pageHeader}>
-      <div>
-        <div className={styles.crumb}>Performance · Inventory</div>
-        <h1>Months of Supply</h1>
-        <div className={styles.subtitle}>
-          Ground inventory health across Schumacher pass-through, Screen Print, and Digital substrates
-        </div>
+    <div style={S.wrap}>
+      <div style={S.over}>Substrate · month-end position</div>
+      <h2 style={S.h}>Inventory</h2>
+
+      {/* AS-OF, stated plainly. A stock figure without its date is a trap. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <span style={{ fontSize: 13, color: isProvisional ? C.amber : C.sage }}>
+          Inventory data as of <strong>{dateLabel(asOf)}</strong>
+          {isProvisional ? ' · provisional, refreshes until month end' : ' · month-end final'}
+        </span>
+        {dates.length > 1 && (
+          <select value={asOf || ''} onChange={e => setAsOf(e.target.value)}
+            style={{ padding: '5px 9px', fontSize: 12, borderRadius: 6,
+                     border: `1px solid ${C.border}`, background: C.parchment, color: C.ink }}>
+            {dates.map(d => <option key={d} value={d}>{dateLabel(d)}</option>)}
+          </select>
+        )}
+        <span style={{ display: 'flex', gap: 6 }}>
+          <button style={S.pill(site === 'all', C.inkLight)} onClick={() => setSite('all')}>Both sites</button>
+          {SITES.map(s => (
+            <button key={s.id} style={S.pill(site === s.id, s.color)} onClick={() => setSite(s.id)}>{s.label}</button>
+          ))}
+        </span>
       </div>
-    </div>
-  );
-}
 
-function UploadBar({ snapshotInfo, uploadState, onFile }) {
-  const inputRef = useRef(null);
-  const handlePick = () => inputRef.current?.click();
-  const handleChange = (e) => {
-    const f = e.target.files?.[0];
-    if (f) onFile(f);
-    e.target.value = '';  // allow re-selecting same file
-  };
-
-  const stage = uploadState.stage;
-  const busy = stage === 'reading' || stage === 'parsing' || stage === 'persisting';
-
-  let chipClass = styles.chipFresh, chipLabel = 'Fresh';
-  if (snapshotInfo?.uploaded_at) {
-    const ageHrs = (Date.now() - new Date(snapshotInfo.uploaded_at).getTime()) / 3.6e6;
-    if (ageHrs > 24 * 35)      { chipClass = styles.chipStale; chipLabel = 'Stale'; }
-    else if (ageHrs > 24 * 7)  { chipClass = styles.chipAging; chipLabel = 'Aging'; }
-  } else {
-    chipClass = styles.chipStale; chipLabel = 'No data';
-  }
-
-  return (
-    <div className={styles.uploadBar}>
-      <div>
-        <div className={styles.smallLabel}>Source</div>
-        <div className={styles.fileLine}>
-          <span className={styles.filename}>API_Dashboard_MOS_3_0.xlsx</span>
-          <span className={`${styles.freshChip} ${chipClass}`}>{chipLabel}</span>
-        </div>
-      </div>
-      <div style={{ marginLeft: 18 }}>
-        <div className={styles.smallLabel}>Last Refresh</div>
-        <div className={styles.timestamp}>
-          {snapshotInfo
-            ? `${fmtDate(snapshotInfo.uploaded_at)} · ${relTime(snapshotInfo.uploaded_at)} · ${snapshotInfo.uploaded_by || 'unknown'}`
-            : 'Never uploaded'}
-        </div>
-      </div>
-      <div className={styles.spacer} />
-
-      {stage === 'success' && (
-        <div className={styles.uploadStatusOk}>
-          ✓ {uploadState.count} rows captured
-        </div>
-      )}
-      {stage === 'error' && (
-        <div className={styles.uploadStatusErr}>
-          ✗ {uploadState.message}
-        </div>
-      )}
-      {busy && (
-        <div className={styles.uploadStatusBusy}>
-          {stage === 'reading'    && 'Reading file…'}
-          {stage === 'parsing'    && 'Parsing sheet…'}
-          {stage === 'persisting' && `Writing ${uploadState.count} rows…`}
-        </div>
-      )}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".xlsx,.xlsm"
-        style={{ display: 'none' }}
-        onChange={handleChange}
-      />
-      <button className={styles.btnPrimary} onClick={handlePick} disabled={busy}>
-        ↑ Refresh File
-      </button>
-    </div>
-  );
-}
-
-// ============================================================================
-// Overview view (Level 1)
-// ============================================================================
-function OverviewView({ rows, history, bucketStats, alarmStats, onSelectBucket, onShowAllOversold }) {
-  return (
-    <>
-      {/* --- Inventory Trend Summary (finance / valuation) --- */}
-      <SectionHeader title="Inventory Trend" subtitle="On-hand yards by site for valuation & finance" />
-      <TrendSummary history={history} rows={rows} />
-
-      {/* --- Cross-cutting alarm banner --- */}
-      <SectionHeader title="Active Alerts" subtitle="Cross-cutting exceptions across all buckets" />
-      <AlarmBanner stats={alarmStats} onShowAll={onShowAllOversold} />
-
-      {/* --- Three category cards --- */}
-      <SectionHeader title="By Category" subtitle="Click a card for SKU-level detail" />
-      <div className={styles.cardRow}>
-        {BUCKETS.map(b => (
-          <CategoryCard
-            key={b}
-            bucket={b}
-            stats={bucketStats[b]}
-            onClick={() => onSelectBucket(b)}
-          />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function SectionHeader({ title, subtitle }) {
-  return (
-    <div className={styles.sectionHeader}>
-      <h2>{title}</h2>
-      {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
-    </div>
-  );
-}
-
-// ----- Trend summary (BNY + Passaic + All) ---------------------------------
-function TrendSummary({ history, rows }) {
-  // Compute current bucket totals from rows (so it matches the user's freshly-uploaded snapshot)
-  const currentByBucket = useMemo(() => {
-    const out = {};
-    for (const r of rows) {
-      const b = r.order_type;
-      if (!out[b]) out[b] = { yards: 0, skuCount: 0, valuated_yards: 0, valuated_dollars: 0 };
-      out[b].yards += r.on_hand_qty || 0;
-      out[b].skuCount += 1;
-      // $ valuation pulled from raw_row.unit_cost if present (stamped during upload from
-      // mos_received join). For initial Phase 1, leave at 0; will populate when we wire
-      // the cost join in Phase 1B.
-    }
-    return out;
-  }, [rows]);
-
-  const sites = ['BNY', 'Passaic'];
-  const siteTotals = sites.map(site => {
-    const buckets = SITE_MAP[site];
-    const yards = buckets.reduce((s, b) => s + (currentByBucket[b]?.yards || 0), 0);
-    const skuCount = buckets.reduce((s, b) => s + (currentByBucket[b]?.skuCount || 0), 0);
-    return { site, yards, skuCount, buckets };
-  });
-  const grandYards = siteTotals.reduce((s, x) => s + x.yards, 0);
-
-  // Trend points — group history by snapshot_month, then per site
-  const trendBySite = useMemo(() => buildTrendBySite(history), [history]);
-
-  return (
-    <div className={styles.trendBlock}>
-      <div className={styles.trendCards}>
-        {siteTotals.map(s => (
-          <SiteTrendCard
-            key={s.site}
-            site={s.site}
-            yards={s.yards}
-            skuCount={s.skuCount}
-            trend={trendBySite[s.site] || []}
-          />
-        ))}
-        <div className={styles.totalCard}>
-          <div className={styles.smallLabel}>Total On-Hand</div>
-          <div className={styles.bigStat}>{fmtInt(grandYards)} <span className={styles.unit}>yd</span></div>
-          <div className={styles.subtitle} style={{ marginTop: 8 }}>
-            Sum across all three buckets · current snapshot
+      {err && <div style={{ color: C.rose, fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {loading ? <div style={{ fontSize: 13, color: C.inkLight }}>Loading…</div> : (
+        <>
+          {/* ── Headline: value, yards, cover, short ─────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))',
+                        gap: 12, marginBottom: 14 }}>
+            <div style={S.card}>
+              <div style={S.lab}>Inventory value</div>
+              <div style={{ ...S.big, color: C.revenue }}>{money(total.value)}</div>
+              <div style={S.sub}>{total.skus} SKUs at cost · substrate only, excludes ink</div>
+            </div>
+            <div style={S.card}>
+              <div style={S.lab}>On hand</div>
+              <div style={S.big}>{fmt(Math.round(total.onHand))}<span style={{ fontSize: 12, color: C.inkLight, marginLeft: 5 }}>yds</span></div>
+              <div style={S.sub}>
+                {total.prev > 0
+                  ? `${total.onHand >= total.prev ? '▲' : '▼'} ${fmt(Math.abs(Math.round(total.onHand - total.prev)))} vs prior month`
+                  : 'No prior-month figure'}
+              </div>
+            </div>
+            <div style={S.card}>
+              <div style={S.lab}>Weeks of cover</div>
+              <div style={{ ...S.big, color: total.cover == null ? C.inkLight
+                             : total.cover < 6 ? C.rose : total.cover < 12 ? C.amber : C.sage }}>
+                {total.cover == null ? '—' : total.cover.toFixed(1)}
+              </div>
+              <div style={S.sub}>
+                {total.cover == null ? 'Nothing sold in the period'
+                  : `at ${fmt(Math.round(total.sold / 4.33))} yds/week consumption`}
+              </div>
+            </div>
+            <div style={S.card}>
+              <div style={S.lab}>Short</div>
+              <div style={{ ...S.big, color: total.short > 0 ? C.amber : C.sage }}>
+                {fmt(Math.round(total.short))}<span style={{ fontSize: 12, color: C.inkLight, marginLeft: 5 }}>yds</span>
+              </div>
+              <div style={S.sub}>{money(total.shortC)} to cover · the buy signal</div>
+            </div>
           </div>
-          <div className={styles.dollarNote}>
-            $ valuation populates as receipt-cost data is wired (Phase 1B).
+
+          {/* ── Roll-forward: opening → received → sold → closing ────────── */}
+          <div style={{ ...S.card, marginBottom: 14 }}>
+            <div style={S.lab}>Movement this period</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 }}>
+              {[
+                ['Opening',  total.prev,   C.inkMid],
+                ['Received', total.recvd,  C.sage],
+                ['Sold',     -total.sold,  C.waste],
+                ['Closing',  total.onHand, C.yards],
+              ].map(([lab, v, col], i) => (
+                <React.Fragment key={lab}>
+                  {i > 0 && <span style={{ color: C.inkLight, fontSize: 16, margin: '0 4px' }}>
+                    {i === 3 ? '=' : (v >= 0 ? '+' : '−')}</span>}
+                  <span style={{ flex: '1 1 130px', minWidth: 120 }}>
+                    <span style={{ display: 'block', fontSize: 10, color: C.inkLight,
+                                   textTransform: 'uppercase', letterSpacing: '0.08em' }}>{lab}</span>
+                    <span style={{ fontSize: 17, fontWeight: 600, color: col,
+                                   fontVariantNumeric: 'tabular-nums',
+                                   fontFamily: 'var(--font-display)' }}>
+                      {fmt(Math.abs(Math.round(v)))}
+                    </span>
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+            <div style={{ ...S.sub, marginTop: 8 }}>
+              Yards. Received {money(total.recvdC)} at cost. Opening plus received less sold will not
+              tie exactly to closing — adjustments and waste are not in this workbook.
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function SiteTrendCard({ site, yards, skuCount, trend }) {
-  return (
-    <div className={styles.siteCard}>
-      <div className={styles.siteCardHeader}>
-        <span className={styles.smallLabel}>{site}</span>
-        <span className={styles.subtitle}>{skuCount} SKUs in stock</span>
-      </div>
-      <div className={styles.bigStat}>{fmtInt(yards)} <span className={styles.unit}>yd</span></div>
-      <Sparkline points={trend} />
-      <div className={styles.subtitle}>
-        {trend.length <= 1
-          ? 'Trend builds as monthly refreshes accumulate'
-          : `${trend.length} months of history`}
-      </div>
-    </div>
-  );
-}
-
-function Sparkline({ points }) {
-  if (!points || points.length < 1) {
-    return <div className={styles.sparkPlaceholder}>—</div>;
-  }
-  const W = 200, H = 40, P = 4;
-  const ys = points.map(p => p.yards);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const range = maxY - minY || 1;
-  const xStep = points.length > 1 ? (W - 2 * P) / (points.length - 1) : 0;
-
-  if (points.length === 1) {
-    return (
-      <svg className={styles.spark} viewBox={`0 0 ${W} ${H}`}>
-        <circle cx={W/2} cy={H/2} r="3.5" fill="var(--perf, #124E66)" />
-      </svg>
-    );
-  }
-
-  const path = points.map((p, i) => {
-    const x = P + i * xStep;
-    const y = P + (1 - (p.yards - minY) / range) * (H - 2 * P);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-
-  return (
-    <svg className={styles.spark} viewBox={`0 0 ${W} ${H}`}>
-      <path d={path} fill="none" stroke="var(--perf, #124E66)" strokeWidth="1.6" />
-      {points.map((p, i) => {
-        const x = P + i * xStep;
-        const y = P + (1 - (p.yards - minY) / range) * (H - 2 * P);
-        return <circle key={i} cx={x} cy={y} r="2" fill="var(--perf, #124E66)" />;
-      })}
-    </svg>
-  );
-}
-
-// ----- Alarm banner --------------------------------------------------------
-function AlarmBanner({ stats, onShowAll }) {
-  return (
-    <div className={styles.alarmBanner}>
-      <div>
-        <div className={styles.alarmLabel}>Oversold SKUs</div>
-        <div className={`${styles.alarmValue} ${styles.alert}`}>{stats.oversold}</div>
-        <div className={styles.alarmSub}>WIP committed exceeds On Hand + Open POs</div>
-      </div>
-      <div>
-        <div className={styles.alarmLabel}>Total Buy Recommendation (+2 mo)</div>
-        <div className={styles.alarmValue}>{fmtInt(stats.totalBuy)}</div>
-        <div className={styles.alarmSub}>yards across SKUs short of target</div>
-      </div>
-      <div>
-        <div className={styles.alarmLabel}>Long-Lead at Risk</div>
-        <div className={styles.alarmValue}>{stats.longLead}</div>
-        <div className={styles.alarmSub}>SKUs with 5+ mo lead time below target</div>
-      </div>
-      <div className={styles.alarmCta}>
-        <button className={styles.btnAlarm} onClick={onShowAll}>View All {stats.oversold} →</button>
-      </div>
-    </div>
-  );
-}
-
-// ----- Category card -------------------------------------------------------
-function CategoryCard({ bucket, stats, onClick }) {
-  const framing = BUCKET_FRAMING[bucket];
-  const leadNum = bucket === 'Schumacher' ? stats.oversold : stats.shortOfTarget;
-
-  return (
-    <div className={styles.catCard} onClick={onClick} role="button" tabIndex={0}
-         onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick()}>
-      <div className={styles.catStrip} />
-      <div className={styles.catHeader}>
-        <div className={styles.catName}>{bucket}</div>
-        <div className={styles.skuCount}>{stats.total} SKUs</div>
-      </div>
-      <div className={styles.catFraming}>{framing.label}</div>
-      <div className={styles.leadStat}>
-        <div className={`${styles.leadNum} ${leadNum > 0 ? styles.alert : styles.ok}`}>{leadNum}</div>
-        <div className={styles.leadLabel}>
-          {bucket === 'Schumacher'
-            ? `${stats.oversold} oversold (committed > available)`
-            : `${stats.shortOfTarget} below target · ${stats.oversold} oversold`}
-        </div>
-      </div>
-      <div className={styles.statsRow}>
-        <div className={styles.miniStat}>
-          <div className={styles.miniV}>{fmtInt(stats.totalOnHand)}</div>
-          <div className={styles.miniL}>{bucket === 'Schumacher' ? 'WIP yards' : 'On Hand yards'}</div>
-        </div>
-        <div className={styles.miniStat}>
-          <div className={styles.miniV}>{stats.leadTimeRange}</div>
-          <div className={styles.miniL}>Lead time</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Bucket view (Level 2)
-// ============================================================================
-function BucketView({ bucket, rows, onBack, onSelectSku }) {
-  const [filter, setFilter] = useState('below'); // 'below' | 'all' | 'oversold' | 'longLead'
-
-  const isOversold = bucket === '__OVERSOLD__';
-  const title = isOversold ? 'All Oversold SKUs' : bucket;
-
-  const sourceRows = isOversold
-    ? rows.filter(r => (r.available_on_hand_with_open_pos ?? 0) < 0)
-    : rows.filter(r => r.order_type === bucket);
-
-  const filteredRows = useMemo(() => {
-    let list = sourceRows;
-    if (filter === 'below')    list = list.filter(r => (r.var_mos_vs_target_plus_2 ?? 0) < 0);
-    if (filter === 'oversold') list = list.filter(r => (r.available_on_hand_with_open_pos ?? 0) < 0);
-    if (filter === 'longLead') list = list.filter(r => (r.months_of_lead_time ?? 0) >= 3);
-    // sort: most negative variance first, then by SKU
-    return [...list].sort((a, b) =>
-      (a.var_mos_vs_target_plus_2 ?? 0) - (b.var_mos_vs_target_plus_2 ?? 0)
-    );
-  }, [sourceRows, filter]);
-
-  const counts = {
-    below:    sourceRows.filter(r => (r.var_mos_vs_target_plus_2 ?? 0) < 0).length,
-    all:      sourceRows.length,
-    oversold: sourceRows.filter(r => (r.available_on_hand_with_open_pos ?? 0) < 0).length,
-    longLead: sourceRows.filter(r => (r.months_of_lead_time ?? 0) >= 3).length,
-  };
-
-  return (
-    <div>
-      <button className={styles.backBtn} onClick={onBack}>← Back to Inventory Overview</button>
-
-      <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <h3>{title}</h3>
-          <div className={styles.filterChips}>
-            {!isOversold && (
-              <Chip active={filter === 'below'}    onClick={() => setFilter('below')}>Below Target ({counts.below})</Chip>
-            )}
-            <Chip active={filter === 'all' || isOversold} onClick={() => setFilter('all')}>{isOversold ? `All (${counts.all})` : `All (${counts.all})`}</Chip>
-            {!isOversold && (
-              <Chip active={filter === 'oversold'} onClick={() => setFilter('oversold')}>Oversold ({counts.oversold})</Chip>
-            )}
-            {!isOversold && (
-              <Chip active={filter === 'longLead'} onClick={() => setFilter('longLead')}>Long-lead ({counts.longLead})</Chip>
-            )}
-          </div>
-        </div>
-        <table className={styles.dataTable}>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              {isOversold && <th>Bucket</th>}
-              <th className={styles.num}>On Hand</th>
-              <th className={styles.num}>WIP</th>
-              <th className={styles.num}>MOS</th>
-              <th className={styles.num}>Lead</th>
-              <th className={styles.num}>Target</th>
-              <th className={styles.num}>Var vs Target</th>
-              <th className={styles.num}>Buy +2mo</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.length === 0 ? (
-              <tr><td colSpan={isOversold ? 10 : 9} className={styles.emptyCell}>No SKUs match this filter</td></tr>
-            ) : filteredRows.map(r => {
-              const oversold = (r.available_on_hand_with_open_pos ?? 0) < 0;
-              const below = (r.var_mos_vs_target_plus_2 ?? 0) < 0;
+          {/* ── By material group ───────────────────────────────────────── */}
+          <div style={{ ...S.card, marginBottom: 14 }}>
+            <div style={S.lab}>By material</div>
+            {byGroup.map(g => {
+              const share = total.value > 0 ? (g.value / total.value) * 100 : 0
               return (
-                <tr key={r.id} className={oversold ? styles.crit : ''} onClick={() => onSelectSku(r.replacement_ground)}>
-                  <td className={styles.skuCell}>{r.replacement_ground}</td>
-                  {isOversold && <td className={styles.bucketCell}>{r.order_type}</td>}
-                  <td className={styles.num}>{fmtInt(r.on_hand_qty)}</td>
-                  <td className={styles.num}>{fmtInt(r.wip_total)}</td>
-                  <td className={styles.num}>{fmtDec1(r.mos_based_on_6_12)}</td>
-                  <td className={styles.num}>{fmtDec1(r.months_of_lead_time)}</td>
-                  <td className={styles.num}>{fmtDec1(r.target_mos_plus_2)}</td>
-                  <td className={`${styles.num} ${below ? styles.varNeg : styles.varPos}`}>
-                    {fmtSign(r.var_mos_vs_target_plus_2)}
-                  </td>
-                  <td className={styles.num}>{fmtInt(r.calc_buy_yards_plus_2_months)}</td>
-                  <td>
-                    {oversold
-                      ? <span className={`${styles.pill} ${styles.pillCrit}`}>Oversold</span>
-                      : below
-                        ? <span className={`${styles.pill} ${styles.pillWarn}`}>Below target</span>
-                        : <span className={`${styles.pill} ${styles.pillOk}`}>On track</span>}
-                  </td>
-                </tr>
-              );
+                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '5px 0' }}>
+                  <span style={{ width: 150, fontSize: 12, color: C.ink, overflow: 'hidden',
+                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.key}</span>
+                  <span style={{ flex: 1, height: 8, background: C.warm, borderRadius: 4, overflow: 'hidden' }}>
+                    <span style={{ display: 'block', height: '100%', width: `${share}%`, background: C.yards }} />
+                  </span>
+                  <span style={{ width: 78, textAlign: 'right', fontSize: 12, color: C.inkMid,
+                                 fontVariantNumeric: 'tabular-nums' }}>{fmt(Math.round(g.onHand))} yd</span>
+                  <span style={{ width: 68, textAlign: 'right', fontSize: 12, color: C.ink,
+                                 fontVariantNumeric: 'tabular-nums' }}>{money(g.value)}</span>
+                </div>
+              )
             })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function Chip({ active, onClick, children }) {
-  return (
-    <span className={`${styles.chip} ${active ? styles.chipActive : ''}`} onClick={onClick}>
-      {children}
-    </span>
-  );
-}
-
-// ============================================================================
-// SKU view (Level 3)
-// ============================================================================
-function SkuView({ sku, row, onBack }) {
-  if (!row) {
-    return (
-      <div>
-        <button className={styles.backBtn} onClick={onBack}>← Back</button>
-        <div className={styles.empty}>SKU "{sku}" not found in current snapshot.</div>
-      </div>
-    );
-  }
-
-  const oversold = (row.available_on_hand_with_open_pos ?? 0) < 0;
-  const below = (row.var_mos_vs_target_plus_2 ?? 0) < 0;
-  const buyAmt = row.calc_buy_yards_plus_2_months;
-
-  return (
-    <div>
-      <button className={styles.backBtn} onClick={onBack}>← Back</button>
-
-      <div className={styles.drill}>
-        <div className={styles.drillHead}>
-          <div className={styles.drillBack}>{row.order_type} · {below ? 'Below Target' : 'On Track'}</div>
-          <h2>
-            {row.replacement_ground}
-            {oversold && <span className={`${styles.pill} ${styles.pillCrit}`} style={{ marginLeft: 10 }}>Oversold</span>}
-            {!oversold && below && <span className={`${styles.pill} ${styles.pillWarn}`} style={{ marginLeft: 10 }}>Below target</span>}
-          </h2>
-          <div className={styles.drillMeta}>
-            {row.order_type} substrate · {fmtDec1(row.months_of_lead_time)} month lead time ·
-            target MOS {fmtDec1(row.target_mos_plus_2)} ·
-            written {fmtInt(row.ground_written_last_6_months)} yd in past 6 months
-          </div>
-        </div>
-
-        <div className={styles.drillBody}>
-          <div>
-            <h4>Current Position</h4>
-            <div className={styles.statGrid}>
-              <Stat label="On Hand" value={`${fmtInt(row.on_hand_qty)} yd`} />
-              <Stat label="WIP Total" value={`${fmtInt(row.wip_total)} yd`} />
-              <Stat label="Open PO Qty" value={`${fmtInt(row.po_open_qty)} yd`} />
-              <Stat label="Available with Open POs"
-                    value={`${fmtSign(row.available_on_hand_with_open_pos)} yd`}
-                    alert={oversold} />
-            </div>
-
-            <div className={styles.subSection}>
-              <h4>Demand History</h4>
-              <div className={styles.demandBars}>
-                <DemandBar label="6mo Total"      value={fmtInt(row.ground_written_last_6_months)} />
-                <DemandBar label="Avg 6mo / mo"   value={fmtDec1(row.avg_monthly_last_6_months)} />
-                <DemandBar label="Avg 12mo / mo"  value={fmtDec1(row.avg_monthly_last_12_months)} />
-                <DemandBar label="Last 30 days"   value={fmtInt(row.yards_written_last_30_days)} />
-              </div>
-              {(row.avg_last_6_12_monthly_yards ?? 0) < 1 && row.wip_total > 100 && (
-                <div className={styles.note}>
-                  Burn rate is essentially zero on rolling average — the WIP commitment is what's driving the position, not steady demand.
-                </div>
-              )}
-            </div>
           </div>
 
-          <div>
-            <h4>MOS Engine</h4>
-            <div className={styles.statGrid}>
-              <Stat label="Current MOS"     value={fmtDec1(row.mos_based_on_6_12)} alert={(row.mos_based_on_6_12 ?? 0) < 0} />
-              <Stat label="Target MOS (+2)" value={fmtDec1(row.target_mos_plus_2)} />
-              <Stat label="Lead Time"       value={`${fmtDec1(row.months_of_lead_time)} mo`} />
-              <Stat label="Variance"        value={fmtSign(row.var_mos_vs_target_plus_2)} alert={below} />
+          {/* ── SKU detail ──────────────────────────────────────────────── */}
+          <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '14px 18px 10px' }}>
+              <span style={S.lab}>SKU detail</span>
+              <button onClick={() => setSortShort(v => !v)} style={S.pill(false, C.border)}>
+                Sort by {sortShort ? 'value' : 'shortest'}
+              </button>
             </div>
-
-            <div className={styles.subSection}>
-              <h4>Open POs</h4>
-              {(row.po_open_qty ?? 0) > 0 ? (
-                <div className={styles.poLine}>
-                  <div className={styles.poDot} />
-                  <div>
-                    <strong>{fmtInt(row.po_open_qty)} yd</strong> on order
-                    <div className={styles.subtitle}>
-                      {row.min_due_date ? `Due ${fmtDate(row.min_due_date)}` : 'Due dates not in source'}
-                      {row.max_due_date && row.max_due_date !== row.min_due_date
-                        ? ` – ${fmtDate(row.max_due_date)}` : ''}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.poEmpty}>No open POs on this SKU</div>
-              )}
+            <div style={{ maxHeight: 460, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.th, textAlign: 'left' }}>SKU</th>
+                    <th style={{ ...S.th, textAlign: 'left' }}>Supplier</th>
+                    <th style={S.th}>On hand</th>
+                    <th style={S.th}>Short</th>
+                    <th style={S.th}>Received</th>
+                    <th style={S.th}>Sold</th>
+                    <th style={S.th}>$/yd</th>
+                    <th style={S.th}>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skuRows.map(r => {
+                    const val = num(r.on_hand_curr) * num(r.cost_per_yard)
+                    const short = num(r.yards_short)
+                    return (
+                      <tr key={`${r.site}-${r.lift_sku}`}>
+                        <td style={{ ...S.td, textAlign: 'left' }}>
+                          {r.lift_sku}
+                          <span style={{ color: C.inkLight, marginLeft: 7, fontSize: 10 }}>
+                            {r.site === 'bny' ? 'BK' : 'NJ'}
+                          </span>
+                        </td>
+                        <td style={{ ...S.td, textAlign: 'left', color: C.inkLight,
+                                     maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {r.supplier || '—'}
+                        </td>
+                        <td style={S.td}>{fmt(Math.round(num(r.on_hand_curr)))}</td>
+                        <td style={{ ...S.td, color: short > 0 ? C.amber : C.inkLight }}>
+                          {short > 0 ? fmt(Math.round(short)) : '—'}
+                        </td>
+                        <td style={S.td}>{num(r.recvd_yards) ? fmt(Math.round(num(r.recvd_yards))) : '—'}</td>
+                        <td style={S.td}>{num(r.sold_lift) ? fmt(Math.round(num(r.sold_lift))) : '—'}</td>
+                        <td style={{ ...S.td, color: C.inkLight }}>
+                          {num(r.cost_per_yard) ? `$${num(r.cost_per_yard).toFixed(2)}` : '—'}
+                        </td>
+                        <td style={S.td}>{val ? money(val) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-
-            {buyAmt && buyAmt > 0 && (
-              <div className={styles.recommend}>
-                <div className={styles.recLabel}>Recommended Buy</div>
-                <div className={styles.recValue}>{fmtInt(buyAmt)} yards</div>
-                <div className={styles.recNote}>
-                  To cover the position and rebuild to +2 month buffer.
-                  Expected shipment delay: {fmtDec1(row.months_of_lead_time)} months from PO.
-                </div>
+            {view.length > 60 && (
+              <div style={{ padding: '8px 18px', fontSize: 11, color: C.inkLight }}>
+                Showing 60 of {view.length} SKUs.
               </div>
             )}
           </div>
-        </div>
-      </div>
+
+          <div style={{ ...S.sub, marginTop: 16 }}>
+            Source: ShareFile inventory workbooks, ingested by the daily finance feed.
+            Substrate only — the workbooks exclude ink and other consumables, so this is
+            not total inventory value. Weeks of cover uses the month-end deck's method:
+            on-hand divided by average weekly consumption.
+          </div>
+        </>
+      )}
     </div>
-  );
-}
-
-function Stat({ label, value, alert }) {
-  return (
-    <div className={styles.statItem}>
-      <div className={styles.statL}>{label}</div>
-      <div className={`${styles.statV} ${alert ? styles.alert : ''}`}>{value}</div>
-    </div>
-  );
-}
-
-function DemandBar({ label, value }) {
-  return (
-    <div className={styles.demandBar}>
-      <div className={styles.demandL}>{label}</div>
-      <div className={styles.demandV}>{value}</div>
-    </div>
-  );
-}
-
-// ============================================================================
-// Empty state
-// ============================================================================
-function EmptyState() {
-  return (
-    <div className={styles.empty}>
-      <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 400, fontSize: 22 }}>No inventory data yet</h3>
-      <p>Use the <strong>Refresh File</strong> button above to upload the latest API_Dashboard_MOS_3_0.xlsx
-      from ShareFile. The Inventory tab will populate once the first snapshot is captured.</p>
-    </div>
-  );
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-function buildBucketStats(rows) {
-  const stats = {};
-  for (const b of BUCKETS) {
-    stats[b] = {
-      total: 0,
-      shortOfTarget: 0,
-      oversold: 0,
-      negativeMos: 0,
-      totalOnHand: 0,
-      totalWip: 0,
-      leadTimes: [],
-    };
-  }
-  for (const r of rows) {
-    const s = stats[r.order_type];
-    if (!s) continue;
-    s.total++;
-    if ((r.var_mos_vs_target_plus_2 ?? 0) < 0)         s.shortOfTarget++;
-    if ((r.available_on_hand_with_open_pos ?? 0) < 0)  s.oversold++;
-    if ((r.mos_based_on_6_12 ?? 0) < 0)                s.negativeMos++;
-    s.totalOnHand += r.on_hand_qty || 0;
-    s.totalWip    += r.wip_total   || 0;
-    if (r.months_of_lead_time != null) s.leadTimes.push(r.months_of_lead_time);
-  }
-  for (const s of Object.values(stats)) {
-    if (s.leadTimes.length) {
-      const min = Math.min(...s.leadTimes);
-      const max = Math.max(...s.leadTimes);
-      s.leadTimeRange = (min === max) ? `${fmtDec1(min)} mo` : `${fmtDec1(min)}–${fmtDec1(max)} mo`;
-    } else {
-      s.leadTimeRange = '—';
-    }
-  }
-  // Schumacher card surfaces "WIP yards" not "On Hand yards" because pass-through
-  // ground is rarely held — the meaningful inventory is committed WIP.
-  if (stats['Schumacher']) {
-    stats['Schumacher'].totalOnHand = stats['Schumacher'].totalWip;
-  }
-  return stats;
-}
-
-function buildTrendBySite(history) {
-  // history rows: { snapshot_id, snapshot_month, order_type, total_on_hand_yards, ... }
-  // Group by month + site, sum across mapped buckets.
-  const byMonthSite = {};  // { 'YYYY-MM-DD::BNY': yards }
-  for (const h of history) {
-    const monthKey = h.snapshot_month?.substring(0, 10) || '';
-    for (const site of Object.keys(SITE_MAP)) {
-      if (SITE_MAP[site].includes(h.order_type)) {
-        const key = `${monthKey}::${site}`;
-        byMonthSite[key] = (byMonthSite[key] || 0) + (Number(h.total_on_hand_yards) || 0);
-      }
-    }
-  }
-  const out = { BNY: [], Passaic: [] };
-  const months = [...new Set(Object.keys(byMonthSite).map(k => k.split('::')[0]))].sort();
-  for (const m of months) {
-    for (const site of Object.keys(SITE_MAP)) {
-      const v = byMonthSite[`${m}::${site}`];
-      if (v != null) out[site].push({ month: m, yards: v });
-    }
-  }
-  return out;
+  )
 }
