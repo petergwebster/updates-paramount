@@ -46,6 +46,7 @@
 import * as XLSX from 'xlsx'
 import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
 import { parseVenaWorkbook } from '../../src/lib/venaWorkbook.js'
+import { parseInventoryWorkbook } from '../../src/lib/inventoryWorkbook.js'
 
 const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
 const CLIENT_ID  = (process.env.SHAREFILE_CLIENT_ID      || '').trim()
@@ -66,6 +67,16 @@ const JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases']
 // ShareFile ("Parmount") — that is the real name, do not "fix" it.
 const VENA_PATH = ['Parmount Monthly Results']
 const VENA_RE = /^Paramount Results vs Forecast.*\.xlsx$/i
+
+// Month-end substrate inventory. Two workbooks, one per site, same layout.
+// Replaces API_Dashboard_MOS_3_0.xlsx, which was a manual upload and reached
+// 84 days stale. MOS is retired — this source carries cost but not the
+// months-of-supply model, so the tab reports POSITION, not supply cover.
+const INV_PATH = ['Inventory Reports']
+const INV_FILES = [
+  { site: 'passaic', re: /^Paramount Inventory Reporting.*\.xlsx$/i },
+  { site: 'bny',     re: /^BNY Inventory Reporting.*\.xlsx$/i },
+]
 
 // Guard floor, matching AdminFinancials.jsx and lift-wip-sync: a real
 // year-to-date ledger does not lose 30% of its rows in a week.
@@ -317,6 +328,70 @@ async function ingestVena(token, opts, result) {
   console.log(`sharefile-sync: loaded ${rows.length} Vena rows for ${parsed.period} from ${file.Name}`)
 }
 
+// ─── Month-end inventory (both sites) ───────────────────────────────
+async function ingestInventory(token, opts, result) {
+  const folderId = await resolvePath(INV_PATH, token)
+  const prior = (await stateGet(STATE_KEY)) || {}
+  const out = {}
+  let anyWritten = false
+
+  for (const { site, re } of INV_FILES) {
+    try {
+      const file = await newestFile(folderId, token, n => re.test(n) && !/^~\$/.test(n))
+      if (!file) { out[site] = { skipped: 'no matching workbook' }; continue }
+
+      const modified = file.ClientModifiedDate || file.ProgenyEditDate || file.CreationDate || ''
+      const fingerprint = `${file.Name}|${file.FileSizeBytes}|${modified}`
+      const stateKey = `inv_${site}`
+      if (!opts.force && prior[stateKey] === fingerprint) {
+        out[site] = { skipped: 'unchanged since last run', file: file.Name }
+        continue
+      }
+
+      // AS-OF: the workbook states no date of its own — the columns just say
+      // "current month". ShareFile's modified date is the only honest signal we
+      // have, so the tab labels it as the workbook refresh date rather than
+      // implying a month end we cannot actually read.
+      const asOf = (modified ? new Date(modified) : new Date()).toISOString().slice(0, 10)
+
+      const buf = await downloadBuffer(file.Id, token)
+      const wb = XLSX.read(buf, { type: 'buffer' })
+      const parsed = parseInventoryWorkbook(XLSX, wb, { fileName: file.Name, site, asOf })
+
+      out[site] = {
+        file: file.Name, sheet: parsed.sheet, as_of: asOf,
+        ...parsed.summary,
+        warnings: parsed.warnings.length ? parsed.warnings : null,
+      }
+
+      if (opts.dryRun) { out[site].written = false; out[site].dryRun = true; continue }
+
+      // Upsert on (site, as_of, lift_sku): re-running the same refresh
+      // overwrites in place, and a NEW refresh date adds a snapshot rather than
+      // replacing one. That accumulation is what makes an inventory TREND
+      // possible — the thing the old tab kept promising and could never show.
+      const CHUNK = 500
+      for (let i = 0; i < parsed.rows.length; i += CHUNK) {
+        await sb('inventory_snapshot', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates' },
+          body: JSON.stringify(parsed.rows.slice(i, i + CHUNK)),
+        })
+      }
+      await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [stateKey]: fingerprint })
+      out[site].written = true
+      anyWritten = true
+      console.log(`sharefile-sync: loaded ${parsed.rows.length} ${site} inventory SKUs as of ${asOf}`)
+    } catch (e) {
+      console.error(`inventory ${site}:`, e)
+      out[site] = { error: e.message }
+    }
+  }
+
+  result.inventory = out
+  return anyWritten
+}
+
 // ─── main ──────────────────────────────────────────────────────────────────
 async function runSync(event) {
   let opts = {}
@@ -357,12 +432,16 @@ async function runSync(event) {
     try { await ingestVena(token, opts, result) }
     catch (e) { console.error('vena feed:', e); result.vena = { error: e.message } }
 
+    // Month-end inventory — both sites, each isolated inside the function.
+    try { await ingestInventory(token, opts, result) }
+    catch (e) { console.error('inventory feed:', e); result.inventory = { error: e.message } }
+
     // HEALTH RECORD — what the dashboard badge reads. Written on every run,
     // success or failure. Recency matters as much as outcome: if this function
     // stops firing entirely the badge must go red on STALENESS, because a
     // silently unregistered cron is a failure mode this site has already had
     // (the netlify.toml schedule deployed clean and never ticked).
-    result.ok = !result.jen?.error && !result.vena?.error
+    result.ok = !result.jen?.error && !result.vena?.error && !result.inventory?.error
               && !result.jen?.guard_tripped && !result.vena?.guard_tripped
     try { await stateSet(HEALTH_KEY, result) } catch (e) { console.error('health write:', e) }
 
