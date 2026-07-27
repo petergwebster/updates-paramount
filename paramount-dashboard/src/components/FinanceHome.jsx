@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { C, fmt, fmtK } from '../lib/scheduleUtils'
+import { C, fmt } from '../lib/scheduleUtils'
 import { Box, Ring, Columns, StackBar, Delta } from './OpsHome'
+
+// Money, always comma-delimited. fmtK was rendering $1334K — any figure over
+// three digits needs separators or it reads as a serial number. Millions get
+// two decimals; anything smaller gets thousands with commas.
+const money = (v) => {
+  if (v === null || v === undefined) return '\u2014'
+  const n = Number(v)
+  if (!isFinite(n)) return '\u2014'
+  const a = Math.abs(n)
+  const sign = n < 0 ? '-' : ''
+  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(2)}M`
+  if (a >= 1_000)     return `${sign}$${Math.round(a / 1000).toLocaleString()}K`
+  return `${sign}$${Math.round(a).toLocaleString()}`
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FinanceHome — the Finance home screen. Same model as Operations: you land
@@ -164,8 +178,8 @@ export default function FinanceHome({ onOpen }) {
     <div>
       <div style={grid}>
 
-        <Box title="P&L" value={fmtK(d.revenue)} unit="revenue"
-             sub={`${periodLabel(d.period)} · closed · EBITDA ${fmtK(d.ebitda)} at ${margin.toFixed(1)}%`}
+        <Box title="P&L" value={money(d.revenue)} unit="revenue"
+             sub={`${periodLabel(d.period)} · closed · EBITDA ${money(d.ebitda)} at ${margin.toFixed(1)}%`}
              delta={<Delta now={d.revenue} prev={d.revenuePrev} suffix="vs prior month" />}
              onClick={go('pnl')}>
           <Columns bars={[
@@ -175,7 +189,7 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
-        <Box title="Spend" value={fmtK(d.opex)} unit="opex"
+        <Box title="Spend" value={money(d.opex)} unit="opex purchases"
              sub={d.latestTxn ? `through ${String(d.latestTxn).slice(0, 10)}` : 'no transactions loaded'}
              onClick={go('spend')}>
           <Columns bars={[
@@ -185,7 +199,7 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
-        <Box title="AR / AP" value={fmtK(d.ar)} unit="receivable"
+        <Box title="AR / AP" value={money(d.ar)} unit="receivable"
              sub={agingDays == null ? 'no aging loaded'
                   : `as of ${String(d.agingAsOf).slice(0, 10)} · ${agingDays} days old`}
              subTone={staleTone(agingDays, 14)}
@@ -196,7 +210,7 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
-        <Box title="Inventory" value={fmtK(d.inv)} unit="purchased"
+        <Box title="Inventory" value={money(d.inv)} unit="purchased"
              sub={`${periodLabel(d.fm)} to date · ink, material and freight`}
              onClick={go('inventory')}>
           <StackBar segs={[

@@ -185,7 +185,8 @@ export default function OpsHome({ onOpen }) {
 
       const [wipRes, asnRes, lineRes] = await Promise.all([
         snap.data?.id
-          ? supabase.from('sched_wip_rows').select('age_days,is_new_goods').eq('snapshot_id', snap.data.id)
+          ? supabase.from('sched_wip_rows').select('age_days,is_new_goods,yards_written')
+            .eq('snapshot_id', snap.data.id).limit(5000)
           : Promise.resolve({ data: [] }),
         supabase.from('sched_assignments').select('planned_yards,product_type').eq('week_start', useWk),
         supabase.from('sched_daily_ops_lines')
@@ -196,7 +197,9 @@ export default function OpsHome({ onOpen }) {
       const wip = wipRes.data || [], asn = asnRes.data || [], lines = lineRes.data || []
 
       const age = { cur: 0, d30: 0, d60: 0, d90: 0, d120: 0 }
+      let wipYards = 0
       for (const r of wip) {
+        wipYards += num(r.yards_written)
         const a = num(r.age_days)
         if (a < 30) age.cur++; else if (a < 60) age.d30++
         else if (a < 90) age.d60++; else if (a < 120) age.d90++; else age.d120++
@@ -244,7 +247,7 @@ export default function OpsHome({ onOpen }) {
       const prevWaste  = cmpLines.reduce((s, l) => s + num(l.waste_yards), 0)
       const prevWastePct = (prevActual + prevWaste) > 0 ? (prevWaste / (prevActual + prevWaste)) * 100 : null
 
-      setD({ wipTotal: wip.length, age, ngTotal: ng.length, ngLate,
+      setD({ wipTotal: wip.length, wipYards, age, ngTotal: ng.length, ngLate,
              mat, byDay, sched, actual, waste, done,
              lineCount: lines.length, asnCount: asn.length, isPrior,
              prevSched, prevActual, prevWastePct })
@@ -292,8 +295,10 @@ export default function OpsHome({ onOpen }) {
         <Ring pct={attain} color={attainCol} caption={'of the week\u2019s plan produced so far'} />
       </Box>
 
-      <Box title="WIP" value={fmt(d.wipTotal)} unit="rows"
-           sub={`${fmt(d.age.d120)} past 120 days`}
+      {/* Open YARDS is the headline, not row count — a row is a PO-line, which
+          means nothing to anyone. Yards is what Ramon schedules against. */}
+      <Box title="WIP" value={fmt(d.wipYards)} unit="yds open"
+           sub={`${fmt(d.wipTotal)} lines · ${fmt(d.age.d120)} past 120 days`}
            subTone={d.age.d120 > 80 ? 'bad' : d.age.d120 > 0 ? 'warn' : undefined}
            onClick={go('wip')}>
         <StackBar segs={[
