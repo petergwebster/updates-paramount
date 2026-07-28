@@ -74,7 +74,7 @@ export default function OpsSectionGrid({ onNavigate }) {
           : Promise.resolve({ data: [] }),
         supabase.from('sched_assignments').select('planned_yards').eq('week_start', wk),
         supabase.from('sched_daily_ops_lines')
-          .select('actual_yards,waste_yards,is_complete,work_date').eq('week_start', wk),
+          .select('actual_yards,waste_yards,is_complete,day_of_week').eq('week_start', wk),
       ])
       if (dead) return
 
@@ -100,8 +100,13 @@ export default function OpsSectionGrid({ onNavigate }) {
       const waste  = lines.reduce((s, l) => s + num(l.waste_yards), 0)
       const done   = lines.filter(l => l.is_complete).length
 
-      const today = isoDate(new Date())
-      const todayLines = lines.filter(l => l.work_date === today)
+      // "Today" is a DAY NAME on these rows, not a date. There is no work_date
+      // column — selecting one made PostgREST reject the whole select and this
+      // grid read zero across the board. Sunday-anchored week, so the day names
+      // match what the scheduler and Live Ops write.
+      const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      const today = DAY_NAMES[new Date().getDay()]
+      const todayLines = lines.filter(l => l.day_of_week === today)
       const todayYards = todayLines.reduce((s, l) => s + num(l.actual_yards), 0)
 
       setD({

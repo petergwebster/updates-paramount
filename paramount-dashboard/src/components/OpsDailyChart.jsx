@@ -32,7 +32,7 @@ export default function OpsDailyChart() {
       const wk = isoDate(sundayOf(new Date()))
       const [lineRes, asnRes] = await Promise.all([
         supabase.from('sched_daily_ops_lines')
-          .select('site,work_date,actual_yards,waste_yards').eq('week_start', wk),
+          .select('site,day_of_week,actual_yards,waste_yards').eq('week_start', wk),
         supabase.from('sched_assignments')
           .select('site,planned_yards').eq('week_start', wk),
       ])
@@ -41,14 +41,15 @@ export default function OpsDailyChart() {
       const lines = lineRes.data || []
       const asn   = asnRes.data || []
 
-      // Bucket by day-of-week index off the Sunday-anchored week start.
-      const start = sundayOf(new Date())
+      // Bucket by day-of-week. These rows carry a TEXT day ('Sun'…'Sat'), not a
+      // date — there is no work_date column on sched_daily_ops_lines. Asking for
+      // one made PostgREST reject the whole select, so this chart was drawing an
+      // empty week while Live Ops showed real production. DAYS is already
+      // Sunday-first, so the label array IS the index map.
       const byDay = DAYS.map(() => ({ nj: 0, bny: 0, waste: 0 }))
       for (const l of lines) {
-        if (!l.work_date) continue
-        const dt = new Date(l.work_date + 'T00:00:00')
-        const idx = Math.round((dt - start) / 86400000)
-        if (idx < 0 || idx > 6) continue
+        const idx = DAYS.indexOf(l.day_of_week)
+        if (idx < 0) continue
         const b = byDay[idx]
         if (l.site === 'passaic') b.nj += num(l.actual_yards)
         else                      b.bny += num(l.actual_yards)
