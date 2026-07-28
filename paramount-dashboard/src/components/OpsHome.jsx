@@ -3,6 +3,28 @@ import { supabase } from '../supabase'
 import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
 import OpsAttentionPanel from './OpsAttentionPanel'
 
+// ─── The three views ───────────────────────────────────────────────
+// Hand Screen and Digital, not Passaic and Brooklyn. The twelve Passaic
+// small-digital machines budget to BNY, so the real split is by PROCESS, not
+// by building — and process is how the floor, the budget and the month-end
+// deck all talk about it.
+//
+// COMBINED MEANS COMBINED PRODUCTION, NOT EVERYTHING IN THE TABLE. This is the
+// load-bearing part. sched_wip_rows also carries 'procurement' (the Korean
+// wallcovering supply line — 219 rows and 84,243 yards on 27 July, a third of
+// what the WIP tile was reporting) and a stray 'unknown'. Those are not
+// production and must never appear on an operations screen: they were
+// inflating open WIP by 30% and putting 83 procurement POs into an alert that
+// reads "worth a pass with Ramon".
+//
+// Because every view here is an explicit site list, procurement is excluded by
+// construction rather than by a filter someone has to remember to add.
+export const OPS_VIEWS = {
+  combined:   { label: 'Combined',    sites: ['passaic', 'bny'] },
+  handscreen: { label: 'Hand Screen', sites: ['passaic'] },
+  digital:    { label: 'Digital',     sites: ['bny'] },
+}
+
 // ─── Paginated fetch ───────────────────────────────────────────
 // PostgREST caps a response at 1,000 rows on the SERVER. A client-side
 // `.limit(5000)` does NOT defeat that — it looks like a fix, returns exactly
@@ -171,6 +193,9 @@ export function Box({ title, value, unit, sub, subTone, delta, children, onClick
 }
 
 export default function OpsHome({ onOpen }) {
+  const [view, setView] = useState('combined')
+  const sites = OPS_VIEWS[view].sites
+
   const [d, setD] = useState(null)
 
   useEffect(() => {
@@ -197,11 +222,11 @@ export default function OpsHome({ onOpen }) {
       let useWk = wk, isPrior = false
       {
         const { data: cur } = await supabase.from('sched_daily_ops_lines')
-          .select('actual_yards').eq('week_start', wk)
+          .select('actual_yards').eq('week_start', wk).in('site', sites)
         const curProduced = (cur || []).reduce((s, l) => s + num(l.actual_yards), 0)
         if (!dead && curProduced === 0) {
           const { data: pv } = await supabase.from('sched_daily_ops_lines')
-            .select('actual_yards').eq('week_start', prevWk)
+            .select('actual_yards').eq('week_start', prevWk).in('site', sites)
           const prevProduced = (pv || []).reduce((s, l) => s + num(l.actual_yards), 0)
           if (!dead && prevProduced > 0) { useWk = prevWk; isPrior = true }
         }
@@ -211,9 +236,10 @@ export default function OpsHome({ onOpen }) {
       const [wipRes, asnRes, lineRes] = await Promise.all([
         snap.data?.id
           ? fetchAll((a, b) => supabase.from('sched_wip_rows').select('age_days,is_new_goods,yards_written')
-            .eq('snapshot_id', snap.data.id).range(a, b)).then(data => ({ data }))
+            .eq('snapshot_id', snap.data.id).in('site', sites).range(a, b)).then(data => ({ data }))
           : Promise.resolve({ data: [] }),
-        supabase.from('sched_assignments').select('planned_yards,product_type').eq('week_start', useWk),
+        supabase.from('sched_assignments').select('site,planned_yards,product_type,table_code')
+          .eq('week_start', useWk).in('site', sites),
         // day_of_week, NOT work_date. There is no work_date column on
         // sched_daily_ops_lines — the day is stored as text ('Mon'..'Sat').
         // Selecting a column that does not exist makes PostgREST reject the
@@ -223,7 +249,8 @@ export default function OpsHome({ onOpen }) {
         // actual_yards — a real column — so it correctly saw production and
         // suppressed the amber "showing last week" banner. Blank with no banner.
         supabase.from('sched_daily_ops_lines')
-          .select('actual_yards,waste_yards,is_complete,day_of_week').eq('week_start', useWk),
+          .select('actual_yards,waste_yards,is_complete,day_of_week,site,table_code')
+          .eq('week_start', useWk).in('site', sites),
       ])
       if (dead) return
 
@@ -261,6 +288,75 @@ export default function OpsHome({ onOpen }) {
         if (idx != null) byDay[idx] += num(l.actual_yards)
       }
 
+      // ── Scheduler cut ────────────────────────────────────────────
+      // THE TWO SITES DO NOT SHARE A DIMENSION. The month-end deck cuts Hand
+      // Screen by MATERIAL and Digital by JOB TYPE, and that is not a
+      // presentation preference — it is how each business is managed.
+      //
+      // The old code ran one material bucket over both sites: grass -> Grass,
+      // paper|panel -> Wallpaper, EVERYTHING ELSE -> Fabric. Digital's Regular,
+      // Hospitality, Custom and Memo all fell through to Fabric. Measured on
+      // 27 July that made the Fabric bar 10,419 yards of which only 1,007 was
+      // actually Passaic fabric — 90% of Ramon's largest-looking material
+      // category was Brooklyn digital work. His real fabric load was the
+      // smallest of the three.
+      const matOf = (pt) => {
+        const s = (pt || '').toLowerCase()
+        if (s.includes('grass')) return 'Grass'
+        if (s.includes('paper') || s.includes('panel')) return 'Wallpaper'
+        return 'Fabric'
+      }
+      let bars = []
+      if (view === 'handscreen') {
+        const m = { Grass: 0, Fabric: 0, Wallpaper: 0 }
+        for (const a of asn) m[matOf(a.product_type)] += num(a.planned_yards)
+        bars = [
+          { label: 'Grass',     v: m.Grass,     color: C.sage },
+          { label: 'Fabric',    v: m.Fabric,    color: C.coloryards },
+          { label: 'Wallpaper', v: m.Wallpaper, color: C.yards },
+        ]
+      } else if (view === 'digital') {
+        // Digital's own job types, straight off the assignment. Top four by
+        // yards so the chart stays readable; the rest fold into Other.
+        const m = {}
+        for (const a of asn) {
+          const k = a.product_type || 'Other'
+          m[k] = (m[k] || 0) + num(a.planned_yards)
+        }
+        const ranked = Object.entries(m).sort((x, y) => y[1] - x[1])
+        const top = ranked.slice(0, 4)
+        const rest = ranked.slice(4).reduce((s, [, v]) => s + v, 0)
+        const cols = [C.yards, C.coloryards, C.sage, C.amber, C.inkLight]
+        bars = top.map(([k, v], i) => ({ label: k, v, color: cols[i] }))
+        if (rest > 0) bars.push({ label: 'Other', v: rest, color: cols[4] })
+      } else {
+        // Combined: the two processes side by side. No blended material cut,
+        // because a shared category here would be a category neither site uses.
+        const bySite = { passaic: 0, bny: 0 }
+        for (const a of asn) bySite[a.site] = (bySite[a.site] || 0) + num(a.planned_yards)
+        bars = [
+          { label: 'Hand screen', v: bySite.passaic, color: C.siteNJ },
+          { label: 'Digital',     v: bySite.bny,     color: C.siteBNY },
+        ]
+      }
+
+      // ── Live Ops coverage ───────────────────────────────────────
+      // The question this tile should answer at a glance is "is the floor data
+      // actually in?", not "how much waste". Waste headlined a number nobody
+      // can act on at 8am AND painted a data gap green: with goodDown set, a
+      // week where nobody entered any waste rendered as ▼100% in the good
+      // colour. A screen must never congratulate you for missing data.
+      const tablesScheduled = new Set(asn.map(a => a.table_code).filter(Boolean)).size
+      const DAY_ORDER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      let lastDay = null, lastDayRank = -1
+      for (const l of lines) {
+        const r = DAY_ORDER.indexOf(l.day_of_week)
+        if (r > lastDayRank) { lastDayRank = r; lastDay = l.day_of_week }
+      }
+      const tablesRecorded = lastDay
+        ? new Set(lines.filter(l => l.day_of_week === lastDay).map(l => l.table_code).filter(Boolean)).size
+        : 0
+
       const sched  = asn.reduce((s, a) => s + num(a.planned_yards), 0)
       const actual = lines.reduce((s, l) => s + num(l.actual_yards), 0)
       const waste  = lines.reduce((s, l) => s + num(l.waste_yards), 0)
@@ -271,8 +367,8 @@ export default function OpsHome({ onOpen }) {
       cmpSunday.setDate(cmpSunday.getDate() - 7)
       const cmpWk = isoDate(cmpSunday)
       const [cmpAsnRes, cmpLineRes] = await Promise.all([
-        supabase.from('sched_assignments').select('planned_yards').eq('week_start', cmpWk),
-        supabase.from('sched_daily_ops_lines').select('actual_yards,waste_yards').eq('week_start', cmpWk),
+        supabase.from('sched_assignments').select('planned_yards').eq('week_start', cmpWk).in('site', sites),
+        supabase.from('sched_daily_ops_lines').select('actual_yards,waste_yards').eq('week_start', cmpWk).in('site', sites),
       ])
       if (dead) return
       const cmpAsn = cmpAsnRes.data || [], cmpLines = cmpLineRes.data || []
@@ -282,36 +378,68 @@ export default function OpsHome({ onOpen }) {
       const prevWastePct = (prevActual + prevWaste) > 0 ? (prevWaste / (prevActual + prevWaste)) * 100 : null
 
       setD({ wipTotal: wip.length, wipYards, age, ngTotal: ng.length, ngLate,
-             mat, byDay, sched, actual, waste, done,
+             mat, byDay, bars, sched, actual, waste, done,
+             tablesScheduled, tablesRecorded, lastDay,
              lineCount: lines.length, asnCount: asn.length, isPrior,
              prevSched, prevActual, prevWastePct })
     })()
     return () => { dead = true }
-  }, [])
+  }, [view])
 
   const grid = {
     display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
     gap: 16, paddingTop: 8,
   }
 
+  // The view switch. Deliberately large and deliberately outlined in the brand
+  // clay rather than tucked into a dropdown: which process you are looking at
+  // changes every number on the screen, so it must never be ambiguous which
+  // one is active.
+  const ViewSwitch = () => (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 14 }}>
+      {Object.entries(OPS_VIEWS).map(([key, cfg]) => {
+        const on = key === view
+        return (
+          <button key={key} onClick={() => setView(key)}
+            style={{
+              padding: '9px 20px', borderRadius: 8, cursor: 'pointer',
+              fontFamily: 'var(--font-display)', fontSize: 12, letterSpacing: '0.06em',
+              textTransform: 'uppercase', fontWeight: 600,
+              background: on ? 'rgba(217,119,87,0.14)' : 'transparent',
+              color: on ? '#D97757' : C.inkMid,
+              border: `1.5px solid ${on ? '#D97757' : C.border}`,
+              transition: 'all .15s',
+            }}>
+            {cfg.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   if (!d) return (
-    <div style={grid}>
-      {[0,1,2,3,4,5].map(i => (
-        <div key={i} style={{ minHeight: 232, borderRadius: 12, background: C.parchment,
-                              border: `1px solid ${C.border}` }} />
-      ))}
+    <div>
+      <ViewSwitch />
+      <div style={grid}>
+        {[0,1,2,3,4,5].map(i => (
+          <div key={i} style={{ minHeight: 232, borderRadius: 12, background: C.parchment,
+                                border: `1px solid ${C.border}` }} />
+        ))}
+      </div>
     </div>
   )
 
   const go = (t) => () => onOpen && onOpen(t)
   const attain   = d.sched > 0 ? (d.actual / d.sched) * 100 : 0
   const wastePct = (d.actual + d.waste) > 0 ? (d.waste / (d.actual + d.waste)) * 100 : 0
+  const coveragePct = d.tablesScheduled > 0 ? (d.tablesRecorded / d.tablesScheduled) * 100 : 0
   const donePct  = d.lineCount > 0 ? (d.done / d.lineCount) * 100 : 0
   const ngOkPct  = d.ngTotal > 0 ? ((d.ngTotal - d.ngLate) / d.ngTotal) * 100 : 0
   const attainCol = attain >= 95 ? C.sage : attain >= 75 ? C.amber : C.rose
 
   return (
     <div>
+      <ViewSwitch />
       {d.isPrior && (
         <div style={{ fontSize: 11, color: C.amber, marginBottom: 10, display: 'flex',
                       alignItems: 'center', gap: 7 }}>
@@ -355,18 +483,18 @@ export default function OpsHome({ onOpen }) {
            sub={`${d.asnCount} assignment${d.asnCount !== 1 ? 's' : ''} on the board`}
            delta={<Delta now={d.sched} prev={d.prevSched} />}
            onClick={go('scheduler')}>
-        <Columns bars={[
-          { v: d.mat.grass,  color: C.sage,      label: 'Grass' },
-          { v: d.mat.fabric, color: C.coloryards, label: 'Fabric' },
-          { v: d.mat.paper,  color: C.yards,     label: 'Wallpaper' },
-        ]} />
+        <Columns bars={d.bars} />
       </Box>
 
-      <Box title="Live ops" value={d.actual > 0 ? `${wastePct.toFixed(1)}%` : '—'}
-           unit={d.actual > 0 ? 'waste' : 'no entry'}
-           sub={d.actual > 0 ? `${fmt(d.waste)} yd of ${fmt(d.actual + d.waste)} run` : 'Nothing recorded this week'}
-           subTone={d.actual > 0 ? (wastePct <= 3 ? 'good' : wastePct <= 6 ? 'warn' : 'bad') : undefined}
-           delta={<Delta now={wastePct} prev={d.prevWastePct} goodDown />}
+      <Box title="Live ops"
+           value={d.tablesScheduled > 0 ? `${d.tablesRecorded}/${d.tablesScheduled}` : (d.actual > 0 ? fmt(d.actual) : '—')}
+           unit={d.tablesScheduled > 0 ? `tables · ${d.lastDay || '—'}` : 'no plan'}
+           sub={d.actual > 0
+                 ? `${fmt(d.actual)} yd recorded this week`
+                 : 'Nothing recorded this week'}
+           subTone={d.tablesScheduled === 0 ? undefined
+                    : coveragePct >= 90 ? 'good' : coveragePct >= 60 ? 'warn' : 'bad'}
+           delta={<Delta now={d.actual} prev={d.prevActual} />}
            onClick={go('liveops')}>
         <Columns bars={[
           { v: d.byDay[0], color: C.yards, label: 'Mon' },
@@ -391,7 +519,7 @@ export default function OpsHome({ onOpen }) {
       {/* The alerts list — the one thing here that is judgement rather than a
           number, so it belongs on the home screen, not buried inside a tab. */}
       <div style={{ marginTop: 16 }}>
-        <OpsAttentionPanel onNavigate={onOpen} />
+        <OpsAttentionPanel onNavigate={onOpen} sites={sites} />
       </div>
     </div>
   )

@@ -94,6 +94,25 @@ export const C = {
   siteBNY:     '#4EA8DE',   // Brooklyn · digital
 }
 
+// ─── Which sites are OPERATIONS ──────────────────────────────────────
+// sched_wip_rows carries FOUR site values, not two. Measured 27 July 2026 on
+// the live snapshot:
+//
+//   passaic      667 rows   110,954 yd
+//   bny          374 rows    84,994 yd
+//   procurement  219 rows    84,243 yd   <- NOT production
+//   unknown        1 row        150 yd   <- feed mapping miss
+//
+// 'procurement' is the Korean wallcovering supply line. It is real work and it
+// matters, but it is not something Ramon or Chandler can schedule or run, and
+// it was silently inflating the Operations home screen: 30% of the WIP tile's
+// "yds open", and 83 of the 258 POs the alert panel was putting in front of
+// Ramon as "oldest work in the pool". A third of that list was not his.
+//
+// Anything on the OPERATIONS destination filters to these two sites. The WIP
+// tab is deliberately NOT filtered — seeing the whole pool there is the point.
+export const OPS_SITES = ['passaic', 'bny']
+
 // ─── Named accent exports ─────────────────────────────────────────────────
 // New tokens for components that previously hardcoded inline hex. Importing
 // from these names (rather than C.X) makes intent explicit at the call site.

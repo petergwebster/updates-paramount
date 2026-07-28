@@ -22,7 +22,7 @@ import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
 
 const num = (v) => { const n = Number(v); return isFinite(n) ? n : 0 }
 
-export default function OpsAttentionPanel({ onNavigate }) {
+export default function OpsAttentionPanel({ onNavigate, sites = ['passaic', 'bny'] }) {
   const [items, setItems] = useState(null)
 
   useEffect(() => {
@@ -34,8 +34,8 @@ export default function OpsAttentionPanel({ onNavigate }) {
       const [snapRes, asnRes, lineRes] = await Promise.all([
         supabase.from('sched_snapshots').select('id,uploaded_at')
           .order('uploaded_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('sched_assignments').select('site,planned_yards').eq('week_start', wk),
-        supabase.from('sched_daily_ops_lines').select('site,actual_yards,waste_yards').eq('week_start', wk),
+        supabase.from('sched_assignments').select('site,planned_yards').eq('week_start', wk).in('site', sites),
+        supabase.from('sched_daily_ops_lines').select('site,actual_yards,waste_yards').eq('week_start', wk).in('site', sites),
       ])
       if (dead) return
 
@@ -43,10 +43,15 @@ export default function OpsAttentionPanel({ onNavigate }) {
       const lines = lineRes.data || []
 
       // ── Aged WIP ─────────────────────────────────────────────────────────
+      // MUST carry the same site filter as the WIP tile above it. Without it
+      // this counted procurement rows too — 83 of the 258 reported on 27 July
+      // were the Korean supply line, in an alert whose subtitle reads "worth a
+      // pass with Ramon". A third of what it put in front of him was not his,
+      // and not production.
       if (snapRes.data?.id) {
         const { count } = await supabase.from('sched_wip_rows')
           .select('*', { count: 'exact', head: true })
-          .eq('snapshot_id', snapRes.data.id).gte('age_days', 120)
+          .eq('snapshot_id', snapRes.data.id).in('site', sites).gte('age_days', 120)
         if (!dead && count > 0) {
           out.push({
             tone: count > 80 ? 'bad' : 'warn',
@@ -114,7 +119,7 @@ export default function OpsAttentionPanel({ onNavigate }) {
       setItems(out)
     })()
     return () => { dead = true }
-  }, [])
+  }, [sites.join(',')])
 
   const tone = { bad: C.rose, warn: C.amber }
 
