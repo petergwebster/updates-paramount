@@ -81,17 +81,35 @@ function scenarioOf(label, year, reportYear) {
 function periodFromName(fileName) {
   if (!fileName) return null
   const s = String(fileName).toLowerCase()
-  const y = s.match(/(20\d{2})/)
+
   let mi = MONTHS.findIndex(m => s.includes(m))
+  let token = mi >= 0 ? MONTHS[mi] : null
   if (mi < 0) {
     // Bounded on both sides so a three-letter form only matches as its own
     // token. An unbounded search for a substring this short inside filenames
     // that all begin "Paramount ..." is asking for a false positive, and a
     // wrong month here silently writes a whole P&L to the wrong period.
     mi = MONTH_ABBR.findIndex(m => new RegExp(`(^|[^a-z])${m}([^a-z]|$)`).test(s))
+    token = mi >= 0 ? MONTH_ABBR[mi] : null
   }
-  if (!y || mi < 0) return null
-  return { year: +y[1], month: mi + 1 }
+  if (mi < 0) return null
+
+  // A four-digit year anywhere in the name is the reliable signal.
+  const y4 = s.match(/(20\d{2})/)
+  if (y4) return { year: +y4[1], month: mi + 1 }
+
+  // FALLING BACK TO A TWO-DIGIT YEAR, and only when it is glued to the month
+  // token: "Jan26", "Feb26", "Dec25_Updated". The abbreviated-month files are
+  // exactly the ones that also abbreviate the year, so requiring 20xx rejected
+  // them before the parser ever opened a sheet — which is how the 28 July
+  // backfill loaded June through March and then stopped dead on February.
+  //
+  // It must stay ANCHORED TO THE MONTH. A bare two-digit search would find the
+  // "05" in "Updated 052626" and quietly file April 2026 as 2005.
+  const y2 = s.match(new RegExp(`${token}[^a-z0-9]*(\\d{2})(?!\\d)`))
+  if (y2) return { year: 2000 + Number(y2[1]), month: mi + 1 }
+
+  return null
 }
 
 // ---- one "<CC> Variance" sheet --------------------------------------------
