@@ -950,11 +950,42 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
     : variance === 0 ? 'on plan'
     : (variance > 0 ? '+' : '') + fmt(variance) + ' vs plan'
 
-  // PO dropdown options for a line: planned POs on this cell + "Other".
-  const poOptions = cellAssignments.map(a => ({
-    key: `${a.po_number}|${a.item_sku || ''}|${a.color || ''}`,
-    label: (a.line_description || a.po_number || '—') + (a.po_number ? ` · ${a.po_number}` : ''),
-  }))
+  // PO dropdown options for a line: planned POs on this cell + any PO already
+  // recorded here + "Other".
+  //
+  // THE RECORDED-PO HALF IS NOT OPTIONAL. Options used to come only from
+  // cellAssignments — the POs pinned to THIS day. But Passaic schedules at week
+  // level too, so a line can legitimately carry a PO with day_of_week null.
+  // That line's value then matches no option, and every browser silently falls
+  // back to rendering the FIRST option. Observed 27 July on GC-1: a row saved
+  // against FERN (PO102562) displayed as TWIGGY SISAL (PO2045246). The database
+  // was correct and the screen was wrong, which is the dangerous direction —
+  // the next person types TWIGGY's yards into what they believe is TWIGGY's row
+  // and the yardage lands on FERN. Every saved line gets its own option now.
+  const poOptions = useMemo(() => {
+    const opts = cellAssignments.map(a => ({
+      key: `${a.po_number}|${a.item_sku || ''}|${a.color || ''}`,
+      po: a.po_number,
+      label: (a.line_description || a.po_number || '—') + (a.po_number ? ` · ${a.po_number}` : ''),
+      asg: a,
+      offPlan: false,
+    }))
+    const seen = new Set(opts.map(o => o.key))
+    for (const l of lines) {
+      if (!l.po_number) continue
+      const k = `${l.po_number}|${l.item_sku || ''}|${l.color || ''}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      opts.push({
+        key: k,
+        po: l.po_number,
+        label: (l.line_description || l.po_number) + ` · ${l.po_number}`,
+        asg: null,
+        offPlan: true,
+      })
+    }
+    return opts
+  }, [cellAssignments, lines])
   const lineKeyOf = (l) => (l.po_number ? `${l.po_number}|${l.item_sku || ''}|${l.color || ''}` : '__other')
 
   // Passaic lines get a read-only color-yards column (yards × the PO's planned
@@ -1111,7 +1142,7 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                     Passaic) right in the dropdown, so the floor can see what the
                     job was scheduled for while entering what actually ran. */}
                 {poOptions.map(o => {
-                  const a = cellAssignments.find(x => `${x.po_number}|${x.item_sku || ''}|${x.color || ''}` === o.key)
+                  const a = o.asg
                   const pYd = a ? Number(a.planned_yards || 0) : 0
                   const pCy = a ? Number(a.planned_cy || 0) : 0
                   // TWO DIFFERENT NUMBERS, and they were being read as one. The
@@ -1119,11 +1150,14 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   // reach before the job is finished. The figure after it is only
                   // what is scheduled on THIS table. Ramon 7/27: "all POs should
                   // have total yards planned and not just scheduled for that day."
-                  const whole = poTotalText(poTotals.get(a?.po_number || ''), { withCY: site === 'passaic' })
+                  const whole = poTotalText(poTotals.get(o.po || ''), { withCY: site === 'passaic' })
                   const here = pYd > 0
                     ? ` · ${fmt(pYd)} yd${(site === 'passaic' && pCy > 0) ? ` / ${fmt(pCy)} cy` : ''} here`
                     : ''
-                  return <option key={o.key} value={o.key}>{o.label}{whole ? ` (${whole})` : ''}{here}</option>
+                  // Say so rather than letting it pass as a normal option — it
+                  // is real recorded work, just not on this day's plan.
+                  const flag = o.offPlan ? ' · not scheduled today' : ''
+                  return <option key={o.key} value={o.key}>{o.label}{whole ? ` (${whole})` : ''}{here}{flag}</option>
                 })}
                 <option value="__other">Other / unplanned…</option>
               </select>

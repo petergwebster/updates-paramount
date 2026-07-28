@@ -1,0 +1,259 @@
+WHITE / CONTRAST SCAN
+generated 2026-07-27 20:39
+root: C:\Dev\updates-paramount\paramount-dashboard\src
+
+==============================================================================
+CLASS 1 - white background in stylesheets
+==============================================================================
+src\index.css:112  button.primary:hover { background: #ffffff; }
+src\index.css:122  `background: white` while leaving `color: var(--ink)` — which on the dark
+
+-- 2 hit(s)
+
+==============================================================================
+CLASS 2 - inline white background in JSX
+==============================================================================
+
+-- 0 hit(s)
+
+==============================================================================
+CLASS 3 - light hex assigned to a variable (the invisible one)
+==============================================================================
+src\components\ProductionTab.jsx:559  const bg=mi%2===0?'#fff':'var(--ink-5)'
+
+-- 1 hit(s)
+
+==============================================================================
+CLASS 4 - C.ink used as a BACKGROUND (text-only token)
+==============================================================================
+
+-- 0 hit(s)
+
+==============================================================================
+CLASS 5 - var(--x, #lightfallback) - confirm --x is defined in tokens.css
+==============================================================================
+src\components\AdminFinancials.module.css:34  display: inline-block; background: var(--amber-light, #FEF3C7); color: var(--amber);
+src\components\AdminFinancials.module.css:74  color: var(--green); background: var(--green-light, #F0FDF4);
+src\components\AdminPanel.jsx:459  background: 'var(--paper-soft, #EBE6D9)',
+src\components\AdminPanel.jsx:460  border: '1px solid var(--border-light, #D5D7DA)',
+src\components\AdminPanel.jsx:479  border: '1px solid var(--border-light, #D5D7DA)',
+src\components\AdminPanel.jsx:500  border: '1px solid var(--border-light, #D5D7DA)',
+src\components\AdminPanel.jsx:514  border: '1px solid var(--border-light, #D5D7DA)',
+src\components\AdminPanel.jsx:571  background: 'var(--red-light, #F2DCD6)',
+src\components\BNYSection.module.css:13  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\BNYSection.module.css:108  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\DestinationNav.module.css:8  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\DestinationNav.module.css:31  color: var(--paper, #D3D9D4);
+src\components\FinancialTab.module.css:16  background: var(--accent-light, #EFF6FF); border: 1px solid var(--accent);
+src\components\FinancialTab.module.css:54  .combined { text-align: right; font-weight: 600; color: var(--ink); background: var(--ink-3, #FAFAFA); }
+src\components\FinancialTab.module.css:58  .totalRow td { padding-top: 8px; padding-bottom: 8px; font-size: 14px; font-weight: 700; background: var(--ink-3, #F9F9F9); }
+src\components\HeartbeatPage.module.css:20  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\HeartbeatPage.module.css:110  box-shadow: 0 0 0 2px var(--emerald-light, #E6F2EA);
+src\components\HeartbeatPage.module.css:123  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\InventoryTab.module.css:20  border-bottom: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:52  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:75  background: var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:87  .chipFresh { background: var(--emerald-tint, #E4F0EA); color: var(--emerald, #0F7A4E); }
+src\components\InventoryTab.module.css:88  .chipAging { background: var(--amber-tint,  #FBEFD8); color: var(--amber,   #E89A1E); }
+src\components\InventoryTab.module.css:89  .chipStale { background: var(--red-tint,    #F8DED9); color: var(--red,     #C12B1A); }
+src\components\InventoryTab.module.css:113  .uploadStatusErr { color: var(--red,     #C12B1A); font-size: 13px; font-weight: 600; max-width: 400px; }
+src\components\InventoryTab.module.css:138  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:179  border-top: 1px dashed var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:181  .totalCard { background: var(--perf-tint, #E5EEF2); border-color: var(--perf-tint, #E5EEF2); }
+src\components\InventoryTab.module.css:186  color: var(--paper, #F9F8F4);
+src\components\InventoryTab.module.css:193  border-left: 4px solid var(--blood, #D33A28);
+src\components\InventoryTab.module.css:210  .alarmValue.alert { color: var(--blood, #D33A28); }
+src\components\InventoryTab.module.css:218  background: var(--blood, #D33A28);
+src\components\InventoryTab.module.css:237  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:282  border-bottom: 1px dashed var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:291  .leadNum.alert { color: var(--red, #C12B1A); }
+src\components\InventoryTab.module.css:302  border-top: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:334  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:340  border-bottom: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:344  background: var(--perf-tint, #E5EEF2);
+src\components\InventoryTab.module.css:361  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:390  border-bottom: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:396  border-bottom: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:404  .dataTable tbody tr.crit { background: var(--red-tint, #F8DED9); }
+src\components\InventoryTab.module.css:417  .varNeg { color: var(--red, #C12B1A); font-weight: 600; }
+src\components\InventoryTab.module.css:436  .pillCrit { background: var(--red,     #C12B1A); color: white; }
+src\components\InventoryTab.module.css:437  .pillWarn { background: var(--amber,   #E89A1E); color: white; }
+src\components\InventoryTab.module.css:443  border: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:507  .statItem .statV.alert { color: var(--red, #C12B1A); }
+src\components\InventoryTab.module.css:511  border-top: 1px solid var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:520  background: var(--linen, #E8E5DC);
+src\components\InventoryTab.module.css:561  background: var(--amber-tint, #FBEFD8);
+src\components\InventoryTab.module.css:562  border-left: 3px solid var(--amber, #E89A1E);
+src\components\InventoryTab.module.css:593  border: 1px dashed var(--linen, #E8E5DC);
+src\components\LandingPage.module.css:9  radial-gradient(ellipse 80% 60% at 50% 0%, var(--paper-light, var(--paper-light)) 0%, var(--paper, #D3D9D4) 50%, var(--paper-soft, #BDC4BF) 100%);
+src\components\LandingPage.module.css:107  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\LandingPage.module.css:123  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--royal-light, #DCE7EA) 0%, transparent 80%);
+src\components\LandingPage.module.css:126  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--saffron-light, #D4D8DA) 0%, transparent 80%);
+src\components\LandingPage.module.css:129  background: radial-gradient(ellipse 100% 100% at 50% 0%, var(--blood-orange-light, #C7D2D5) 0%, transparent 80%);
+src\components\LandingPage.module.css:203  border-top: 1px solid var(--ink-10, #C5CCC8);
+src\components\LandingPage.module.css:254  .pulseChip.saffron { background: var(--saffron-light, #D4D8DA); color: var(--saffron-deep, #1A2128); }
+src\components\LandingPage.module.css:255  .pulseChip.crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+src\components\LandingPage.module.css:256  .pulseChip.emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+src\components\LandingPage.module.css:262  border-top: 1px solid var(--ink-10, #C5CCC8);
+src\components\LandingPage.module.css:311  border: 1px solid var(--saffron-light, #D4D8DA);
+src\components\LIFTDataRefresh.module.css:8  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\LIFTDataRefresh.module.css:43  background: linear-gradient(180deg, var(--royal-light, #DCE7EA), var(--royal-light));
+src\components\LIFTDataRefresh.module.css:97  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\MonthlyBriefs.module.css:569  .highlightRow td { background: var(--cream-highlight, #F8F4E9); }
+src\components\PassaicSection.jsx:83  <span><span className={styles.legendBar} style={{ background: 'var(--saffron, #E89A1E)' }} />Fabric</span>
+src\components\PassaicSection.jsx:84  <span><span className={styles.legendBar} style={{ background: 'var(--blood-orange, #D33A28)' }} />Wallpaper</span>
+src\components\PassaicSection.module.css:10  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\PassaicSection.module.css:17  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:25  border-right: 1px solid var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:60  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:113  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:130  background: var(--royal-light, #DCE7EA);
+src\components\PassaicSection.module.css:134  background: var(--emerald-light, #E6F2EA);
+src\components\PassaicSection.module.css:161  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\PassaicSection.module.css:182  background: linear-gradient(180deg, var(--paper-light, var(--paper-light)), var(--paper, #D3D9D4));
+src\components\PassaicSection.module.css:184  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:227  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:287  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:318  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\PassaicSection.module.css:404  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:445  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:465  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\PassaicSection.module.css:492  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\PassaicSection.module.css:522  .jobBadge_crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+src\components\PlantRollup.module.css:13  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\PlantRollup.module.css:48  .chip_emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+src\components\PlantRollup.module.css:104  border-top: 1px dashed var(--ink-10, #C5CCC8);
+src\components\ProductionDashboard.jsx:672  <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+src\components\ProductionDashboard.jsx:796  <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', background:'var(--cream-dark,#F5F0EA)' }}>
+src\components\UploadTile.module.css:5  border: 1px solid var(--ink-05, #DCE0DD);
+src\components\UploadTile.module.css:19  .tile_crimson::before { background: var(--crimson, #C12B1A); }
+src\components\UploadTile.module.css:54  .chip_emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+src\components\UploadTile.module.css:55  .chip_saffron { background: var(--saffron-light, #D4D8DA); color: var(--saffron-deep, #1A2128); }
+src\components\UploadTile.module.css:56  .chip_crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+src\components\UploadTile.module.css:60  background: linear-gradient(180deg, var(--paper-light, var(--paper-light)), var(--paper, #D3D9D4));
+src\components\UploadTile.module.css:64  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UploadTile.module.css:117  color: var(--crimson, #C12B1A);
+src\components\UploadTile.module.css:134  .status_emerald { background: var(--emerald-light, #E6F2EA); color: var(--emerald-deep, #0A4F33); }
+src\components\UploadTile.module.css:135  .status_saffron { background: var(--saffron-light, #D4D8DA); color: var(--saffron-deep, #1A2128); }
+src\components\UploadTile.module.css:136  .status_crimson { background: var(--crimson-light, #FCE2DE); color: var(--crimson-deep, #831A0E); }
+src\components\UploadTile.module.css:137  .status_royal   { background: var(--royal-light, #DCE7EA);   color: var(--royal-deep, #0A3A4C); }
+src\components\UploadTile.module.css:156  background: var(--emerald-light, #E6F2EA);
+src\components\UploadTile.module.css:200  border: 2.5px solid var(--ink-10, #C5CCC8);
+src\components\UploadTile.module.css:212  background: var(--crimson-light, #FCE2DE);
+src\components\UploadTile.module.css:213  border-left: 3px solid var(--crimson, #C12B1A);
+src\components\UploadTile.module.css:240  background: var(--emerald-light, #E6F2EA);
+src\components\UploadTile.module.css:293  background: var(--royal-light, #DCE7EA);
+src\components\UploadTile.module.css:300  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UploadTile.module.css:313  border-bottom: 1px dashed var(--ink-10, #C5CCC8);
+src\components\UploadTile.module.css:321  border-bottom: 1px dashed var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:15  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:63  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:87  background: var(--crimson-light, #FCE2DE);
+src\components\UserManagement.module.css:88  border: 1px solid var(--crimson, #C12B1A);
+src\components\UserManagement.module.css:89  border-left: 3px solid var(--crimson, #C12B1A);
+src\components\UserManagement.module.css:108  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:117  border-bottom: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:160  color: var(--paper, #D3D9D4);
+src\components\UserManagement.module.css:205  .accessChip.performance { background: var(--royal-light, #DCE7EA); color: var(--royal-deep, #0A3A4C); }
+src\components\UserManagement.module.css:206  .accessChip.operations  { background: var(--saffron-light, #D4D8DA); color: var(--saffron-deep, #1A2128); }
+src\components\UserManagement.module.css:207  .accessChip.heartbeat   { background: var(--blood-orange-light, #C7D2D5); color: var(--blood-orange-deep, #08293A); }
+src\components\UserManagement.module.css:226  background: var(--emerald-light, #E6F2EA);
+src\components\UserManagement.module.css:274  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:306  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\UserManagement.module.css:353  color: var(--paper, #D3D9D4);
+src\components\UserManagement.module.css:359  color: var(--paper, #D3D9D4);
+src\components\UserManagement.module.css:368  border: 1px solid var(--crimson-light, #FCE2DE);
+src\components\UserManagement.module.css:369  border-left: 4px solid var(--crimson, #C12B1A);
+src\components\WIPStatusBar.module.css:92  border: 1px solid var(--ink-10, #C5CCC8);
+src\components\WIPStatusBar.module.css:107  border-bottom: 1px dashed var(--ink-10, #C5CCC8);
+
+-- 134 hit(s)
+
+==============================================================================
+GLOBAL FORM-CONTROL RULES in index.css (expect exactly 2, both dark)
+==============================================================================
+index.css:88  input, select, textarea {
+index.css:96  input:focus, select:focus, textarea:focus {
+index.css:101  input::placeholder, textarea::placeholder { color: var(--ink-30); }
+index.css:102  input:disabled, select:disabled, textarea:disabled {
+index.css:107  input[type="checkbox"], input[type="radio"] {
+index.css:128  input, textarea, select {
+index.css:140  input:focus, textarea:focus, select:focus { border-color: var(--accent-mid); box-shadow: 0 0 0 3px var(--accent-light); }
+index.css:144  select option { background: var(--surface-2); color: var(--ink); }
+index.css:145  input::placeholder, textarea::placeholder { color: var(--ink-40); }
+index.css:146  textarea { resize: vertical; line-height: 1.6; }
+index.css:198  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+index.css:199  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+==============================================================================
+TOKENS DEFINED IN tokens.css (cross-check against CLASS 5)
+==============================================================================
+--paper
+--paper-light
+--paper-soft
+--cream
+--cream-dark
+--linen
+--surface
+--surface-2
+--ink
+--ink-90
+--ink-80
+--ink-70
+--ink-60
+--ink-50
+--ink-40
+--ink-30
+--ink-20
+--ink-10
+--ink-05
+--ink-5
+--ink-3
+--border
+--border-light
+--royal
+--royal-deep
+--royal-light
+--blood-orange
+--blood-orange-deep
+--blood-orange-light
+--saffron
+--saffron-deep
+--saffron-light
+--emerald
+--emerald-deep
+--emerald-light
+--crimson
+--crimson-deep
+--crimson-light
+--green
+--green-light
+--red
+--red-light
+--amber
+--amber-light
+--gray
+--gray-light
+--emerald-tint
+--amber-tint
+--red-tint
+--perf-tint
+--accent
+--accent-light
+--yards
+--coloryards
+--waste
+--scheduled
+--budget
+--revenue
+--site-nj
+--site-bny
+--accent-mid
+--radius
+--radius-lg
+--shadow-sm
+--shadow-md
+--font-body
+--font-display
+--font-tech
+--font-serif
