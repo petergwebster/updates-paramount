@@ -120,12 +120,22 @@ export default function FinanceHome({ onOpen }) {
 
       let ar = 0, ap = 0
       if (agingAsOf) {
-        const { data } = await supabase.from('financial_aging')
-          .select('kind,balance').eq('as_of_date', agingAsOf)
+        // aging_type, NOT kind. There is no `kind` column on financial_aging —
+        // the values are the literal strings 'ar' and 'ap'. Selecting a column
+        // that does not exist makes PostgREST reject the whole select, so this
+        // returned null and the AR/AP box read 0 / 0 with nothing to indicate
+        // it had failed. Same class of bug as work_date on OpsHome, found the
+        // same day by checking every selected column against the live schema
+        // rather than fixing the one that happened to be visible.
+        // Verified 27 July against as_of 2026-06-25: ar 206,351.87 across 159
+        // rows, ap 427,427.25 across 32.
+        const { data, error } = await supabase.from('financial_aging')
+          .select('aging_type,balance').eq('as_of_date', agingAsOf)
         if (dead) return
+        if (error) console.error('[FinanceHome] aging', error)
         for (const r of (data || [])) {
           const b = num(r.balance)
-          if (String(r.kind || '').toLowerCase().startsWith('ap')) ap += b
+          if (String(r.aging_type || '').toLowerCase().startsWith('ap')) ap += b
           else ar += b
         }
       }

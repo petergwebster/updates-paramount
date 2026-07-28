@@ -3,6 +3,31 @@ import { supabase } from '../supabase'
 import { C, sundayOf, isoDate, fmt } from '../lib/scheduleUtils'
 import OpsAttentionPanel from './OpsAttentionPanel'
 
+// ─── Paginated fetch ───────────────────────────────────────────
+// PostgREST caps a response at 1,000 rows on the SERVER. A client-side
+// `.limit(5000)` does NOT defeat that — it looks like a fix, returns exactly
+// 1,000 rows, and every total silently reads short. Proven on this screen
+// 27 July: the WIP tile reported 1,000 lines / 228,572 yards against a real
+// 1,261 / 280,340, and its 120-day bucket said 212 while the alert panel
+// directly beneath it said 258, because the panel uses an exact count and the
+// tile was reading truncated rows.
+//
+// Anything on a home screen that fetches ROWS rather than a count has to
+// paginate. `build(from, to)` returns a ready-to-await query.
+async function fetchAll(build, page = 1000) {
+  const all = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await build(from, from + page - 1)
+    if (error) { console.error('[OpsHome] fetchAll', error); break }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < page) break
+    from += page
+  }
+  return all
+}
+
 // ─── Delta chip ────────────────────────────────────────────────
 // A bare number tells you nothing. 17,897 yards is only meaningful against
 // what last week did — that is the difference between a readout and a signal.
@@ -185,12 +210,20 @@ export default function OpsHome({ onOpen }) {
 
       const [wipRes, asnRes, lineRes] = await Promise.all([
         snap.data?.id
-          ? supabase.from('sched_wip_rows').select('age_days,is_new_goods,yards_written')
-            .eq('snapshot_id', snap.data.id).limit(5000)
+          ? fetchAll((a, b) => supabase.from('sched_wip_rows').select('age_days,is_new_goods,yards_written')
+            .eq('snapshot_id', snap.data.id).range(a, b)).then(data => ({ data }))
           : Promise.resolve({ data: [] }),
         supabase.from('sched_assignments').select('planned_yards,product_type').eq('week_start', useWk),
+        // day_of_week, NOT work_date. There is no work_date column on
+        // sched_daily_ops_lines — the day is stored as text ('Mon'..'Sat').
+        // Selecting a column that does not exist makes PostgREST reject the
+        // WHOLE select, so `data` came back null, `lines` became [], and Pulse,
+        // Live Ops and Status all read zero on a week with 1,568 recorded
+        // yards. Nothing warned, because the fallback check above only asks for
+        // actual_yards — a real column — so it correctly saw production and
+        // suppressed the amber "showing last week" banner. Blank with no banner.
         supabase.from('sched_daily_ops_lines')
-          .select('actual_yards,waste_yards,is_complete,work_date').eq('week_start', useWk),
+          .select('actual_yards,waste_yards,is_complete,day_of_week').eq('week_start', useWk),
       ])
       if (dead) return
 
@@ -219,12 +252,13 @@ export default function OpsHome({ onOpen }) {
       }
 
       // Live ops — output by weekday, anchored on whichever week we're showing.
-      const start = new Date(useWk + 'T00:00:00')
+      // Keyed off day_of_week directly; there is no date on these rows to
+      // subtract from the week start.
+      const DAY_IDX = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4 }
       const byDay = [0, 0, 0, 0, 0]              // Mon…Fri
       for (const l of lines) {
-        if (!l.work_date) continue
-        const idx = Math.round((new Date(l.work_date + 'T00:00:00') - start) / 86400000) - 1
-        if (idx >= 0 && idx <= 4) byDay[idx] += num(l.actual_yards)
+        const idx = DAY_IDX[l.day_of_week]
+        if (idx != null) byDay[idx] += num(l.actual_yards)
       }
 
       const sched  = asn.reduce((s, a) => s + num(a.planned_yards), 0)
