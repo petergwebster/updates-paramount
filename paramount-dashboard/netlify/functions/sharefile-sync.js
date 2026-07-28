@@ -47,6 +47,7 @@ import * as XLSX from 'xlsx'
 import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
 import { parseVenaWorkbook } from '../../src/lib/venaWorkbook.js'
 import { parseInventoryWorkbook } from '../../src/lib/inventoryWorkbook.js'
+import { parsePayrollWorkbook } from '../../src/lib/payrollWorkbook.js'
 import { canWriteAging } from '../../src/lib/arApLock.js'
 
 const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
@@ -431,6 +432,115 @@ async function ingestVena(token, opts, result) {
   console.log(`sharefile-sync: loaded ${rows.length} Vena rows for ${parsed.period} from ${file.Name}`)
 }
 
+// ─── Weekly payroll (UKG earnings export) ───────────────────────────
+// ONE FILE PER RUN, NEWEST OUTSTANDING FIRST — same walk-the-backlog pattern
+// as Vena, for the same reason: ~12 historical files sit in the folder and
+// hand-keyed people_weekly stopped at 2026-06-14, so the first runs are a
+// backfill with a visible finish line (`payroll_pending`).
+//
+// CONFLICT RULE (2026-07-28): FILE IS TRUTH for any week the feed touches.
+// The PATCH below overwrites hours/pay/headcount whether they were hand-keyed
+// or not; weeks with no payroll file are never touched, so pre-feed manual
+// history stands. Where the file disagrees materially with what the row held,
+// the divergence is REPORTED in the run result — replaced, not silently.
+//
+// PATCH-ONLY, NEVER ROW-REPLACE: people_weekly also carries Wendy's HR
+// entries (new_hires, exits, leaves, open_roles, hr_notes) which a payroll
+// export knows nothing about. The write touches exactly the keys the parser
+// returns and nothing else.
+//
+// WEEK KEY comes from the file's Period Control Date via the parser — NEVER
+// the filename, which lies ("Week of 7.22" contains the July 4th week).
+const PAYROLL_PATH = ['DASH WORK', 'Claude Files', 'Payroll']
+
+async function ingestPayroll(token, opts, result) {
+  const folderId = await resolvePath(PAYROLL_PATH, token)
+  const kids = await children(folderId, token)
+  const prior = (await stateGet(STATE_KEY)) || {}
+
+  const fpOf  = f => `${f.Name}|${f.FileSizeBytes}|${f.ClientModifiedDate || f.ProgenyEditDate || ''}`
+  const keyOf = f => `payroll:${f.Name}`
+
+  const candidates = kids
+    .filter(k => (k['odata.type'] || '').includes('File'))
+    .filter(k => { const n = String(k.Name || ''); return /earnings/i.test(n) && /\.xlsx$/i.test(n) && !/^~\$/.test(n) })
+    .sort((a, b) =>
+      new Date(b.ClientModifiedDate || b.ProgenyEditDate || b.CreationDate || 0) -
+      new Date(a.ClientModifiedDate || a.ProgenyEditDate || a.CreationDate || 0))
+
+  if (!candidates.length) { result.payroll = { skipped: 'no earnings workbook found in Payroll' }; return }
+
+  const pending = candidates.filter(f => opts.force || prior[keyOf(f)] !== fpOf(f))
+  if (!pending.length) {
+    result.payroll = { skipped: 'all payroll files already loaded', files: candidates.length }
+    return
+  }
+
+  const file = pending[0]
+  const fingerprint = fpOf(file)
+  result.payroll_pending = pending.length - 1
+
+  const buf = await downloadBuffer(file.Id, token)
+  const wb = XLSX.read(buf, { type: 'buffer' })
+
+  let parsed
+  try {
+    parsed = parsePayrollWorkbook(XLSX, wb, { fileName: file.Name })
+  } catch (e) {
+    // A historical file with an unrecognisable shape must not dam the backlog
+    // behind it — newest-first means one bad old file would otherwise block
+    // every older week AND retry forever. Mark it consumed-as-failed, loudly,
+    // and let the next run move on. A re-uploaded (changed) file gets a new
+    // fingerprint and a fresh attempt. This deliberately differs from Jen/Vena,
+    // where retry-forever is correct because those are current-period files.
+    await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: `FAILED|${fingerprint}` })
+    result.payroll = { file: file.Name, error: `parse failed, file skipped: ${e.message}` }
+    console.error(`sharefile-sync payroll: ${file.Name} failed to parse — skipped`, e)
+    return
+  }
+
+  result.payroll = {
+    file: file.Name,
+    week_start: parsed.weekStart,
+    control_date: parsed.periodControlDate,
+    ...parsed.summary,
+    warnings: parsed.warnings,
+  }
+
+  if (opts.dryRun) { result.payroll.written = false; result.payroll.dryRun = true; return }
+
+  // File-is-truth with divergence reporting: read what the row holds first.
+  const existing = await sb(`people_weekly?week_start=eq.${parsed.weekStart}&select=id,nj_total_hrs,bny_total_hrs,nj_total_pay,bny_total_pay`)
+  if (existing && existing.length) {
+    const row = existing[0]
+    const diffs = []
+    const cmp = (label, oldV, newV, tol) => {
+      if (oldV != null && Math.abs(Number(oldV) - newV) > tol) diffs.push(`${label}: ${oldV} -> ${newV.toFixed(2)}`)
+    }
+    cmp('nj_total_hrs',  row.nj_total_hrs,  parsed.fields.nj_total_hrs,  0.5)
+    cmp('bny_total_hrs', row.bny_total_hrs, parsed.fields.bny_total_hrs, 0.5)
+    cmp('nj_total_pay',  row.nj_total_pay,  parsed.fields.nj_total_pay,  1)
+    cmp('bny_total_pay', row.bny_total_pay, parsed.fields.bny_total_pay, 1)
+    if (diffs.length) {
+      result.payroll.replaced_manual_values = diffs
+      console.log(`sharefile-sync payroll: week ${parsed.weekStart} values replaced — ${diffs.join(' · ')}`)
+    }
+    await sb(`people_weekly?week_start=eq.${parsed.weekStart}`, {
+      method: 'PATCH',
+      body: JSON.stringify(parsed.fields),
+    })
+  } else {
+    await sb('people_weekly', {
+      method: 'POST',
+      body: JSON.stringify([{ week_start: parsed.weekStart, ...parsed.fields }]),
+    })
+  }
+
+  await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: fingerprint, payroll_at: new Date().toISOString() })
+  result.payroll.written = true
+  console.log(`sharefile-sync: payroll week ${parsed.weekStart} loaded from ${file.Name} (${parsed.summary.employees} employees, $${parsed.summary.total_pay})`)
+}
+
 // ─── Month-end inventory (both sites) ───────────────────────────────
 async function ingestInventory(token, opts, result) {
   const folderId = await resolvePath(INV_PATH, token)
@@ -535,6 +645,10 @@ async function runSync(event) {
     try { await ingestVena(token, opts, result) }
     catch (e) { console.error('vena feed:', e); result.vena = { error: e.message } }
 
+    // Weekly payroll — independent of the feeds above.
+    try { await ingestPayroll(token, opts, result) }
+    catch (e) { console.error('payroll feed:', e); result.payroll = { error: e.message } }
+
     // Month-end inventory — both sites, each isolated inside the function.
     try { await ingestInventory(token, opts, result) }
     catch (e) { console.error('inventory feed:', e); result.inventory = { error: e.message } }
@@ -544,7 +658,7 @@ async function runSync(event) {
     // stops firing entirely the badge must go red on STALENESS, because a
     // silently unregistered cron is a failure mode this site has already had
     // (the netlify.toml schedule deployed clean and never ticked).
-    result.ok = !result.jen?.error && !result.vena?.error && !result.inventory?.error
+    result.ok = !result.jen?.error && !result.vena?.error && !result.inventory?.error && !result.payroll?.error
               && !result.jen?.guard_tripped && !result.vena?.guard_tripped
     try { await stateSet(HEALTH_KEY, result) } catch (e) { console.error('health write:', e) }
 
