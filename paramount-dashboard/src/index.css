@@ -117,19 +117,32 @@ button.accent {
 }
 button.accent:hover { background: #7a3c10; }
 
+/* ── DUPLICATE BLOCK, CORRECTED 2026-07-27 ────────────────────────────────
+   This second input rule sat BELOW the dark-theme block above and re-declared
+   `background: white` while leaving `color: var(--ink)` — which on the dark
+   theme is near-WHITE text. Result: white boxes you cannot type into, on the
+   login screen, both schedulers, Live Ops and every admin form. It was not a
+   missing rule, it was a later rule quietly overwriting the correct one.
+   Kept (rather than deleted) because it also carries the sizing and padding
+   the forms depend on. If you add a third input rule, put it HERE. */
 input, textarea, select {
   font-family: var(--font-body);
   font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 8px 12px;
-  background: white;
+  background: var(--surface-2);
   color: var(--ink);
   transition: border-color 0.15s;
   outline: none;
   width: 100%;
 }
-input:focus, textarea:focus, select:focus { border-color: var(--ink-30); box-shadow: 0 0 0 3px rgba(26,24,20,0.05); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent-mid); box-shadow: 0 0 0 3px var(--accent-light); }
+/* Option lists are painted by the OS, not the page — state them explicitly or
+   the dropdown opens white with near-white text even when the closed control
+   is correct. */
+select option { background: var(--surface-2); color: var(--ink); }
+input::placeholder, textarea::placeholder { color: var(--ink-40); }
 textarea { resize: vertical; line-height: 1.6; }
 
 .label {

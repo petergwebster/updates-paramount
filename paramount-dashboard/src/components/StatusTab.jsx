@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, isoDate, weekLabel, addWeeks, defaultSchedulerWeek, DAY_INDEX } from '../lib/scheduleUtils'
 import { loadWeekDailyOpLines, deriveColorYards } from '../lib/dailyOps'
+import { loadPoTotals, loadPoRecordedAllWeeks, poTotalText } from '../lib/poTotals'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // StatusTab — "where does each PO stand this week?"
@@ -38,6 +39,8 @@ export default function StatusTab() {
   const [view, setView] = useState('po')          // 'po' | 'material'
   const [assignments, setAssignments] = useState([])
   const [opLines, setOpLines] = useState([])
+  const [poTotals, setPoTotals] = useState(() => new Map())
+  const [poRecorded, setPoRecorded] = useState(() => new Map())
   const [loading, setLoading] = useState(false)
 
   const showCY = site === 'passaic'
@@ -56,6 +59,22 @@ export default function StatusTab() {
         if (cancelled) return
         setAssignments(asn || [])
         setOpLines(lines || [])
+
+        // PO-LEVEL CONTEXT (Ramon + Sami, 7/27). Two numbers the week alone
+        // cannot give you: how big the whole PO is, and how much of it has been
+        // recorded in ANY week. Scoped to the POs on this screen and paginated
+        // — see poTotals.js on why this is never a bare select across history.
+        const pos = [...new Set([
+          ...(asn || []).map(a => a.po_number),
+          ...(lines || []).map(l => l.po_number),
+        ].filter(Boolean))]
+        const [tot, rec] = await Promise.all([
+          loadPoTotals(pos),
+          loadPoRecordedAllWeeks(site, pos),
+        ])
+        if (cancelled) return
+        setPoTotals(tot)
+        setPoRecorded(rec)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -149,9 +168,22 @@ export default function StatusTab() {
       const productType = asgs[0]?.product_type || null
       const scheduled = asgs.length > 0
 
+      // PO-level frame, independent of the week being viewed.
+      //   poTotal  = the whole PO as LIFT wrote it (all lines, all colourways)
+      //   allWeeks = every yard recorded against it in Live Ops, any week
+      // toGo is the answer to Ramon's actual question — "what does the team
+      // still have to reach to mark this PO complete" — which the weekly
+      // Remaining column cannot answer, because it only knows this week's plan.
+      const poTotal = poTotals.get(po) || null
+      const allWeeks = poRecorded.get(po) || null
+      const allWeeksYards = allWeeks ? allWeeks.yards : 0
+      const priorYards = Math.max(0, allWeeksYards - recYards)
+      const toGo = (poTotal && poTotal.yards > 0) ? (poTotal.yards - allWeeksYards) : null
+
       rows.push({
         po, desc, productType, scheduled,
         schedYards, schedCY, recYards, recCY, wasteYards, remYards, remCY,
+        poTotal, allWeeks, allWeeksYards, priorYards, toGo,
         doneCount, totalLines, isComplete, lastDayLabel, lastDayDone, lastDayTotal,
         colorsDone, colorsExpected,
         tables: [...new Set([...asgs.map(a => a.table_code), ...lines.map(l => l.table_code)])].filter(Boolean),
@@ -164,7 +196,7 @@ export default function StatusTab() {
       b.schedYards - a.schedYards
     )
     return rows
-  }, [assignments, opLines, showCY])
+  }, [assignments, opLines, showCY, poTotals, poRecorded])
 
   const totals = useMemo(() => {
     const t = { schedYards: 0, recYards: 0, schedCY: 0, recCY: 0, complete: 0, count: poRows.length }
@@ -238,10 +270,16 @@ function ByPoView({ rows, totals, showCY, weekLabelText }) {
     )
   }
 
-  // Grid: PO | Material | Scheduled | Recorded | Remaining | (Passaic: CY sched/rec) | Status
+  // Grid: PO | Material | PO TOTAL | Scheduled | REC'D ALL WKS | Recorded |
+  //       Remaining | (Passaic: CY sched/rec) | Status
+  //
+  // The two new columns sit either side of "Sched yd" on purpose. Reading left
+  // to right you get the whole PO, then what this week committed to, then
+  // everything ever banked against it, then what this week actually did — so
+  // the week is framed by the PO rather than mistaken for it.
   const gridCols = showCY
-    ? 'minmax(200px, 2fr) 110px 92px 92px 92px 110px 150px'
-    : 'minmax(220px, 2fr) 120px 100px 100px 100px 150px'
+    ? 'minmax(180px, 1.6fr) 92px 104px 84px 96px 84px 84px 100px 140px'
+    : 'minmax(200px, 1.8fr) 110px 110px 92px 104px 92px 92px 150px'
 
   return (
     <div style={{ background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
@@ -256,7 +294,9 @@ function ByPoView({ rows, totals, showCY, weekLabelText }) {
       <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${C.border}`, fontSize: 9, fontWeight: 700, color: C.inkLight, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         <span>PO / job</span>
         <span>Material</span>
+        <span style={{ textAlign: 'right' }} title="The whole PO as LIFT wrote it — every colourway, every table, every week. This is the number the team has to reach to finish it.">PO total</span>
         <span style={{ textAlign: 'right' }}>Sched yd</span>
+        <span style={{ textAlign: 'right' }} title="Every yard entered in Live Ops against this PO in ANY week, not just this one.">Rec'd all wks</span>
         <span style={{ textAlign: 'right' }}>Rec'd yd</span>
         <span style={{ textAlign: 'right' }}>Rem. yd</span>
         {showCY && <span style={{ textAlign: 'right' }}>CY r/s</span>}
@@ -283,7 +323,14 @@ function PoRow({ r, showCY, gridCols, zebra }) {
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.desc}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-          <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>{r.po}</span>
+          {/* Sami, 7/27: the PO's total yardage always travels with the PO
+              number, so a job split across tables is never mistaken for the
+              whole job. One formatter (poTotalText) so "everywhere" means the
+              same thing everywhere. */}
+          <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>
+            {r.po}
+            {poTotalText(r.poTotal) && <span style={{ color: C.inkMid }}> ({poTotalText(r.poTotal)})</span>}
+          </span>
           {r.tables.length > 0 && <span style={{ fontSize: 9, color: C.inkLight }}>· {r.tables.slice(0, 3).join(', ')}{r.tables.length > 3 ? '…' : ''}</span>}
           {!r.scheduled && <span style={{ fontSize: 8, padding: '0 4px', borderRadius: 2, background: C.amberBg, color: C.amber, fontWeight: 700 }}>UNSCHEDULED</span>}
         </div>
@@ -295,8 +342,43 @@ function PoRow({ r, showCY, gridCols, zebra }) {
       {/* Material */}
       <div style={{ fontSize: 11, color: C.inkMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.productType || '—'}</div>
 
+      {/* PO TOTAL — the whole job, with colour-yards under it at Passaic and
+          the outstanding balance beneath that. An em-dash means we genuinely
+          do not know the size (memos, panel sets and strike-offs arrive from
+          LIFT with no yardage), which is NOT the same as zero. */}
+      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: r.poTotal?.yards > 0 ? C.ink : C.inkLight }}>
+          {r.poTotal?.yards > 0 ? fmt(r.poTotal.yards) : '—'}
+        </div>
+        {showCY && r.poTotal?.colorYards > 0 && (
+          <div style={{ fontSize: 8, color: C.coloryards }}>{fmt(Math.round(r.poTotal.colorYards))} cy</div>
+        )}
+        {r.toGo != null && r.toGo > 0 && (
+          <div style={{ fontSize: 8, color: C.inkLight }} title="PO total less everything recorded against it in any week">{fmt(Math.round(r.toGo))} to go</div>
+        )}
+        {r.poTotal?.invoiced && (
+          <div style={{ fontSize: 7, color: C.sage, fontWeight: 700, letterSpacing: '0.04em' }} title="LIFT has invoiced this order, so it has left the WIP pool. The size shown comes from the order ledger.">INVOICED</div>
+        )}
+      </div>
+
       {/* Scheduled yards */}
       <div style={{ textAlign: 'right', fontSize: 12, color: C.ink, fontVariantNumeric: 'tabular-nums' }}>{fmt(r.schedYards)}</div>
+
+      {/* REC'D ALL WEEKS — Ramon: "week should not be a filter". Everything
+          entered in Live Ops against this PO, whenever it was entered. The
+          subtext splits out what landed before this week, so the same cell
+          answers both "how much in total" and "how much was already there". */}
+      <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: r.allWeeksYards > 0 ? C.yards : C.inkLight }}>
+          {r.allWeeksYards > 0 ? fmt(r.allWeeksYards) : '—'}
+        </div>
+        {r.priorYards > 0 && (
+          <div style={{ fontSize: 8, color: C.inkLight }}>{fmt(r.priorYards)} before this wk</div>
+        )}
+        {r.allWeeks?.weeks?.length > 1 && (
+          <div style={{ fontSize: 8, color: C.inkLight }}>{r.allWeeks.weeks.length} weeks</div>
+        )}
+      </div>
 
       {/* Recorded yards (+ waste under) */}
       <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>

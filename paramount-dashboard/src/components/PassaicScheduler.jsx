@@ -7,6 +7,7 @@ import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards, PASSAIC_BUDGET } from '../lib/budgets'
+import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
 // Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan
@@ -397,6 +398,14 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     return m
   }, [wipRows])
 
+  // WHOLE-PO SIZE, keyed by po_number. Sami 7/27: a job split across several
+  // tables looks small on every card, so he was going back into LIFT to check
+  // how big it really was. Derived from the same wipRows the pool is built
+  // from — no extra query, and it cannot disagree with the pool by
+  // construction. The summing rule lives in poTotals.js so Live Ops and the
+  // Status tab report the identical figure.
+  const poTotals = useMemo(() => poTotalsFromWipRows(wipRows), [wipRows])
+
   // Line-level index so an assignment enriches back to its EXACT SKU row, not
   // just some sibling under the same PO (wipByPO overwrites to the last row).
   const wipByLine = useMemo(() => {
@@ -416,9 +425,12 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         age_days: src.age_days ?? null,
         needs_tint: !!tintFlags[schedLineKey(a)],
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
+        // Rides along on the assignment rather than being threaded down
+        // through TableCategoryRow -> TableCard -> AssignmentCard as a prop.
+        po_total: poTotals.get(a.po_number) || null,
       }
     })
-  }, [assignments, wipByPO, wipByLine, tintFlags])
+  }, [assignments, wipByPO, wipByLine, tintFlags, poTotals])
 
   const mixTotals = useMemo(() => {
     const t = {
@@ -661,6 +673,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
             )}
             {filteredPool.map(r => (
               <PoolCard key={r.id} r={r}
+                poTotal={poTotals.get(r.po_number) || null}
                 selected={selectedPO?.po_number === r.po_number}
                 tint={!!tintFlags[schedLineKey(r)]}
                 onToggleTint={(v) => toggleTint(r, v)}
@@ -895,17 +908,24 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 // Draggable pool card. Keeps the original click-to-select behavior (onToggle)
 // AND becomes a drag source. The PointerSensor's 6px activation constraint
 // means a plain click still selects; a drag needs deliberate movement.
-function PoolCard({ r, selected, tint, onToggleTint, onToggle }) {
+function PoolCard({ r, poTotal = null, selected, tint, onToggleTint, onToggle }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `pool-${r.id}`, data: { po: r } })
   const isSch = (r.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (r.customer_type||'').toLowerCase().includes('3rd')
   const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
   const wasteP = hasWasteHistory(r.line_description)
+  // The whole PO, in parentheses after the PO number. NOT the same as the
+  // "yd remaining" line lower down: remaining is what is still unscheduled,
+  // this is how big the job is in total. Both matter and they are different.
+  const poParens = poTotalParens(poTotal, { withCY: true })
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} onClick={onToggle}
       style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'grab', background: selected ? C.goldBg : 'transparent', opacity: isDragging ? 0.4 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+        {poParens && (
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poParens}</span>
+        )}
         {r.order_number && r.order_number !== r.po_number && (
           <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
         )}
@@ -1272,6 +1292,9 @@ function AssignmentCard({ a, onRemove, onEdit }) {
           same identifying detail as the pool card. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
         <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
+        {/* Whole-PO size. The line above shows what is on THIS table; a job
+            split across four tables reads as a quarter of itself without it. */}
+        {a.po_total && <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poTotalParens(a.po_total, { withCY: true })}</span>}
         {a.colors_count != null && !highColor && <span>· {a.colors_count}c</span>}
         {a.age_days != null && (
           <span style={{ marginLeft: 'auto', color: a.age_days > 90 ? C.rose : C.inkLight, fontWeight: a.age_days > 90 ? 700 : 400 }}>{a.age_days}d</span>

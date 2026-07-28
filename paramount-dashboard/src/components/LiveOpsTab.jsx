@@ -10,6 +10,7 @@ import {
   STATUS_GOOD, STATUS_WARN,} from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards, loadWeekDailyOpNotes, insertDailyOpNote, updateDailyOpNote, deleteDailyOpNote, NOTE_CATEGORIES } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
+import { loadPoTotals, poTotalText } from '../lib/poTotals'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
 // stable when people change positions. Edit this list when org changes.
@@ -74,6 +75,12 @@ export default function LiveOpsTab({ currentUser } = {}) {
   const [opNotes, setOpNotes] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(false)
+  // WHOLE-PO SIZE, keyed by po_number. Sami 7/27: a PO split across several
+  // tables looks small on every one of them, so he was going back into LIFT to
+  // re-check how big the job actually was. The total travels with the PO
+  // number now. Shared helper so Live Ops, Status and the schedulers cannot
+  // report different sizes for the same PO.
+  const [poTotals, setPoTotals] = useState(() => new Map())
   // Tracks which Passaic tables the user has clicked "+ add 2nd shift" on
   // for the currently-selected day, but hasn't saved any data for yet.
   // Cleared when the day changes (each day starts fresh; persisted 2nd-shift
@@ -168,6 +175,14 @@ export default function LiveOpsTab({ currentUser } = {}) {
         setOpLines(opLineRows || [])
         setOpNotes(opNoteRows || [])
         setAssignments(asn || [])
+        // Scoped to the POs actually on this week's screen — never a bare
+        // select across history, which PostgREST silently truncates at 1,000.
+        const pos = [
+          ...(asn || []).map(a => a.po_number),
+          ...(opLineRows || []).map(l => l.po_number),
+        ].filter(Boolean)
+        const totals = await loadPoTotals(pos)
+        if (!cancelled) setPoTotals(totals)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -475,6 +490,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                   cellLines={cellLinesFor(t.code, '1st')}
                   cellNotes={cellNotesFor(t.code, '1st')}
                   tintFlags={tintFlags}
+                  poTotals={poTotals}
                   weekStart={weekStart}
                   dayOfWeek={dayOfWeek}
                   canEnterActuals={true}
@@ -495,6 +511,7 @@ export default function LiveOpsTab({ currentUser } = {}) {
                     cellLines={cellLinesFor(t.code, '2nd')}
                     cellNotes={cellNotesFor(t.code, '2nd')}
                     tintFlags={tintFlags}
+                    poTotals={poTotals}
                     weekStart={weekStart}
                     dayOfWeek={dayOfWeek}
                     canEnterActuals={true}
@@ -673,7 +690,7 @@ function SiteChip({ active, onClick, color, children }) {
   )
 }
 
-function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], cellNotes = [], tintFlags = {}, weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
+function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetails, op, cellAssignments = [], seedAssignments = [], cellLines = [], cellNotes = [], tintFlags = {}, poTotals = new Map(), weekStart, dayOfWeek, canEnterActuals, currentUser, onSave }) {
   // Cell-level fields — crew + notes stay per table/day/shift.
   const [op1, setOp1]       = useState(op?.operator_1 ?? '')
   const [op2, setOp2]       = useState(op?.operator_2 ?? '')
@@ -1097,10 +1114,16 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   const a = cellAssignments.find(x => `${x.po_number}|${x.item_sku || ''}|${x.color || ''}` === o.key)
                   const pYd = a ? Number(a.planned_yards || 0) : 0
                   const pCy = a ? Number(a.planned_cy || 0) : 0
-                  const qty = pYd > 0
-                    ? ` — ${fmt(pYd)} yd${(site === 'passaic' && pCy > 0) ? ` / ${fmt(pCy)} cy` : ''}`
+                  // TWO DIFFERENT NUMBERS, and they were being read as one. The
+                  // figure in parentheses is the WHOLE PO — what the team has to
+                  // reach before the job is finished. The figure after it is only
+                  // what is scheduled on THIS table. Ramon 7/27: "all POs should
+                  // have total yards planned and not just scheduled for that day."
+                  const whole = poTotalText(poTotals.get(a?.po_number || ''), { withCY: site === 'passaic' })
+                  const here = pYd > 0
+                    ? ` · ${fmt(pYd)} yd${(site === 'passaic' && pCy > 0) ? ` / ${fmt(pCy)} cy` : ''} here`
                     : ''
-                  return <option key={o.key} value={o.key}>{o.label}{qty}</option>
+                  return <option key={o.key} value={o.key}>{o.label}{whole ? ` (${whole})` : ''}{here}</option>
                 })}
                 <option value="__other">Other / unplanned…</option>
               </select>

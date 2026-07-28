@@ -4,6 +4,7 @@ import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek, STATUS_BAD_BORDER, schedLineKey, BNY_OPERATORS_ALL } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { BNY_BUDGET, weeklyBudgetYards } from '../lib/budgets'
+import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
 // Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan).
@@ -318,6 +319,17 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     return m
   }, [wipRows])
 
+  // WHOLE-PO SIZE, keyed by po_number. Same rule and same formatter as Passaic
+  // and Live Ops — see poTotals.js. Derived from the wipRows the pool is built
+  // from, so no extra query and no way for the two to disagree.
+  //
+  // BNY IS THE SITE WHERE THIS NEEDS CARE. Hospitality POs are bundles: one PO
+  // number covering nine different patterns and colourways. The total is the
+  // whole bundle, which is NOT the size of the job on the card, so the
+  // formatter appends the line count on anything multi-line and Chandler can
+  // see that the figure covers more than what he is looking at.
+  const poTotals = useMemo(() => poTotalsFromWipRows(wipRows), [wipRows])
+
   // Line-level index so an assignment enriches back to its EXACT SKU row, not
   // just some sibling under the same PO (wipByPO overwrites to the last row).
   const wipByLine = useMemo(() => {
@@ -336,9 +348,12 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         customer_type: src.customer_type || null,
         colors_count: src.colors_count || null,
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
+        // Rides along on the assignment rather than being threaded down as a
+        // prop through the machine rows to the card.
+        po_total: poTotals.get(a.po_number) || null,
       }
     })
-  }, [assignments, wipByPO, wipByLine])
+  }, [assignments, wipByPO, wipByLine, poTotals])
 
   const mixTotals = useMemo(() => {
     const t = {
@@ -632,6 +647,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
             )}
             {filteredPool.map(r => (
               <PoolCardBNY key={r.id} r={r}
+                poTotal={poTotals.get(r.po_number) || null}
                 selected={selectedPO?.po_number === r.po_number}
                 onToggle={() => setSelectedPO(selectedPO?.po_number === r.po_number ? null : r)} />
             ))}
@@ -1065,6 +1081,8 @@ function AssignmentChip({ a, onRemove, onEdit }) {
           same identifying detail as the pool card. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
         <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
+        {/* Whole-PO size. The figure above is what is on THIS machine. */}
+        {a.po_total && <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poTotalParens(a.po_total)}</span>}
         {a.colors_count != null && (
           <span style={{ fontWeight: a.colors_count >= HIGH_COLOR_THRESHOLD ? 700 : 400, color: a.colors_count >= HIGH_COLOR_THRESHOLD ? C.rose : C.inkLight }}>
             · {a.colors_count}c
@@ -1089,15 +1107,23 @@ function FilterChip({ active, onClick, color, children }) {
 
 // Draggable BNY pool card — click still selects (onToggle); drag lifts it onto
 // a machine-day cell. Same activation constraints as Passaic.
-function PoolCardBNY({ r, selected, onToggle }) {
+function PoolCardBNY({ r, poTotal = null, selected, onToggle }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `bnypool-${r.id}`, data: { po: r } })
   const highColor = (r.colors_count || 0) >= HIGH_COLOR_THRESHOLD
   const aged = (r.age_days || 0) > 90
+  // Whole-PO size in parens after the number. On a hospitality bundle this
+  // carries a line count, because the total spans patterns this card is not
+  // showing. No colour-yards at BNY — digital is single-pass — so the
+  // formatter returns yards only, which is correct rather than missing.
+  const poParens = poTotalParens(poTotal)
   return (
     <div ref={setNodeRef} {...listeners} {...attributes} onClick={onToggle}
       style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, cursor: 'grab', background: selected ? C.goldBg : 'transparent', opacity: isDragging ? 0.4 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkLight }}>{r.po_number}</span>
+        {poParens && (
+          <span style={{ fontSize: 10, fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poParens}</span>
+        )}
         {r.order_number && r.order_number !== r.po_number && (
           <span style={{ fontSize: 9, fontFamily: 'monospace', color: C.inkLight }}>· #{r.order_number}</span>
         )}
