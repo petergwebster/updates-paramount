@@ -246,10 +246,33 @@ export default function LiveOpsTab({ currentUser } = {}) {
           // assigned table-wide rather than pinned to a weekday).
           plannedDetails = (onCellThisShift.length > 0 ? onCellThisShift : onTableThisShift)
             .map(a => a.line_description || a.po_number)
-          // Dropdown options follow the same precedence. Pre-seed only the
-          // day-specific ones so a table with many weekly POs doesn't spawn a
-          // blank line for each.
-          cellAsg = onCellThisShift.length > 0 ? onCellThisShift : onTableThisShift
+          // DROPDOWN OPTIONS ARE A UNION, NOT A CHOICE.
+          //
+          // This used to read `onCellThisShift.length > 0 ? onCellThisShift :
+          // onTableThisShift` — so the moment ONE PO was pinned to today, every
+          // week-level PO on the table disappeared from the picker. Passaic is
+          // scheduled table-wide by design, so that is most of the work:
+          // measured 27 July, 6,227 of 8,793 planned yards for the week (71%)
+          // sat on assignments with day_of_week null and could not be selected
+          // on any day. GC-1 offered 3 of its 10 POs.
+          //
+          // The floor's only remaining option was "Other / unplanned", which is
+          // very likely why the weekly summary keeps reporting ~63% of Passaic
+          // yards on PO-less lines. That looked like a discipline problem and
+          // was an interface problem.
+          //
+          // Day-pinned first so today's plan still leads the list; the rest of
+          // the table's week follows, labelled, so recording a job early or late
+          // is a visible choice rather than an untagged line.
+          const seenAsg = new Set()
+          cellAsg = []
+          for (const a of [...onCellThisShift, ...onTableThisShift]) {
+            if (seenAsg.has(a.id)) continue
+            seenAsg.add(a.id)
+            cellAsg.push(a)
+          }
+          // Seeding stays day-specific — a table carrying ten weekly POs must
+          // not spawn ten blank lines every morning.
           seedAsg = onCellThisShift
 
           if (op?.planned_yards != null) {
@@ -1168,7 +1191,14 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   // Say so rather than letting it pass as a normal option — it
                   // is real recorded work, just not on this day's plan.
                   const flag = o.offPlan ? ' · not scheduled today' : ''
-                  return <option key={o.key} value={o.key}>{o.label}{parens}{here}{flag}</option>
+                  // WHICH DAY THIS PO BELONGS TO. Today's plan leads the list
+                  // unmarked; everything else on the table's week is labelled,
+                  // so picking a job a day early is a deliberate act and shows
+                  // up as such rather than quietly becoming an untagged line.
+                  const dayFlag = (a && a.day_of_week !== dayOfWeek)
+                    ? (a.day_of_week ? ` · planned ${a.day_of_week}` : ' · this week')
+                    : ''
+                  return <option key={o.key} value={o.key}>{o.label}{parens}{here}{dayFlag}{flag}</option>
                 })}
                 <option value="__other">Other / unplanned…</option>
               </select>
