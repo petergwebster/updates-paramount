@@ -31,6 +31,21 @@
 const MONTHS = ['january','february','march','april','may','june','july',
                 'august','september','october','november','december']
 
+// Three-letter forms, matched only after the full names fail. The file naming
+// is NOT a convention — across Jan–Jun 2026 it runs "Paramount Prints_Jan26",
+// "Monthly Results_Paramount_Feb26", "Paramount Results_Mar 2026",
+// "Paramount Results vs Forecast_Apr 2026_Updated 052626" and finally the
+// steady "Paramount Results vs Forecast_June 2026". Only May and June contain
+// a full month name, so without abbreviations four of six files throw before
+// the parser ever opens a sheet.
+//
+// Filename parsing stays a FALLBACK, never the primary: opts.period should be
+// passed explicitly by the caller wherever a human is present to state it.
+// "Updated 052626" in the April filename is exactly the sort of stray number
+// that makes name-derived periods fragile.
+const MONTH_ABBR = ['jan','feb','mar','apr','may','jun','jul',
+                    'aug','sep','oct','nov','dec']
+
 // ---- helpers ---------------------------------------------------------------
 const isNum = v => typeof v === 'number' && isFinite(v)
 const snake = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
@@ -67,7 +82,14 @@ function periodFromName(fileName) {
   if (!fileName) return null
   const s = String(fileName).toLowerCase()
   const y = s.match(/(20\d{2})/)
-  const mi = MONTHS.findIndex(m => s.includes(m))
+  let mi = MONTHS.findIndex(m => s.includes(m))
+  if (mi < 0) {
+    // Bounded on both sides so a three-letter form only matches as its own
+    // token. An unbounded search for a substring this short inside filenames
+    // that all begin "Paramount ..." is asking for a false positive, and a
+    // wrong month here silently writes a whole P&L to the wrong period.
+    mi = MONTH_ABBR.findIndex(m => new RegExp(`(^|[^a-z])${m}([^a-z]|$)`).test(s))
+  }
   if (!y || mi < 0) return null
   return { year: +y[1], month: mi + 1 }
 }
@@ -176,12 +198,26 @@ export function parseVenaWorkbook(XLSX, workbook, opts = {}) {
   }
 
   // Cost centre is taken from the sheet name, so a new one appears automatically.
+  //
+  // TWO NAMING GENERATIONS. From February 2026 the sheets are "<CC> Variance";
+  // in January 2026 and December 2025 they are "<CC> IS Var". Verified
+  // 28 July: the January "610 IS Var" sheet is structurally IDENTICAL to a
+  // Variance sheet — same three header rows carrying year, period and
+  // scenario, same column H labels, same layout. Only the tab name changed,
+  // so accepting both is safe rather than a guess.
+  //
+  // NOTE for January and December: those files have no "Cons" sheet, only
+  // 609/610/612. Consolidated is left ABSENT rather than derived. It would sum
+  // correctly — June's Cons came to exactly 609 + 610 + 612 to the penny, so
+  // there are no elimination adjustments hiding in it — but a derived total
+  // that looks identical to a reported one is precisely the kind of figure
+  // that gets quoted later without the caveat attached.
   const SHEETS = []
   for (const name of workbook.SheetNames) {
-    const m = String(name).match(/^(cons|\d{3})\s+variance$/i)
+    const m = String(name).match(/^(cons|\d{3})\s+(?:variance|is\s+var)$/i)
     if (m) SHEETS.push([name, m[1].toUpperCase()])
   }
-  if (!SHEETS.length) throw new Error('No "<CC> Variance" sheets found — is this a Vena export?')
+  if (!SHEETS.length) throw new Error('No "<CC> Variance" or "<CC> IS Var" sheets found — is this a Vena export?')
 
   let rows = []
   for (const [name, cc] of SHEETS) {
@@ -200,6 +236,13 @@ export function parseVenaWorkbook(XLSX, workbook, opts = {}) {
   }
   const deduped = [...byKey.values()]
   if (dupes) warnings.push(`${dupes} duplicate key rows collapsed (last value wins)`)
+  // EXPECTED IN EARLY-YEAR FILES, NOT A FAULT. February 2026 carries two
+  // columns both labelled "Plan" for the same year and period — the 0+12
+  // forecast and the plan, which are the same thing that early in the year.
+  // Checked by hand on the Feb 610 sheet: 25 lines identical, 0 different, so
+  // collapsing them loses nothing. By May the label has become "Forecast 3+9"
+  // and the two separate properly. If a duplicate warning ever appears on a
+  // LATE-year file, that is worth investigating rather than ignoring.
 
   const pick = (cc, key, tf = 'month', sc = 'actual') => {
     const r = deduped.find(x => x.cost_center === cc && x.line_key === key &&

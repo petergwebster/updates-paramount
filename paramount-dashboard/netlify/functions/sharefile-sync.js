@@ -66,7 +66,28 @@ const JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases']
 // Where Abigail's Vena monthly close lands. Folder name is misspelled on
 // ShareFile ("Parmount") — that is the real name, do not "fix" it.
 const VENA_PATH = ['Parmount Monthly Results']
-const VENA_RE = /^Paramount Results vs Forecast.*\.xlsx$/i
+
+// AN ALLOW-LIST, NOT A WILDCARD. The naming has drifted four times across six
+// months and every variant is a real monthly close:
+//   Paramount Prints_Jan26.xlsx
+//   Monthly Results_Paramount_Feb26.xlsx
+//   Paramount Results_Mar 2026.xlsx
+//   Paramount Results vs Forecast_Apr 2026_Updated 052626.xlsx
+//   Paramount Results vs Forecast_May 2026.xlsx
+//   Paramount Results vs Forecast_June 2026.xlsx
+// The previous pattern was `^Paramount Results vs Forecast` — it matched the
+// last three and silently ignored January through March.
+//
+// The same folder holds two files that are NOT monthly closes and must never
+// be parsed as one: "Paramount Planned P&L - 3+9 Final Draft Review.xlsx"
+// (a plan, 12.4 MB) and "Paramount BNY Results_Dec25_Updated.xlsx" (prior
+// year, BNY-only, 45 sheets, a different animal entirely). A bare /\.xlsx$/
+// would swallow both, and a parse failure on one file would block the queue
+// behind it — so this stays an explicit list of known-good name families.
+// A NEW naming variant will be skipped rather than misread, which is the
+// right failure: it shows up as a period missing from the P&L, not as a
+// wrong number.
+const VENA_RE = /^(paramount results vs forecast|paramount results_|monthly results_paramount|paramount prints_)/i
 
 // Month-end substrate inventory. Two workbooks, one per site, same layout.
 // Replaces API_Dashboard_MOS_3_0.xlsx, which was a manual upload and reached
@@ -271,17 +292,47 @@ async function ingestJen(token, opts, result) {
 }
 
 // ─── Vena monthly close ──────────────────────────────────────────
+// ONE FILE PER RUN, NEWEST OUTSTANDING FIRST.
+//
+// This used to take only the newest file and keep a single `vena` fingerprint,
+// which is correct for the ongoing monthly feed and structurally incapable of
+// backfilling: six closes sat on ShareFile and only June was ever in the
+// table. Fingerprints are now per FILE, so any month not yet loaded is simply
+// outstanding work.
+//
+// Deliberately one per invocation. A single close is ~1.2 MB to download,
+// parses to ~6,000 rows and writes in chunks — roughly five seconds. Six in
+// one pass would blow the function timeout and leave a half-written period,
+// which is a far worse state than "not loaded yet". The daily cron therefore
+// walks back through history one month at a time; hitting sharefile-run
+// repeatedly does the same thing faster. `vena_pending` reports how many
+// remain so the backfill has a visible finish line.
 async function ingestVena(token, opts, result) {
   const folderId = await resolvePath(VENA_PATH, token)
-  const file = await newestFile(folderId, token, n => VENA_RE.test(n) && !/^~\$/.test(n))
-  if (!file) { result.vena = { skipped: 'no "Paramount Results vs Forecast" file found' }; return }
-
-  const fingerprint = `${file.Name}|${file.FileSizeBytes}|${file.ClientModifiedDate || file.ProgenyEditDate || ''}`
+  const kids = await children(folderId, token)
   const prior = (await stateGet(STATE_KEY)) || {}
-  if (!opts.force && prior.vena === fingerprint) {
-    result.vena = { skipped: 'unchanged since last run', file: file.Name }
+
+  const fpOf  = f => `${f.Name}|${f.FileSizeBytes}|${f.ClientModifiedDate || f.ProgenyEditDate || ''}`
+  const keyOf = f => `vena:${f.Name}`
+
+  const candidates = kids
+    .filter(k => (k['odata.type'] || '').includes('File'))
+    .filter(k => { const n = String(k.Name || ''); return VENA_RE.test(n) && /\.xlsx$/i.test(n) && !/^~\$/.test(n) })
+    .sort((a, b) =>
+      new Date(b.ClientModifiedDate || b.ProgenyEditDate || b.CreationDate || 0) -
+      new Date(a.ClientModifiedDate || a.ProgenyEditDate || a.CreationDate || 0))
+
+  if (!candidates.length) { result.vena = { skipped: 'no Vena monthly close found' }; return }
+
+  const pending = candidates.filter(f => opts.force || prior[keyOf(f)] !== fpOf(f))
+  if (!pending.length) {
+    result.vena = { skipped: 'all monthly closes already loaded', files: candidates.length }
     return
   }
+
+  const file = pending[0]
+  const fingerprint = fpOf(file)
+  result.vena_pending = pending.length - 1
 
   const buf = await downloadBuffer(file.Id, token)
   const wb = XLSX.read(buf, { type: 'buffer' })
@@ -323,7 +374,7 @@ async function ingestVena(token, opts, result) {
     })
   }
 
-  await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, vena: fingerprint, vena_at: new Date().toISOString() })
+  await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: fingerprint, vena_at: new Date().toISOString() })
   result.vena.written = true
   console.log(`sharefile-sync: loaded ${rows.length} Vena rows for ${parsed.period} from ${file.Name}`)
 }
