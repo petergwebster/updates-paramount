@@ -356,6 +356,14 @@ export default function OpsHome({ onOpen }) {
       const tablesRecorded = lastDay
         ? new Set(lines.filter(l => l.day_of_week === lastDay).map(l => l.table_code).filter(Boolean)).size
         : 0
+      // "Today" ONLY WHEN IT IS TODAY. Saying "as of today" over a figure that
+      // is actually Sunday's would be friendlier and wrong — on 27 July the
+      // Digital view's most recent entries were dated Sunday, so that label
+      // would have claimed 2 machines were recorded today when nothing was.
+      // When the last recorded day is not today, name the day: the staleness
+      // is the signal, and hiding it behind a comfortable word is the exact
+      // failure this screen keeps producing.
+      const lastDayIsToday = lastDay === DAY_ORDER[new Date().getDay()]
 
       const sched  = asn.reduce((s, a) => s + num(a.planned_yards), 0)
       const actual = lines.reduce((s, l) => s + num(l.actual_yards), 0)
@@ -379,7 +387,7 @@ export default function OpsHome({ onOpen }) {
 
       setD({ wipTotal: wip.length, wipYards, age, ngTotal: ng.length, ngLate,
              mat, byDay, bars, sched, actual, waste, done,
-             tablesScheduled, tablesRecorded, lastDay,
+             tablesScheduled, tablesRecorded, lastDay, lastDayIsToday,
              lineCount: lines.length, asnCount: asn.length, isPrior,
              prevSched, prevActual, prevWastePct })
     })()
@@ -488,7 +496,9 @@ export default function OpsHome({ onOpen }) {
 
       <Box title="Live ops"
            value={d.tablesScheduled > 0 ? `${d.tablesRecorded}/${d.tablesScheduled}` : (d.actual > 0 ? fmt(d.actual) : '—')}
-           unit={d.tablesScheduled > 0 ? `tables · ${d.lastDay || '—'}` : 'no plan'}
+           unit={d.tablesScheduled > 0
+                  ? `tables · ${d.lastDay ? (d.lastDayIsToday ? 'today' : d.lastDay) : '—'}`
+                  : 'no plan'}
            sub={d.actual > 0
                  ? `${fmt(d.actual)} yd recorded this week`
                  : 'Nothing recorded this week'}
