@@ -47,6 +47,7 @@ import * as XLSX from 'xlsx'
 import { parsePurchasesWorkbook } from '../../src/lib/purchasesWorkbook.js'
 import { parseVenaWorkbook } from '../../src/lib/venaWorkbook.js'
 import { parseInventoryWorkbook } from '../../src/lib/inventoryWorkbook.js'
+import { canWriteAging } from '../../src/lib/arApLock.js'
 
 const SUB        = (process.env.SHAREFILE_SUBDOMAIN     || '').trim()
 const CLIENT_ID  = (process.env.SHAREFILE_CLIENT_ID      || '').trim()
@@ -284,6 +285,57 @@ async function ingestJen(token, opts, result) {
   const CHUNK = 500
   for (let i = 0; i < transactions.length; i += CHUNK) {
     await sb('financial_transactions', { method: 'POST', body: JSON.stringify(transactions.slice(i, i + CHUNK)) })
+  }
+
+  // ─── AR/AP aging ─────────────────────────────────────────────────
+  // Parsed on every run since this function was built, and thrown away every
+  // time: the write was never ported over from the Admin tile. financial_aging
+  // therefore sat at 25 June, sourced from the superseded
+  // "Purchases YTD-2026.xlsx", while the live workbook delivered ~190 fresh
+  // aging rows daily. Found 28 July when the Finance AR/AP box read a month
+  // stale.
+  //
+  // This is NOT redundant with financial_transactions. Those carry invoiced and
+  // received amounts; the aging tabs are the only source of party-level bucket
+  // detail — who owes what and how overdue — which is exactly what
+  // FinancialTab renders.
+  //
+  // LOCK RULE (Peter, 2026-06-25) imported from arApLock.js rather than
+  // reimplemented, so the scheduled path and the Admin tile can never drift:
+  // ONLY AR/AP locks. At Saturday midnight ET the just-completed week's
+  // snapshot freezes; later files still refresh OpEx/COGS/CapEx but must not
+  // overwrite a locked week's aging.
+  //
+  // KNOWN EDGE CASE, deliberately preserved rather than quietly fixed here: a
+  // CORRECTED file carrying the SAME as-of date inside an already-locked week
+  // is kept, not updated. Peter's steer is that AR/AP only has to truly
+  // reconcile at month end, when Jen re-sends after close. Changing that
+  // behaviour is a decision, not a bug fix.
+  try {
+    const asOf = parsed.asOfDate
+    const existing = await sb('financial_aging?select=as_of_date')
+    const seen = [...new Set((existing || []).map(r => r.as_of_date).filter(Boolean))]
+    const verdict = canWriteAging(asOf, seen)
+    result.jen.aging_as_of = asOf
+    result.jen.aging_decision = verdict.reason
+
+    if (!verdict.allowed || !aging.length) {
+      result.jen.aging_written = false
+    } else {
+      // Replace this as-of date only. Each snapshot is a complete picture of
+      // one day, so a scoped delete keeps history and stays idempotent.
+      await sb(`financial_aging?as_of_date=eq.${encodeURIComponent(asOf)}`, { method: 'DELETE' })
+      for (let i = 0; i < aging.length; i += CHUNK) {
+        await sb('financial_aging', { method: 'POST', body: JSON.stringify(aging.slice(i, i + CHUNK)) })
+      }
+      result.jen.aging_written = true
+      console.log(`sharefile-sync: loaded ${aging.length} aging rows as of ${asOf}`)
+    }
+  } catch (e) {
+    // Isolated: aging must never take down the transaction load that already
+    // succeeded above.
+    console.error('aging write:', e)
+    result.jen.aging_error = e.message
   }
 
   await stateSet(STATE_KEY, { ...prior, jen: fingerprint, jen_at: new Date().toISOString() })
