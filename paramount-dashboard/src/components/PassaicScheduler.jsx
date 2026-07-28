@@ -1292,9 +1292,15 @@ function AssignmentCard({ a, onRemove, onEdit }) {
           same identifying detail as the pool card. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
         <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
-        {/* Whole-PO size. The line above shows what is on THIS table; a job
-            split across four tables reads as a quarter of itself without it. */}
-        {a.po_total && <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poTotalParens(a.po_total, { withCY: true })}</span>}
+        {/* Whole-PO size, shown ONLY when this card is a slice of it. The line
+            above already prints what is on this table — repeating the same
+            number in parentheses taught people to stop reading it. Silence
+            here means the card IS the whole PO. */}
+        {a.po_total && Math.round(Number(a.po_total.yards || 0)) > Math.round(Number(a.planned_yards || 0)) && (
+          <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>
+            · of {fmt(a.po_total.yards)} yd{a.po_total.lineCount > 1 ? ` · ${a.po_total.lineCount} lines` : ''}
+          </span>
+        )}
         {a.colors_count != null && !highColor && <span>· {a.colors_count}c</span>}
         {a.age_days != null && (
           <span style={{ marginLeft: 'auto', color: a.age_days > 90 ? C.rose : C.inkLight, fontWeight: a.age_days > 90 ? 700 : 400 }}>{a.age_days}d</span>

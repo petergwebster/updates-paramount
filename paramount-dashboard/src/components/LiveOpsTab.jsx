@@ -1145,19 +1145,30 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
                   const a = o.asg
                   const pYd = a ? Number(a.planned_yards || 0) : 0
                   const pCy = a ? Number(a.planned_cy || 0) : 0
-                  // TWO DIFFERENT NUMBERS, and they were being read as one. The
-                  // figure in parentheses is the WHOLE PO — what the team has to
-                  // reach before the job is finished. The figure after it is only
-                  // what is scheduled on THIS table. Ramon 7/27: "all POs should
-                  // have total yards planned and not just scheduled for that day."
-                  const whole = poTotalText(poTotals.get(o.po || ''), { withCY: site === 'passaic' })
-                  const here = pYd > 0
+                  const total = poTotals.get(o.po || '')
+                  const whole = poTotalText(total, { withCY: site === 'passaic' })
+                  // TWO DIFFERENT NUMBERS — but only when they are actually
+                  // different. The parenthesised figure is the WHOLE PO; the
+                  // one after it is what is scheduled on THIS table. When the
+                  // whole job sits on one table those are the same number, and
+                  // printing it twice ("264 yd / 264 cy · 264 yd / 264 cy here")
+                  // is noise that teaches people to stop reading the line. Say
+                  // it once and state what it means instead.
+                  const allHere = pYd > 0 && total && Math.round(total.yards) === Math.round(pYd)
+                  // LIFT carries no yardage at all for piece-goods — panel sets,
+                  // memo sets, strike-offs, and 3rd-party orders sold by the
+                  // piece. Blank looks like our lookup failed. It didn't.
+                  const noQty = !!total && !(total.yards > 0)
+                  const parens = whole
+                    ? ` (${whole}${allHere ? ' · all on this table' : ''})`
+                    : noQty ? ' (qty not in LIFT)' : ''
+                  const here = (pYd > 0 && !allHere)
                     ? ` · ${fmt(pYd)} yd${(site === 'passaic' && pCy > 0) ? ` / ${fmt(pCy)} cy` : ''} here`
                     : ''
                   // Say so rather than letting it pass as a normal option — it
                   // is real recorded work, just not on this day's plan.
                   const flag = o.offPlan ? ' · not scheduled today' : ''
-                  return <option key={o.key} value={o.key}>{o.label}{whole ? ` (${whole})` : ''}{here}{flag}</option>
+                  return <option key={o.key} value={o.key}>{o.label}{parens}{here}{flag}</option>
                 })}
                 <option value="__other">Other / unplanned…</option>
               </select>

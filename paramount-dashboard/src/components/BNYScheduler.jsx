@@ -1081,8 +1081,15 @@ function AssignmentChip({ a, onRemove, onEdit }) {
           same identifying detail as the pool card. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
         <span style={{ fontFamily: 'monospace' }}>{a.po_number}</span>
-        {/* Whole-PO size. The figure above is what is on THIS machine. */}
-        {a.po_total && <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>{poTotalParens(a.po_total)}</span>}
+        {/* Whole-PO size, shown ONLY when this card is a slice of it — the
+            figure above is already what is on this machine. Silence means the
+            card IS the whole PO. Hospitality bundles carry a line count because
+            there the total spans patterns this card is not showing. */}
+        {a.po_total && Math.round(Number(a.po_total.yards || 0)) > Math.round(Number(a.planned_yards || 0)) && (
+          <span style={{ fontFamily: 'monospace', color: C.inkMid, fontWeight: 700 }}>
+            · of {fmt(a.po_total.yards)} yd{a.po_total.lineCount > 1 ? ` · ${a.po_total.lineCount} lines` : ''}
+          </span>
+        )}
         {a.colors_count != null && (
           <span style={{ fontWeight: a.colors_count >= HIGH_COLOR_THRESHOLD ? 700 : 400, color: a.colors_count >= HIGH_COLOR_THRESHOLD ? C.rose : C.inkLight }}>
             · {a.colors_count}c
