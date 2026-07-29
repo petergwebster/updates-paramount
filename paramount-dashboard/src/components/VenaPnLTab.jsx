@@ -43,6 +43,13 @@ const fmt = (v) => {
 }
 const pct = (a, b) => (!b || !isFinite(a / b)) ? null : (a / b) * 100
 
+// Vena stores its own ratio lines (labels carrying '%', e.g. "Gross Margin %")
+// as decimal fractions — whole-dollar formatting rounds them to a row of
+// zeros. Detect by label and render as percents. Still display-only: the
+// fraction is Vena's number, we only choose the unit it prints in.
+const isRatioLine = (label) => /%/.test(label || '')
+const fmtRatio = (v) => (v == null || !isFinite(Number(v))) ? '—' : (Number(v) * 100).toFixed(1) + '%'
+
 export default function VenaPnLTab() {
   const [rows, setRows]       = useState([])
   const [periods, setPeriods] = useState([])
@@ -230,6 +237,8 @@ export default function VenaPnLTab() {
     const label  = swap ? 'Total Operating Expenses (pre-capitalization)' : l.label
     const varFc  = (actual != null && fc != null) ? actual - fc : null
     const share  = revenueLine?.actual ? pct(actual, revenueLine.actual) : null
+    const ratio  = isRatioLine(l.label)
+    const show   = (v) => ratio ? fmtRatio(v) : fmt(v)
     return [
       <td key="l" style={{ ...S.td, ...S.tdL, fontWeight: strong ? 600 : 400,
                            paddingLeft: strong ? 12 : 30,
@@ -244,16 +253,16 @@ export default function VenaPnLTab() {
           {detailCount} lines</span> : null}
       </td>,
       <td key="a" style={{ ...S.td, fontWeight: strong ? 600 : 400,
-                           borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(actual)}</td>,
-      <td key="f" style={S.td}>{fmt(fc)}</td>,
-      <td key="p" style={S.td}>{fmt(pl)}</td>,
-      <td key="y" style={S.td}>{fmt(py)}</td>,
+                           borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{show(actual)}</td>,
+      <td key="f" style={S.td}>{show(fc)}</td>,
+      <td key="p" style={S.td}>{show(pl)}</td>,
+      <td key="y" style={S.td}>{show(py)}</td>,
       <td key="v" style={{ ...S.td, color: varFc == null ? 'inherit'
                             : varFc < 0 ? 'var(--red)' : 'var(--green)' }}>
-        {varFc == null ? '—' : fmt(varFc)}
+        {varFc == null ? '—' : ratio ? (varFc * 100).toFixed(1) + ' pt' : fmt(varFc)}
       </td>,
       <td key="s" style={{ ...S.td, color: 'var(--ink-60)' }}>
-        {share == null ? '—' : share.toFixed(1) + '%'}
+        {ratio || share == null ? '—' : share.toFixed(1) + '%'}
       </td>,
     ]
   }
@@ -340,9 +349,9 @@ export default function VenaPnLTab() {
         </td>,
         ...trendPeriods.map(p =>
           <td key={p} style={{ ...S.td, fontWeight: strong ? 600 : 400,
-                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(val(l, p))}</td>),
+                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{isRatioLine(l.label) ? fmtRatio(val(l, p)) : fmt(val(l, p))}</td>),
         <td key="ytd" style={{ ...S.td, fontWeight: 600, borderLeft: '1px solid var(--border)',
-                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(val(l, 'ytd'))}</td>,
+                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{isRatioLine(l.label) ? fmtRatio(val(l, 'ytd')) : fmt(val(l, 'ytd'))}</td>,
       ]
     }
 
