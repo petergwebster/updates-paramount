@@ -52,6 +52,10 @@ export default function VenaPnLTab() {
   const [preCap, setPreCap]   = useState(true)
   const [openBlocks, setOpen] = useState({})
   const [showBelow, setBelow] = useState(false)
+  const [view, setView]       = useState('month')   // 'month' = one period, all scenarios · 'trend' = all periods, actuals
+  const [trendRows, setTrend] = useState([])
+  const [ytdRows, setYtd]     = useState([])
+  const [trendLoading, setTL] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr]         = useState(null)
 
@@ -86,6 +90,55 @@ export default function VenaPnLTab() {
     })()
     return () => { dead = true }
   }, [period, costCenter, timeframe])
+
+  // ── TREND DATA ── every loaded month's ACTUALS for one cost centre, plus
+  // Vena's own YTD for the latest period. YTD is DISPLAYED from the ytd
+  // timeframe, never summed from the months — same display-don't-recompute
+  // rule as everything else on this page. Both queries are small (~60 lines
+  // × 6 months), far under PostgREST's silent 1,000-row cap. Two independent
+  // builder chains — supabase builders are mutable, so "reusing" one for two
+  // queries silently ANDs all the filters into the same request.
+  useEffect(() => {
+    if (view !== 'trend' || !periods.length) return
+    let dead = false
+    setTL(true)
+    ;(async () => {
+      const [m, y] = await Promise.all([
+        supabase.from('vena_monthly')
+          .select('period,line_key,line_label,account_code,line_order,amount')
+          .eq('cost_center', costCenter).eq('scenario', 'actual').eq('timeframe', 'month'),
+        supabase.from('vena_monthly')
+          .select('period,line_key,line_label,account_code,line_order,amount')
+          .eq('cost_center', costCenter).eq('scenario', 'actual').eq('timeframe', 'ytd')
+          .eq('period', periods[0]),
+      ])
+      if (dead) return
+      if (m.error) setErr(m.error.message)
+      else { setTrend(m.data || []); setYtd(y.error ? [] : (y.data || [])); setErr(null) }
+      setTL(false)
+    })()
+    return () => { dead = true }
+  }, [view, costCenter, periods])
+
+  const trendPeriods = useMemo(() =>
+    [...new Set(trendRows.map(r => r.period))].sort(), [trendRows])
+
+  const trendLines = useMemo(() => {
+    const byLine = new Map()
+    const add = (r, slot) => {
+      if (!byLine.has(r.line_key)) byLine.set(r.line_key, {
+        key: r.line_key, label: r.line_label || r.line_key,
+        account: r.account_code, order: r.line_order ?? 9999, byPeriod: {}, ytd: null,
+      })
+      const L = byLine.get(r.line_key)
+      if (slot === 'ytd') L.ytd = Number(r.amount)
+      else L.byPeriod[r.period] = Number(r.amount)
+      if (r.line_order != null && r.line_order < L.order) L.order = r.line_order
+    }
+    trendRows.forEach(r => add(r, 'month'))
+    ytdRows.forEach(r => add(r, 'ytd'))
+    return [...byLine.values()].sort((a, b) => a.order - b.order)
+  }, [trendRows, ytdRows])
 
   // Pivot long → one row per line, a column per scenario.
   const lines = useMemo(() => {
@@ -213,6 +266,124 @@ export default function VenaPnLTab() {
     return out
   }
 
+  // ── TREND VIEW ── the same folding P&L, laid across every loaded month plus
+  // Vena's own YTD. Label column is sticky-left so the line names survive the
+  // horizontal scroll. Pre-cap swap applies per period. The one synthetic row
+  // is EBITDAP margin — a ratio of two displayed Vena numbers, same rule as
+  // the single-month "% of rev" column.
+  function renderTrend() {
+    if (trendLoading) return <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>Loading…</div>
+    if (!trendLines.length) return (
+      <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>
+        No monthly actuals loaded for {CC_LABEL[costCenter]}.
+      </div>)
+
+    const tCap    = trendLines.find(l => l.account === CAP_ACCOUNT)
+    const tOpex   = trendLines.find(l => /^total operating expenses/i.test(l.label))
+    const tRev    = trendLines.find(l => /^(net sales|total revenue)/i.test(l.label))
+    const tHasCap = !!tCap && Object.values(tCap.byPeriod).some(v => Math.abs(v || 0) > 0.5)
+    const tVisible = preCap && tHasCap ? trendLines.filter(l => l.account !== CAP_ACCOUNT) : trendLines
+
+    const val = (l, p) => {
+      const swap = preCap && tHasCap && tOpex && l.key === tOpex.key
+      if (!swap) return p === 'ytd' ? l.ytd : (l.byPeriod[p] ?? null)
+      const total = p === 'ytd' ? tOpex.ytd : tOpex.byPeriod[p]
+      const cap   = tCap ? (p === 'ytd' ? tCap.ytd : tCap.byPeriod[p]) : 0
+      return total == null ? null : total - (cap || 0)
+    }
+
+    const tBlocks = []
+    { let d = []
+      for (const l of tVisible) {
+        if (SUMMARY.test(l.label)) { tBlocks.push({ detail: d, summary: l }); d = [] }
+        else d.push(l)
+      }
+      if (d.length) tBlocks.push({ detail: d, summary: null }) }
+    const eIdx   = tBlocks.findIndex(b => b.summary && /^ebitda/i.test(b.summary.label))
+    const tAbove = eIdx >= 0 ? tBlocks.slice(0, eIdx + 1) : tBlocks
+    const tBelow = eIdx >= 0 ? tBlocks.slice(eIdx + 1) : []
+    const ebLine = eIdx >= 0 ? tBlocks[eIdx].summary : null
+
+    const mName = p => { const [yy, mm] = p.split('-'); return new Date(Date.UTC(+yy, +mm - 1, 15)).toLocaleString('en-US', { month: 'short' }) }
+    const stickyL = { position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface)' }
+
+    const cells = (l, strong) => {
+      const swap  = preCap && tHasCap && tOpex && l.key === tOpex.key
+      const label = swap ? 'Total Operating Expenses (pre-capitalization)' : l.label
+      return [
+        <td key="l" style={{ ...S.td, ...S.tdL, ...stickyL, fontWeight: strong ? 600 : 400,
+                             paddingLeft: strong ? 12 : 30,
+                             borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>
+          {label}
+          {l.account && <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 11 }}>{l.account}</span>}
+        </td>,
+        ...trendPeriods.map(p =>
+          <td key={p} style={{ ...S.td, fontWeight: strong ? 600 : 400,
+                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(val(l, p))}</td>),
+        <td key="ytd" style={{ ...S.td, fontWeight: 600, borderLeft: '1px solid var(--border)',
+                               borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>{fmt(val(l, 'ytd'))}</td>,
+      ]
+    }
+
+    const rowsOut = (blks, off = 0) => blks.flatMap((blk, bi) => {
+      const key = blk.summary ? 't-' + blk.summary.key : `t-tail-${off + bi}`
+      const isOpen = !!openBlocks[key]
+      const out = []
+      if (blk.summary && blk.detail.length) {
+        out.push(
+          <tr key={key} style={{ cursor: 'pointer' }}
+              onClick={() => setOpen(o => ({ ...o, [key]: !o[key] }))}>
+            {cells(blk.summary, true)}
+          </tr>)
+        if (isOpen) blk.detail.forEach(l => out.push(
+          <tr key={'t-' + l.key} style={{ background: 'var(--ink-3)' }}>{cells(l, false)}</tr>))
+      } else if (blk.summary) {
+        out.push(<tr key={key}>{cells(blk.summary, true)}</tr>)
+      } else {
+        blk.detail.forEach(l => out.push(<tr key={'t-' + l.key}>{cells(l, false)}</tr>))
+      }
+      if (blk.summary && ebLine && blk.summary.key === ebLine.key && tRev) out.push(
+        <tr key="t-margin">
+          <td style={{ ...S.td, ...S.tdL, ...stickyL, color: 'var(--ink-60)', paddingLeft: 12 }}>EBITDAP margin</td>
+          {trendPeriods.map(p => {
+            const m = pct(val(ebLine, p), val(tRev, p))
+            return <td key={p} style={{ ...S.td, color: m != null && m < 0 ? 'var(--red)' : 'var(--ink-60)' }}>
+              {m == null ? '—' : m.toFixed(1) + '%'}</td>
+          })}
+          <td style={{ ...S.td, color: 'var(--ink-60)', borderLeft: '1px solid var(--border)' }}>
+            {(() => { const m = pct(val(ebLine, 'ytd'), val(tRev, 'ytd')); return m == null ? '—' : m.toFixed(1) + '%' })()}
+          </td>
+        </tr>)
+      return out
+    })
+
+    return (
+      <>
+        <div style={{ maxHeight: 'calc(100vh - 330px)', minHeight: 260, overflow: 'auto',
+                      border: '1px solid var(--border-light)', borderRadius: 8 }}>
+        <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ ...S.th, ...S.thL, ...stickyL, zIndex: 4 }}>Line</th>
+              {trendPeriods.map(p => <th key={p} style={S.th}>{mName(p)}</th>)}
+              <th style={{ ...S.th, borderLeft: '1px solid var(--border)' }}>YTD thru {periods[0] ? mName(periods[0]) : ''}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowsOut(tAbove)}
+            {showBelow && rowsOut(tBelow, 1000)}
+          </tbody>
+        </table>
+        </div>
+        {tBelow.length > 0 && (
+          <button onClick={() => setBelow(v => !v)}
+            style={{ ...S.sel, cursor: 'pointer', marginTop: 14, fontSize: 12 }}>
+            {showBelow ? '▾ Hide' : '▸ Show'} depreciation, tax and other below EBITDAP
+          </button>)}
+      </>
+    )
+  }
+
   if (!loading && !periods.length) return (
     <div style={S.wrap}>
       <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>Profit &amp; loss</h2>
@@ -231,21 +402,36 @@ export default function VenaPnLTab() {
       <h2 style={{ fontSize: 22, fontWeight: 600, margin: '0 0 18px' }}>Profit &amp; loss</h2>
 
       <div style={S.bar}>
+        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 7, overflow: 'hidden' }}>
+          {['month', 'trend'].map(v =>
+            <button key={v} onClick={() => setView(v)}
+              style={{ padding: '7px 12px', fontSize: 13, border: 'none', cursor: 'pointer',
+                       background: view === v ? 'var(--surface-2)' : 'transparent',
+                       color: view === v ? 'var(--ink)' : 'var(--ink-60)',
+                       fontWeight: view === v ? 600 : 400 }}>
+              {v === 'month' ? 'Single month' : 'Trend'}
+            </button>)}
+        </div>
+        {view === 'month' && (
         <select style={S.sel} value={period || ''} onChange={e => setPeriod(e.target.value)}>
           {periods.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        )}
         <select style={S.sel} value={costCenter} onChange={e => setCC(e.target.value)}>
           {CC_ORDER.map(cc => <option key={cc} value={cc}>{CC_LABEL[cc]}</option>)}
         </select>
+        {view === 'month' && (
         <select style={S.sel} value={timeframe} onChange={e => setTf(e.target.value)}>
           {TF_ORDER.map(t => <option key={t} value={t}>{TF_LABEL[t]}</option>)}
         </select>
+        )}
         {hasCap && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={preCap} onChange={e => setPreCap(e.target.checked)} />
             OpEx pre-capitalization
           </label>
         )}
+        {view === 'month' && (
         <button onClick={() => {
           const all = {}
           const anyOpen = Object.values(openBlocks).some(Boolean)
@@ -254,10 +440,11 @@ export default function VenaPnLTab() {
         }} style={{ ...S.sel, cursor: 'pointer' }}>
           {Object.values(openBlocks).some(Boolean) ? 'Collapse all' : 'Expand all'}
         </button>
+        )}
       </div>
 
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>{err}</div>}
-      {loading ? (
+      {view === 'trend' ? renderTrend() : loading ? (
         <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>Loading…</div>
       ) : !visible.length ? (
         <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>
