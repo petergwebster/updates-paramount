@@ -461,6 +461,12 @@ export default function VenaPnLTab() {
             OpEx pre-capitalization
           </label>
         )}
+      </div>
+
+      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>{err}</div>}
+      {/* Expand/collapse sits left-justified directly above the table's LINE
+          column — where the +/− controls it drives actually live. */}
+      <div style={{ marginBottom: 8 }}>
         <button onClick={() => {
           const anyOpen = Object.values(openBlocks).some(Boolean)
           if (anyOpen) { setOpen({}); return }
@@ -468,12 +474,10 @@ export default function VenaPnLTab() {
           if (view === 'month') blocks.forEach(b => { if (b.summary && b.detail.length) all[b.summary.key] = true })
           else trendFoldKeys.forEach(k => { all[k] = true })
           setOpen(all)
-        }} style={{ ...S.sel, cursor: 'pointer' }}>
-          {Object.values(openBlocks).some(Boolean) ? 'Collapse all' : 'Expand all'}
+        }} style={{ ...S.sel, cursor: 'pointer', fontSize: 12 }}>
+          {Object.values(openBlocks).some(Boolean) ? '− Collapse all' : '+ Expand all'}
         </button>
       </div>
-
-      {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>{err}</div>}
       {view === 'trend' ? renderTrend() : loading ? (
         <div style={{ fontSize: 13, color: 'var(--ink-60)' }}>Loading…</div>
       ) : !visible.length ? (
