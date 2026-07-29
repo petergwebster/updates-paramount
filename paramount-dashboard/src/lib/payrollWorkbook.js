@@ -11,14 +11,21 @@
 // Period Control Date column is on every employee row and is the only
 // trustworthy period signal.
 //
-// WEEK KEY. Control date is the pay-period end Friday-ish; Peter's standing
-// convention (2026-07-25) is that payroll is labelled by the WEEK-ENDING
-// SATURDAY, and updates-paramount stores week_start as SUNDAY. So:
-//   week_start = sundayOnOrBefore(controlDate)
-// which for a Fri 2026-07-24 control date gives Sun 2026-07-19. This mirrors
-// the Saturday-minus-6 rule and lives HERE, in one place — the Sunday/Monday
-// date-key trap took 12 commits to unwind the last time the conversion was
-// scattered across importers.
+// WEEK KEY — CONFIRMED WITH PETER 2026-07-28. The report is processed on
+// Wednesday and ALWAYS covers the full PRIOR week, Sunday through Saturday
+// (FSCO runs 4-4-5; the dashboard week is Sun–Sat everywhere). The Period
+// Control Date is the PAY DATE — the Friday ~6 days AFTER the covered week
+// ends — not a date inside the covered week. So:
+//   week_start = sundayOnOrBefore(controlDate) - 7 days
+// e.g. control date Fri 2026-07-24 → covered week Sun 7/12 – Sat 7/18
+// → week_start 2026-07-12, matching the file's own "WE 7.18" name.
+// The first version omitted the -7 and filed every week one week late —
+// caught because the "Week of 6.14" file landed on 6/21 while the hand-keyed
+// entry for the SAME numbers sat on 6/14. A shifted pay date (e.g. Thu 7/02
+// when Fri 7/03 was the observed July-4th holiday) still resolves correctly,
+// because sundayOnOrBefore() only cares which Sun–Sat window the pay date
+// falls in. This conversion lives HERE, in one place — the Sunday/Monday
+// date-key trap took 12 commits to unwind when it was scattered.
 //
 // COLUMNS ARE DISCOVERED, NOT FIXED. Row 2 carries earnings-type labels (OT,
 // PTO, REG — and sometimes GTL, group term life) each spanning an
@@ -190,7 +197,11 @@ export function parsePayrollWorkbook(XLSX, workbook, opts = {}) {
   if (excluded612) warnings.push(`${excluded612} employee(s) in org 612 (corporate) excluded from site buckets`)
   if (excludedBlank) warnings.push(`${excludedBlank} employee(s) with blank Org Level 1 excluded`)
 
-  const weekStart = sundayOnOrBefore(controlDate)
+  // Pay date → covered week: the Sunday of the pay-date's week, minus one
+  // full week (see WEEK KEY note at top).
+  const payWeekSunday = new Date(sundayOnOrBefore(controlDate) + 'T00:00:00Z')
+  payWeekSunday.setUTCDate(payWeekSunday.getUTCDate() - 7)
+  const weekStart = payWeekSunday.toISOString().slice(0, 10)
 
   return {
     weekStart,
