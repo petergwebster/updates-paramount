@@ -140,6 +140,19 @@ export default function VenaPnLTab() {
     return [...byLine.values()].sort((a, b) => a.order - b.order)
   }, [trendRows, ytdRows])
 
+  // Fold keys for the trend view, at component level so Expand all in the bar
+  // can reach them. Trend keys carry a 't-' prefix, keeping the two views'
+  // open-state independent.
+  const trendFoldKeys = useMemo(() => {
+    const keys = []
+    let hasDetail = false
+    for (const l of trendLines) {
+      if (SUMMARY.test(l.label)) { if (hasDetail) keys.push('t-' + l.key); hasDetail = false }
+      else hasDetail = true
+    }
+    return keys
+  }, [trendLines])
+
   // Pivot long → one row per line, a column per scenario.
   const lines = useMemo(() => {
     const byLine = new Map()
@@ -221,8 +234,10 @@ export default function VenaPnLTab() {
       <td key="l" style={{ ...S.td, ...S.tdL, fontWeight: strong ? 600 : 400,
                            paddingLeft: strong ? 12 : 30,
                            borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>
-        {detailCount ? <span style={{ color: 'var(--ink-40)', marginRight: 7, fontSize: 10 }}>
-          {isOpen ? '▾' : '▸'}</span> : null}
+        {detailCount ? <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 15, height: 15, marginRight: 8, borderRadius: 3, flex: 'none',
+            border: '1px solid var(--ink-40)', color: 'var(--ink)', fontSize: 12, lineHeight: 1 }}>
+          {isOpen ? '−' : '+'}</span> : null}
         {label}
         {l.account && <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 11 }}>{l.account}</span>}
         {detailCount && !isOpen ? <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 10 }}>
@@ -307,15 +322,21 @@ export default function VenaPnLTab() {
     const mName = p => { const [yy, mm] = p.split('-'); return new Date(Date.UTC(+yy, +mm - 1, 15)).toLocaleString('en-US', { month: 'short' }) }
     const stickyL = { position: 'sticky', left: 0, zIndex: 2, background: 'var(--surface)' }
 
-    const cells = (l, strong) => {
+    const cells = (l, strong, isOpen, detailCount) => {
       const swap  = preCap && tHasCap && tOpex && l.key === tOpex.key
       const label = swap ? 'Total Operating Expenses (pre-capitalization)' : l.label
       return [
         <td key="l" style={{ ...S.td, ...S.tdL, ...stickyL, fontWeight: strong ? 600 : 400,
                              paddingLeft: strong ? 12 : 30,
                              borderBottom: strong ? '1px solid var(--border)' : '1px solid var(--ink-10)' }}>
+          {detailCount ? <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 15, height: 15, marginRight: 8, borderRadius: 3, flex: 'none',
+              border: '1px solid var(--ink-40)', color: 'var(--ink)', fontSize: 12, lineHeight: 1 }}>
+            {isOpen ? '−' : '+'}</span> : null}
           {label}
           {l.account && <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 11 }}>{l.account}</span>}
+          {detailCount && !isOpen ? <span style={{ color: 'var(--ink-30)', marginLeft: 8, fontSize: 10 }}>
+            {detailCount} lines</span> : null}
         </td>,
         ...trendPeriods.map(p =>
           <td key={p} style={{ ...S.td, fontWeight: strong ? 600 : 400,
@@ -333,7 +354,7 @@ export default function VenaPnLTab() {
         out.push(
           <tr key={key} style={{ cursor: 'pointer' }}
               onClick={() => setOpen(o => ({ ...o, [key]: !o[key] }))}>
-            {cells(blk.summary, true)}
+            {cells(blk.summary, true, isOpen, blk.detail.length)}
           </tr>)
         if (isOpen) blk.detail.forEach(l => out.push(
           <tr key={'t-' + l.key} style={{ background: 'var(--ink-3)' }}>{cells(l, false)}</tr>))
@@ -431,16 +452,16 @@ export default function VenaPnLTab() {
             OpEx pre-capitalization
           </label>
         )}
-        {view === 'month' && (
         <button onClick={() => {
-          const all = {}
           const anyOpen = Object.values(openBlocks).some(Boolean)
-          if (!anyOpen) blocks.forEach(b => { if (b.summary && b.detail.length) all[b.summary.key] = true })
+          if (anyOpen) { setOpen({}); return }
+          const all = {}
+          if (view === 'month') blocks.forEach(b => { if (b.summary && b.detail.length) all[b.summary.key] = true })
+          else trendFoldKeys.forEach(k => { all[k] = true })
           setOpen(all)
         }} style={{ ...S.sel, cursor: 'pointer' }}>
           {Object.values(openBlocks).some(Boolean) ? 'Collapse all' : 'Expand all'}
         </button>
-        )}
       </div>
 
       {err && <div style={{ color: 'var(--red)', fontSize: 13, marginBottom: 14 }}>{err}</div>}
