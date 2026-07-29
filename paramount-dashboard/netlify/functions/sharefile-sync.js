@@ -541,6 +541,118 @@ async function ingestPayroll(token, opts, result) {
   console.log(`sharefile-sync: payroll week ${parsed.weekStart} loaded from ${file.Name} (${parsed.summary.employees} employees, $${parsed.summary.total_pay})`)
 }
 
+// ─── Month-end deck library ──────────────────────────────────
+// Peter's exec decks, saved BY HAND as PDFs into ShareFile > "Paramount Month
+// End Decks" — that folder IS the intake; there is deliberately no upload
+// button (same principle as Vena and payroll). Each PDF is mirrored into the
+// public `decks` storage bucket and listed in month_end_decks for the
+// Finance > Reports shelf. DISPLAY-ONLY: the PDFs are never parsed here.
+// Auto-generating these decks from live data is the standing long-term goal
+// (Peter, 2026-07-28); when it arrives it lands beside these, as a comparison.
+// Known format drift (Dec'25 → Mar'26 decks differ) costs nothing under this
+// design and is recorded for the future generation project, not for this one.
+const DECKS_PATH = ['Paramount Month End Decks']
+
+// Month from the filename, tolerant of the folder's real spellings —
+// including "Feburary". Year: a 20xx in the name wins; otherwise infer, with
+// a month later than "now" assumed to be LAST year (a December deck with no
+// year, seen in July, is December last year).
+const DECK_MONTH_RE = /\b(jan(?:uary)?|feb(?:ruary|urary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i
+const DECK_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+
+function deckPeriod(name, warnings) {
+  const m = DECK_MONTH_RE.exec(name)
+  if (!m) { warnings.push(`no month found in "${name}"`); return null }
+  const mi = DECK_MONTHS.indexOf(m[1].slice(0, 3).toLowerCase())
+  const y = /\b(20\d{2})\b/.exec(name)
+  const now = new Date()
+  const year = y ? +y[1] : (mi > now.getUTCMonth() ? now.getUTCFullYear() - 1 : now.getUTCFullYear())
+  if (!y) warnings.push(`no year in "${name}" — inferred ${year}`)
+  const label = new Date(Date.UTC(year, mi, 15)).toLocaleString('en-US', { month: 'long' }) + ' ' + year
+    + (/draft/i.test(name) ? ' (draft)' : '')
+  return { period: `${year}-${String(mi + 1).padStart(2, '0')}-01`, label }
+}
+
+async function ingestDecks(token, opts, result) {
+  const folderId = await resolvePath(DECKS_PATH, token)
+  const kids = await children(folderId, token)
+  const prior = (await stateGet(STATE_KEY)) || {}
+
+  const fpOf  = f => `${f.Name}|${f.FileSizeBytes}|${f.ClientModifiedDate || f.ProgenyEditDate || ''}`
+  const keyOf = f => `deck:${f.Name}`
+
+  const candidates = kids
+    .filter(k => (k['odata.type'] || '').includes('File'))
+    .filter(k => /\.pdf$/i.test(String(k.Name || '')))
+    .sort((a, b) =>
+      new Date(b.ClientModifiedDate || b.ProgenyEditDate || b.CreationDate || 0) -
+      new Date(a.ClientModifiedDate || a.ProgenyEditDate || a.CreationDate || 0))
+
+  if (!candidates.length) { result.decks = { skipped: 'no PDFs in Month End Decks' }; return }
+
+  const pending = candidates.filter(f => opts.force || prior[keyOf(f)] !== fpOf(f))
+  if (!pending.length) {
+    result.decks = { skipped: 'all decks already mirrored', files: candidates.length }
+    return
+  }
+
+  const file = pending[0]
+  const fingerprint = fpOf(file)
+  result.decks_pending = pending.length - 1
+
+  const warnings = []
+  const meta = deckPeriod(String(file.Name), warnings)
+
+  result.decks = {
+    file: file.Name,
+    month: meta ? meta.label : null,
+    size_mb: Math.round(file.FileSizeBytes / 1048576 * 10) / 10,
+    warnings: warnings.length ? warnings : null,
+  }
+
+  // A heavyweight PowerPoint print can outrun the function budget mid-transfer
+  // and then retry forever. Refuse it loudly instead, consumed-as-failed like
+  // the payroll pattern — a re-saved (smaller) file gets a new fingerprint.
+  if (file.FileSizeBytes > 25 * 1024 * 1024) {
+    await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: `FAILED|${fingerprint}` })
+    result.decks.error = 'over 25 MB — compress the PDF (PowerPoint > Compress Pictures, then re-save) '
+    return
+  }
+
+  if (opts.dryRun) { result.decks.written = false; result.decks.dryRun = true; return }
+
+  const buf = await downloadBuffer(file.Id, token)
+
+  // Mirror into the public decks bucket; x-upsert makes a re-saved deck
+  // (e.g. the June invoiced-yards correction) replace its file in place.
+  const up = await fetch(`${SB_URL}/storage/v1/object/decks/${encodeURIComponent(file.Name)}`, {
+    method: 'POST',
+    headers: {
+      apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+      'Content-Type': 'application/pdf', 'x-upsert': 'true',
+    },
+    body: buf,
+  })
+  if (!up.ok) throw new Error(`deck upload ${file.Name}: HTTP ${up.status} ${await up.text()}`)
+
+  await sb('month_end_decks', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify([{
+      file_name: file.Name,
+      month_label: meta ? meta.label : file.Name.replace(/\.pdf$/i, ''),
+      period: meta ? meta.period : null,
+      storage_path: file.Name,
+      file_size: file.FileSizeBytes,
+      source_modified: file.ClientModifiedDate || file.ProgenyEditDate || null,
+    }]),
+  })
+
+  await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: fingerprint, decks_at: new Date().toISOString() })
+  result.decks.written = true
+  console.log(`sharefile-sync: deck mirrored — ${file.Name} (${result.decks.month || 'unlabelled'})`)
+}
+
 // ─── Month-end inventory (both sites) ───────────────────────────────
 async function ingestInventory(token, opts, result) {
   const folderId = await resolvePath(INV_PATH, token)
@@ -649,6 +761,10 @@ async function runSync(event) {
     try { await ingestPayroll(token, opts, result) }
     catch (e) { console.error('payroll feed:', e); result.payroll = { error: e.message } }
 
+    // Month-end deck library — mirror-only, never parsed.
+    try { await ingestDecks(token, opts, result) }
+    catch (e) { console.error('decks feed:', e); result.decks = { error: e.message } }
+
     // Month-end inventory — both sites, each isolated inside the function.
     try { await ingestInventory(token, opts, result) }
     catch (e) { console.error('inventory feed:', e); result.inventory = { error: e.message } }
@@ -658,7 +774,7 @@ async function runSync(event) {
     // stops firing entirely the badge must go red on STALENESS, because a
     // silently unregistered cron is a failure mode this site has already had
     // (the netlify.toml schedule deployed clean and never ticked).
-    result.ok = !result.jen?.error && !result.vena?.error && !result.inventory?.error && !result.payroll?.error
+    result.ok = !result.jen?.error && !result.vena?.error && !result.inventory?.error && !result.payroll?.error && !result.decks?.error
               && !result.jen?.guard_tripped && !result.vena?.guard_tripped
     try { await stateSet(HEALTH_KEY, result) } catch (e) { console.error('health write:', e) }
 

@@ -3,6 +3,7 @@ import MonthlyBriefs from './MonthlyBriefs'
 import WeeklyProductionSummary from './WeeklyProductionSummary'
 import ExecutiveDashboardPage from './ExecutiveDashboardPage'
 import ProductionDashboard from './ProductionDashboard'
+import MonthEndDecks from './MonthEndDecks'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FinanceReportsTab — one home for everything that produces a report.
@@ -21,6 +22,7 @@ import ProductionDashboard from './ProductionDashboard'
 // ═══════════════════════════════════════════════════════════════════════════
 
 const REPORTS = [
+  { id: 'decks',   label: 'Month-end decks',  sub: 'The exec deck, every month, exactly as presented' },
   { id: 'monthly', label: 'Monthly brief',    sub: 'Mid-month and end-of-month, for FSCO leadership' },
   { id: 'weekly',  label: 'Weekly production', sub: 'The operating week — tables, operators, waste, lost capacity' },
   { id: 'recap',   label: 'Exec recap',        sub: 'Weekly narrative. Becomes a generated email in Q4.' },
@@ -30,7 +32,7 @@ const REPORTS = [
 export default function FinanceReportsTab({
   weekStart, weekData, dbReady, commentProps, currentUser, userId, authUser,
 }) {
-  const [active, setActive] = useState('monthly')
+  const [active, setActive] = useState('decks')
 
   const S = {
     wrap:   { padding: '24px 28px 8px', maxWidth: 1180, margin: '0 auto' },
@@ -66,6 +68,9 @@ export default function FinanceReportsTab({
         </div>
       </div>
 
+      {active === 'decks' && (
+        <MonthEndDecks />
+      )}
       {active === 'monthly' && (
         <MonthlyBriefs weekStart={weekStart} authUser={authUser} />
       )}
