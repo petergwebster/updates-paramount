@@ -493,7 +493,16 @@ async function ingestPayroll(token, opts, result) {
     // and let the next run move on. A re-uploaded (changed) file gets a new
     // fingerprint and a fresh attempt. This deliberately differs from Jen/Vena,
     // where retry-forever is correct because those are current-period files.
-    await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: `FAILED|${fingerprint}` })
+    // Mark consumed with the PLAIN fingerprint so the file never re-queues —
+    // the first version stored `FAILED|${fingerprint}`, which could never
+    // equal fpOf(file), so the bad file re-queued and re-failed EVERY run and
+    // held the Finance badge red forever (caught live 2026-07-30). The
+    // failure reason lives under its own key for visibility instead.
+    await stateSet(STATE_KEY, {
+      ...(await stateGet(STATE_KEY)) || {},
+      [keyOf(file)]: fingerprint,
+      [`payroll_failed:${file.Name}`]: e.message,
+    })
     result.payroll = { file: file.Name, error: `parse failed, file skipped: ${e.message}` }
     console.error(`sharefile-sync payroll: ${file.Name} failed to parse — skipped`, e)
     return
@@ -614,7 +623,13 @@ async function ingestDecks(token, opts, result) {
   // and then retry forever. Refuse it loudly instead, consumed-as-failed like
   // the payroll pattern — a re-saved (smaller) file gets a new fingerprint.
   if (file.FileSizeBytes > 25 * 1024 * 1024) {
-    await stateSet(STATE_KEY, { ...(await stateGet(STATE_KEY)) || {}, [keyOf(file)]: `FAILED|${fingerprint}` })
+    // Plain fingerprint for the same reason as the payroll parse-failure path
+    // — a FAILED| prefix never matches fpOf() and re-queues forever.
+    await stateSet(STATE_KEY, {
+      ...(await stateGet(STATE_KEY)) || {},
+      [keyOf(file)]: fingerprint,
+      [`deck_failed:${file.Name}`]: 'over 25 MB',
+    })
     result.decks.error = 'over 25 MB — compress the PDF (PowerPoint > Compress Pictures, then re-save) '
     return
   }
