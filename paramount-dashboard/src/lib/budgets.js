@@ -204,6 +204,24 @@ export function passaicCustomerSplit() {
   }
 }
 
+// ─── Forecast-based weekly revenue targets (scheduler chips) ────────────
+// Peter, 2026-07-29: scheduler revenue targets come from THE MONTH-END DECK
+// (June 2026 as reference), whose target column is the Vena FORECAST — not
+// the annual plan above. The distinction is real money: Passaic plan says
+// $128,951/wk while the June forecast says $107,775/wk; a chip scored
+// against plan would run red every week on a bar leadership itself no
+// longer manages to. Derivation: June 2026 forecast revenue (vena_monthly,
+// scenario='forecast': 610 $538,875.41 · 609 $640,320) ÷ 5 weeks in fiscal
+// June. Refresh when a new forecast lands, or wire to vena_monthly/Perdoo
+// when targets go dynamic. Deliberately SEPARATE from the plan objects
+// above — do not blend forecast into PASSAIC_BUDGET/BNY_BUDGET; their
+// semantics stay "annual plan".
+const FORECAST_WEEKLY_REV = { passaic: 107775, bny: 128064 }
+
+export function forecastWeeklyRevenue(site) {
+  return FORECAST_WEEKLY_REV[site] ?? null
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Raw exports for callers that need structural access (e.g., the
 // ProductionDashboard category input form iterates categories.* keys).
