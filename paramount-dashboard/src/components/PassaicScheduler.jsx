@@ -6,7 +6,7 @@ import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek,
   STATUS_BAD_BORDER, schedLineKey,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
-import { weeklyBudgetYards, weeklyBudgetColorYards, PASSAIC_BUDGET } from '../lib/budgets'
+import { weeklyBudgetYards, weeklyBudgetColorYards, weeklyBudgetRevenue, forecastWeeklyRevenue, PASSAIC_BUDGET } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
@@ -763,7 +763,11 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
 function MixGauges({ totals }) {
   const yPct = Math.round((totals.yards / PASSAIC_TARGETS.total.yards) * 100)
   const cyPct = Math.round((totals.cy / PASSAIC_TARGETS.total.cy) * 100)
-  const rPct = Math.round((totals.revenue / PASSAIC_TARGETS.total.revenue) * 100)
+  // Revenue is scored against the DECK-FORECAST weekly target (exec ask,
+  // 2026-07-29/30) — not the annual plan the yards/CY gauges use. See the
+  // provenance note on forecastWeeklyRevenue() in budgets.js.
+  const revTarget = forecastWeeklyRevenue('passaic') ?? PASSAIC_TARGETS.total.revenue
+  const rPct = Math.round((totals.revenue / revTarget) * 100)
   const mixSch = totals.revenue > 0 ? totals.schumacher_revenue / totals.revenue : 0
   const mix3p = totals.revenue > 0 ? totals.third_party_revenue / totals.revenue : 0
   const mixOnTarget = mixSch >= (MIX_TARGET_SCH - 0.10) && mixSch <= (MIX_TARGET_SCH + 0.10)
@@ -772,7 +776,7 @@ function MixGauges({ totals }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
       <Gauge label="Yards" value={totals.yards} target={PASSAIC_TARGETS.total.yards} pct={yPct} unit="yd" />
       <Gauge label="Color-yards" value={totals.cy} target={PASSAIC_TARGETS.total.cy} pct={cyPct} unit="CY" highlight />
-      <Gauge label="Revenue" value={totals.revenue} target={PASSAIC_TARGETS.total.revenue} pct={rPct} unit="$" isMoney />
+      <Gauge label="Revenue" value={totals.revenue} target={revTarget} pct={rPct} unit="$" isMoney />
       <MixCard schPct={mixSch * 100} tpPct={mix3p * 100} onTarget={mixOnTarget} avgColors={totals.avg_colors_weighted} />
     </div>
   )
@@ -851,7 +855,26 @@ function CategoryStrip({ totals }) {
               </div>
               <div>
                 <div style={{ fontSize: 9, color: C.inkLight, textTransform: 'uppercase' }}>Rev</div>
-                <div style={{ fontWeight: 700, color: C.ink }}>{fmtK(t.revenue)}</div>
+                {/* Category revenue targets are the budgets.js PLAN figures —
+                    the only per-category revenue split that exists. KNOWN
+                    TIE-OUT GAP (2026-07-30): the three category invoiceRev
+                    values sum to ~$77K, well short of both the weekly plan
+                    ($129K) and the deck-forecast target ($107.8K), so the
+                    category percentages will read hot relative to the total
+                    gauge. Flagged to Peter; corrected category numbers drop
+                    in via budgets.js when he has them. */}
+                {(() => {
+                  const revTgt = weeklyBudgetRevenue('passaic', CATEGORY_TO_BUDGET_KEY[c.key])
+                  const revPct = revTgt ? Math.round((t.revenue / revTgt) * 100) : null
+                  return (
+                    <div style={{ fontWeight: 700, color: C.ink }}>
+                      {fmtK(t.revenue)}
+                      {revTgt != null && (
+                        <span style={{ color: C.inkLight, fontWeight: 400 }}> / {fmtK(revTgt)}{revPct != null ? ` (${revPct}%)` : ''}</span>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </div>

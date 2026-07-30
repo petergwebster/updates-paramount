@@ -4,7 +4,6 @@ import { C, SITES, isoDate, defaultSchedulerWeek, STATUS_BAD_BORDER } from '../l
 import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
 import LiftFreshnessBadge from './LiftFreshnessBadge'
-import WeekRevenueChip from './WeekRevenueChip'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SchedulerTab — schedule grid orchestrator
@@ -104,7 +103,6 @@ export default function SchedulerTab() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <WeekRevenueChip site={site} wipRows={wipRows} assignments={assignments} />
             <button onClick={loadLatest} disabled={loading}
               style={{ padding: '9px 16px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? 'Loading…' : '↻ Refresh'}
