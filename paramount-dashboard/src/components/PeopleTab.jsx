@@ -89,7 +89,20 @@ export default function PeopleTab({ weekStart, readOnly = true, currentUser, onC
     )
   }
 
-  const employees  = data.employees || []
+  // The employees jsonb has two generations: hand-keyed rows carried
+  // location/title/flags; the payroll feed (2026-07-28) writes org
+  // ('610'/'609') plus hour fields and no flags. Normalise here so BOTH
+  // render — location derived from org, flags derived from the hours —
+  // rather than making the feed write display fields.
+  const employees = (data.employees || []).map(e => ({
+    ...e,
+    location: e.location || (e.org === '609' ? 'BNY' : e.org === '610' ? 'NJ' : null),
+    flags: e.flags || [
+      ...(Number(e.ot_hrs) > 0 ? ['OT'] : []),
+      ...(Number(e.pto_hrs) > 0 ? ['PTO'] : []),
+      ...(Number(e.total_hrs || 0) < 40 ? ['under40'] : []),
+    ],
+  }))
   const bnyEmployees = employees.filter(e => e.location === 'BNY')
   const njEmployees  = employees.filter(e => e.location === 'NJ')
   const leaves       = data.leaves || []
@@ -338,7 +351,7 @@ function RosterSection({ title, count, employees, isOpen, onToggle, pillsForEmpl
           {employees.map((emp, i) => (
             <div key={i} className={styles.rosterRow}>
               <span>{emp.name}</span>
-              <span className={styles.muted}>{emp.title}</span>
+              <span className={styles.muted}>{emp.title || '—'}</span>
               <span>{fmt(emp.total_hrs)}</span>
               <span>{emp.ot_hrs > 0 ? fmt(emp.ot_hrs) : '—'}</span>
               <span>{emp.pto_hrs > 0 ? fmt(emp.pto_hrs) : '—'}</span>
