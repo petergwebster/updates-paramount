@@ -4,6 +4,7 @@ import WeeklyProductionSummary from './WeeklyProductionSummary'
 import ExecutiveDashboardPage from './ExecutiveDashboardPage'
 import ProductionDashboard from './ProductionDashboard'
 import MonthEndDecks from './MonthEndDecks'
+import DeckKpiTrend from './DeckKpiTrend'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FinanceReportsTab — one home for everything that produces a report.
@@ -23,6 +24,7 @@ import MonthEndDecks from './MonthEndDecks'
 
 const REPORTS = [
   { id: 'decks',   label: 'Month-end decks',  sub: 'The exec deck, every month, exactly as presented' },
+  { id: 'kpis',    label: 'KPI trend',         sub: 'Every production KPI from the decks, Jan to now, vs target' },
   { id: 'monthly', label: 'Monthly brief',    sub: 'Mid-month and end-of-month, for FSCO leadership' },
   { id: 'weekly',  label: 'Weekly production', sub: 'The operating week — tables, operators, waste, lost capacity' },
   { id: 'recap',   label: 'Exec recap',        sub: 'Weekly narrative. Becomes a generated email in Q4.' },
@@ -70,6 +72,9 @@ export default function FinanceReportsTab({
 
       {active === 'decks' && (
         <MonthEndDecks />
+      )}
+      {active === 'kpis' && (
+        <DeckKpiTrend />
       )}
       {active === 'monthly' && (
         <MonthlyBriefs weekStart={weekStart} authUser={authUser} />

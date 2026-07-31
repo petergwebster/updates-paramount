@@ -1,0 +1,259 @@
+import React, { useState, useEffect, useMemo } from 'react'
+import { supabase } from '../supabase'
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DeckKpiTrend — every production KPI from the month-end decks, as a trend.
+//
+// Source: deck_kpis, extracted from the KPI slides of each month's deck
+// (located by slide TITLE, never page number — pages drift month to month)
+// and verified before load: the HTI chain (prior month held == last month's
+// held, 10/10 links Jan→Jun) plus hand-tied spot checks. The table stores the
+// deck AS PUBLISHED — value is the parsed number, display is the exact cell
+// text ("<8,500", "2,851 (11%)", "Red"), so thresholds and the early months'
+// traffic-light words survive verbatim.
+//
+// TRAFFIC LIGHTS: where the deck printed a color word (609 every month,
+// 610 Jan–Feb) we show the DECK'S OWN grade. From March the 610 slide went to
+// numeric gaps, so we grade actual-vs-target with metric direction:
+// waste / HTI are lower-is-better, produced / invoiced higher-is-better.
+// The two regimes are visually identical on purpose.
+//
+// Metric order is the slide-4 yard identity, top to bottom — the same
+// waterfall every role owns one term of. December's deck predates this
+// format entirely and is deliberately absent (library-only).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const METRICS = [
+  { key: 'prior_hti',        label: 'Prior month HTI',   dir: 'low'  },
+  { key: 'gross_produced',   label: 'Gross produced',    dir: 'high' },
+  { key: 'production_waste', label: 'Production waste',  dir: 'low'  },
+  { key: 'postprod_waste',   label: 'Post-prod waste',   dir: 'low'  },
+  { key: 'net_produced',     label: 'Net produced',      dir: 'high' },
+  { key: 'hti',              label: 'Held-to-invoice',   dir: 'low'  },
+  { key: 'invoiced',         label: 'Invoiced',          dir: 'high' },
+]
+
+const CUT_LABEL = {
+  grasscloth: 'Grasscloth', fabric: 'Fabric', wallpaper: 'Wallpaper',
+  replen: 'Replen', mto: 'MTO', hospitality: 'Hospitality', memos: 'Memos',
+  third_party: '3rd party', brooklyn: 'Brooklyn', passaic: 'Passaic (digital)',
+}
+const cutLabel = (ck) => {
+  if (ck.includes(':')) {
+    const [site, job] = ck.split(':')
+    return `${CUT_LABEL[site] || site} · ${CUT_LABEL[job] || job}`
+  }
+  return CUT_LABEL[ck] || ck
+}
+
+const GREEN = '#3DD68C', AMBER = '#F5B544', RED = '#F2555A'
+const STATUS_COLOR = { green: GREEN, amber: AMBER, red: RED }
+
+const fmt = (v) => v == null ? '—'
+  : Math.round(v).toLocaleString('en-US')
+
+const monthLabel = (p) =>
+  new Date(p + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })
+
+// Grade a cell. Deck's own word wins; otherwise direction-aware vs target.
+function statusOf(metricDir, actual, target, gapDisplay) {
+  const word = (gapDisplay || '').trim().toLowerCase()
+  if (word === 'green') return 'green'
+  if (word === 'yellow') return 'amber'
+  if (word === 'red') return 'red'
+  if (actual == null || target == null) return null
+  if (metricDir === 'low') {
+    if (actual <= target) return 'green'
+    if (target !== 0 && actual <= target * 1.1) return 'amber'
+    return 'red'
+  }
+  if (actual >= target) return 'green'
+  if (actual >= target * 0.9) return 'amber'
+  return 'red'
+}
+
+export default function DeckKpiTrend() {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState(null)
+  const [cc, setCc] = useState('610')
+  const [open, setOpen] = useState({})   // metricKey -> bool (cut drill-down)
+
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      const { data, error } = await supabase.from('deck_kpis')
+        .select('*').limit(2000)
+      if (dead) return
+      if (error) setErr(error.message)
+      else setRows(data || [])
+    })()
+    return () => { dead = true }
+  }, [])
+
+  const months = useMemo(() => rows
+    ? [...new Set(rows.map(r => r.period))].sort()
+    : [], [rows])
+
+  // index: cc|metric|unit|cutType|cutKey|scenario|period -> row
+  const ix = useMemo(() => {
+    const m = {}
+    if (rows) for (const r of rows)
+      m[[r.cost_center, r.metric_key, r.unit, r.cut_type, r.cut_key, r.scenario, r.period].join('|')] = r
+    return m
+  }, [rows])
+  const cell = (mk, u, ct, ck, sc, p) => ix[[cc, mk, u, ct, ck, sc, p].join('|')]
+
+  // which cut rows exist for a metric at this cc (actuals, any month)
+  const cutsFor = (mk, u) => {
+    if (!rows) return []
+    const seen = new Map()
+    for (const r of rows) {
+      if (r.cost_center !== cc || r.metric_key !== mk || r.unit !== u) continue
+      if (r.scenario !== 'actual' || r.cut_type === 'total') continue
+      const order = r.cut_type === 'site' ? 1 : r.cut_type === 'site_job' ? 2 : 0
+      if (!seen.has(r.cut_key)) seen.set(r.cut_key, { ct: r.cut_type, ck: r.cut_key, order })
+    }
+    return [...seen.values()].sort((a, b) =>
+      a.order - b.order || a.ck.localeCompare(b.ck))
+  }
+
+  // metric rows to render: yards always; a CY sibling where CY data exists
+  const metricRows = useMemo(() => {
+    if (!rows) return []
+    const hasCY = new Set(rows.filter(r =>
+      r.cost_center === cc && r.unit === 'color_yards').map(r => r.metric_key))
+    const out = []
+    for (const m of METRICS) {
+      const anyYd = rows.some(r => r.cost_center === cc && r.metric_key === m.key && r.unit === 'yards')
+      if (!anyYd) continue
+      out.push({ ...m, unit: 'yards' })
+      if (hasCY.has(m.key)) out.push({ ...m, unit: 'color_yards', label: '· color yards', sub: true })
+    }
+    return out
+  }, [rows, cc])
+
+  const S = {
+    wrap: { padding: '8px 28px 40px', maxWidth: 1180, margin: '0 auto' },
+    bar:  { display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 14px' },
+    seg:  (on) => ({
+      padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+      background: on ? 'var(--surface-2, #262B31)' : 'transparent',
+      color: on ? 'var(--ink, #F4F3EF)' : 'var(--ink-60, #A2A9B1)',
+      border: `1px solid ${on ? 'var(--border, #2A3340)' : 'transparent'}`,
+    }),
+    note: { fontSize: 11, color: 'var(--ink-40, #737A82)', marginLeft: 'auto' },
+    scroller: { overflowX: 'auto', border: '1px solid var(--border, #2A3340)', borderRadius: 10 },
+    table: { borderCollapse: 'separate', borderSpacing: 0, width: '100%', minWidth: 760 },
+    th:   { position: 'sticky', top: 0, background: 'var(--paper-soft, #0A0E12)', zIndex: 2,
+            padding: '8px 10px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+            textTransform: 'uppercase', color: 'var(--ink-60, #A2A9B1)', textAlign: 'right',
+            borderBottom: '1px solid var(--border, #2A3340)' },
+    thL:  { textAlign: 'left', position: 'sticky', left: 0, zIndex: 3 },
+    tdL:  (sub, isCut) => ({
+      position: 'sticky', left: 0, zIndex: 1,
+      background: 'var(--surface, #1D2126)',
+      padding: sub || isCut ? '5px 10px 5px 26px' : '8px 10px',
+      fontSize: sub || isCut ? 11 : 12.5, fontWeight: sub || isCut ? 400 : 600,
+      color: sub || isCut ? 'var(--ink-60, #A2A9B1)' : 'var(--ink, #F4F3EF)',
+      whiteSpace: 'nowrap', borderBottom: '1px solid var(--border, #2A3340)',
+      cursor: !sub && !isCut ? 'pointer' : 'default',
+    }),
+    td:   { padding: '5px 10px', textAlign: 'right', verticalAlign: 'top',
+            borderBottom: '1px solid var(--border, #2A3340)' },
+    act:  (color) => ({
+      fontFamily: 'var(--font-display, inherit)', fontSize: 13.5,
+      color: color ? STATUS_COLOR[color] : 'var(--ink, #F4F3EF)',
+    }),
+    tgt:  { fontSize: 10, color: 'var(--ink-40, #737A82)', marginTop: 1 },
+    cut:  { fontFamily: 'var(--font-display, inherit)', fontSize: 12,
+            color: 'var(--ink-60, #A2A9B1)' },
+    fold: { display: 'inline-block', width: 14, marginRight: 6, fontSize: 10,
+            color: 'var(--ink-40, #737A82)' },
+    legend: { display: 'flex', gap: 14, fontSize: 10.5, color: 'var(--ink-60, #A2A9B1)', marginTop: 10 },
+    dot:  (c) => ({ display: 'inline-block', width: 8, height: 8, borderRadius: 4,
+                    background: c, marginRight: 5, verticalAlign: 'baseline' }),
+  }
+
+  if (err) return <div style={{ ...S.wrap, color: RED, fontSize: 13 }}>Couldn't load KPI data: {err}</div>
+  if (!rows) return <div style={{ ...S.wrap, color: 'var(--ink-60)', fontSize: 13 }}>Loading KPI trend…</div>
+
+  return (
+    <div style={S.wrap}>
+      <div style={S.bar}>
+        <button style={S.seg(cc === '610')} onClick={() => setCc('610')}>Screen 610</button>
+        <button style={S.seg(cc === '609')} onClick={() => setCc('609')}>Digital 609</button>
+        <div style={S.note}>
+          From the month-end deck KPI slides, as published · click a metric for its breakdown
+        </div>
+      </div>
+
+      <div style={S.scroller}>
+        <table style={S.table}>
+          <thead>
+            <tr>
+              <th style={{ ...S.th, ...S.thL }}>KPI · yards unless noted</th>
+              {months.map(p => <th key={p} style={S.th}>{monthLabel(p)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {metricRows.map(m => {
+              const isOpen = !m.sub && open[m.key]
+              const cuts = isOpen ? cutsFor(m.key, m.unit) : []
+              return (
+                <React.Fragment key={m.key + m.unit}>
+                  <tr>
+                    <td
+                      style={S.tdL(m.sub, false)}
+                      onClick={() => { if (!m.sub) setOpen(o => ({ ...o, [m.key]: !o[m.key] })) }}
+                    >
+                      {!m.sub && <span style={S.fold}>{isOpen ? '−' : '+'}</span>}
+                      {m.label}
+                    </td>
+                    {months.map(p => {
+                      const a = cell(m.key, m.unit, 'total', 'total', 'actual', p)
+                      const t = cell(m.key, m.unit, 'total', 'total', 'target', p)
+                      const g = cell(m.key, m.unit, 'total', 'total', 'gap', p)
+                      const st = statusOf(m.dir, a?.value, t?.value, g?.display)
+                      return (
+                        <td key={p} style={S.td}>
+                          <div style={S.act(st)}>{a ? fmt(a.value) : '—'}</div>
+                          {t && <div style={S.tgt}>{t.display}</div>}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  {isOpen && cuts.map(c => (
+                    <tr key={m.key + c.ck}>
+                      <td style={S.tdL(false, true)}>
+                        <span style={{ paddingLeft: c.ct === 'site_job' ? 14 : 0 }}>
+                          {cutLabel(c.ck)}
+                        </span>
+                      </td>
+                      {months.map(p => {
+                        const a = cell(m.key, m.unit, c.ct, c.ck, 'actual', p)
+                        return (
+                          <td key={p} style={S.td}>
+                            <div style={S.cut}>{a ? fmt(a.value) : '—'}</div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </React.Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={S.legend}>
+        <span><span style={S.dot(GREEN)} />on target</span>
+        <span><span style={S.dot(AMBER)} />close (within ~10%)</span>
+        <span><span style={S.dot(RED)} />off target</span>
+        <span style={{ marginLeft: 'auto' }}>
+          609 grades are the deck's own words · 610 graded vs target from March (deck went numeric)
+        </span>
+      </div>
+    </div>
+  )
+}
