@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.local
+.env.render
 .DS_Store
 *.log
 RECAP.md 

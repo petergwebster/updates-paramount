@@ -340,8 +340,13 @@ export default function App() {
     setLoading(true)
     const key = weekKey(weekDate)
     try {
-      const { data, error } = await supabase.from('weeks').select('*').eq('week_start', key).single()
-      if (error && error.code !== 'PGRST116') { console.error('Load error:', error); setDbReady(false) }
+      // maybeSingle, not single: a week with no row yet is NORMAL (the row is
+      // created on first save). .single() makes PostgREST answer 406 for the
+      // empty case, which the code already tolerated but the browser logged as
+      // an error on every home load — the render-check monitor caught it on
+      // its first walk. maybeSingle returns null quietly.
+      const { data, error } = await supabase.from('weeks').select('*').eq('week_start', key).maybeSingle()
+      if (error) { console.error('Load error:', error); setDbReady(false) }
       else { setDbReady(true); setWeekData(data || null) }
     } catch (e) { setDbReady(false) }
     setLoading(false)
