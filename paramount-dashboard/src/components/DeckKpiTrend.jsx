@@ -52,6 +52,9 @@ const STATUS_COLOR = { green: GREEN, amber: AMBER, red: RED }
 const fmt = (v) => v == null ? '—'
   : Math.round(v).toLocaleString('en-US')
 
+const fmtD = (v, dp = 0) => v == null ? '—'
+  : '$' + v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
+
 const monthLabel = (p) =>
   new Date(p + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })
 
@@ -169,6 +172,77 @@ export default function DeckKpiTrend() {
     return out
   }, [fin, rows, ix, cc])
 
+  // ── FINDINGS: deterministic pattern detection over the table. No AI and no
+  // judgement — red streaks, monotonic worsening runs, target volatility and
+  // best-of-year, straight arithmetic on the same cells rendered above, so it
+  // cannot say anything the table doesn't. prior_hti is excluded (it mirrors
+  // last month's HTI) and postprod is excluded from run detection (tiny
+  // numbers, all noise). ──
+  const findings = useMemo(() => {
+    if (!rows || months.length < 3) return []
+    const out = []
+    const val = (mk, p) => ix[[cc, mk, 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+    const tgt = (mk, p) => ix[[cc, mk, 'yards', 'total', 'total', 'target', p].join('|')]?.value
+    const gp  = (mk, p) => ix[[cc, mk, 'yards', 'total', 'total', 'gap', p].join('|')]?.display
+    const last = months[months.length - 1]
+    const CHECK = METRICS.filter(m => !['prior_hti', 'postprod_waste'].includes(m.key))
+    const volMetrics = []
+    for (const m of CHECK) {
+      const sts = months.map(p => statusOf(m.dir, val(m.key, p), tgt(m.key, p), gp(m.key, p)))
+      const vs = months.map(p => val(m.key, p))
+      // red streak ending at the latest month
+      let streak = 0
+      for (let i = sts.length - 1; i >= 0 && sts[i] === 'red'; i--) streak++
+      if (streak >= 3) out.push({
+        sev: 0, color: RED,
+        text: `${m.label} has missed target ${streak === months.length ? `all ${streak}` : streak + ' straight'} months`,
+      })
+      // chronic miss without a live streak — one good month shouldn't hide five bad ones
+      const reds = sts.filter(s => s === 'red').length
+      if (streak < 3 && reds >= 4) out.push({
+        sev: 1, color: RED,
+        text: `${m.label} missed target ${reds} of ${months.length} months`,
+      })
+      // monotonic worsening run ending at the latest month
+      let run = 0
+      for (let i = vs.length - 1; i > 0; i--) {
+        const a = vs[i], b = vs[i - 1]
+        if (a == null || b == null) break
+        if (m.dir === 'low' ? a > b : a < b) run++; else break
+      }
+      if (run >= 3) {
+        const fromP = months[months.length - 1 - run]
+        let extra = ''
+        if (m.key === 'production_waste' && dollars[fromP]?.wasteCost != null && dollars[last]?.wasteCost != null)
+          extra = ` · ${fmtD(dollars[fromP].wasteCost)} → ${fmtD(dollars[last].wasteCost)} at blended cost`
+        out.push({
+          sev: 2, color: AMBER,
+          text: `${m.label} has ${m.dir === 'low' ? 'worsened' : 'fallen'} ${run + 1} months running, ${fmt(vs[vs.length - 1 - run])} → ${fmt(vs[vs.length - 1])}${extra}`,
+        })
+      }
+      // best month of the year, on a metric that has struggled
+      const good = vs.filter(v => v != null)
+      if (good.length >= 4 && vs[vs.length - 1] != null && sts.includes('red')) {
+        const best = m.dir === 'low' ? Math.min(...good) : Math.max(...good)
+        if (vs[vs.length - 1] === best) out.push({
+          sev: 5, color: GREEN,
+          text: `${monthLabel(last)} ${m.label.toLowerCase()} is the best month of the year (${fmt(best)})`,
+        })
+      }
+      // target volatility — collect, report once below
+      const tset = new Set(months.map(p => tgt(m.key, p)).filter(v => v != null))
+      if (tset.size >= 3) volMetrics.push({ label: m.label, n: tset.size })
+    }
+    if (volMetrics.length > 0) {
+      const worst = volMetrics.reduce((a, b) => b.n > a.n ? b : a)
+      out.push({
+        sev: 4, color: AMBER,
+        text: `Targets moved on ${volMetrics.length} metric${volMetrics.length > 1 ? 's' : ''} this year (${worst.label.toLowerCase()} ${worst.n} times) — the lights partly grade the bar, not the work`,
+      })
+    }
+    return out.sort((a, b) => a.sev - b.sev).slice(0, 6)
+  }, [rows, months, ix, dollars, cc])
+
   const metricRows = useMemo(() => {
     if (!rows) return []
     const hasCY = new Set(rows.filter(r =>
@@ -224,9 +298,6 @@ export default function DeckKpiTrend() {
     dot:  (c) => ({ display: 'inline-block', width: 8, height: 8, borderRadius: 4,
                     background: c, marginRight: 5, verticalAlign: 'baseline' }),
   }
-
-  const fmtD = (v, dp = 0) => v == null ? '—'
-    : '$' + v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
 
   const DOLLAR_ROWS = [
     { key: 'costPerYd', label: 'Cost per invoiced yd', dp: 2, color: 'var(--ink, #F4F3EF)' },
@@ -333,6 +404,26 @@ export default function DeckKpiTrend() {
           </tbody>
         </table>
       </div>
+
+      {findings.length > 0 && (
+        <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 10,
+                      background: 'var(--surface, #1D2126)',
+                      border: '1px solid var(--border, #2A3340)' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                        textTransform: 'uppercase', color: 'var(--ink-40, #737A82)',
+                        marginBottom: 8 }}>
+            Patterns · computed from the table, not narrated
+          </div>
+          {findings.map((f, i) => (
+            <div key={i} style={{ fontSize: 12.5, color: 'var(--ink-60, #A2A9B1)',
+                                  padding: '3px 0', display: 'flex', gap: 8,
+                                  alignItems: 'baseline' }}>
+              <span style={S.dot(f.color)} />
+              <span>{f.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={S.legend}>
         <span><span style={S.dot(GREEN)} />on target</span>
