@@ -74,6 +74,7 @@ function statusOf(metricDir, actual, target, gapDisplay) {
 
 export default function DeckKpiTrend() {
   const [rows, setRows] = useState(null)
+  const [fin, setFin] = useState(null)     // vena_monthly revenue + COGS per period/cc
   const [err, setErr] = useState(null)
   const [cc, setCc] = useState('610')
   const [open, setOpen] = useState({})   // metricKey -> bool (cut drill-down)
@@ -86,6 +87,36 @@ export default function DeckKpiTrend() {
       if (dead) return
       if (error) setErr(error.message)
       else setRows(data || [])
+    })()
+    return () => { dead = true }
+  }, [])
+
+  // ── DOLLARS: Vena revenue + total COGS join in on (period, cost centre). ──
+  // Cost/yd = COGS ÷ invoiced yards — the deck's own definition, verified to
+  // the cent against June ($13.38) and May ($14.02) before this shipped.
+  // Waste cost prices waste yards at that month's blended COGS per invoiced
+  // yard; HTI value prices held yards at that month's revenue per invoiced
+  // yard. Both are approximations, but consistently defined ones.
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      const { data, error } = await supabase.from('vena_monthly')
+        .select('period,cost_center,line_key,amount')
+        .eq('timeframe', 'month').eq('scenario', 'actual')
+        .in('line_key', ['total_revenue', 'total_cost_of_goods_sold'])
+        .in('cost_center', ['610', '609'])
+      if (dead) return
+      if (!error) {
+        const m = {}
+        for (const r of (data || [])) {
+          const p = r.period + '-01'                 // vena keys 'YYYY-MM'
+          const k = r.cost_center + '|' + p
+          m[k] = m[k] || {}
+          if (r.line_key === 'total_revenue') m[k].revenue = Number(r.amount)
+          else m[k].cogs = Number(r.amount)
+        }
+        setFin(m)
+      }
     })()
     return () => { dead = true }
   }, [])
@@ -118,6 +149,26 @@ export default function DeckKpiTrend() {
   }
 
   // metric rows to render: yards always; a CY sibling where CY data exists
+  // Dollar series for the selected cc, keyed by period
+  const dollars = useMemo(() => {
+    if (!fin || !rows) return {}
+    const out = {}
+    for (const p of [...new Set(rows.map(r => r.period))]) {
+      const f = fin[cc + '|' + p]
+      const inv = ix[[cc, 'invoiced', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+      const waste = ix[[cc, 'production_waste', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+      const hti = ix[[cc, 'hti', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+      if (!f || !inv) continue
+      out[p] = {
+        costPerYd: f.cogs != null ? f.cogs / inv : null,
+        revPerYd:  f.revenue != null ? f.revenue / inv : null,
+        wasteCost: (f.cogs != null && waste != null) ? waste * f.cogs / inv : null,
+        htiValue:  (f.revenue != null && hti != null) ? hti * f.revenue / inv : null,
+      }
+    }
+    return out
+  }, [fin, rows, ix, cc])
+
   const metricRows = useMemo(() => {
     if (!rows) return []
     const hasCY = new Set(rows.filter(r =>
@@ -173,6 +224,16 @@ export default function DeckKpiTrend() {
     dot:  (c) => ({ display: 'inline-block', width: 8, height: 8, borderRadius: 4,
                     background: c, marginRight: 5, verticalAlign: 'baseline' }),
   }
+
+  const fmtD = (v, dp = 0) => v == null ? '—'
+    : '$' + v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })
+
+  const DOLLAR_ROWS = [
+    { key: 'costPerYd', label: 'Cost per invoiced yd', dp: 2, color: 'var(--ink, #F4F3EF)' },
+    { key: 'revPerYd',  label: 'Revenue per invoiced yd', dp: 2, color: 'var(--revenue, #3DD68C)' },
+    { key: 'wasteCost', label: 'Production waste cost', dp: 0, color: 'var(--waste, #F2555A)' },
+    { key: 'htiValue',  label: 'HTI at revenue value', dp: 0, color: 'var(--ink, #F4F3EF)' },
+  ]
 
   if (err) return <div style={{ ...S.wrap, color: RED, fontSize: 13 }}>Couldn't load KPI data: {err}</div>
   if (!rows) return <div style={{ ...S.wrap, color: 'var(--ink-60)', fontSize: 13 }}>Loading KPI trend…</div>
@@ -242,6 +303,33 @@ export default function DeckKpiTrend() {
                 </React.Fragment>
               )
             })}
+            {Object.keys(dollars).length > 0 && (
+              <>
+                <tr>
+                  <td style={{ ...S.tdL(false, false), cursor: 'default', paddingTop: 14,
+                               fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+                               textTransform: 'uppercase', color: 'var(--ink-60, #A2A9B1)' }}>
+                    Dollar value · Vena joined
+                  </td>
+                  {months.map(p => <td key={p} style={{ ...S.td, paddingTop: 14 }} />)}
+                </tr>
+                {DOLLAR_ROWS.map(d => (
+                  <tr key={d.key}>
+                    <td style={S.tdL(false, false)} onClick={undefined}>
+                      <span style={{ ...S.fold, visibility: 'hidden' }}>+</span>
+                      {d.label}
+                    </td>
+                    {months.map(p => (
+                      <td key={p} style={S.td}>
+                        <div style={{ ...S.act(null), color: d.color }}>
+                          {fmtD(dollars[p]?.[d.key], d.dp)}
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </>
+            )}
           </tbody>
         </table>
       </div>
@@ -252,6 +340,7 @@ export default function DeckKpiTrend() {
         <span><span style={S.dot(RED)} />off target</span>
         <span style={{ marginLeft: 'auto' }}>
           609 grades are the deck's own words · 610 graded vs target from March (deck went numeric)
+          · $ rows: Vena COGS &amp; revenue ÷ invoiced yards; waste at blended cost, HTI at revenue rate
         </span>
       </div>
     </div>
