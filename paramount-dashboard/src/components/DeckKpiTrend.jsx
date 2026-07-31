@@ -23,7 +23,7 @@ import { supabase } from '../supabase'
 // format entirely and is deliberately absent (library-only).
 // ═══════════════════════════════════════════════════════════════════════════
 
-const METRICS = [
+export const METRICS = [
   { key: 'prior_hti',        label: 'Prior month HTI',   dir: 'low'  },
   { key: 'gross_produced',   label: 'Gross produced',    dir: 'high' },
   { key: 'production_waste', label: 'Production waste',  dir: 'low'  },
@@ -59,7 +59,7 @@ const monthLabel = (p) =>
   new Date(p + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })
 
 // Grade a cell. Deck's own word wins; otherwise direction-aware vs target.
-function statusOf(metricDir, actual, target, gapDisplay) {
+export function statusOf(metricDir, actual, target, gapDisplay) {
   const word = (gapDisplay || '').trim().toLowerCase()
   if (word === 'green') return 'green'
   if (word === 'yellow') return 'amber'
@@ -311,6 +311,13 @@ export default function DeckKpiTrend() {
 
   return (
     <div style={S.wrap}>
+      <div style={{ padding: '16px 0 2px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+                      color: 'var(--ink-60, #A2A9B1)', marginBottom: 4 }}>
+          Finance · managed to
+        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 600, margin: '0 0 10px' }}>Production KPIs</h2>
+      </div>
       <div style={S.bar}>
         <button style={S.seg(cc === '610')} onClick={() => setCc('610')}>Screen 610</button>
         <button style={S.seg(cc === '609')} onClick={() => setCc('609')}>Digital 609</button>

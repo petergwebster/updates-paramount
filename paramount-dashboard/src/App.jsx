@@ -14,6 +14,7 @@ import PeopleTab from './components/PeopleTab'
 import FinancialTab from './components/FinancialTab'
 import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
+import DeckKpiTrend from './components/DeckKpiTrend'
 import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
@@ -76,7 +77,8 @@ const NJ_DAYS = [
 // AR/AP still sits inside Spend detail (FinancialTab); splitting it into its own
 // tab is a follow-up, not a fiction to add here before it exists.
 const FINANCE_TABS = [
-  { id: 'pnl',        label: 'P&L', isNew: true },
+  { id: 'pnl',        label: 'P&L' },
+  { id: 'kpis',       label: 'KPIs', isNew: true },
   { id: 'spend',      label: 'Spend detail' },
   { id: 'inventory',  label: 'Inventory' },
   { id: 'people',     label: 'People' },
@@ -616,6 +618,12 @@ export default function App() {
                 {/* Finance · P&L — Vena monthly close, the authoritative financial view */}
                 {destination === 'finance' && activeTab==='pnl' && (
                   <VenaPnLTab />
+                )}
+                {/* Finance · KPIs — the deck KPI trend, promoted to first-class.
+                    These are the numbers the business is managed to; Reports
+                    keeps only things that produce a document. */}
+                {destination === 'finance' && activeTab==='kpis' && (
+                  <DeckKpiTrend />
                 )}
                 {destination === 'finance' && activeTab==='spend' && (
                   <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt } from '../lib/scheduleUtils'
 import { Box, Ring, Columns, StackBar, Delta } from './OpsHome'
+import { METRICS, statusOf } from './DeckKpiTrend'
 
 // Money, always comma-delimited. fmtK was rendering $1334K — any figure over
 // three digits needs separators or it reads as a serial number. Millions get
@@ -151,11 +152,46 @@ export default function FinanceHome({ onOpen }) {
         .select('*', { count: 'exact', head: true })
       if (dead) return
 
+      // Deck KPIs: latest month, both cost centres, graded with the SAME
+      // statusOf the KPI tab uses — one definition, imported, so the home
+      // box and the tab cannot disagree.
+      const { data: kpiPer } = await supabase.from('deck_kpis')
+        .select('period').order('period', { ascending: false }).limit(1)
+      if (dead) return
+      const kpiPeriod = kpiPer?.[0]?.period || null
+      let kpiCounts = null, kpiMonths = 0
+      if (kpiPeriod) {
+        const [{ data: kd }, { data: km }] = await Promise.all([
+          supabase.from('deck_kpis')
+            .select('cost_center,metric_key,scenario,value,display')
+            .eq('period', kpiPeriod).eq('unit', 'yards')
+            .eq('cut_type', 'total').eq('cut_key', 'total'),
+          supabase.from('deck_kpis').select('period'),
+        ])
+        if (dead) return
+        kpiMonths = new Set((km || []).map(r => r.period)).size
+        const cell = (cc, mk, sc) => (kd || []).find(r =>
+          r.cost_center === cc && r.metric_key === mk && r.scenario === sc)
+        let g = 0, a = 0, r = 0
+        for (const cc of ['610', '609']) {
+          for (const m of METRICS) {
+            if (m.key === 'prior_hti') continue   // mirrors last month's HTI
+            const act = cell(cc, m.key, 'actual'), tg = cell(cc, m.key, 'target')
+            const st = statusOf(m.dir, act?.value, tg?.value, cell(cc, m.key, 'gap')?.display)
+            if (st === 'green') g++
+            else if (st === 'amber') a++
+            else if (st === 'red') r++
+          }
+        }
+        kpiCounts = { g, a, r }
+      }
+
       setD({
         period, revenue, revenuePrev, ebitda, eb610, eb609, eb612,
         fm, opex, inv, capex, latestTxn,
         buNJ: buSum('NJ'), buBNY: buSum('BNY'), buSH: buSum('SHARED'),
         agingAsOf, ar, ap, peopleAsOf, summaryCount: summaryCount || 0,
+        kpiPeriod, kpiCounts, kpiMonths,
       })
     })()
     return () => { dead = true }
@@ -196,6 +232,20 @@ export default function FinanceHome({ onOpen }) {
             { v: Math.max(0, d.eb610 || 0), color: C.siteNJ,  label: '610' },
             { v: Math.max(0, d.eb609 || 0), color: C.siteBNY, label: '609' },
             { v: Math.max(0, d.eb612 || 0), color: C.inkLight, label: '612' },
+          ]} />
+        </Box>
+
+        <Box title="KPIs" value={d.kpiCounts ? `${d.kpiCounts.g}/${d.kpiCounts.g + d.kpiCounts.a + d.kpiCounts.r}` : '—'}
+             unit={d.kpiCounts ? `on target · ${periodLabel(d.kpiPeriod ? String(d.kpiPeriod).slice(0, 7) : null)}` : 'not loaded'}
+             sub={d.kpiCounts
+                  ? `${d.kpiMonths} months from the decks · both sites, every metric vs target`
+                  : 'Deck KPI extraction has not run'}
+             subTone={d.kpiCounts ? undefined : 'warn'}
+             onClick={go('kpis')}>
+          <StackBar segs={[
+            { v: d.kpiCounts?.g || 0, color: C.revenue, label: 'On' },
+            { v: d.kpiCounts?.a || 0, color: C.scheduled, label: 'Close' },
+            { v: d.kpiCounts?.r || 0, color: C.waste, label: 'Off' },
           ]} />
         </Box>
 
