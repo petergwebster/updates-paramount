@@ -435,6 +435,36 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     })
   }, [assignments, wipByPO, wipByLine, tintFlags, poTotals])
 
+  // EXPORT (Ramon 7/28): "pull the schedule so we can print for the different
+  // teams." Deterministic — no AI in the path; the in-dash Claude was being
+  // asked to produce a file it structurally can't. One click, current week's
+  // board as CSV (BOM'd so Excel opens it clean), table order then card order.
+  // Lives in the MAIN component: it reads enrichedAssignments and the button
+  // renders in the main toolbar — a first draft landed inside AskClaudePanel
+  // where neither exists (the scope-audit lesson, again).
+  function exportScheduleCsv() {
+    const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const rows = [...enrichedAssignments].sort((a, b) =>
+      String(a.table_code).localeCompare(String(b.table_code), undefined, { numeric: true })
+      || (a.sort_order || 0) - (b.sort_order || 0))
+    const header = ['Table', 'Day', 'Shift', 'PO', 'Pattern', 'SKU', 'Colorway', 'Yards', 'CY', 'Colors', 'Age (days)', 'LIFT Status', 'Customer', 'Tint']
+    const lines = rows.map(a => [
+      a.table_code, a.day_of_week || 'Week', a.shift || '1st', a.po_number,
+      a.line_description, a.item_sku || '', a.color || '',
+      Math.round(Number(a.planned_yards || 0)), Math.round(Number(a.planned_cy || 0)),
+      a.colors_count ?? '', a.age_days ?? '', a.order_status || '',
+      a.customer_type || '', a.needs_tint ? 'TINT' : '',
+    ].map(esc).join(','))
+    const csv = [header.join(','), ...lines].join('\r\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const el = document.createElement('a')
+    el.href = url
+    el.download = `passaic-schedule-week-${isoDate(weekStart)}.csv`
+    el.click()
+    URL.revokeObjectURL(url)
+  }
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, cy: 0, revenue: 0,
@@ -627,6 +657,13 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         </span>
         <div style={{ flex: 1 }} />
         {enrichedAssignments.length > 0 && (
+          <button onClick={exportScheduleCsv}
+            title="Download this week's board as a CSV — opens in Excel, prints for the floor teams"
+            style={{ padding: '8px 14px', background: 'transparent', color: C.navy, border: `1px solid ${C.navy}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            ⤓ Export CSV
+          </button>
+        )}
+        {enrichedAssignments.length > 0 && (
           <button onClick={clearAllAssignments}
             style={{ padding: '8px 14px', background: 'transparent', color: C.rose, border: `1px solid ${C.rose}`, borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
             Clear all
@@ -711,6 +748,7 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           pool={pool}
           assignments={enrichedAssignments}
           mixTotals={mixTotals}
+          tintFlags={tintFlags}
           onApplyAssignments={async (proposals) => {
             const rows = proposals.map(p => ({
               site: 'passaic',
@@ -1787,7 +1825,7 @@ function ShiftTab({ label, sub, active, hasData, onClick }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ASK CLAUDE PANEL — conversational AI scheduler with streaming (Passaic)
 // ═══════════════════════════════════════════════════════════════════════════
-function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onApplyAssignments }) {
+function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onApplyAssignments, tintFlags = {} }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -1863,7 +1901,7 @@ function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onAp
       // The placed board — every assignment with its table, yards and CURRENT
       // LIFT status, so "don't touch what's placed" and "which placed POs are
       // already Cut/Invoiced" are both answerable.
-      placed_assignments: enrichedAssignments.map(a => ({
+      placed_assignments: assignments.map(a => ({
         table: a.table_code,
         po: a.po_number,
         desc: (a.line_description || '').slice(0, 60),

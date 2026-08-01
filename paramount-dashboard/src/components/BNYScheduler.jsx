@@ -359,6 +359,31 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     })
   }, [assignments, wipByPO, wipByLine, poTotals])
 
+  // EXPORT (Ramon 7/28, ported to BNY): the week's machine-day board as CSV.
+  // Deterministic, no AI in the path. Lives in the MAIN component (scope
+  // lesson from the Passaic first draft).
+  function exportScheduleCsv() {
+    const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const rows = [...enrichedAssignments].sort((a, b) =>
+      String(a.table_code).localeCompare(String(b.table_code))
+      || (Number(a.day_of_week ?? 9) - Number(b.day_of_week ?? 9)))
+    const header = ['Machine', 'Day', 'PO', 'Pattern', 'SKU', 'Colorway', 'Yards', 'Bucket', 'Colors', 'LIFT Status', 'Operator']
+    const lines = rows.map(a => [
+      a.table_code, DAY_LABELS[a.day_of_week] ?? 'Week', a.po_number,
+      a.line_description, a.item_sku || '', a.color || '',
+      Math.round(Number(a.planned_yards || 0)), a.bny_bucket || '',
+      a.colors_count ?? '', a.order_status || '', a.operator || '',
+    ].map(esc).join(','))
+    const csv = [header.join(','), ...lines].join('\r\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const el = document.createElement('a')
+    el.href = url
+    el.download = `bny-schedule-week-${isoDate(weekStart)}.csv`
+    el.click()
+    URL.revokeObjectURL(url)
+  }
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, revenue: 0,
@@ -599,6 +624,13 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           Let Claude draft a schedule for Chandler this week, or ask what's in the pool.
         </span>
         <div style={{ flex: 1 }} />
+        {enrichedAssignments.length > 0 && (
+          <button onClick={exportScheduleCsv}
+            title="Download this week's machine-day board as a CSV — opens in Excel, prints for the teams"
+            style={{ padding: '8px 14px', background: 'transparent', color: C.navy, border: `1px solid ${C.navy}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+            ⤓ Export CSV
+          </button>
+        )}
         {enrichedAssignments.length > 0 && (
           <button onClick={clearAllAssignments}
             style={{ padding: '8px 14px', background: 'transparent', color: C.rose, border: `1px solid ${C.rose}`, borderRadius: 6, fontSize: 12, cursor: 'pointer' }}>
@@ -1459,7 +1491,7 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
     // the assignments already consuming that capacity — it could overfill a
     // cell without knowing. Every placed row, with its machine, day, yards
     // and CURRENT LIFT status.
-    const placedLines = enrichedAssignments.map(a =>
+    const placedLines = assignments.map(a =>
       `  ${a.table_code} ${DAY_LABELS[a.day_of_week] ?? 'wk'} | ${a.po_number} | ${(a.line_description || '').slice(0, 40)} | ${Math.round(Number(a.planned_yards || 0))}yd | ${a.order_status || '?'}`
     ).join('\n')
 
