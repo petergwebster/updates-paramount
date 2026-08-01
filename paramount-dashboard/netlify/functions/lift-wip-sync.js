@@ -477,12 +477,13 @@ const runSync = async (event) => {
     if (!LIFT_BASE_URL) throw new Error('LIFT_BASE_URL not set in env')
     if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase env not set')
 
-    let dryRun = false, probe = null
+    let dryRun = false, probe = null, tieout = false
     if (event && event.httpMethod === 'POST' && event.body) {
       try {
         const b = JSON.parse(event.body)
         dryRun = !!b.dryRun
         probe  = b.probe || null
+        tieout = !!b.tieout
       } catch { /* ignore */ }
     }
 
@@ -503,6 +504,68 @@ const runSync = async (event) => {
           row_count: records.length,
           headers,
           sample: records.slice(0, 3),
+        }, null, 2),
+      }
+    }
+
+    // TIEOUT — line-level invoiced-yards aggregation, writes NOTHING.
+    // invoiceshub is one row per SKU line per invoice (QUANTITY + UOM +
+    // INVOICE_APPROVED_DATE), which is the granularity the order_ledger
+    // rollup lost — the ledger keeps one latest invoice_date per order, so an
+    // order invoiced across two months smears into one. Each line's order
+    // joins to order_ledger for site + product_type so grounds can be broken
+    // out rather than silently included (the ground-kitting trap: Passaic
+    // kits a ground 1:1 with every hand-screen line, which once read June as
+    // 169,188 invoiced yards against a real ~33,000). Non-yard UOMs (EA memo
+    // sets, panel sets) count separately — they are pieces, not yards.
+    // Benchmark: deck slide-4 May 610 invoiced = 31,436 (the hard number).
+    if (tieout) {
+      const text = await fetchCsv('invoiceshub')
+      const { records } = parseCsv(text)
+      // order → {site, product_type} from order_ledger, paged
+      const led = {}
+      let off = 0
+      while (true) {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/order_ledger?select=order_number,site,product_type&limit=1000&offset=${off}`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } })
+        const page = await res.json()
+        for (const r of page) led[r.order_number] = r
+        if (!Array.isArray(page) || page.length < 1000) break
+        off += 1000
+      }
+      const agg = {}
+      let noLedger = 0, uomSeen = {}
+      for (const r of records) {
+        const month = (r.INVOICEAPPROVEDDATE || '').slice(0, 7)
+        if (!month.startsWith('202')) continue
+        const L = led[r.ORDERNUMBER]
+        if (!L) noLedger++
+        const site = (L && L.site) || 'unknown'
+        const ptype = ((L && L.product_type) || '').toLowerCase()
+        const uom = (r.UOM || '').toUpperCase()
+        uomSeen[uom] = (uomSeen[uom] || 0) + 1
+        const qty = parseFloat(r.QUANTITY) || 0
+        const isYd = uom === 'YD' || uom === 'YDS' || uom === 'YARD' || uom === 'YARDS'
+        const bucket = !isYd ? 'pieces_qty' : (ptype.includes('ground') ? 'ground_yd' : 'yd')
+        const k = `${month}|${site}`
+        if (!agg[k]) agg[k] = { month, site, yd: 0, ground_yd: 0, pieces_qty: 0, lines: 0 }
+        agg[k][bucket] += qty
+        agg[k].lines++
+      }
+      const out = Object.values(agg)
+        .filter(a => a.month >= '2026-01')
+        .sort((a, b) => a.month.localeCompare(b.month) || a.site.localeCompare(b.site))
+        .map(a => ({ ...a, yd: Math.round(a.yd), ground_yd: Math.round(a.ground_yd), pieces_qty: Math.round(a.pieces_qty) }))
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tieout: 'invoiceshub line-level',
+          total_lines: records.length,
+          lines_without_ledger_match: noLedger,
+          uom_distribution: uomSeen,
+          months_2026: out,
         }, null, 2),
       }
     }
