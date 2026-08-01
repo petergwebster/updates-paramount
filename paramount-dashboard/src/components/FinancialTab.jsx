@@ -118,6 +118,8 @@ export default function FinancialTab({ weekStart, section = 'all' }) {
   // Per-source-appropriate: purchases uses upload date, aging uses as_of_date.
   // Red when > 7 days old, neutral otherwise.
   const [freshness, setFreshness] = useState({ purchases: null, aging: null })
+  // Which aging bucket is expanded to party detail: { type:'ar'|'ap', key } | null
+  const [expandedAging, setExpandedAging] = useState(null)
 
   // The top-nav week picker is the primary driver.
   // NOTE: no today-fallback here -- a fallback masks out-of-range (future) weeks and
@@ -225,15 +227,16 @@ export default function FinancialTab({ weekStart, section = 'all' }) {
   // week filtering is needed -- just pick the scope.
   const rows = !dataReady ? [] : (scope === 'MTD' ? data.mtd : data.ytd)
 
-  // -- Aging: latest snapshot + trend --
+  // -- Aging: latest snapshot + trend + per-party detail --
   const agingView = useMemo(() => {
     const byDate = {}
     for (const a of aging) {
       const k = `${a.as_of_date}|${a.aging_type}`
-      if (!byDate[k]) byDate[k] = { as_of:a.as_of_date, type:a.aging_type, total:0, pastDue:0, buckets:{}, byBU:{} }
+      if (!byDate[k]) byDate[k] = { as_of:a.as_of_date, type:a.aging_type, total:0, pastDue:0, buckets:{}, byBU:{}, parties:[] }
       const e = byDate[k]; e.total += (a.balance||0); e.pastDue += (a.past_due||0)
       for (const [bk,bv] of Object.entries(a.buckets||{})) e.buckets[bk] = (e.buckets[bk]||0) + (bv||0)
       const bu = a.business_unit || 'combined'; e.byBU[bu] = (e.byBU[bu]||0) + (a.balance||0)
+      e.parties.push({ name: a.party_name || '(unnamed)', balance: a.balance || 0, buckets: a.buckets || {} })
     }
     const all = Object.values(byDate)
     const dates = [...new Set(all.map(e=>e.as_of))].filter(Boolean).sort()
@@ -440,31 +443,100 @@ export default function FinancialTab({ weekStart, section = 'all' }) {
 
           </>)}
 
-          {/* AR / AP aging with trend */}
-          {showAging && [{label:'Accounts Receivable',type:'ar',now:agingView.arNow,series:agingView.ar},
-            {label:'Accounts Payable',type:'ap',now:agingView.apNow,series:agingView.ap}].map(sec => sec.now && (
+          {/* AR / AP aging — grouped to the house scheme (Peter's spec,
+              8/2026): AR Current = 0–30, past due = anything over 30. AP is
+              grouped to the FILE's granularity (0–30 / 31–45 / 45+): FSCO AP
+              terms are NET 60 and the source buckets stop at 45+, so exact
+              over-60 past-due is NOT derivable — the 45+ cell irreducibly
+              mixes 46–60 (within terms) with 61+ (past due). Chase-list item:
+              Jen's AP tab re-bucketed to 31–60/61–90/91+ makes it exact.
+              Every bucket clicks open to per-party detail — the table is
+              party-level (135 AR / 59 AP parties), so who-owes-what is
+              already in the data. */}
+          {showAging && [
+            { label:'Accounts Receivable', type:'ar', now:agingView.arNow, series:agingView.ar,
+              groups:[
+                { key:'g_cur',  label:'Current (0–30)', from:['current','d1_7','d8_30'], good:true },
+                { key:'g_3160', label:'31–60', from:['d31_60'] },
+                { key:'g_6190', label:'61–90', from:['d61_90'] },
+                { key:'g_91',   label:'91+',   from:['d91plus'] },
+              ],
+              pdFrom:['d31_60','d61_90','d91plus'], pdLabel:'Past due (30+)', note:null },
+            { label:'Accounts Payable', type:'ap', now:agingView.apNow, series:agingView.ap,
+              groups:[
+                { key:'g_cur',  label:'Current (0–30)', from:['current','d1_7','d8_14','d15_30'], good:true },
+                { key:'g_3145', label:'31–45', from:['d31_45'] },
+                { key:'g_45',   label:'45+',   from:['d45plus'] },
+              ],
+              pdFrom:['d45plus'], pdLabel:'Aged 45+',
+              note:'FSCO AP terms are net 60 — the 45+ bucket includes 46–60 still within terms. Exact past-due needs 31–60 / 61–90 / 91+ buckets in the weekly file.' },
+          ].map(sec => {
+            if (!sec.now) return null
+            const sumFrom = (buckets, from) => from.reduce((s, k) => s + (buckets?.[k] || 0), 0)
+            const groupVals = sec.groups.map(g => ({ ...g, v: sumFrom(sec.now.buckets, g.from) }))
+            const pdNow = sumFrom(sec.now.buckets, sec.pdFrom)
+            const expKey = expandedAging && expandedAging.type === sec.type ? expandedAging.key : null
+            const expGroup = expKey ? sec.groups.find(g => g.key === expKey) : null
+            const partyRows = expGroup
+              ? sec.now.parties
+                  .map(p => ({ name: p.name, v: sumFrom(p.buckets, expGroup.from) }))
+                  .filter(p => Math.abs(p.v) >= 0.5)
+                  .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+              : []
+            const shown = partyRows.slice(0, 18)
+            const restN = partyRows.length - shown.length
+            const restV = partyRows.slice(18).reduce((s, p) => s + p.v, 0)
+            return (
             <div key={sec.type} className={styles.section}>
-              <div className={styles.sectionTitle}>{sec.label} -- Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of}</span></div>
+              <div className={styles.sectionTitle}>{sec.label} -- Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of} · click a bucket for who's in it</span></div>
               <div style={{display:'flex',flexWrap:'wrap'}}>
-                {Object.entries(sec.now.buckets).map(([k,v],i,arr)=>(
-                  <div key={k} style={{flex:1,minWidth:90,padding:'12px 8px',textAlign:'center',borderRight:i<arr.length-1?'1px solid var(--border)':'none'}}>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{k.replace('d','').replace('_','-').replace('plus','+').replace('current','Current')}</div>
-                    <div style={{fontSize:14,fontWeight:700,color:k==='current'?'var(--green)':'var(--ink)'}}>{fmtD(v)}</div>
+                {groupVals.map((g,i,arr)=>(
+                  <div key={g.key}
+                       onClick={()=>setExpandedAging(expKey===g.key?null:{type:sec.type,key:g.key})}
+                       style={{flex:1,minWidth:110,padding:'12px 8px',textAlign:'center',cursor:'pointer',
+                               borderRight:i<arr.length-1?'1px solid var(--border)':'none',
+                               background: expKey===g.key ? 'var(--surface-2, rgba(255,255,255,0.04))' : 'transparent',
+                               boxShadow: expKey===g.key ? 'inset 0 -2px 0 var(--ink-60)' : 'none'}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:4}}>{g.label}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:g.good?'var(--green)':'var(--ink)'}}>{fmtD(g.v)}</div>
                   </div>
                 ))}
               </div>
+              {expGroup && (
+                <div style={{borderTop:'1px solid var(--border)',padding:'10px 16px',background:'var(--surface-2, rgba(255,255,255,0.02))'}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:8}}>
+                    {expGroup.label} · {partyRows.length} {partyRows.length===1?'party':'parties'} · {fmtD(partyRows.reduce((s,p)=>s+p.v,0))}
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))',gap:'4px 24px'}}>
+                    {shown.map(p=>(
+                      <div key={p.name} style={{display:'flex',justifyContent:'space-between',fontSize:13,padding:'2px 0',borderBottom:'1px dotted var(--border)'}}>
+                        <span style={{color:'var(--ink-60)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginRight:12}}>{p.name}</span>
+                        <span style={{fontWeight:600,whiteSpace:'nowrap'}}>{fmtD(p.v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {restN > 0 && (
+                    <div style={{fontSize:12,color:'var(--ink-40)',marginTop:8}}>+ {restN} more · {fmtD(restV)}</div>
+                  )}
+                </div>
+              )}
               <div style={{display:'flex',justifyContent:'space-between',padding:'10px 16px',borderTop:'1px solid var(--border)',fontSize:13}}>
                 <span>Total <strong>{fmtD(sec.now.total)}</strong></span>
-                <span style={{color:sec.now.pastDue>0?'var(--red)':'var(--green)'}}>Past due <strong>{fmtD(sec.now.pastDue)}</strong></span>
+                <span style={{color:pdNow>0?'var(--red)':'var(--green)'}}>{sec.pdLabel} <strong>{fmtD(pdNow)}</strong></span>
               </div>
+              {sec.note && (
+                <div style={{padding:'6px 16px 10px',fontSize:11,color:'var(--ink-40)',borderTop:'1px dotted var(--border)'}}>{sec.note}</div>
+              )}
               {sec.series.length > 1 && (
                 <div style={{padding:'8px 16px',borderTop:'1px solid var(--border)'}}>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:6}}>Past-due trend</div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--ink-40)',marginBottom:6}}>{sec.pdLabel} trend</div>
                   <div style={{display:'flex',gap:8,alignItems:'flex-end',height:42}}>
                     {sec.series.map(pt=>{
-                      const max=Math.max(...sec.series.map(p=>p.pastDue),1)
-                      return <div key={pt.as_of} title={`${pt.as_of}: ${fmtD(pt.pastDue)}`} style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:3}}>
-                        <div style={{width:'70%',height:`${Math.max(4,(pt.pastDue/max)*36)}px`,background:'var(--red)',opacity:0.7,borderRadius:2}}/>
+                      const vals = sec.series.map(p=>sumFrom(p.buckets, sec.pdFrom))
+                      const max = Math.max(...vals, 1)
+                      const v = sumFrom(pt.buckets, sec.pdFrom)
+                      return <div key={pt.as_of} title={`${pt.as_of}: ${fmtD(v)}`} style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:3}}>
+                        <div style={{width:'70%',height:`${Math.max(4,(v/max)*36)}px`,background:'var(--red)',opacity:0.7,borderRadius:2}}/>
                         <div style={{fontSize:9,color:'var(--ink-40)'}}>{pt.as_of.slice(5)}</div>
                       </div>
                     })}
@@ -472,7 +544,8 @@ export default function FinancialTab({ weekStart, section = 'all' }) {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
 
           {/* CEO narrative */}
           {showSpend && (
