@@ -1398,7 +1398,8 @@ function OpsRow({ table, site, shift, plannedYards, plannedSource, plannedDetail
      Budget    = canonical FY2026 weekly plan (from src/lib/budgets.js).
                  Same value every week — annual flat-line.
      Scheduled = sum of sched_assignments.planned_yards for this site/week.
-                 What Wendy / Chandler committed to.
+                 What Ramon / Chandler committed to (Ramon owns Passaic
+                 hand-screen scheduling as of 7/2026; Wendy is production-only).
      Actual    = sum of sched_daily_ops.actual_yards for this site/week.
                  What came off the floor.
 
@@ -1475,7 +1476,7 @@ function KpiStrip({ site, weekStart, dailyOps, opLines = [], assignments }) {
       />
       <KpiCard
         label="Scheduled"
-        sublabel="Wendy/Chandler's plan this week"
+        sublabel="Ramon/Chandler's plan this week"
         accent={C.navy}
         primary={scheduledYards}
         primaryUnit="yds"

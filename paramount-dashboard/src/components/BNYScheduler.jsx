@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, useDraggable, useDroppable, PointerSensor, Tou
 import { supabase } from '../supabase'
 import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defaultSchedulerWeek, STATUS_BAD_BORDER, schedLineKey, BNY_OPERATORS_ALL } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
-import { BNY_BUDGET, weeklyBudgetYards } from '../lib/budgets'
+import { BNY_BUDGET, weeklyBudgetYards, forecastWeeklyRevenue } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
@@ -793,6 +793,12 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
 
 function BNYTopGauges({ totals }) {
   const yPct = Math.round((totals.yards / BNY_TARGETS.total_yards) * 100)
+  // Revenue scored against the DECK-FORECAST weekly target (exec ask,
+  // 2026-07-29/30) — same source as Passaic's gauge and the header chip,
+  // so all three revenue readings agree. See forecastWeeklyRevenue() in
+  // budgets.js for provenance ($128,064 = June forecast ÷ 5 fiscal weeks).
+  const revTarget = forecastWeeklyRevenue('bny') ?? BNY_BUDGET.weekly.revenue
+  const rPct = Math.round((totals.revenue / revTarget) * 100)
   const mixSch = totals.revenue > 0 ? totals.schumacher_revenue / totals.revenue : 0
   const mix3p  = totals.revenue > 0 ? totals.third_party_revenue / totals.revenue : 0
   const mixOnTarget = mixSch >= (MIX_TARGET_SCH - 0.10) && mixSch <= (MIX_TARGET_SCH + 0.10)
@@ -800,7 +806,7 @@ function BNYTopGauges({ totals }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
       <YardsSplitGauge totals={totals} pct={yPct} />
-      <Gauge label="Revenue" value={totals.revenue} target={null} pct={null} isMoney />
+      <Gauge label="Revenue" value={totals.revenue} target={revTarget} pct={rPct} isMoney />
       <MixCard schPct={mixSch * 100} tpPct={mix3p * 100} onTarget={mixOnTarget} />
     </div>
   )
