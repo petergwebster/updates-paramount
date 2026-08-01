@@ -34,6 +34,26 @@ export default function UserManagement({ authUser }) {
   const [savingId, setSavingId] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
 
+  // Departments (Peter, 8/1): purely organizational grouping for this page —
+  // access still flows from ROLE. Order here is display order.
+  const DEPARTMENTS = ['exec', 'finance', 'paramount ops', 'procurement', 'other']
+
+  async function handleDeptChange(targetUser, newDept) {
+    setSavingId(targetUser.id)
+    try {
+      const { error: err } = await supabase
+        .from('profiles')
+        .update({ department: newDept })
+        .eq('id', targetUser.id)
+      if (err) throw err
+      setUsers(us => us.map(u => u.id === targetUser.id ? { ...u, department: newDept } : u))
+    } catch (e) {
+      setError(String(e?.message || e))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
   const isAllowed = isSuperAdmin(authUser)
 
   // Load users — gated to super-admin via the conditional inside the effect,
@@ -52,7 +72,7 @@ export default function UserManagement({ authUser }) {
       // No email column on profiles — it lives on auth.users.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role, active, created_at')
+        .select('id, full_name, role, active, department, created_at')
         .order('full_name', { ascending: true })
       if (error) throw error
       setUsers(data || [])
@@ -206,7 +226,15 @@ export default function UserManagement({ authUser }) {
           <div className={styles.cell}>Actions</div>
         </div>
 
-        {users.map(u => {
+        {['exec', 'finance', 'paramount ops', 'procurement', 'other'].map(dept => {
+          const group = users.filter(u => ((u.department || 'other').toLowerCase()) === dept)
+          if (group.length === 0) return null
+          return (
+            <React.Fragment key={dept}>
+              <div style={{ padding: '14px 16px 6px', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-light, #737A82)', borderBottom: '1px solid var(--border, #2A3340)' }}>
+                {dept} · {group.length}
+              </div>
+              {group.map(u => {
           const isSelf = u.id === authUser.id
           const isSaving = savingId === u.id
           const dests = destinationsFor(u)
@@ -217,6 +245,17 @@ export default function UserManagement({ authUser }) {
                   {u.full_name || '(no name)'}
                   {isSelf && <span className={styles.selfBadge}>you</span>}
                 </div>
+                <select
+                  value={(u.department || 'other').toLowerCase()}
+                  onChange={e => handleDeptChange(u, e.target.value)}
+                  disabled={isSaving}
+                  title="Department (grouping only — access comes from role)"
+                  style={{ marginTop: 4, fontSize: 10, background: 'transparent', color: 'var(--ink-light, #737A82)', border: '1px solid var(--border, #2A3340)', borderRadius: 5, padding: '2px 6px' }}
+                >
+                  {['exec', 'finance', 'paramount ops', 'procurement', 'other'].map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
               </div>
               <div className={styles.cell}>
                 <select
@@ -263,6 +302,9 @@ export default function UserManagement({ authUser }) {
                 </button>
               </div>
             </div>
+          )
+        })}
+            </React.Fragment>
           )
         })}
       </div>
