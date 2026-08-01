@@ -130,6 +130,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const [submission, setSubmission] = useState(null)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [driftOpen, setDriftOpen]   = useState(false)
+  // PHASE 4 — the shift ledger (see PassaicScheduler for the doctrine).
+  const [shiftLog, setShiftLog]     = useState([])
+  const [annOpen, setAnnOpen]       = useState(null)
+  const [annForm, setAnnForm]       = useState({ reason: 'procurement_request', who: '', note: '' })
 
   useEffect(() => {
     let cancelled = false
@@ -142,6 +146,17 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     })()
     return () => { cancelled = true }
   }, [weekStart])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('sched_shift_log')
+        .select('change_kind, po_number, item_sku, color')
+        .eq('site', 'bny').eq('week_start', isoDate(weekStart))
+      if (!cancelled) setShiftLog(data || [])
+    })()
+    return () => { cancelled = true }
+  }, [weekStart, submission])
   const [activeDragPO, setActiveDragPO] = useState(null)
 
   // CROSS-WEEK BURN-DOWN (Ramon's bug, same fix as PassaicScheduler): the
@@ -453,6 +468,66 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     return { added, removed, changed, clean: !added.length && !removed.length && !changed.length }
   }, [submission, enrichedAssignments])
 
+  const SHIFT_REASONS = [
+    ['procurement_request', 'Procurement request'], ['customer_expedite', 'Customer expedite'],
+    ['material_delay', 'Material delay'], ['machine_down', 'Machine down'],
+    ['mix_rebalance', 'Mix rebalance'], ['other', 'Other'],
+  ]
+  const loggedKeys = useMemo(() =>
+    new Set(shiftLog.map(l => `${l.change_kind}|${l.po_number}|${l.item_sku || ''}|${l.color || ''}`)),
+  [shiftLog])
+
+  async function saveShiftReason(kind, d, detail) {
+    const [po, sku, color] = d.k.split('|')
+    const row = {
+      site: 'bny', week_start: isoDate(weekStart),
+      submission_version: submission?.version || null,
+      change_kind: kind, po_number: po, item_sku: sku || null, color: color || null,
+      detail, reason_category: annForm.reason,
+      requested_by: annForm.who || null, noted_by: null, note: annForm.note || null,
+    }
+    const { error } = await supabase.from('sched_shift_log').insert(row)
+    if (error) { alert('Could not log the reason: ' + (error.message || error)); return }
+    setShiftLog(list => [...list, row])
+    setAnnOpen(null)
+    setAnnForm({ reason: 'procurement_request', who: '', note: '' })
+  }
+
+  function DriftLine({ kind, d, color, children, detail }) {
+    const id = `${kind}|${d.k}`
+    const done = loggedKeys.has(id)
+    const open = annOpen === id
+    return (
+      <div>
+        <div style={{ color, display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ flex: 1 }}>{children}</span>
+          {done
+            ? <span style={{ fontSize: 10, color: C.sage, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ reason logged</span>
+            : <button onClick={() => setAnnOpen(open ? null : id)}
+                style={{ fontSize: 10, padding: '1px 8px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ＋ why
+              </button>}
+        </div>
+        {open && !done && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 6px', paddingLeft: 12 }}>
+            <select value={annForm.reason} onChange={e => setAnnForm(f => ({ ...f, reason: e.target.value }))}
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, background: 'var(--surface)', color: C.ink }}>
+              {SHIFT_REASONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input value={annForm.who} onChange={e => setAnnForm(f => ({ ...f, who: e.target.value }))} placeholder="who asked"
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, width: 110, background: 'var(--surface)', color: C.ink }} />
+            <input value={annForm.note} onChange={e => setAnnForm(f => ({ ...f, note: e.target.value }))} placeholder="note (optional)"
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, flex: 1, minWidth: 140, background: 'var(--surface)', color: C.ink }} />
+            <button onClick={() => saveShiftReason(kind, d, detail)}
+              style={{ padding: '4px 12px', background: C.navy, color: '#fff', border: 'none', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              Save
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, revenue: 0,
@@ -735,13 +810,19 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       {submission && drift && !drift.clean && driftOpen && (
         <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
           {drift.added.map(d => (
-            <div key={'a' + d.k} style={{ color: C.sage }}>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.cells}</div>
+            <DriftLine key={'a' + d.k} kind="added" d={d} color={C.sage} detail={{ yards: d.yards, cells: d.cells }}>
+              + <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.cells}
+            </DriftLine>
           ))}
           {drift.removed.map(d => (
-            <div key={'r' + d.k} style={{ color: C.rose }}>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.cells}</div>
+            <DriftLine key={'r' + d.k} kind="removed" d={d} color={C.rose} detail={{ yards: d.yards, cells: d.cells }}>
+              − <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.cells}
+            </DriftLine>
           ))}
           {drift.changed.map(d => (
-            <div key={'c' + d.k} style={{ color: C.amber }}>Δ <strong>{d.desc}</strong> — {d.fromC !== d.toC ? `${d.fromC} → ${d.toC}` : d.toC}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</div>
+            <DriftLine key={'c' + d.k} kind="changed" d={d} color={C.amber} detail={{ fromY: d.fromY, toY: d.toY, fromC: d.fromC, toC: d.toC }}>
+              Δ <strong>{d.desc}</strong> — {d.fromC !== d.toC ? `${d.fromC} → ${d.toC}` : d.toC}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}
+            </DriftLine>
           ))}
         </div>
       )}
@@ -848,18 +929,25 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           onApplyAssignments={async (proposals) => {
             // Seed per-cell running totals with what's already on the board
             // so we don't push existing cells over capacity either.
+            // MULTI-WEEK (Phase 1): keys carry the week, so a future-week
+            // proposal only competes with its own week's cells. Only the
+            // CURRENT week's board is seeded — future weeks start empty
+            // (matching what Claude is shown).
+            const thisWk = isoDate(weekStart)
+            const wkOf = p => /^\d{4}-\d{2}-\d{2}$/.test(p.week_start || '') ? p.week_start : thisWk
             const cellTotals = {}
             for (const a of enrichedAssignments) {
               const dow = dowText(a.day_of_week)
               if (!dow) continue
-              const key = `${a.table_code}|${dow}`
+              const key = `${thisWk}|${a.table_code}|${dow}`
               cellTotals[key] = (cellTotals[key] || 0) + Number(a.planned_yards || 0)
             }
 
             const accepted = []
             const skipped = []
             for (const p of proposals) {
-              const key = `${p.machine}|${dowText(p.day_of_week)}`
+              const wk = wkOf(p)
+              const key = `${wk}|${p.machine}|${dowText(p.day_of_week)}`
               const loc = brooklynMachineNames.has(p.machine)
                 ? 'brooklyn'
                 : passaicMachineNames.has(p.machine) ? 'passaic' : null
@@ -877,7 +965,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                 })
                 continue
               }
-              accepted.push(p)
+              accepted.push({ ...p, _wk: wk })
               cellTotals[key] = current + yd
             }
 
@@ -888,7 +976,7 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
                 line_description: p.line_description || null,
                 product_type: p.product_type || null,
                 table_code: p.machine,
-                week_start: isoDate(weekStart),
+                week_start: p._wk,
                 day_of_week: dowText(p.day_of_week),
                 planned_yards: p.planned_yards,
                 planned_cy: null,
@@ -1617,6 +1705,8 @@ LIFT STATUS DOCTRINE:
 - SCHEDULABLE by default: "Ready to Print", "Print", "Approved to Print". Do NOT propose POs in: Waiting for Screen, Waiting for Material, Waiting for Sample, Waiting for Approval, Ink Mixing, Mixing, In Mixing Queue, Order Unallocated — unless Chandler explicitly asks to plan ahead for them.
 - Statuses come from the hourly LIFT feed and are current as of page load.
 
+MULTI-WEEK PLANNING: weeks are Monday-anchored. This week = ${isoDate(weekStart)}; the next three Mondays are ${isoDate(addWeeks(weekStart, 1))}, ${isoDate(addWeeks(weekStart, 2))}, ${isoDate(addWeeks(weekStart, 3))}. When Chandler asks to plan beyond this week, include "week_start" (one of those Mondays) on each proposal — omitted means this week. You are only shown THIS week's placed board; treat future weeks as empty unless told otherwise, and narrate per-week totals so Chandler can sanity-check each against the 15,000 yd target.
+
 CRITICAL REMINDERS when proposing assignments:
 - Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Kai / Dementia / Ember / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
 - day_of_week MUST be a number 0-6 (0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat). Not a string.
@@ -1640,7 +1730,7 @@ If you catch yourself proposing a Replen or NEW GOODS assignment on a Passaic ma
 When you are ready to commit to a draft, wrap the JSON in TRIPLE-BACKTICK fences exactly like this:
 
 \`\`\`json
-{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"rationale":"..."}]}
+{"proposals":[{"po_number":"PO12345","machine":"Glow","day_of_week":0,"planned_yards":600,"week_start":"${isoDate(weekStart)}","rationale":"..."}]}
 \`\`\`
 
 - The outer object must be {"proposals": [...]}. Do not emit a bare array or loose objects.

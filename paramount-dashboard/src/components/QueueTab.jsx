@@ -49,6 +49,28 @@ function lineKey(r) { return `${r.po_number}|${r.item_sku || ''}|${r.color || ''
 
 const WEEKLY_TARGET_YD = 23500  // Passaic 8,500 + BNY 15,000
 
+// PHASE 5 — "are we running on schedule" as an HONEST PROXY. The LIFT feed
+// carries no promise/due date (recon 8/1), so lateness = age vs a mix-group
+// SLA. Clearly labeled as a proxy everywhere it appears; real dates are on
+// the Paul/Vincent chase list and drop straight in when they exist.
+const SLA_DAYS = {
+  'MTO': 7, 'Custom': 30, 'NEW GOODS': 90, 'Replen': 60, 'HOS': 30, 'Memo': 30, '3P': 45,
+  'SCH (screen)': 90, '3P (screen)': 90,
+}
+function lateness(r) {
+  const sla = SLA_DAYS[mixGroup(r)] ?? 90
+  const age = r.age_days || 0
+  if (age > sla * 2) return { level: 'late', sla }
+  if (age > sla) return { level: 'watch', sla }
+  return { level: 'ok', sla }
+}
+
+const SHIFT_REASON_LABEL = {
+  procurement_request: 'Procurement request', customer_expedite: 'Customer expedite',
+  material_delay: 'Material delay', machine_down: 'Machine down',
+  mix_rebalance: 'Mix rebalance', other: 'Other',
+}
+
 export default function QueueTab({ currentUser }) {
   const [wipRows, setWipRows] = useState([])
   const [plans, setPlans] = useState([])          // sched_assignments, this Monday forward
@@ -62,6 +84,12 @@ export default function QueueTab({ currentUser }) {
   const [plannedF, setPlannedF] = useState('all')  // all | scheduled | unscheduled
   const [sortBy, setSortBy] = useState('age')      // age | yards | rev | week
   const [openKey, setOpenKey] = useState(null)
+  const [lateF, setLateF] = useState(false)        // Phase 5 proxy filter
+  // PHASE 3 — Slack-a-row state, keyed by row.
+  const [slackDraft, setSlackDraft] = useState({})
+  const [slackState, setSlackState] = useState({}) // key -> 'busy' | 'sent' | error string
+  // PHASE 4 — change history per PO, fetched lazily on expand.
+  const [history, setHistory] = useState({})       // key -> rows | 'loading'
 
   const thisMonday = isoDate(defaultSchedulerWeek())
 
@@ -129,6 +157,7 @@ export default function QueueTab({ currentUser }) {
     if (mix !== 'all') list = list.filter(r => mixGroup(r) === mix)
     if (plannedF === 'scheduled') list = list.filter(r => r.planned)
     if (plannedF === 'unscheduled') list = list.filter(r => !r.planned)
+    if (lateF) list = list.filter(r => lateness(r).level !== 'ok')
     if (needle) list = list.filter(r =>
       (r.po_number || '').toLowerCase().includes(needle)
       || (r.line_description || '').toLowerCase().includes(needle)
@@ -141,7 +170,7 @@ export default function QueueTab({ currentUser }) {
       week:  (a, b) => (a.firstWeek || '9999').localeCompare(b.firstWeek || '9999'),
     }
     return [...list].sort(by[sortBy] || by.age)
-  }, [rows, site, q, family, mix, plannedF, sortBy])
+  }, [rows, site, q, family, mix, plannedF, lateF, sortBy])
 
   // FORWARD 30 DAYS — planned yards by mix group for the next four Mondays.
   const forward = useMemo(() => {
@@ -160,6 +189,41 @@ export default function QueueTab({ currentUser }) {
     }
     return cells
   }, [plans, wipRows])
+
+  async function openRow(r, k, open) {
+    setOpenKey(open ? null : k)
+    if (!open && history[k] === undefined) {
+      setHistory(h => ({ ...h, [k]: 'loading' }))
+      const { data } = await supabase.from('sched_shift_log')
+        .select('change_kind, reason_category, requested_by, noted_by, note, detail, week_start, created_at')
+        .eq('site', r.site).eq('po_number', r.po_number)
+        .order('created_at', { ascending: false }).limit(20)
+      setHistory(h => ({ ...h, [k]: data || [] }))
+    }
+  }
+
+  async function sendSlack(r, k) {
+    const comment = (slackDraft[k] || '').trim()
+    if (!comment) return
+    setSlackState(s => ({ ...s, [k]: 'busy' }))
+    try {
+      const res = await fetch('/.netlify/functions/slack-queue-notify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          po: r.po_number, desc: r.line_description, sku: r.item_sku, colorway: r.color,
+          site: r.site, status: r.order_status, age_days: r.age_days,
+          yards: Math.round(Number(r.yards_written || 0)),
+          planned: r.planned ? `wk ${r.firstWeek} · ${r.placements[0]?.table}` : null,
+          comment, from: currentUser || 'the dashboard',
+        }),
+      })
+      const j = await res.json()
+      if (j.ok) { setSlackState(s => ({ ...s, [k]: 'sent' })); setSlackDraft(d => ({ ...d, [k]: '' })) }
+      else setSlackState(s => ({ ...s, [k]: j.reason || 'failed' }))
+    } catch (e) {
+      setSlackState(s => ({ ...s, [k]: String(e) }))
+    }
+  }
 
   function exportCsv() {
     const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
@@ -255,6 +319,9 @@ export default function QueueTab({ currentUser }) {
             {f === 'all' ? 'Planned + not' : f}
           </button>
         ))}
+        <button onClick={() => setLateF(v => !v)} style={chip(lateF, C.amber)} title="Age vs mix-group SLA — a proxy until LIFT gives us promise dates">
+          ⚠ Late (proxy)
+        </button>
         <select value={mix} onChange={e => setMix(e.target.value)}
           style={{ padding: '6px 10px', border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, background: 'var(--surface)', color: C.ink }}>
           {mixOptions.map(m => <option key={m} value={m}>{m === 'all' ? 'All mix groups' : m}</option>)}
@@ -280,8 +347,9 @@ export default function QueueTab({ currentUser }) {
           const k = lineKey(r) + r.site
           const fam = statusFamily(r.order_status)
           const open = openKey === k
+          const late = lateness(r)
           return (
-            <div key={k} onClick={() => setOpenKey(open ? null : k)}
+            <div key={k} onClick={() => openRow(r, k, open)}
               style={{ background: 'var(--surface)', border: `1px solid ${open ? C.navy : C.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: r.site === 'passaic' ? C.navyLight : C.goldBg, color: r.site === 'passaic' ? C.navy : C.gold }}>
@@ -297,6 +365,12 @@ export default function QueueTab({ currentUser }) {
                 </span>
                 <span style={{ fontSize: 10, color: C.inkLight }}>{mixGroup(r)}</span>
                 <div style={{ flex: 1 }} />
+                {late.level !== 'ok' && (
+                  <span title={`Proxy: ${r.age_days}d old vs ${late.sla}d SLA for ${mixGroup(r)} — real promise dates pending LIFT`}
+                    style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: late.level === 'late' ? C.roseBg : C.amberBg, color: late.level === 'late' ? C.rose : C.amber }}>
+                    ⚠ {late.level === 'late' ? 'LATE' : 'WATCH'}
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: (r.age_days || 0) > 90 ? C.rose : C.inkLight, fontWeight: (r.age_days || 0) > 90 ? 700 : 400 }}>{r.age_days ?? '—'}d</span>
                 <span style={{ fontSize: 11, color: C.inkMid }}>{fmt(Number(r.yards_written || 0))} yd</span>
                 {r.planned ? (
@@ -323,8 +397,37 @@ export default function QueueTab({ currentUser }) {
                       ✓ Planned · week of {p.week} · {p.table}{p.day ? ` · ${p.day}` : ''} · {fmt(p.yards)} yd
                     </div>
                   ))}
-                  <div style={{ color: C.inkLight, fontStyle: 'italic' }}>
-                    Slack-this-order and change-history land here next (Phases 3–4).
+                  {late.level !== 'ok' && (
+                    <div style={{ color: late.level === 'late' ? C.rose : C.amber }}>
+                      ⚠ {late.level === 'late' ? 'Late' : 'Watch'} by proxy: {r.age_days}d old vs a {late.sla}d SLA for {mixGroup(r)}. (Age-based — LIFT has no promise date yet.)
+                    </div>
+                  )}
+                  {/* PHASE 4 — change history from the shift ledger. */}
+                  {history[k] === 'loading' && <div style={{ color: C.inkLight }}>loading change history…</div>}
+                  {Array.isArray(history[k]) && history[k].length > 0 && (
+                    <div style={{ display: 'grid', gap: 2, marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: C.inkLight, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Change history</div>
+                      {history[k].map((h2, i) => (
+                        <div key={i} style={{ color: C.inkMid }}>
+                          {h2.change_kind === 'added' ? '+' : h2.change_kind === 'removed' ? '−' : 'Δ'} wk {h2.week_start} · <strong>{SHIFT_REASON_LABEL[h2.reason_category] || h2.reason_category}</strong>
+                          {h2.requested_by ? ` · asked by ${h2.requested_by}` : ''}{h2.noted_by ? ` · noted by ${h2.noted_by}` : ''}
+                          {h2.note ? ` — ${h2.note}` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* PHASE 3 — Slack this order. */}
+                  <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                    <input value={slackDraft[k] || ''} onChange={e => setSlackDraft(d => ({ ...d, [k]: e.target.value }))}
+                      placeholder="Slack this order to the team — question, priority call, heads-up…"
+                      onKeyDown={e => { if (e.key === 'Enter') sendSlack(r, k) }}
+                      style={{ flex: 1, padding: '6px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11, background: 'var(--surface)', color: C.ink }} />
+                    <button onClick={() => sendSlack(r, k)} disabled={slackState[k] === 'busy'}
+                      style={{ padding: '6px 12px', background: slackState[k] === 'busy' ? '#9ca3af' : C.navy, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      💬 Slack
+                    </button>
+                    {slackState[k] === 'sent' && <span style={{ color: C.sage, fontSize: 11, fontWeight: 700 }}>✓ sent</span>}
+                    {slackState[k] && slackState[k] !== 'sent' && slackState[k] !== 'busy' && <span style={{ color: C.rose, fontSize: 11 }}>{slackState[k]}</span>}
                   </div>
                 </div>
               )}

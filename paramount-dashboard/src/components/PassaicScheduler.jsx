@@ -102,6 +102,10 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [submission, setSubmission] = useState(null)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [driftOpen, setDriftOpen]   = useState(false)
+  // PHASE 4 — the shift ledger: annotate a drift line with WHY it moved.
+  const [shiftLog, setShiftLog]     = useState([])
+  const [annOpen, setAnnOpen]       = useState(null)
+  const [annForm, setAnnForm]       = useState({ reason: 'procurement_request', who: '', note: '' })
 
   // Latest submission for the selected week (highest version wins).
   useEffect(() => {
@@ -115,6 +119,18 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     })()
     return () => { cancelled = true }
   }, [weekStart])
+
+  // Shift-ledger rows for this site+week (✓ logged markers on drift lines).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('sched_shift_log')
+        .select('change_kind, po_number, item_sku, color')
+        .eq('site', 'passaic').eq('week_start', isoDate(weekStart))
+      if (!cancelled) setShiftLog(data || [])
+    })()
+    return () => { cancelled = true }
+  }, [weekStart, submission])
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
   const [weekDailyOps, setWeekDailyOps] = useState([])
   const [activeDragPO, setActiveDragPO] = useState(null)
@@ -537,6 +553,70 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     return { added, removed, changed, clean: !added.length && !removed.length && !changed.length }
   }, [submission, enrichedAssignments])
 
+  // PHASE 4 helpers — which drift lines already have a logged reason, and
+  // the writer. Reason categories are the shared vocabulary with the Queue.
+  const SHIFT_REASONS = [
+    ['procurement_request', 'Procurement request'], ['customer_expedite', 'Customer expedite'],
+    ['material_delay', 'Material delay'], ['machine_down', 'Machine down'],
+    ['mix_rebalance', 'Mix rebalance'], ['other', 'Other'],
+  ]
+  const loggedKeys = useMemo(() =>
+    new Set(shiftLog.map(l => `${l.change_kind}|${l.po_number}|${l.item_sku || ''}|${l.color || ''}`)),
+  [shiftLog])
+
+  async function saveShiftReason(kind, d, detail) {
+    const [po, sku, color] = d.k.split('|')
+    const row = {
+      site: 'passaic', week_start: isoDate(weekStart),
+      submission_version: submission?.version || null,
+      change_kind: kind, po_number: po, item_sku: sku || null, color: color || null,
+      detail, reason_category: annForm.reason,
+      requested_by: annForm.who || null, noted_by: null, note: annForm.note || null,
+    }
+    const { error } = await supabase.from('sched_shift_log').insert(row)
+    if (error) { alert('Could not log the reason: ' + (error.message || error)); return }
+    setShiftLog(list => [...list, row])
+    setAnnOpen(null)
+    setAnnForm({ reason: 'procurement_request', who: '', note: '' })
+  }
+
+  // One drift line + its annotate affordance. Lives in the MAIN component
+  // (uses main-scope state) — the drift panel renders here, not in a child.
+  function DriftLine({ kind, d, color, children, detail }) {
+    const id = `${kind}|${d.k}`
+    const done = loggedKeys.has(id)
+    const open = annOpen === id
+    return (
+      <div>
+        <div style={{ color, display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <span style={{ flex: 1 }}>{children}</span>
+          {done
+            ? <span style={{ fontSize: 10, color: C.sage, fontWeight: 700, whiteSpace: 'nowrap' }}>✓ reason logged</span>
+            : <button onClick={() => setAnnOpen(open ? null : id)}
+                style={{ fontSize: 10, padding: '1px 8px', background: 'transparent', color: C.inkMid, border: `1px solid ${C.border}`, borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                ＋ why
+              </button>}
+        </div>
+        {open && !done && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 6px', paddingLeft: 12 }}>
+            <select value={annForm.reason} onChange={e => setAnnForm(f => ({ ...f, reason: e.target.value }))}
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, background: 'var(--surface)', color: C.ink }}>
+              {SHIFT_REASONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input value={annForm.who} onChange={e => setAnnForm(f => ({ ...f, who: e.target.value }))} placeholder="who asked"
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, width: 110, background: 'var(--surface)', color: C.ink }} />
+            <input value={annForm.note} onChange={e => setAnnForm(f => ({ ...f, note: e.target.value }))} placeholder="note (optional)"
+              style={{ padding: '4px 8px', border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, flex: 1, minWidth: 140, background: 'var(--surface)', color: C.ink }} />
+            <button onClick={() => saveShiftReason(kind, d, detail)}
+              style={{ padding: '4px 12px', background: C.navy, color: '#fff', border: 'none', borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              Save
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, cy: 0, revenue: 0,
@@ -772,13 +852,19 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       {submission && drift && !drift.clean && driftOpen && (
         <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
           {drift.added.map(d => (
-            <div key={'a' + d.k} style={{ color: C.sage }}>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.tables}</div>
+            <DriftLine key={'a' + d.k} kind="added" d={d} color={C.sage} detail={{ yards: d.yards, tables: d.tables }}>
+              + <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.tables}
+            </DriftLine>
           ))}
           {drift.removed.map(d => (
-            <div key={'r' + d.k} style={{ color: C.rose }}>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.tables}</div>
+            <DriftLine key={'r' + d.k} kind="removed" d={d} color={C.rose} detail={{ yards: d.yards, tables: d.tables }}>
+              − <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.tables}
+            </DriftLine>
           ))}
           {drift.changed.map(d => (
-            <div key={'c' + d.k} style={{ color: C.amber }}>Δ <strong>{d.desc}</strong> — {d.fromT !== d.toT ? `${d.fromT} → ${d.toT}` : d.toT}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</div>
+            <DriftLine key={'c' + d.k} kind="changed" d={d} color={C.amber} detail={{ fromY: d.fromY, toY: d.toY, fromT: d.fromT, toT: d.toT }}>
+              Δ <strong>{d.desc}</strong> — {d.fromT !== d.toT ? `${d.fromT} → ${d.toT}` : d.toT}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}
+            </DriftLine>
           ))}
         </div>
       )}
@@ -868,7 +954,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
               line_description: p.line_description || null,
               product_type: p.product_type || null,
               table_code: p.table_code,
-              week_start: isoDate(weekStart),
+              // MULTI-WEEK (Phase 1): proposals may carry week_start (Monday,
+              // ISO). Invalid/absent → the week on screen.
+              week_start: /^\d{4}-\d{2}-\d{2}$/.test(p.week_start || '') ? p.week_start : isoDate(weekStart),
               day_of_week: null,
               shift: '1st',
               planned_yards: p.planned_yards,
@@ -2108,7 +2196,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     const dailyOps = await loadWeekDailyOps('passaic', weekStart)
     const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
 
-    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL (top 100 POs sorted by age):\n${pool.slice(0,100).map(p => `  ${p.po_number} | ${p.line_description} | ${p.product_type} | ${p.customer_type||'?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`).join('\n')}\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Ramon can accept/edit/reject.]`
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL: the pool_pos array in the JSON above IS the pool — up to 400 POs, schedulable statuses first then oldest first, each with status / customer / category / colors / age / yards / color-yards / revenue / waste & tint flags. placed_assignments is the current week's board.\n\nMULTI-WEEK PLANNING: weeks are Monday-anchored. This week = ${isoDate(weekStart)}; the next three Mondays are ${isoDate(addWeeks(weekStart, 1))}, ${isoDate(addWeeks(weekStart, 2))}, ${isoDate(addWeeks(weekStart, 3))}. When Ramon asks to plan beyond this week (e.g. "the next 4 weeks"), include "week_start" (one of those Mondays) on each proposal — omitted means this week. You are only shown THIS week's placed board; treat future weeks as empty unless Ramon says otherwise, and narrate totals per week (yards / CY / revenue / mix) so he can sanity-check each against the weekly targets.\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"week_start":"${isoDate(weekStart)}","rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Ramon can accept/edit/reject.]`
     convo[convo.length - 1].content += contextNote
 
     try {
