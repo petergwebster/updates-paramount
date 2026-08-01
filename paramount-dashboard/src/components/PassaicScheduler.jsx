@@ -424,6 +424,9 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         colors_count: src.colors_count || null,
         age_days: src.age_days ?? null,
         needs_tint: !!tintFlags[schedLineKey(a)],
+        // LIFT status rides along (Ramon 7/28): a placed PO that's gone to
+        // Cut / Invoiced should SAY so on the board and in Claude's context.
+        order_status: src.order_status || null,
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
         // Rides along on the assignment rather than being threaded down
         // through TableCategoryRow -> TableCard -> AssignmentCard as a prop.
@@ -977,6 +980,14 @@ function PoolCard({ r, poTotal = null, selected, tint, onToggleTint, onToggle })
         <span>·</span>
         <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
       </div>
+      {/* LIFT status (Ramon 7/28): the pool always FILTERED on status but
+          never SHOWED it — the planner couldn't tell ready-to-print from
+          waiting-for-screen without opening LIFT. Verbatim from the feed. */}
+      {r.order_status && (
+        <div style={{ marginTop: 3 }}>
+          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.navyLight, color: C.navy, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{r.order_status}</span>
+        </div>
+      )}
       {/* Tinting flag — set at scheduling time, surfaces as a TINT chip on the
           placed card and in Live Ops. stopPropagation on both click and
           pointerdown so ticking it neither selects the PO nor starts a drag. */}
@@ -1310,7 +1321,11 @@ function AssignmentCard({ a, onRemove, onEdit }) {
           {a.item_sku || ''}{a.item_sku && a.color ? ' · ' : ''}{a.color || ''}
         </div>
       )}
-      <div style={{ color: C.inkLight, fontSize: 9 }}>{fmt(a.planned_yards)}yd · {fmt(a.planned_cy || 0)} CY</div>
+      <div style={{ color: C.inkLight, fontSize: 9 }}>{fmt(a.planned_yards)}yd · {fmt(a.planned_cy || 0)} CY
+        {a.order_status && (
+          <span style={{ marginLeft: 6, fontSize: 8, padding: '0 4px', borderRadius: 2, background: C.navyLight, color: C.navy, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{a.order_status}</span>
+        )}
+      </div>
       {/* PO · colours · age — Ramon's request: the scheduled card should carry the
           same identifying detail as the pool card. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: C.inkLight, marginTop: 1 }}>
@@ -1824,6 +1839,40 @@ function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onAp
         schumacher_pct: mixTotals.revenue > 0 ? Math.round((mixTotals.schumacher_revenue / mixTotals.revenue) * 100) : 0,
       },
       pool_summary: poolSummary,
+      // PER-PO DETAIL (Ramon 7/28) — the fix for "Claude can't see the
+      // board." Counts alone made every status rule unexecutable: the model
+      // was asked to exclude waiting-for-screen POs it had never been shown.
+      // Compact keys keep tokens sane; pool capped at 150 rows.
+      pool_pos: pool.slice(0, 150).map(p => ({
+        po: p.po_number,
+        desc: (p.line_description || '').slice(0, 60),
+        status: p.order_status || 'unknown',
+        cust: (p.customer_type || '').toLowerCase() === 'schumacher' ? 'SCH' : '3P',
+        cat: (p.product_type || '').toLowerCase().includes('grass') ? 'grass'
+           : ((p.product_type || '').toLowerCase().includes('paper') || (p.product_type || '').toLowerCase().includes('panel')) ? 'wallpaper'
+           : 'fabric',
+        colors: p.colors_count || 0,
+        age_d: p.age_days || 0,
+        yds_left: Math.round(Number(p.remaining_yards || 0)),
+        rev: Math.round(Number(p.income_written || 0)),
+        waste_hx: hasWasteHistory(p.line_description) || undefined,
+        tint: tintFlags[schedLineKey(p)] || undefined,
+        new_goods: p.is_new_goods || undefined,
+      })),
+      pool_rows_truncated: Math.max(0, pool.length - 150),
+      // The placed board — every assignment with its table, yards and CURRENT
+      // LIFT status, so "don't touch what's placed" and "which placed POs are
+      // already Cut/Invoiced" are both answerable.
+      placed_assignments: enrichedAssignments.map(a => ({
+        table: a.table_code,
+        po: a.po_number,
+        desc: (a.line_description || '').slice(0, 60),
+        yds: Math.round(Number(a.planned_yards || 0)),
+        cy: Math.round(Number(a.planned_cy || 0)),
+        day: a.day_of_week || 'week',
+        status: a.order_status || 'unknown',
+        cust: (a.customer_type || '').toLowerCase() === 'schumacher' ? 'SCH' : '3P',
+      })),
     }
   }
 
@@ -1848,6 +1897,13 @@ SCHEDULING LOGIC:
 - Patterns with waste history: Cloud Toile, Banana Leaf, Acanthus Stripe, Pyne Hollyhock, Botanico Metallic. Either defer, or flag the risk when scheduling
 - Leave headroom — don't fill tables past 95% CY capacity
 - Category routing: Grass POs → GC tables; Fabric/Strike-off → FAB tables; Paper/Panel → WP tables
+
+LIFT STATUS — you can now SEE it, so USE it:
+- Every pool PO and every placed assignment in your context carries its live LIFT status (hourly feed), plus customer type, category, colors, age, remaining yards and revenue.
+- SCHEDULABLE by default: "Ready to Print", "Print", "Approved to Print". Do NOT propose POs in: Waiting for Screen, Waiting for Material, Waiting for Sample, Waiting for Approval, Ink Mixing, Mixing, In Mixing Queue, Order Unallocated — unless Ramon explicitly asks to plan ahead for them.
+- placed_assignments is the CURRENT BOARD. Never re-propose a PO that's already placed this week; when drafting, treat placed yards/CY as consumed table capacity. If a PLACED PO's status shows Cut / Shipped / Invoiced / Complete, point it out — that slot may be reclaimable.
+- Yardages on placed assignments are what Sami/Ramon entered at scheduling — treat them as authoritative planned quantities.
+- If pool_rows_truncated > 0, say so and work with what's shown.
 
 YOUR ROLE:
 You are a thinking partner, not a commander. Ramon owns the decisions. Your job is to break him out of the blank-slate freeze by proposing a starting draft he can react to, and to keep advising as he adjusts.
