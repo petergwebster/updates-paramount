@@ -598,15 +598,21 @@ const runSync = async (event) => {
         const pt = pick(p, ['PRODUCTTYPE', 'PRODUCTTYPES'])
         if (sku) skuType[sku] = String(pt).toUpperCase().trim()
       }
-      // yields from ref_product_yield, paged
-      const yields = {}
+      // yields + product types from ref_product_yield (the FULL master
+      // mirror, 12,084 SKUs incl. retired ones the live products feed drops —
+      // v4's 232 skipped lines were hand-screen classics on retired SKUs,
+      // right in the neighbourhood of the −8.6% Screen Print gap), paged
+      const yields = {}, refType = {}
       let yoff = 0
       while (true) {
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield&limit=1000&offset=${yoff}`,
+          `${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&limit=1000&offset=${yoff}`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } })
         const page = await res.json()
-        for (const r of page) yields[r.item_sku] = Number(r.yield)
+        for (const r of page) {
+          yields[r.item_sku] = Number(r.yield)
+          if (r.product_type) refType[r.item_sku] = String(r.product_type).toUpperCase().trim()
+        }
         if (!Array.isArray(page) || page.length < 1000) break
         yoff += 1000
       }
@@ -618,7 +624,7 @@ const runSync = async (event) => {
         const dt = new Date(rawD)
         if (isNaN(dt) || dt.getFullYear() !== 2026) continue
         const sku = pick(r, ['ITEMSKU', 'SKU'])
-        const pt = skuType[sku]
+        const pt = skuType[sku] || refType[sku]   // live feed first, master mirror for retired SKUs
         if (!pt) { noSkuType++; continue }
         const m = TYPE_MAP[pt]
         if (!m) { noTypeMap++; continue }
