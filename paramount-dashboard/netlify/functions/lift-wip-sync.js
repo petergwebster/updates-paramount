@@ -477,13 +477,14 @@ const runSync = async (event) => {
     if (!LIFT_BASE_URL) throw new Error('LIFT_BASE_URL not set in env')
     if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase env not set')
 
-    let dryRun = false, probe = null, tieout = false
+    let dryRun = false, probe = null, tieout = false, loadYields = null
     if (event && event.httpMethod === 'POST' && event.body) {
       try {
         const b = JSON.parse(event.body)
         dryRun = !!b.dryRun
         probe  = b.probe || null
         tieout = !!b.tieout
+        loadYields = b.loadYields || null
       } catch { /* ignore */ }
     }
 
@@ -519,95 +520,132 @@ const runSync = async (event) => {
     // 169,188 invoiced yards against a real ~33,000). Non-yard UOMs (EA memo
     // sets, panel sets) count separately — they are pieces, not yards.
     // Benchmark: deck slide-4 May 610 invoiced = 31,436 (the hard number).
+    // LOAD YIELDS — loader for ref_product_yield. Accepts
+    // {"loadYields":[{s,y,t},...]} and upserts via the service role. Exists
+    // because hand-pasting 2,741 rows through a SQL console truncated on the
+    // first attempt (479 landed; the Memo block — the category that matters
+    // most — fell off). Files → curl → upsert: no transcription anywhere.
+    if (loadYields && Array.isArray(loadYields)) {
+      const body = loadYields
+        .filter(r => r && r.s)
+        .map(r => ({ item_sku: String(r.s), yield: Number(r.y) || 0, product_type: r.t ? String(r.t) : null }))
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?on_conflict=item_sku`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+                   'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+        body: JSON.stringify(body),
+      })
+      return { statusCode: res.ok ? 200 : 500, headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ loaded: body.length, ok: res.ok, status: res.status }) }
+    }
+
     if (tieout) {
-      // v2: also join InvoiceSummary (invoice → ORDER_TYPE) because the deck's
-      // 610/609 split is by ORDER TYPE (Screen Print vs Digital), not by our
-      // WIP-feed site bucket — v1 proved the totals tie (~3%) while the site
-      // split missed symmetrically by ~15K: same yards, different label (the
-      // 12 Passaic small-digitals bucket to BNY in the feed but are 609 work).
-      // July included to expose approval-date lag draining June.
-      const [text, sumText] = await Promise.all([fetchCsv('invoiceshub'), fetchCsv('InvoiceSummary')])
-      const { records } = parseCsv(text)
-      const invType = {}, invDate = {}
-      for (const s of parseCsv(sumText).records)
-        if (s.INVOICENUMBER) {
-          invType[s.INVOICENUMBER] = s.ORDERTYPE || ''
-          invDate[s.INVOICENUMBER] = s.INVOICEDATE || ''
-        }
-      // order → {site, product_type} from order_ledger, paged
-      const led = {}
-      let off = 0
+      // v4 — THE PROVEN FORMULA, against live data. Validated to ±2% on the
+      // stale DAX extract (Jan Digital tied to −20 yards): the deck's
+      // invoiced yards = Σ QTY_INVOICED × [Yield] per SKU, yard-class lines
+      // only, by 4-4-5 fiscal month on INVOICE_DATE, split by Division.
+      // Yield comes from ref_product_yield (consultant-maintained, 2,741
+      // non-1 SKUs; absent = 1). Class + Division come from the canonical
+      // 37-row product-type table (4-Product Type Tables.csv), embedded
+      // verbatim below. Source grain: orders.csv IS line-level — the same
+      // file Data Invoiced All derives from. Returns per-DAY division sums
+      // for 2026 (fiscal bucketing happens in analysis against the 445
+      // calendar). Writes nothing.
+      const TYPE_MAP = {
+        'DESIGN SERVICES': { cls: 'Design Services', div: 'Design Services' },
+        'CONTRACT FABRIC': { cls: 'Yards', div: 'Digital' },
+        'CONTRACT WALLPAPER': { cls: 'Yards', div: 'Digital' },
+        'CREDIT MEMO': { cls: 'Yards', div: 'Digital' },
+        'CUSTOM': { cls: 'Yards', div: 'Digital' },
+        'ENGINEERED WINGS': { cls: 'Yards', div: 'Digital' },
+        'HANDLING FEE': { cls: 'Fees', div: 'Digital' },
+        'HOSPITALITY': { cls: 'Yards', div: 'Digital' },
+        'MEMO': { cls: 'Yards', div: 'Digital' },
+        'PANEL': { cls: 'Yards', div: 'Digital' },
+        'PEEL & STICK': { cls: 'Yards', div: 'Digital' },
+        'REGULAR': { cls: 'Yards', div: 'Digital' },
+        'RUSH FEE - DIGITAL': { cls: 'Fees', div: 'Digital' },
+        'FABRIC': { cls: 'Yards', div: 'Screen Print' },
+        'GRASS': { cls: 'Yards', div: 'Screen Print' },
+        'GROUNDS': { cls: 'Ground', div: 'Screen Print' },
+        'PACKING CHARGE': { cls: 'Fees', div: 'Screen Print' },
+        'PAPER': { cls: 'Yards', div: 'Screen Print' },
+        'RUSH FEE': { cls: 'Fees', div: 'Screen Print' },
+        'SCREEN': { cls: 'Fees', div: 'Screen Print' },
+        'SET-UP FEE': { cls: 'Fees', div: 'Screen Print' },
+        'SHIPPING FEES': { cls: 'Fees', div: 'Screen Print' },
+        'STRIKE-OFF': { cls: 'Yards', div: 'Screen Print' },
+        'PRICE SHEET PRICING - FOR PRICING ONLY': { cls: 'Fees', div: 'Screen Print' },
+        'VIRTUAL CATALOG FOR ORDER TYPE 1143': { cls: 'Fees', div: 'Screen Print' },
+        'RUSH FEE - SCREEN PRINT': { cls: 'Fees', div: 'Screen Print' },
+        'DIGITAL': { cls: 'Ground', div: 'Digital' },
+        'SCREEN PRINT': { cls: 'Ground', div: 'Screen Print' },
+        'CREATIVE SERVICES': { cls: 'Design Services', div: 'Design Services' },
+        'ROTARY': { cls: 'Yards', div: 'Screen Print' },
+        'SCHUMACHER PROC': { cls: 'Ground', div: 'Procurement' },
+        'PANEL SCREEN': { cls: 'Yards', div: 'Screen Print' },
+        'MEMO SCREEN': { cls: 'Yards', div: 'Screen Print' },
+        'SURCHARGE': { cls: 'Fees', div: 'Screen Print' },
+        'ENGINEERED WINGS SCREEN': { cls: 'Yards', div: 'Screen Print' },
+        'CUSTOM STRIPE': { cls: 'Yards', div: 'Screen Print' },
+      }
+      const pick = (o, names) => { for (const n of names) if (o[n] != null && o[n] !== '') return o[n]; return '' }
+
+      const [ordersText2, productsText2] = await Promise.all([fetchCsv('orders'), fetchCsv('products')])
+      const skuType = {}
+      for (const p of parseCsv(productsText2).records) {
+        const sku = pick(p, ['ITEMSKU', 'SKU', 'ITEMNUMBER'])
+        const pt = pick(p, ['PRODUCTTYPE', 'PRODUCTTYPES'])
+        if (sku) skuType[sku] = String(pt).toUpperCase().trim()
+      }
+      // yields from ref_product_yield, paged
+      const yields = {}
+      let yoff = 0
       while (true) {
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/order_ledger?select=order_number,site,product_type&limit=1000&offset=${off}`,
+          `${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield&limit=1000&offset=${yoff}`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } })
         const page = await res.json()
-        for (const r of page) led[r.order_number] = r
+        for (const r of page) yields[r.item_sku] = Number(r.yield)
         if (!Array.isArray(page) || page.length < 1000) break
-        off += 1000
+        yoff += 1000
       }
-      const agg = {}, byType = {}, byTypeApproved = {}, excluded = {}
-      let noLedger = 0, noType = 0, uomSeen = {}
-      for (const r of records) {
-        const month = (r.INVOICEAPPROVEDDATE || '').slice(0, 7)
-        if (!month.startsWith('202')) continue
-        const L = led[r.ORDERNUMBER]
-        if (!L) noLedger++
-        const site = (L && L.site) || 'unknown'
-        const ptype = ((L && L.product_type) || '').toLowerCase()
-        const otype = invType[r.INVOICENUMBER] || 'unknown'
-        if (otype === 'unknown') noType++
-        const uom = (r.UOM || '').toUpperCase()
-        uomSeen[uom] = (uomSeen[uom] || 0) + 1
-        const qty = parseFloat(r.QUANTITY) || 0
-        const isYd = uom === 'YD' || uom === 'YDS' || uom === 'YARD' || uom === 'YARDS'
-        const bucket = !isYd ? 'pieces_qty' : (ptype.includes('ground') ? 'ground_yd' : 'yd')
-        const k = `${month}|${site}`
-        if (!agg[k]) agg[k] = { month, site, yd: 0, ground_yd: 0, pieces_qty: 0, lines: 0 }
-        agg[k][bucket] += qty
-        agg[k].lines++
-        // the deck's dimension: ORDER_TYPE by TRUE INVOICE DATE (approval
-        // trails the invoice across month ends — v2's swings proved it), and
-        // procurement/unknown sites excluded (decks say "excl. Procurement";
-        // proc orders carry ordinary order types and inflated v2 by ~10-14%).
-        if (isYd && !ptype.includes('ground')) {
-          const coreSite = site === 'bny' || site === 'passaic'
-          const im = (invDate[r.INVOICENUMBER] || '').slice(0, 7)
-          if (coreSite && im.startsWith('202')) {
-            const tk = `${im}|${otype}`
-            byType[tk] = (byType[tk] || 0) + qty
-          }
-          if (coreSite) {
-            const ak = `${month}|${otype}`
-            byTypeApproved[ak] = (byTypeApproved[ak] || 0) + qty
-          }
-          if (!coreSite && im.startsWith('202')) {
-            const pk = `${im}|${site}`
-            excluded[pk] = (excluded[pk] || 0) + qty
-          }
-        }
+      const days = {}
+      let noTypeMap = 0, noSkuType = 0, yieldDefaulted = 0, yardLines = 0
+      for (const r of parseCsv(ordersText2).records) {
+        const rawD = pick(r, ['INVOICEDATE'])
+        if (!rawD) continue
+        const dt = new Date(rawD)
+        if (isNaN(dt) || dt.getFullYear() !== 2026) continue
+        const sku = pick(r, ['ITEMSKU', 'SKU'])
+        const pt = skuType[sku]
+        if (!pt) { noSkuType++; continue }
+        const m = TYPE_MAP[pt]
+        if (!m) { noTypeMap++; continue }
+        if (m.cls !== 'Yards') continue
+        const qty = parseFloat(pick(r, ['QTYINVOICED'])) || 0
+        if (!qty) continue
+        let y = yields[sku]
+        if (y == null) { y = 1; yieldDefaulted++ }
+        yardLines++
+        const iso = dt.toISOString().slice(0, 10)
+        const k = `${iso}|${m.div}`
+        days[k] = (days[k] || 0) + qty * y
       }
-      const shape = (o) => Object.entries(o)
-        .map(([k, v]) => { const [month, cut] = k.split('|'); return { month, cut, yd: Math.round(v) } })
-        .filter(a => a.month >= '2026-01')
-        .sort((a, b) => a.month.localeCompare(b.month) || a.cut.localeCompare(b.cut))
-      const out = Object.values(agg)
-        .filter(a => a.month >= '2026-01')
-        .sort((a, b) => a.month.localeCompare(b.month) || a.site.localeCompare(b.site))
-        .map(a => ({ ...a, yd: Math.round(a.yd), ground_yd: Math.round(a.ground_yd), pieces_qty: Math.round(a.pieces_qty) }))
+      const out = Object.entries(days)
+        .map(([k, v]) => { const [d, div] = k.split('|'); return { d, div, yd: Math.round(v * 100) / 100 } })
+        .sort((a, b) => a.d.localeCompare(b.d) || a.div.localeCompare(b.div))
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tieout: 'invoiceshub line-level v3 — invoice-date basis, core sites only',
-          total_lines: records.length,
-          lines_without_ledger_match: noLedger,
-          lines_without_invoice_type: noType,
-          uom_distribution: uomSeen,
-          by_order_type_invoice_date: shape(byType),
-          by_order_type_approved_date: shape(byTypeApproved),
-          excluded_proc_unknown_by_invoice_date: shape(excluded),
-          by_site_2026: out,
+          tieout: 'v4 — orders.csv line-level × Yield, the proven DAX formula',
+          yard_lines_2026: yardLines,
+          lines_missing_sku_type: noSkuType,
+          lines_missing_type_map: noTypeMap,
+          yield_defaulted_to_1: yieldDefaulted,
+          yields_loaded: Object.keys(yields).length,
+          per_day: out,
         }, null, 2),
       }
     }
