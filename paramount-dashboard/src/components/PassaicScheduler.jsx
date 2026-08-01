@@ -1992,8 +1992,16 @@ function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onAp
       // PER-PO DETAIL (Ramon 7/28) — the fix for "Claude can't see the
       // board." Counts alone made every status rule unexecutable: the model
       // was asked to exclude waiting-for-screen POs it had never been shown.
-      // Compact keys keep tokens sane; pool capped at 150 rows.
-      pool_pos: pool.slice(0, 150).map(p => ({
+      // Compact keys keep tokens sane. The live pool runs ~600 orders, so
+      // BEFORE capping we sort the way the doctrine thinks — schedulable
+      // statuses first, oldest first within each group — so the cap trims
+      // the least-relevant tail, not arbitrary rows.
+      pool_pos: [...pool]
+        .sort((a, b) => {
+          const sched = s => ['Ready to Print', 'Print', 'Approved to Print'].includes(s || '') ? 0 : 1
+          return sched(a.order_status) - sched(b.order_status) || (b.age_days || 0) - (a.age_days || 0)
+        })
+        .slice(0, 400).map(p => ({
         po: p.po_number,
         desc: (p.line_description || '').slice(0, 60),
         status: p.order_status || 'unknown',
@@ -2004,12 +2012,13 @@ function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onAp
         colors: p.colors_count || 0,
         age_d: p.age_days || 0,
         yds_left: Math.round(Number(p.remaining_yards || 0)),
+        cy: Math.round(Number(p.remaining_yards || 0) * (p.colors_count || 1)),
         rev: Math.round(Number(p.income_written || 0)),
         waste_hx: hasWasteHistory(p.line_description) || undefined,
         tint: tintFlags[schedLineKey(p)] || undefined,
         new_goods: p.is_new_goods || undefined,
       })),
-      pool_rows_truncated: Math.max(0, pool.length - 150),
+      pool_rows_truncated: Math.max(0, pool.length - 400),
       // The placed board — every assignment with its table, yards and CURRENT
       // LIFT status, so "don't touch what's placed" and "which placed POs are
       // already Cut/Invoiced" are both answerable.
