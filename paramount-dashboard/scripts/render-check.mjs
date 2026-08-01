@@ -111,12 +111,12 @@ async function main() {
   await page.fill('input[type="password"]', env.RENDER_CHECK_PASSWORD)
   await page.getByRole('button', { name: /sign in/i }).click()
   await page.waitForSelector('text=OPERATIONS', { timeout: 20000 })
-  await capture('ops_home')
+  await capture('ops_home', 8000)
 
   // ── operations sections ──
   // First section from a home box (summons the tab strip), rest via nav.
   await click(page.getByText('Pulse', { exact: true }))
-  await capture('ops_pulse', 4000)
+  await capture('ops_pulse', 8000)
   for (const [tab, name] of [
     ['WIP', 'ops_wip'], ['NEW Goods', 'ops_newgoods'], ['Scheduler', 'ops_scheduler'],
     ['Queue', 'ops_queue'],
@@ -128,7 +128,7 @@ async function main() {
 
   // ── finance ──
   await click(page.getByRole('button', { name: 'FINANCE' }))
-  await capture('finance_home', 3500)
+  await capture('finance_home', 8000)
   await click(page.getByText('P&L', { exact: true }))
   await capture('finance_pnl', 4000)
   for (const [tab, name] of [
@@ -144,7 +144,7 @@ async function main() {
 
   // ── procurement (Emily/Lydia destination, 8/1) ──
   await click(page.getByRole('button', { name: 'PROCUREMENT' }))
-  await capture('proc_home', 3500)
+  await capture('proc_home', 8000)
   await click(page.getByText('Queue', { exact: true }).first())
   await capture('proc_queue', 4000)
   for (const [tab, name] of [
