@@ -8,12 +8,17 @@ import { supabase } from '../supabase'
 // walking the floor, feed health is the first thing you need to trust and the
 // last thing that should require navigation. It is not a tab.
 //
-// TWO FEEDS, NOT THREE. The LIFT snapshot IS the WIP pool — a separate "WIP"
+// TWO FEEDS + THE AUDITOR. The LIFT snapshot IS the WIP pool — a separate "WIP"
 // light would be inventing a distinction that does not exist in the plumbing.
 //   • LIFT    — lift-wip-sync, hourly. Source: newest sched_snapshots.uploaded_at
 //   • Finance — sharefile-sync, daily 9am ET. Source: integration_state
 //               where key = 'sharefile_health' (the only row RLS exposes to the
 //               browser; the OAuth token in that table is not readable here)
+//   • Audit   — audit-nightly, daily ~1am ET: the 13-check data-integrity
+//               battery. Not a feed — the thing that CHECKS the feeds and the
+//               invariants behind every number on screen. Green = ran recently
+//               AND zero fails AND zero warns; a warn shows amber so it nags
+//               without alarming; silence goes red like everything else.
 //
 // GREEN REQUIRES RECENCY *AND* OUTCOME. A light that only reports the last
 // outcome stays green forever if a feed stops running altogether — which has
@@ -77,19 +82,23 @@ function Pill({ name, tierKey, detail }) {
 }
 
 export default function FeedHealthStrip() {
-  const [lift, setLift] = useState(null)
-  const [fin, setFin]   = useState(null)
-  const [, setTick]     = useState(0)
+  const [lift, setLift]   = useState(null)
+  const [fin, setFin]     = useState(null)
+  const [audit, setAudit] = useState(null)
+  const [, setTick]       = useState(0)
 
   async function load() {
-    const [{ data: snap }, { data: health }] = await Promise.all([
+    const [{ data: snap }, { data: health }, { data: auditRun }] = await Promise.all([
       supabase.from('sched_snapshots').select('uploaded_at')
         .order('uploaded_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('integration_state').select('value, updated_at')
         .eq('key', 'sharefile_health').maybeSingle(),
+      supabase.from('audit_runs').select('ran_at, checks_run, passed, warned, failed')
+        .order('ran_at', { ascending: false }).limit(1).maybeSingle(),
     ])
     setLift(snap?.uploaded_at || null)
     setFin(health || null)
+    setAudit(auditRun || null)
   }
 
   useEffect(() => {
@@ -105,6 +114,14 @@ export default function FeedHealthStrip() {
 
   const liftTier = tier(lift, LIFT_FRESH, LIFT_DELAYED, false)
   const finTier  = tier(finRun, FIN_FRESH, FIN_DELAYED, finFailed)
+
+  // Audit: failed → red; warned → amber; clean-and-recent → green;
+  // silence (never ran / past grace) → red, same as everything else.
+  const auditBase = tier(audit?.ran_at, FIN_FRESH, FIN_DELAYED, (audit?.failed || 0) > 0)
+  const auditTier = auditBase === 'fresh' && (audit?.warned || 0) > 0 ? 'delayed' : auditBase
+  const auditDetail = !audit
+    ? 'No audit run yet'
+    : `${audit.checks_run} checks · ${audit.passed} pass / ${audit.warned} warn / ${audit.failed} fail · ran ${ago(audit.ran_at)}`
 
   const finDetail = v?.error            ? v.error
     : v?.jen?.error                     ? `Jen feed: ${v.jen.error}`
@@ -123,6 +140,7 @@ export default function FeedHealthStrip() {
       `}</style>
       <Pill name="LIFT"    tierKey={liftTier} detail={`Last snapshot ${ago(lift)}`} />
       <Pill name="Finance" tierKey={finTier}  detail={finDetail} />
+      <Pill name="Audit"   tierKey={auditTier} detail={auditDetail} />
     </div>
   )
 }
