@@ -306,6 +306,70 @@ export default function DeckKpiTrend() {
     { key: 'htiValue',  label: 'HTI at revenue value', dp: 0, color: 'var(--ink, #F4F3EF)' },
   ]
 
+  // ── H1 TOTALS: Jan–Jun in one column. Flows SUM (gross, waste, net,
+  // invoiced); stocks DON'T — HTI is a point-in-time balance, so H1 shows
+  // where it ENDED (latest month). Grading happens only when every month
+  // contributed both an actual and a target — a 4-month partial sum graded
+  // against a 6-month target bar would grade the calendar, not the work
+  // (610 net_produced only exists Mar–Jun; it shows the sum tagged "4 mo",
+  // ungraded). Cut drill-down rows show no H1 — the cuts change shape across
+  // deck generations, so their partial sums would mislead. ──
+  const H1_LAST = months[months.length - 1]
+  const h1For = (mk, u, dir) => {
+    if (mk === 'prior_hti') return null            // mirrors last month's HTI — no total
+    if (mk === 'hti') {
+      const a = ix[[cc, mk, u, 'total', 'total', 'actual', H1_LAST].join('|')]
+      const t = ix[[cc, mk, u, 'total', 'total', 'target', H1_LAST].join('|')]
+      const g = ix[[cc, mk, u, 'total', 'total', 'gap', H1_LAST].join('|')]
+      if (a?.value == null) return null
+      return { v: a.value, sub: `at ${monthLabel(H1_LAST)} close`,
+               st: statusOf(dir, a.value, t?.value, g?.display) }
+    }
+    let a = 0, na = 0, t = 0, nt = 0
+    for (const p of months) {
+      const av = ix[[cc, mk, u, 'total', 'total', 'actual', p].join('|')]?.value
+      const tv = ix[[cc, mk, u, 'total', 'total', 'target', p].join('|')]?.value
+      if (av != null) { a += Number(av); na++ }
+      if (tv != null) { t += Number(tv); nt++ }
+    }
+    if (na === 0) return null
+    const complete = na === months.length && nt === months.length
+    return {
+      v: a,
+      sub: complete ? `Σ target ${fmt(t)}` : `${na} mo`,
+      st: complete ? statusOf(dir, a, t, null) : null,
+    }
+  }
+
+  // Dollar H1: cost/yd and rev/yd are TOTAL ÷ TOTAL across the half — never
+  // an average of monthly averages. Waste cost sums (each month already priced
+  // at its own blended rate). HTI value is the balance at the latest close.
+  const h1Dollars = useMemo(() => {
+    if (!fin || !rows || months.length === 0) return null
+    let rev = 0, cogs = 0, inv = 0, waste = 0
+    for (const p of months) {
+      const f = fin[cc + '|' + p]
+      const iv = ix[[cc, 'invoiced', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+      const w  = ix[[cc, 'production_waste', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
+      if (!f || iv == null || !(Number(iv) > 0)) continue
+      rev  += f.revenue || 0
+      cogs += f.cogs || 0
+      inv  += Number(iv)
+      if (w != null && f.cogs != null) waste += Number(w) * f.cogs / Number(iv)
+    }
+    if (!(inv > 0)) return null
+    return {
+      costPerYd: cogs / inv,
+      revPerYd:  rev / inv,
+      wasteCost: waste,
+      htiValue:  dollars[H1_LAST]?.htiValue ?? null,
+    }
+  }, [fin, rows, months, ix, cc, dollars, H1_LAST])
+
+  // H1 column separation — a quiet left rule so totals read as a different
+  // register from the months, not a seventh month.
+  const h1Td = { borderLeft: '1px solid var(--border, #2A3340)' }
+
   if (err) return <div style={{ ...S.wrap, color: RED, fontSize: 13 }}>Couldn't load KPI data: {err}</div>
   if (!rows) return <div style={{ ...S.wrap, color: 'var(--ink-60)', fontSize: 13 }}>Loading KPI trend…</div>
 
@@ -332,6 +396,7 @@ export default function DeckKpiTrend() {
             <tr>
               <th style={{ ...S.th, ...S.thL }}>KPI · yards unless noted</th>
               {months.map(p => <th key={p} style={S.th}>{monthLabel(p)}</th>)}
+              <th style={{ ...S.th, ...h1Td }}>H1</th>
             </tr>
           </thead>
           <tbody>
@@ -360,6 +425,15 @@ export default function DeckKpiTrend() {
                         </td>
                       )
                     })}
+                    {(() => {
+                      const h = h1For(m.key, m.unit, m.dir)
+                      return (
+                        <td style={{ ...S.td, ...h1Td }}>
+                          <div style={S.act(h?.st ?? null)}>{h ? fmt(Math.round(h.v)) : '—'}</div>
+                          {h?.sub && <div style={S.tgt}>{h.sub}</div>}
+                        </td>
+                      )
+                    })()}
                   </tr>
                   {isOpen && cuts.map(c => (
                     <tr key={m.key + c.ck}>
@@ -376,6 +450,7 @@ export default function DeckKpiTrend() {
                           </td>
                         )
                       })}
+                      <td style={{ ...S.td, ...h1Td }}><div style={S.cut}>—</div></td>
                     </tr>
                   ))}
                 </React.Fragment>
@@ -390,6 +465,7 @@ export default function DeckKpiTrend() {
                     Dollar value · Vena joined
                   </td>
                   {months.map(p => <td key={p} style={{ ...S.td, paddingTop: 14 }} />)}
+                  <td style={{ ...S.td, ...h1Td, paddingTop: 14 }} />
                 </tr>
                 {DOLLAR_ROWS.map(d => (
                   <tr key={d.key}>
@@ -404,6 +480,14 @@ export default function DeckKpiTrend() {
                         </div>
                       </td>
                     ))}
+                    <td style={{ ...S.td, ...h1Td }}>
+                      <div style={{ ...S.act(null), color: d.color }}>
+                        {fmtD(h1Dollars?.[d.key], d.dp)}
+                      </div>
+                      {d.key === 'htiValue' && h1Dollars?.htiValue != null && (
+                        <div style={S.tgt}>at {monthLabel(H1_LAST)} close</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </>
@@ -439,6 +523,7 @@ export default function DeckKpiTrend() {
         <span style={{ marginLeft: 'auto' }}>
           609 grades are the deck's own words · 610 graded vs target from March (deck went numeric)
           · $ rows: Vena COGS &amp; revenue ÷ invoiced yards; waste at blended cost, HTI at revenue rate
+          · H1 = Jan–Jun totals; HTI and its $ value shown at the latest close, $/yd = half-year totals divided
         </span>
       </div>
     </div>
