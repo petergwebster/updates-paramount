@@ -141,7 +141,10 @@ export default function AdminLayout({
           )}
 
           {view === 'system-info' && (
-            <SystemInfoPanel dbReady={dbReady} userProfile={userProfile} />
+            <>
+              <SystemInfoPanel dbReady={dbReady} userProfile={userProfile} />
+              <AuditPanel />
+            </>
           )}
         </section>
       </div>
@@ -285,6 +288,128 @@ function SystemInfoPanel({ dbReady, userProfile }) {
                 </div>
               </td>
             </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Audit panel — the nightly battery's latest verdicts, and the answer to
+// "the header light is red, what happened." Every check writes a row every
+// run, so this is the latest run's thirteen lines, fails first, in the same
+// plain English the function wrote. Run-now exists so a fix can be re-tested
+// immediately instead of waiting for 1am.
+// ─────────────────────────────────────────────────────────────────────
+
+const CHECK_LABELS = {
+  hti_chain:          'HTI chain — deck months link',
+  deck_kpis_shape:    'Deck KPI completeness',
+  deck_freshness:     'Deck extraction current',
+  deck_vena_coverage: 'Deck ↔ Vena join coverage',
+  cost_per_yd_sane:   'Cost per yard sanity band',
+  vena_period_volume: 'Vena load volume',
+  txn_bbf_guard:      'BBF phantom-row guard',
+  txn_single_source:  'Transactions single-source',
+  lift_freshness:     'LIFT feed freshness',
+  lift_completeness:  'LIFT snapshot completeness',
+  sharefile_health:   'Finance feed health',
+  people_freshness:   'Payroll freshness',
+  order_ledger_floor: 'Order ledger never shrinks',
+}
+const STATUS_ORDER = { fail: 0, warn: 1, pass: 2 }
+const STATUS_DOT   = { fail: 'systemDot_error', warn: 'systemDot_info', pass: 'systemDot_ok' }
+
+function AuditPanel() {
+  const [run, setRun]           = useState(null)
+  const [findings, setFindings] = useState(null)
+  const [firing, setFiring]     = useState(false)
+  const [fireNote, setFireNote] = useState('')
+
+  async function load() {
+    const { data: r } = await supabase.from('audit_runs')
+      .select('id, ran_at, trigger_by, checks_run, passed, warned, failed, duration_ms')
+      .order('ran_at', { ascending: false }).limit(1).maybeSingle()
+    setRun(r || null)
+    if (r) {
+      const { data: f } = await supabase.from('audit_findings')
+        .select('check_key, status, summary')
+        .eq('run_id', r.id)
+      setFindings((f || []).sort((a, b) =>
+        (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
+        || a.check_key.localeCompare(b.check_key)))
+    } else {
+      setFindings([])
+    }
+  }
+  useEffect(() => { load() }, [])
+
+  async function runNow() {
+    setFiring(true); setFireNote('')
+    try {
+      const res = await fetch('/.netlify/functions/audit-run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      })
+      const j = await res.json()
+      if (j.failed != null) {
+        setFireNote(`Ran: ${j.passed} pass / ${j.warned} warn / ${j.failed} fail in ${(j.duration_ms / 1000).toFixed(1)}s`)
+        await load()
+      } else {
+        setFireNote(`Run failed: ${j.error || res.status}`)
+      }
+    } catch (e) {
+      setFireNote(`Run failed: ${e.message}`)
+    }
+    setFiring(false)
+  }
+
+  const headline = !run ? 'Never run'
+    : `${run.checks_run} checks · ${run.passed} pass / ${run.warned} warn / ${run.failed} fail`
+  const headDot = !run ? 'systemDot_error'
+    : run.failed > 0 ? 'systemDot_error'
+    : run.warned > 0 ? 'systemDot_info'
+    : 'systemDot_ok'
+
+  return (
+    <div className={styles.systemInfo} style={{ marginTop: 28 }}>
+      <div className={styles.systemHeader} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <h2 className={styles.systemTitle}>Nightly audit</h2>
+          <p className={styles.systemSub}>
+            Thirteen data-integrity checks, every night at ~1am — the header Audit light is this run.
+          </p>
+        </div>
+        <button
+          onClick={runNow}
+          disabled={firing}
+          style={{
+            fontSize: 12, fontWeight: 600, padding: '8px 14px', borderRadius: 8,
+            border: '1px solid var(--border)', background: 'var(--surface-2)',
+            color: 'var(--ink)', cursor: firing ? 'wait' : 'pointer', whiteSpace: 'nowrap',
+          }}
+        >{firing ? 'Running…' : 'Run audit now'}</button>
+      </div>
+
+      <div style={{ fontSize: 13, color: 'var(--ink-60)', margin: '2px 0 12px' }}>
+        <span className={`${styles.systemDot} ${styles[headDot]}`} />
+        {headline}
+        {run && <span style={{ color: 'var(--ink-40)' }}>{' · '}{ageLabel(ageOf(run.ran_at))}{run.trigger_by ? ` · ${run.trigger_by}` : ''}</span>}
+        {fireNote && <span style={{ marginLeft: 10, color: 'var(--ink-40)' }}>{fireNote}</span>}
+      </div>
+
+      {findings && findings.length > 0 && (
+        <table className={styles.systemTable}>
+          <tbody>
+            {findings.map(f => (
+              <tr key={f.check_key}>
+                <td className={styles.systemLabel}>{CHECK_LABELS[f.check_key] || f.check_key}</td>
+                <td className={styles.systemValue}>
+                  <span className={`${styles.systemDot} ${styles[STATUS_DOT[f.status] || 'systemDot_error']}`} />
+                  {f.summary}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
