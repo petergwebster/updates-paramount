@@ -528,9 +528,12 @@ const runSync = async (event) => {
       // July included to expose approval-date lag draining June.
       const [text, sumText] = await Promise.all([fetchCsv('invoiceshub'), fetchCsv('InvoiceSummary')])
       const { records } = parseCsv(text)
-      const invType = {}
+      const invType = {}, invDate = {}
       for (const s of parseCsv(sumText).records)
-        if (s.INVOICENUMBER) invType[s.INVOICENUMBER] = s.ORDERTYPE || ''
+        if (s.INVOICENUMBER) {
+          invType[s.INVOICENUMBER] = s.ORDERTYPE || ''
+          invDate[s.INVOICENUMBER] = s.INVOICEDATE || ''
+        }
       // order → {site, product_type} from order_ledger, paged
       const led = {}
       let off = 0
@@ -543,7 +546,7 @@ const runSync = async (event) => {
         if (!Array.isArray(page) || page.length < 1000) break
         off += 1000
       }
-      const agg = {}, byType = {}
+      const agg = {}, byType = {}, byTypeApproved = {}, excluded = {}
       let noLedger = 0, noType = 0, uomSeen = {}
       for (const r of records) {
         const month = (r.INVOICEAPPROVEDDATE || '').slice(0, 7)
@@ -563,10 +566,25 @@ const runSync = async (event) => {
         if (!agg[k]) agg[k] = { month, site, yd: 0, ground_yd: 0, pieces_qty: 0, lines: 0 }
         agg[k][bucket] += qty
         agg[k].lines++
-        // the deck's dimension: month × ORDER_TYPE, yards only
+        // the deck's dimension: ORDER_TYPE by TRUE INVOICE DATE (approval
+        // trails the invoice across month ends — v2's swings proved it), and
+        // procurement/unknown sites excluded (decks say "excl. Procurement";
+        // proc orders carry ordinary order types and inflated v2 by ~10-14%).
         if (isYd && !ptype.includes('ground')) {
-          const tk = `${month}|${otype}`
-          byType[tk] = (byType[tk] || 0) + qty
+          const coreSite = site === 'bny' || site === 'passaic'
+          const im = (invDate[r.INVOICENUMBER] || '').slice(0, 7)
+          if (coreSite && im.startsWith('202')) {
+            const tk = `${im}|${otype}`
+            byType[tk] = (byType[tk] || 0) + qty
+          }
+          if (coreSite) {
+            const ak = `${month}|${otype}`
+            byTypeApproved[ak] = (byTypeApproved[ak] || 0) + qty
+          }
+          if (!coreSite && im.startsWith('202')) {
+            const pk = `${im}|${site}`
+            excluded[pk] = (excluded[pk] || 0) + qty
+          }
         }
       }
       const shape = (o) => Object.entries(o)
@@ -581,12 +599,14 @@ const runSync = async (event) => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tieout: 'invoiceshub line-level v2',
+          tieout: 'invoiceshub line-level v3 — invoice-date basis, core sites only',
           total_lines: records.length,
           lines_without_ledger_match: noLedger,
           lines_without_invoice_type: noType,
           uom_distribution: uomSeen,
-          by_order_type_2026: shape(byType),
+          by_order_type_invoice_date: shape(byType),
+          by_order_type_approved_date: shape(byTypeApproved),
+          excluded_proc_unknown_by_invoice_date: shape(excluded),
           by_site_2026: out,
         }, null, 2),
       }
