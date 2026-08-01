@@ -347,6 +347,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         bny_bucket: src.bny_bucket || null,
         customer_type: src.customer_type || null,
         colors_count: src.colors_count || null,
+        // LIFT status rides along (Ramon 7/28 feedback, applied to both
+        // schedulers): a placed PO that's gone to Cut / Invoiced should SAY
+        // so on the board and in Claude's context.
+        order_status: src.order_status || null,
         income_per_yard: src.income_written && src.yards_written ? (src.income_written / src.yards_written) : 0,
         // Rides along on the assignment rather than being threaded down as a
         // prop through the machine rows to the card.
@@ -1101,6 +1105,9 @@ function AssignmentChip({ a, onRemove, onEdit }) {
             · {a.colors_count}c
           </span>
         )}
+        {a.order_status && (
+          <span style={{ fontSize: 7, padding: '0 4px', borderRadius: 2, background: C.navyLight, color: C.navy, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{a.order_status}</span>
+        )}
         {a.age_days != null && (
           <span style={{ marginLeft: 'auto', color: a.age_days > 90 ? C.rose : C.inkLight, fontWeight: a.age_days > 90 ? 700 : 400 }}>{a.age_days}d</span>
         )}
@@ -1165,6 +1172,12 @@ function PoolCardBNY({ r, poTotal = null, selected, onToggle }) {
         <span>·</span>
         <span style={{ color: r.age_days > 90 ? C.rose : C.inkLight, fontWeight: r.age_days > 90 ? 700 : 400 }}>{r.age_days}d</span>
       </div>
+      {/* LIFT status (Ramon 7/28, ported to BNY): filtered on but never shown. */}
+      {r.order_status && (
+        <div style={{ marginTop: 3 }}>
+          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: C.navyLight, color: C.navy, fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase' }}>{r.order_status}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -1435,18 +1448,35 @@ Tone: peer-to-peer, warm but direct. No headers, no bullet points — prose para
       sampledPool.push(...byBucket[b].slice(0, cap))
     }
     const poolLines = sampledPool.map(p =>
-      `  ${p.po_number} | ${p.line_description} | ${p.bny_bucket} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`
+      `  ${p.po_number} | ${p.line_description} | ${p.bny_bucket} | ${p.order_status || '?'} | ${p.colors_count||'?'}c | ${p.remaining_yards}yd | ${p.age_days}d | $${Math.round(p.income_written||0)}`
     ).join('\n')
     const poolCountsLine = BUCKET_PRIORITY.map(b =>
       `${b}: ${byBucket[b].length} total${byBucket[b].length > (BUCKET_CAPS[b]||30) ? ` (showing top ${BUCKET_CAPS[b]||30} by age)` : ''}`
     ).join(' · ')
+
+    // THE PLACED BOARD (Ramon 7/28, ported to BNY): the proposal protocol
+    // enforces hard per-machine-day capacity sums, but Claude was never shown
+    // the assignments already consuming that capacity — it could overfill a
+    // cell without knowing. Every placed row, with its machine, day, yards
+    // and CURRENT LIFT status.
+    const placedLines = enrichedAssignments.map(a =>
+      `  ${a.table_code} ${DAY_LABELS[a.day_of_week] ?? 'wk'} | ${a.po_number} | ${(a.line_description || '').slice(0, 40)} | ${Math.round(Number(a.planned_yards || 0))}yd | ${a.order_status || '?'}`
+    ).join('\n')
 
     const contextNote = `\n\n[CURRENT STATE — not from user, for your context:
 ${JSON.stringify(context, null, 2)}
 ${actualsBlock ? `\nRECENT DAILY ACTUALS (from Chandler — use these to pivot the remaining week. If actuals show a machine fell short, consider adding catch-up yards on the remaining days; if a machine ran over or a PO's done, don't re-propose it):\n${actualsBlock}\n` : ''}
 POOL (ordered by bucket priority — MTO first, then Memo, HOS, 3P, NEW GOODS, Replen; within each bucket sorted by age descending)
 Pool counts by bucket: ${poolCountsLine}
+Pool line format: PO | pattern | bucket | LIFT STATUS | colors | yards | age | revenue
 ${poolLines}
+
+PLACED THIS WEEK — the current board. Treat these as CONSUMED machine-day capacity in every sum. NEVER re-propose a PO listed here. If a placed PO's status shows Cut / Shipped / Invoiced / Complete, flag it — that machine-day may be reclaimable:
+${placedLines || '  (nothing placed yet)'}
+
+LIFT STATUS DOCTRINE:
+- SCHEDULABLE by default: "Ready to Print", "Print", "Approved to Print". Do NOT propose POs in: Waiting for Screen, Waiting for Material, Waiting for Sample, Waiting for Approval, Ink Mixing, Mixing, In Mixing Queue, Order Unallocated — unless Chandler explicitly asks to plan ahead for them.
+- Statuses come from the hourly LIFT feed and are current as of page load.
 
 CRITICAL REMINDERS when proposing assignments:
 - Machine names must match EXACTLY: Glow / Sasha / Trish / Bianca / LASH / Chyna / Rhonda (Brooklyn); Dakota Kai / Dementia / Ember / Ivy Nile / Jacy Jayne / Ruby / Valhalla / XIA / Apollo / Nemesis / Poseidon / Zoey (Passaic BNY).
