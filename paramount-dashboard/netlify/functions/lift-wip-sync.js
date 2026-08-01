@@ -520,8 +520,17 @@ const runSync = async (event) => {
     // sets, panel sets) count separately — they are pieces, not yards.
     // Benchmark: deck slide-4 May 610 invoiced = 31,436 (the hard number).
     if (tieout) {
-      const text = await fetchCsv('invoiceshub')
+      // v2: also join InvoiceSummary (invoice → ORDER_TYPE) because the deck's
+      // 610/609 split is by ORDER TYPE (Screen Print vs Digital), not by our
+      // WIP-feed site bucket — v1 proved the totals tie (~3%) while the site
+      // split missed symmetrically by ~15K: same yards, different label (the
+      // 12 Passaic small-digitals bucket to BNY in the feed but are 609 work).
+      // July included to expose approval-date lag draining June.
+      const [text, sumText] = await Promise.all([fetchCsv('invoiceshub'), fetchCsv('InvoiceSummary')])
       const { records } = parseCsv(text)
+      const invType = {}
+      for (const s of parseCsv(sumText).records)
+        if (s.INVOICENUMBER) invType[s.INVOICENUMBER] = s.ORDERTYPE || ''
       // order → {site, product_type} from order_ledger, paged
       const led = {}
       let off = 0
@@ -534,8 +543,8 @@ const runSync = async (event) => {
         if (!Array.isArray(page) || page.length < 1000) break
         off += 1000
       }
-      const agg = {}
-      let noLedger = 0, uomSeen = {}
+      const agg = {}, byType = {}
+      let noLedger = 0, noType = 0, uomSeen = {}
       for (const r of records) {
         const month = (r.INVOICEAPPROVEDDATE || '').slice(0, 7)
         if (!month.startsWith('202')) continue
@@ -543,6 +552,8 @@ const runSync = async (event) => {
         if (!L) noLedger++
         const site = (L && L.site) || 'unknown'
         const ptype = ((L && L.product_type) || '').toLowerCase()
+        const otype = invType[r.INVOICENUMBER] || 'unknown'
+        if (otype === 'unknown') noType++
         const uom = (r.UOM || '').toUpperCase()
         uomSeen[uom] = (uomSeen[uom] || 0) + 1
         const qty = parseFloat(r.QUANTITY) || 0
@@ -552,7 +563,16 @@ const runSync = async (event) => {
         if (!agg[k]) agg[k] = { month, site, yd: 0, ground_yd: 0, pieces_qty: 0, lines: 0 }
         agg[k][bucket] += qty
         agg[k].lines++
+        // the deck's dimension: month × ORDER_TYPE, yards only
+        if (isYd && !ptype.includes('ground')) {
+          const tk = `${month}|${otype}`
+          byType[tk] = (byType[tk] || 0) + qty
+        }
       }
+      const shape = (o) => Object.entries(o)
+        .map(([k, v]) => { const [month, cut] = k.split('|'); return { month, cut, yd: Math.round(v) } })
+        .filter(a => a.month >= '2026-01')
+        .sort((a, b) => a.month.localeCompare(b.month) || a.cut.localeCompare(b.cut))
       const out = Object.values(agg)
         .filter(a => a.month >= '2026-01')
         .sort((a, b) => a.month.localeCompare(b.month) || a.site.localeCompare(b.site))
@@ -561,11 +581,13 @@ const runSync = async (event) => {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tieout: 'invoiceshub line-level',
+          tieout: 'invoiceshub line-level v2',
           total_lines: records.length,
           lines_without_ledger_match: noLedger,
+          lines_without_invoice_type: noType,
           uom_distribution: uomSeen,
-          months_2026: out,
+          by_order_type_2026: shape(byType),
+          by_site_2026: out,
         }, null, 2),
       }
     }
