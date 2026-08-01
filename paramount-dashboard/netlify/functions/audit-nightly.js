@@ -32,7 +32,10 @@ async function sb(path, { method = 'GET', headers = {}, body } = {}) {
     return { count: Number(range.split('/')[1] || 0), ok: res.ok }
   }
   if (!res.ok) throw new Error(`${method} ${path.split('?')[0]} → ${res.status}`)
-  return res.status === 204 ? null : res.json()
+  // PostgREST answers bare POSTs with 201 and an EMPTY body — res.json() on
+  // nothing throws. Parse only what exists.
+  const text = await res.text()
+  return text ? JSON.parse(text) : null
 }
 const headCount = (path) => sb(path, { method: 'HEAD', headers: { Prefer: 'count=exact' } })
 
