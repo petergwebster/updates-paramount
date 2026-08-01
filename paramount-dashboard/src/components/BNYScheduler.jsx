@@ -126,6 +126,22 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   const [filterApprovedToPrint, setFilterApprovedToPrint] = useState(false)
   const [filterReadyToPrint, setFilterReadyToPrint] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
+  // SUBMIT & COMPARE (Ramon 7/28 — Build C, ported to BNY).
+  const [submission, setSubmission] = useState(null)
+  const [submitBusy, setSubmitBusy] = useState(false)
+  const [driftOpen, setDriftOpen]   = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('sched_submissions')
+        .select('id, version, submitted_at, submitted_by, totals, rows')
+        .eq('site', 'bny').eq('week_start', isoDate(weekStart))
+        .order('version', { ascending: false }).limit(1)
+      if (!cancelled) { setSubmission(data?.[0] || null); setDriftOpen(false) }
+    })()
+    return () => { cancelled = true }
+  }, [weekStart])
   const [activeDragPO, setActiveDragPO] = useState(null)
 
   // CROSS-WEEK BURN-DOWN (Ramon's bug, same fix as PassaicScheduler): the
@@ -384,6 +400,59 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     URL.revokeObjectURL(url)
   }
 
+  // SUBMIT (Build C): freeze the current machine-day board as an immutable
+  // version; resubmits bump the version, never overwrite.
+  async function submitWeek() {
+    if (!enrichedAssignments.length || submitBusy) return
+    setSubmitBusy(true)
+    const rows = enrichedAssignments.map(a => ({
+      table_code: a.table_code, day_of_week: a.day_of_week ?? null,
+      po_number: a.po_number, item_sku: a.item_sku || null, color: a.color || null,
+      line_description: a.line_description, bny_bucket: a.bny_bucket || null,
+      planned_yards: Math.round(Number(a.planned_yards || 0)),
+      order_status: a.order_status || null, operator: a.operator || null,
+    }))
+    const totals = { count: rows.length, yards: Math.round(mixTotals.yards), revenue: Math.round(mixTotals.revenue), brooklyn_yards: Math.round(mixTotals.brooklyn_yards), passaic_yards: Math.round(mixTotals.passaic_yards) }
+    const { data, error } = await supabase.from('sched_submissions')
+      .insert({ site: 'bny', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows })
+      .select('id, version, submitted_at, totals, rows').single()
+    if (error) alert('Submit failed: ' + (error.message || error))
+    else { setSubmission(data); setDriftOpen(false) }
+    setSubmitBusy(false)
+  }
+
+  // DRIFT (Build C): identity = the job (PO+SKU+colorway); placement = the
+  // set of machine·day cells it occupies (BNY plans at day grain).
+  const drift = useMemo(() => {
+    if (!submission) return null
+    const key = r => `${r.po_number}|${r.item_sku || ''}|${r.color || ''}`
+    const cell = r => `${r.table_code}${r.day_of_week != null && r.day_of_week !== '' ? '·' + (DAY_LABELS[r.day_of_week] ?? r.day_of_week) : ''}`
+    const fold = (list, getDesc) => {
+      const m = new Map()
+      for (const r of list) {
+        const k = key(r)
+        const e = m.get(k) || { yards: 0, cells: new Set(), desc: getDesc(r) }
+        e.yards += Number(r.planned_yards || 0)
+        e.cells.add(cell(r))
+        m.set(k, e)
+      }
+      return m
+    }
+    const snap = fold(submission.rows || [], r => r.line_description || r.po_number)
+    const cur  = fold(enrichedAssignments,   a => a.line_description || a.po_number)
+    const added = [], removed = [], changed = []
+    for (const [k, c] of cur) {
+      const s = snap.get(k)
+      if (!s) { added.push({ k, desc: c.desc, yards: Math.round(c.yards), cells: [...c.cells].sort().join(', ') }); continue }
+      const cA = [...s.cells].sort().join(', '), cB = [...c.cells].sort().join(', ')
+      if (Math.round(s.yards) !== Math.round(c.yards) || cA !== cB)
+        changed.push({ k, desc: c.desc, fromY: Math.round(s.yards), toY: Math.round(c.yards), fromC: cA, toC: cB })
+    }
+    for (const [k, s] of snap) if (!cur.has(k))
+      removed.push({ k, desc: s.desc, yards: Math.round(s.yards), cells: [...s.cells].sort().join(', ') })
+    return { added, removed, changed, clean: !added.length && !removed.length && !changed.length }
+  }, [submission, enrichedAssignments])
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, revenue: 0,
@@ -625,6 +694,13 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
         </span>
         <div style={{ flex: 1 }} />
         {enrichedAssignments.length > 0 && (
+          <button onClick={submitWeek} disabled={submitBusy}
+            title="Freeze this week's board as a version — the board then tracks added / removed / changed against it"
+            style={{ padding: '8px 14px', background: submitBusy ? '#9ca3af' : C.sage, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: submitBusy ? 'default' : 'pointer' }}>
+            {submitBusy ? 'Submitting…' : submission ? `Resubmit · v${(submission.version || 0) + 1}` : '✓ Submit week'}
+          </button>
+        )}
+        {enrichedAssignments.length > 0 && (
           <button onClick={exportScheduleCsv}
             title="Download this week's machine-day board as a CSV — opens in Excel, prints for the teams"
             style={{ padding: '8px 14px', background: 'transparent', color: C.navy, border: `1px solid ${C.navy}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -638,6 +714,37 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           </button>
         )}
       </div>
+
+      {/* SUBMISSION STATUS + DRIFT (Build C, ported to BNY). */}
+      {submission && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}>
+          <span style={{ color: C.sage, fontWeight: 700 }}>✓ Submitted v{submission.version}</span>
+          <span style={{ color: C.inkLight }}>
+            {new Date(submission.submitted_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {' · '}{submission.totals?.count ?? (submission.rows || []).length} jobs · {fmt(submission.totals?.yards || 0)} yd
+          </span>
+          {drift && drift.clean && <span style={{ color: C.inkLight }}>· board matches the submission</span>}
+          {drift && !drift.clean && (
+            <button onClick={() => setDriftOpen(o => !o)}
+              style={{ padding: '3px 10px', background: C.amberBg, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              since submit: +{drift.added.length} added · −{drift.removed.length} removed · Δ{drift.changed.length} changed {driftOpen ? '▴' : '▾'}
+            </button>
+          )}
+        </div>
+      )}
+      {submission && drift && !drift.clean && driftOpen && (
+        <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
+          {drift.added.map(d => (
+            <div key={'a' + d.k} style={{ color: C.sage }}>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.cells}</div>
+          ))}
+          {drift.removed.map(d => (
+            <div key={'r' + d.k} style={{ color: C.rose }}>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.cells}</div>
+          ))}
+          {drift.changed.map(d => (
+            <div key={'c' + d.k} style={{ color: C.amber }}>Δ <strong>{d.desc}</strong> — {d.fromC !== d.toC ? `${d.fromC} → ${d.toC}` : d.toC}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</div>
+          ))}
+        </div>
+      )}
 
       <div style={{ position: 'sticky', top: 8, zIndex: 10, background: C.cream, paddingTop: 4, paddingBottom: 8, marginBottom: 4 }}>
         <BNYTopGauges totals={mixTotals} />

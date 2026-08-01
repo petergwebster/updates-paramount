@@ -97,6 +97,24 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   const [filterApprovedToPrint, setFilterApprovedToPrint] = useState(false)
   const [filterReadyToPrint, setFilterReadyToPrint] = useState(false)
   const [askClaudeOpen, setAskClaudeOpen] = useState(false)
+  // SUBMIT & COMPARE (Ramon 7/28 — Build C): the latest frozen submission
+  // for this site+week, and whether the drift detail panel is open.
+  const [submission, setSubmission] = useState(null)
+  const [submitBusy, setSubmitBusy] = useState(false)
+  const [driftOpen, setDriftOpen]   = useState(false)
+
+  // Latest submission for the selected week (highest version wins).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase.from('sched_submissions')
+        .select('id, version, submitted_at, submitted_by, totals, rows')
+        .eq('site', 'passaic').eq('week_start', isoDate(weekStart))
+        .order('version', { ascending: false }).limit(1)
+      if (!cancelled) { setSubmission(data?.[0] || null); setDriftOpen(false) }
+    })()
+    return () => { cancelled = true }
+  }, [weekStart])
   const [crewModalTable, setCrewModalTable] = useState(null)  // tableCode string or null
   const [weekDailyOps, setWeekDailyOps] = useState([])
   const [activeDragPO, setActiveDragPO] = useState(null)
@@ -465,6 +483,60 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     URL.revokeObjectURL(url)
   }
 
+  // SUBMIT (Build C): freeze the current board as an immutable version.
+  // Resubmitting never overwrites — v2, v3… preserve the history of intent.
+  async function submitWeek() {
+    if (!enrichedAssignments.length || submitBusy) return
+    setSubmitBusy(true)
+    const rows = enrichedAssignments.map(a => ({
+      table_code: a.table_code, day_of_week: a.day_of_week || null, shift: a.shift || '1st',
+      po_number: a.po_number, item_sku: a.item_sku || null, color: a.color || null,
+      line_description: a.line_description,
+      planned_yards: Math.round(Number(a.planned_yards || 0)),
+      planned_cy: Math.round(Number(a.planned_cy || 0)),
+      order_status: a.order_status || null, customer_type: a.customer_type || null,
+    }))
+    const totals = { count: rows.length, yards: Math.round(mixTotals.yards), cy: Math.round(mixTotals.cy), revenue: Math.round(mixTotals.revenue) }
+    const { data, error } = await supabase.from('sched_submissions')
+      .insert({ site: 'passaic', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows })
+      .select('id, version, submitted_at, totals, rows').single()
+    if (error) alert('Submit failed: ' + (error.message || error))
+    else { setSubmission(data); setDriftOpen(false) }
+    setSubmitBusy(false)
+  }
+
+  // DRIFT (Build C): current board vs the frozen submission. Identity = the
+  // JOB (PO + SKU + colorway); placement = the set of tables it sits on.
+  // Added / removed / changed(yards or placement), Ramon's exact vocabulary.
+  const drift = useMemo(() => {
+    if (!submission) return null
+    const key = r => `${r.po_number}|${r.item_sku || ''}|${r.color || ''}`
+    const fold = (list, getDesc) => {
+      const m = new Map()
+      for (const r of list) {
+        const k = key(r)
+        const e = m.get(k) || { yards: 0, tables: new Set(), desc: getDesc(r) }
+        e.yards += Number(r.planned_yards || 0)
+        e.tables.add(r.table_code)
+        m.set(k, e)
+      }
+      return m
+    }
+    const snap = fold(submission.rows || [], r => r.line_description || r.po_number)
+    const cur  = fold(enrichedAssignments,   a => a.line_description || a.po_number)
+    const added = [], removed = [], changed = []
+    for (const [k, c] of cur) {
+      const s = snap.get(k)
+      if (!s) { added.push({ k, desc: c.desc, yards: Math.round(c.yards), tables: [...c.tables].sort().join(' + ') }); continue }
+      const tA = [...s.tables].sort().join(' + '), tB = [...c.tables].sort().join(' + ')
+      if (Math.round(s.yards) !== Math.round(c.yards) || tA !== tB)
+        changed.push({ k, desc: c.desc, fromY: Math.round(s.yards), toY: Math.round(c.yards), fromT: tA, toT: tB })
+    }
+    for (const [k, s] of snap) if (!cur.has(k))
+      removed.push({ k, desc: s.desc, yards: Math.round(s.yards), tables: [...s.tables].sort().join(' + ') })
+    return { added, removed, changed, clean: !added.length && !removed.length && !changed.length }
+  }, [submission, enrichedAssignments])
+
   const mixTotals = useMemo(() => {
     const t = {
       yards: 0, cy: 0, revenue: 0,
@@ -657,6 +729,13 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         </span>
         <div style={{ flex: 1 }} />
         {enrichedAssignments.length > 0 && (
+          <button onClick={submitWeek} disabled={submitBusy}
+            title="Freeze this week's board as a version — the board then tracks added / removed / changed against it"
+            style={{ padding: '8px 14px', background: submitBusy ? '#9ca3af' : C.sage, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: submitBusy ? 'default' : 'pointer' }}>
+            {submitBusy ? 'Submitting…' : submission ? `Resubmit · v${(submission.version || 0) + 1}` : '✓ Submit week'}
+          </button>
+        )}
+        {enrichedAssignments.length > 0 && (
           <button onClick={exportScheduleCsv}
             title="Download this week's board as a CSV — opens in Excel, prints for the floor teams"
             style={{ padding: '8px 14px', background: 'transparent', color: C.navy, border: `1px solid ${C.navy}`, borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -670,6 +749,39 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           </button>
         )}
       </div>
+
+      {/* SUBMISSION STATUS + DRIFT (Build C): once a week is submitted, the
+          board quietly reports how far it has drifted from the frozen plan —
+          Ramon's "compare what gets added/removed/edited." */}
+      {submission && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }}>
+          <span style={{ color: C.sage, fontWeight: 700 }}>✓ Submitted v{submission.version}</span>
+          <span style={{ color: C.inkLight }}>
+            {new Date(submission.submitted_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {' · '}{submission.totals?.count ?? (submission.rows || []).length} jobs · {fmt(submission.totals?.yards || 0)} yd
+          </span>
+          {drift && drift.clean && <span style={{ color: C.inkLight }}>· board matches the submission</span>}
+          {drift && !drift.clean && (
+            <button onClick={() => setDriftOpen(o => !o)}
+              style={{ padding: '3px 10px', background: C.amberBg, color: C.amber, border: `1px solid ${C.amber}`, borderRadius: 5, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              since submit: +{drift.added.length} added · −{drift.removed.length} removed · Δ{drift.changed.length} changed {driftOpen ? '▴' : '▾'}
+            </button>
+          )}
+        </div>
+      )}
+      {submission && drift && !drift.clean && driftOpen && (
+        <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
+          {drift.added.map(d => (
+            <div key={'a' + d.k} style={{ color: C.sage }}>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.tables}</div>
+          ))}
+          {drift.removed.map(d => (
+            <div key={'r' + d.k} style={{ color: C.rose }}>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.tables}</div>
+          ))}
+          {drift.changed.map(d => (
+            <div key={'c' + d.k} style={{ color: C.amber }}>Δ <strong>{d.desc}</strong> — {d.fromT !== d.toT ? `${d.fromT} → ${d.toT}` : d.toT}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</div>
+          ))}
+        </div>
+      )}
 
       <div style={{ position: 'sticky', top: 8, zIndex: 10, background: C.cream, paddingTop: 4, paddingBottom: 8, marginBottom: 4 }}>
         <MixGauges totals={mixTotals} />
