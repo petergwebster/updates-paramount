@@ -7,13 +7,24 @@
 //
 // Same pattern as lift-wip-run. Returns the full findings list either way.
 
-const { runAudit } = require('./audit-nightly')
+const { runAudit, slackNotify } = require('./audit-nightly')
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST')
     return { statusCode: 405, body: 'POST only' }
-  let dryRun = false
-  try { dryRun = !!JSON.parse(event.body || '{}').dryRun } catch { /* default false */ }
+  let dryRun = false, testSlack = false
+  try {
+    const b = JSON.parse(event.body || '{}')
+    dryRun = !!b.dryRun
+    testSlack = !!b.testSlack
+  } catch { /* default false */ }
+  // Wiring check: sends one harmless test message through the same path the
+  // failure alert uses, so the Slack leg can be verified without
+  // manufacturing a data failure.
+  if (testSlack) {
+    const r = await slackNotify('🧪 Audit Slack wiring test — this is the channel and voice a real failure alert will use. (No failure occurred.)')
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ testSlack: true, ...r }) }
+  }
   try {
     const r = await runAudit('manual', dryRun)
     return {

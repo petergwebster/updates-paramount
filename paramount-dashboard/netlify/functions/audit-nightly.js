@@ -18,6 +18,30 @@ const { schedule } = require('@netlify/functions')
 const SB_URL = process.env.VITE_SUPABASE_URL
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
+// ── Slack on FAILURE ONLY ── warns stay badge-amber; the nightly all-clear is
+// deliberately silent (a daily "all good" trains everyone to stop reading).
+// Uses the SAME bot-token plumbing as the edge functions (chat.postMessage,
+// SLACK_BOT_TOKEN). Channel: SLACK_AUDIT_CHANNEL_ID if set, else the
+// production notes channel — rerouting later is one env var, no code.
+// Peter's Slack ID from the edge functions' role map.
+const SLACK_PETER = 'U044K8RGAMS'
+async function slackNotify(text) {
+  try {
+    const token = process.env.SLACK_BOT_TOKEN
+    const channel = process.env.SLACK_AUDIT_CHANNEL_ID || process.env.SLACK_NOTES_CHANNEL_ID
+    if (!token || !channel) return { ok: false, reason: 'slack env not set' }
+    const res = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ channel, text, unfurl_links: false }),
+    })
+    const j = await res.json()
+    return { ok: !!j.ok, reason: j.error }
+  } catch (e) {
+    return { ok: false, reason: String(e) }
+  }
+}
+
 async function sb(path, { method = 'GET', headers = {}, body } = {}) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
     method,
@@ -237,11 +261,20 @@ async function runAudit(trigger = 'nightly', dryRun = false) {
       method: 'POST',
       body: findings.map(f => ({ ...f, run_id: run.id })),
     })
+    // Alert on exception only. One message, every failing check named in
+    // plain English, pointing at the self-serve panel.
+    if (failed > 0) {
+      const fails = findings.filter(f => f.status === 'fail')
+        .map(f => `• *${f.check_key}* — ${f.summary}`).join('\n')
+      await slackNotify(
+        `🔴 <@${SLACK_PETER}> Nightly audit: *${failed} check${failed > 1 ? 's' : ''} FAILED* (${passed} passed${warned ? `, ${warned} warned` : ''})\n${fails}\n_Dashboard → gear → Feed health for detail · Run audit now to re-test after a fix_`)
+    }
   }
   return { checks: findings.length, passed, warned, failed, duration_ms, findings }
 }
 
 exports.runAudit = runAudit
+exports.slackNotify = slackNotify
 exports.handler = schedule('0 5 * * *', async () => {
   try {
     const r = await runAudit('nightly', false)
@@ -249,6 +282,9 @@ exports.handler = schedule('0 5 * * *', async () => {
     return { statusCode: 200 }
   } catch (e) {
     console.error('[audit-nightly] crashed:', e)
+    // The auditor failing to run is itself an alertable failure — silence
+    // must never look like health.
+    await slackNotify(`🔴 <@${SLACK_PETER}> Nightly audit CRASHED before completing: ${String(e).slice(0, 300)}\n_The Audit badge will go red on staleness; check Netlify function logs._`)
     return { statusCode: 500 }
   }
 })
