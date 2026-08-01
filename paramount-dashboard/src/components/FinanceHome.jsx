@@ -263,7 +263,7 @@ export default function FinanceHome({ onOpen }) {
              sub={agingDays == null ? 'no aging loaded'
                   : `as of ${String(d.agingAsOf).slice(0, 10)} · ${agingDays} days old`}
              subTone={staleTone(agingDays, 14)}
-             onClick={go('spend')}>
+             onClick={go('arap')}>
           <StackBar segs={[
             { v: Math.abs(d.ar), color: C.revenue, label: 'AR' },
             { v: Math.abs(d.ap), color: C.waste,   label: 'AP' },

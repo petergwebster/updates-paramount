@@ -80,6 +80,7 @@ const FINANCE_TABS = [
   { id: 'pnl',        label: 'P&L' },
   { id: 'kpis',       label: 'KPIs', isNew: true },
   { id: 'spend',      label: 'Spend detail' },
+  { id: 'arap',       label: 'AR / AP' },
   { id: 'inventory',  label: 'Inventory' },
   { id: 'people',     label: 'People' },
   { id: 'reports',    label: 'Reports' },
@@ -631,7 +632,13 @@ export default function App() {
                   <DeckKpiTrend />
                 )}
                 {destination === 'finance' && activeTab==='spend' && (
-                  <FinancialTab weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+                  <FinancialTab section="spend" weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
+                )}
+                {/* AR / AP — the aging, split out of Spend into its own tab
+                    8/2026. Same component, section prop: one data load, one
+                    set of views, two doors — the tabs cannot disagree. */}
+                {destination === 'finance' && activeTab==='arap' && (
+                  <FinancialTab section="arap" weekStart={currentWeek} />
                 )}
                 {destination === 'finance' && activeTab==='inventory' && (
                   <InventoryTab profile={userProfile} />

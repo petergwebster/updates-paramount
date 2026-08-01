@@ -132,6 +132,7 @@ async function main() {
   await capture('finance_pnl', 4000)
   for (const [tab, name] of [
     [/KPIs/, 'finance_kpis'], ['Spend detail', 'finance_spend'],
+    ['AR / AP', 'finance_arap'],
     ['Inventory', 'finance_inventory'], ['People', 'finance_people'],
     ['Reports', 'finance_reports'],
   ]) {

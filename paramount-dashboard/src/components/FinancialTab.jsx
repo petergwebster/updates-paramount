@@ -89,7 +89,14 @@ function SectionRow({ label, bny, nj, shared, indent, isTotal, est }) {
   )
 }
 
-export default function FinancialTab({ weekStart }) {
+export default function FinancialTab({ weekStart, section = 'all' }) {
+  // section: 'all' (legacy) | 'spend' (Spend detail tab — everything BUT the
+  // aging) | 'arap' (the AR / AP tab — ONLY the aging). One component, one
+  // data load, two doors: the aging moved to its own first-class tab 8/2026
+  // but shares every hook and view with the spend side, so the two tabs
+  // cannot disagree.
+  const showSpend = section !== 'arap'
+  const showAging = section !== 'spend'
   const [scope, setScope]       = useState('MTD')
   const [selMonth, setSelMonth] = useState(null)
   const [months, setMonths]     = useState([])
@@ -299,13 +306,16 @@ export default function FinancialTab({ weekStart }) {
     <div className={styles.wrap}>
       <div className={styles.topRow}>
         <div>
-          <h2 className={styles.title}>Financial Summary</h2>
-          <p className={styles.sub}>{scope==='MTD' ? `Month-to-date ${weekHdr}` : `Fiscal year-to-date ${weekHdr}`} · spend, AR/AP & cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></p>
+          <h2 className={styles.title}>{section === 'arap' ? 'AR / AP' : 'Financial Summary'}</h2>
+          <p className={styles.sub}>{section === 'arap'
+            ? <>Receivables &amp; payables aging · from the weekly finance file</>
+            : <>{scope==='MTD' ? `Month-to-date ${weekHdr}` : `Fiscal year-to-date ${weekHdr}`} · spend &amp; cash flow · <span style={{color:'var(--ink-40)'}}>COGS estimated on material-spend basis</span></>}</p>
           <div style={{display:'flex',gap:8,marginTop:8,flexWrap:'wrap'}}>
-            {freshBadge('Purchases', freshness.purchases)}
+            {section !== 'arap' && freshBadge('Purchases', freshness.purchases)}
             {freshBadge('AR/AP aging', freshness.aging)}
           </div>
         </div>
+        {section !== 'arap' && (
         <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
           <div className={styles.periodPicker}>
             {['MTD','YTD'].map(sName => (
@@ -319,6 +329,7 @@ export default function FinancialTab({ weekStart }) {
             </select>
           )}
         </div>
+        )}
       </div>
 
       {/* Future weeks need no data -- show the message regardless of load state. */}
@@ -335,6 +346,7 @@ export default function FinancialTab({ weekStart }) {
 
       {!isFutureWeek && !loading && dataReady && hasData && (
         <>
+          {showSpend && (<>
           {/* Summary cards */}
           <div className={styles.summaryCards}>
             <div className={styles.card}>
@@ -426,8 +438,10 @@ export default function FinancialTab({ weekStart }) {
             </div>
           </div>
 
+          </>)}
+
           {/* AR / AP aging with trend */}
-          {[{label:'Accounts Receivable',type:'ar',now:agingView.arNow,series:agingView.ar},
+          {showAging && [{label:'Accounts Receivable',type:'ar',now:agingView.arNow,series:agingView.ar},
             {label:'Accounts Payable',type:'ap',now:agingView.apNow,series:agingView.ap}].map(sec => sec.now && (
             <div key={sec.type} className={styles.section}>
               <div className={styles.sectionTitle}>{sec.label} -- Aging <span style={{color:'var(--ink-40)',fontWeight:500,textTransform:'none',letterSpacing:0}}>as-of {sec.now.as_of}</span></div>
@@ -461,6 +475,7 @@ export default function FinancialTab({ weekStart }) {
           ))}
 
           {/* CEO narrative */}
+          {showSpend && (
           <div className={styles.section}>
             <div className={styles.sectionTitle} style={{justifyContent:'space-between'}}>
               <span>Claude's Read</span>
@@ -475,6 +490,7 @@ export default function FinancialTab({ weekStart }) {
                 : <div style={{fontSize:13,color:'var(--ink-40)'}}>Click "Draft with AI" for a brief exec read on the {scope} numbers.</div>}
             </div>
           </div>
+          )}
         </>
       )}
     </div>
