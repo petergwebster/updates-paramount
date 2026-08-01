@@ -163,6 +163,7 @@ export default function DeckKpiTrend() {
       const hti = ix[[cc, 'hti', 'yards', 'total', 'total', 'actual', p].join('|')]?.value
       if (!f || !inv) continue
       out[p] = {
+        revenue: f.revenue ?? null,
         costPerYd: f.cogs != null ? f.cogs / inv : null,
         revPerYd:  f.revenue != null ? f.revenue / inv : null,
         wasteCost: (f.cogs != null && waste != null) ? waste * f.cogs / inv : null,
@@ -300,6 +301,7 @@ export default function DeckKpiTrend() {
   }
 
   const DOLLAR_ROWS = [
+    { key: 'revenue',   label: 'Revenue (Vena)', dp: 0, color: 'var(--revenue, #3DD68C)' },
     { key: 'costPerYd', label: 'Cost per invoiced yd', dp: 2, color: 'var(--ink, #F4F3EF)' },
     { key: 'revPerYd',  label: 'Revenue per invoiced yd', dp: 2, color: 'var(--revenue, #3DD68C)' },
     { key: 'wasteCost', label: 'Production waste cost', dp: 0, color: 'var(--waste, #F2555A)' },
@@ -359,6 +361,7 @@ export default function DeckKpiTrend() {
     }
     if (!(inv > 0)) return null
     return {
+      revenue: rev,
       costPerYd: cogs / inv,
       revPerYd:  rev / inv,
       wasteCost: waste,
