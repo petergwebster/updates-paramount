@@ -216,7 +216,9 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
 
   async function sendSlack(r, k) {
     const comment = (slackDraft[k] || '').trim()
-    if (!comment) return
+    // A guard without feedback is a bug: an empty click must SAY so, not
+    // silently do nothing (Peter hit exactly this, 8/1).
+    if (!comment) { setSlackState(s => ({ ...s, [k]: 'type a note first — then send' })); return }
     setSlackState(s => ({ ...s, [k]: 'busy' }))
     try {
       const res = await fetch('/.netlify/functions/slack-queue-notify', {
@@ -436,12 +438,12 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
                   )}
                   {/* PHASE 3 — Slack this order. */}
                   <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-                    <input value={slackDraft[k] || ''} onChange={e => setSlackDraft(d => ({ ...d, [k]: e.target.value }))}
+                    <input value={slackDraft[k] || ''} onChange={e => { setSlackDraft(d => ({ ...d, [k]: e.target.value })); setSlackState(s => { const n = { ...s }; delete n[k]; return n }) }}
                       placeholder="Slack this order to the team — question, priority call, heads-up…"
                       onKeyDown={e => { if (e.key === 'Enter') sendSlack(r, k) }}
                       style={{ flex: 1, padding: '6px 10px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 11, background: 'var(--surface)', color: C.ink }} />
                     <button onClick={() => sendSlack(r, k)} disabled={slackState[k] === 'busy'}
-                      style={{ padding: '6px 12px', background: slackState[k] === 'busy' ? '#9ca3af' : C.navy, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                      style={{ padding: '6px 12px', background: slackState[k] === 'busy' ? '#9ca3af' : (slackDraft[k] || '').trim() ? C.navy : C.inkLight, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                       💬 Slack
                     </button>
                     {slackState[k] === 'sent' && <span style={{ color: C.sage, fontSize: 11, fontWeight: 700 }}>✓ sent</span>}
