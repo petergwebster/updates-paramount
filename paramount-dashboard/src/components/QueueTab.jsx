@@ -42,7 +42,17 @@ const FAMILY_COLOR = { schedulable: C.sage, waiting: C.amber, production: C.navy
 // believed to map to Custom — pending her confirmation.
 function mixGroup(r) {
   if (r.bny_bucket) return r.bny_bucket
+  if (r.site === 'procurement') return 'Procurement'
   return (r.customer_type || '').toLowerCase().includes('3rd') ? '3P (screen)' : 'SCH (screen)'
+}
+
+// Product category (Peter, 8/1): fabric / grasscloth / wallpaper chips "in
+// case we need to get specific" — same mapping the Passaic scheduler uses.
+function catGroup(r) {
+  const t = (r.product_type || '').toLowerCase()
+  if (t.includes('grass')) return 'grasscloth'
+  if (t.includes('paper') || t.includes('panel')) return 'wallpaper'
+  return 'fabric'
 }
 
 function lineKey(r) { return `${r.po_number}|${r.item_sku || ''}|${r.color || ''}` }
@@ -55,7 +65,7 @@ const WEEKLY_TARGET_YD = 23500  // Passaic 8,500 + BNY 15,000
 // the Paul/Vincent chase list and drop straight in when they exist.
 const SLA_DAYS = {
   'MTO': 7, 'Custom': 30, 'NEW GOODS': 90, 'Replen': 60, 'HOS': 30, 'Memo': 30, '3P': 45,
-  'SCH (screen)': 90, '3P (screen)': 90,
+  'SCH (screen)': 90, '3P (screen)': 90, 'Procurement': 90,
 }
 function lateness(r) {
   const sla = SLA_DAYS[mixGroup(r)] ?? 90
@@ -71,16 +81,17 @@ const SHIFT_REASON_LABEL = {
   mix_rebalance: 'Mix rebalance', other: 'Other',
 }
 
-export default function QueueTab({ currentUser }) {
+export default function QueueTab({ currentUser, defaultSite = 'all' }) {
   const [wipRows, setWipRows] = useState([])
   const [plans, setPlans] = useState([])          // sched_assignments, this Monday forward
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState(null)
 
-  const [site, setSite] = useState('all')          // all | passaic | bny
+  const [site, setSite] = useState(defaultSite)  // all | passaic | bny | procurement
   const [q, setQ] = useState('')
   const [family, setFamily] = useState('all')      // all | schedulable | waiting | production
   const [mix, setMix] = useState('all')
+  const [cat, setCat] = useState('all')            // all | fabric | grasscloth | wallpaper
   const [plannedF, setPlannedF] = useState('all')  // all | scheduled | unscheduled
   const [sortBy, setSortBy] = useState('age')      // age | yards | rev | week
   const [openKey, setOpenKey] = useState(null)
@@ -155,6 +166,7 @@ export default function QueueTab({ currentUser }) {
     if (site !== 'all') list = list.filter(r => r.site === site)
     if (family !== 'all') list = list.filter(r => statusFamily(r.order_status) === family)
     if (mix !== 'all') list = list.filter(r => mixGroup(r) === mix)
+    if (cat !== 'all') list = list.filter(r => catGroup(r) === cat)
     if (plannedF === 'scheduled') list = list.filter(r => r.planned)
     if (plannedF === 'unscheduled') list = list.filter(r => !r.planned)
     if (lateF) list = list.filter(r => lateness(r).level !== 'ok')
@@ -170,7 +182,7 @@ export default function QueueTab({ currentUser }) {
       week:  (a, b) => (a.firstWeek || '9999').localeCompare(b.firstWeek || '9999'),
     }
     return [...list].sort(by[sortBy] || by.age)
-  }, [rows, site, q, family, mix, plannedF, lateF, sortBy])
+  }, [rows, site, q, family, mix, cat, plannedF, lateF, sortBy])
 
   // FORWARD 30 DAYS — planned yards by mix group for the next four Mondays.
   const forward = useMemo(() => {
@@ -302,9 +314,15 @@ export default function QueueTab({ currentUser }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search PO · pattern · customer · SKU"
           style={{ padding: '7px 12px', border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, minWidth: 240, background: 'var(--surface)', color: C.ink }} />
-        {['all', 'passaic', 'bny'].map(s => (
+        {['all', 'passaic', 'bny', 'procurement'].map(s => (
           <button key={s} onClick={() => setSite(s)} style={chip(site === s, C.navy)}>
-            {s === 'all' ? 'Both sites' : s === 'passaic' ? 'Passaic (screen)' : 'BNY (digital)'}
+            {s === 'all' ? 'All' : s === 'passaic' ? 'Passaic (screen)' : s === 'bny' ? 'BNY (digital)' : 'Procurement'}
+          </button>
+        ))}
+        <span style={{ width: 1, height: 18, background: C.border }} />
+        {['all', 'fabric', 'grasscloth', 'wallpaper'].map(c2 => (
+          <button key={c2} onClick={() => setCat(c2)} style={chip(cat === c2, C.gold)}>
+            {c2 === 'all' ? 'All products' : c2 === 'grasscloth' ? 'Grasscloth' : c2 === 'wallpaper' ? 'Wallpaper' : 'Fabric'}
           </button>
         ))}
         <span style={{ width: 1, height: 18, background: C.border }} />
@@ -352,8 +370,8 @@ export default function QueueTab({ currentUser }) {
             <div key={k} onClick={() => openRow(r, k, open)}
               style={{ background: 'var(--surface)', border: `1px solid ${open ? C.navy : C.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: r.site === 'passaic' ? C.navyLight : C.goldBg, color: r.site === 'passaic' ? C.navy : C.gold }}>
-                  {r.site === 'passaic' ? 'PSC' : 'BNY'}
+                <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: r.site === 'passaic' ? C.navyLight : r.site === 'bny' ? C.goldBg : C.sageBg, color: r.site === 'passaic' ? C.navy : r.site === 'bny' ? C.gold : C.sage }}>
+                  {r.site === 'passaic' ? 'PSC' : r.site === 'bny' ? 'BNY' : 'PRC'}
                 </span>
                 <span style={{ fontFamily: 'monospace', fontSize: 11, color: C.inkMid }}>{r.po_number}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: C.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }}>

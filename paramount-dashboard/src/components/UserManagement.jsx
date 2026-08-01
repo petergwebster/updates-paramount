@@ -230,6 +230,7 @@ export default function UserManagement({ authUser }) {
                   <option value="exec">exec</option>
                   <option value="manager">manager</option>
                   <option value="qa">qa</option>
+                  <option value="procurement">procurement</option>
                 </select>
               </div>
               <div className={styles.cell}>

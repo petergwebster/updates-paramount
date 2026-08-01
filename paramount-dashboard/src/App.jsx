@@ -28,6 +28,7 @@ import WIPTab from './components/WIPTab'
 import NewGoodsTab from './components/NewGoodsTab'
 import SchedulerTab from './components/SchedulerTab'
 import QueueTab from './components/QueueTab'
+import ProcurementHome from './components/ProcurementHome'
 import LiveOpsTab from './components/LiveOpsTab'
 import StatusTab from './components/StatusTab'
 import StubPage from './components/StubPage'
@@ -108,6 +109,15 @@ const QA_OPERATIONS_TABS = [
   { id: 'status',    label: 'Status'    },
 ]
 
+// PROCUREMENT destination (Emily/Lydia initiative, 8/1): the pipe team's own
+// front door — grantable without opening the production floor or the books.
+const PROCUREMENT_TABS = [
+  { id: 'queue',    label: 'Queue'            },
+  { id: 'wip',      label: 'WIP'              },
+  { id: 'newgoods', label: 'NEW Goods'        },
+  { id: 'procwip',  label: 'Procurement WIP'  },
+]
+
 /**
  * Default tab to land on when entering a destination.
  */
@@ -124,8 +134,9 @@ function defaultTabFor(destination, role) {
  * Tab list for the current destination.
  */
 function tabsFor(destination, role) {
-  if (destination === 'finance')    return FINANCE_TABS
-  if (destination === 'operations') return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
+  if (destination === 'finance')     return FINANCE_TABS
+  if (destination === 'operations')  return role === 'qa' ? QA_OPERATIONS_TABS : OPERATIONS_TABS
+  if (destination === 'procurement') return PROCUREMENT_TABS
   return []
 }
 
@@ -669,6 +680,23 @@ export default function App() {
                 )}
                 {destination === 'operations' && activeTab==='queue' && (
                   <QueueTab currentUser={userProfile?.full_name} />
+                )}
+
+                {/* PROCUREMENT destination (Emily/Lydia, 8/1) */}
+                {destination === 'procurement' && !activeTab && (
+                  <ProcurementHome onOpen={handleTabChange} />
+                )}
+                {destination === 'procurement' && activeTab==='queue' && (
+                  <QueueTab currentUser={userProfile?.full_name} />
+                )}
+                {destination === 'procurement' && activeTab==='wip' && (
+                  <WIPTab weekStart={currentWeek} />
+                )}
+                {destination === 'procurement' && activeTab==='newgoods' && (
+                  <NewGoodsTab currentUser={userProfile?.full_name} />
+                )}
+                {destination === 'procurement' && activeTab==='procwip' && (
+                  <QueueTab currentUser={userProfile?.full_name} defaultSite="procurement" />
                 )}
                 {destination === 'operations' && activeTab==='wip' && (
                   <WIPTab weekStart={currentWeek} />

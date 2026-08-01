@@ -6,10 +6,15 @@
  *   2. Super-admin: who can access User Management (only Peter)
  *
  * Roles (set in profiles.role column):
- *   - admin     — Peter, Brynn, Wendy: full access to all destinations
- *   - exec      — leadership team: full access to all destinations
- *   - manager   — Chandler, Shelby: Operations only
- *   - qa        — Sami: Operations only
+ *   - admin       — Peter, Brynn, Wendy: full access to all destinations
+ *   - exec        — leadership team: full access to all destinations
+ *   - manager     — Chandler, Shelby: Operations only
+ *   - qa          — Sami: Operations only
+ *   - procurement — Lydia's team: Procurement only (the pipe, the HUB
+ *                   communication, SPO/MTO customers, exec reporting).
+ *                   2026-08-01, the Emily/Lydia initiative: procurement gets
+ *                   its own destination so their view can be granted without
+ *                   opening the production floor or the books.
  *
  * 2026-07-25: Heartbeat is no longer its own destination. Its Pulse page is now
  * the LANDING TAB of Operations — the plant view and the working surface belong
@@ -37,10 +42,12 @@ export function destinationsFor(profile) {
     case 'admin':
     case 'exec':
       // Operations first — it is the working surface and the default door.
-      return ['operations', 'finance']
+      return ['operations', 'finance', 'procurement']
     case 'manager':
     case 'qa':
       return ['operations']
+    case 'procurement':
+      return ['procurement']
     default:
       // Unknown role — give nothing. Safer than guessing.
       return []
@@ -83,6 +90,15 @@ export const DESTINATIONS = {
     mission: 'The Engineers · Daily Drivers',
     tagline: 'For our NASA engineers. The pulse of the plant, then plan the week, run the floor, capture the shift.',
     accessSummary: 'Pulse · Scheduler · Live Ops · WIP',
+    accentClass: 'operations',
+  },
+  procurement: {
+    id: 'procurement',
+    name: 'Procurement',
+    shortName: 'Procurement',
+    mission: 'The Pipe · The HUB',
+    tagline: 'Where every order sits in the queue, what the next 30 days look like, and the line back to the HUB, SPO/MTO customers, and the exec team.',
+    accessSummary: 'Queue · WIP · New Goods · Procurement WIP',
     accentClass: 'operations',
   },
 }

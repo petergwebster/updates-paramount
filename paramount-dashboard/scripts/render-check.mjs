@@ -119,10 +119,11 @@ async function main() {
   await capture('ops_pulse', 4000)
   for (const [tab, name] of [
     ['WIP', 'ops_wip'], ['NEW Goods', 'ops_newgoods'], ['Scheduler', 'ops_scheduler'],
+    ['Queue', 'ops_queue'],
     ['Live Ops', 'ops_liveops'], ['Status', 'ops_status'],
   ]) {
     await click(page.getByRole('button', { name: tab, exact: true }))
-    await capture(name, tab === 'Scheduler' ? 4500 : 3000)
+    await capture(name, tab === 'Scheduler' ? 4500 : tab === 'Queue' ? 4000 : 3000)
   }
 
   // ── finance ──
@@ -138,6 +139,19 @@ async function main() {
   ]) {
     // Regex tolerates the NEW badge inside a tab's accessible name.
     await click(page.getByRole('button', { name: tab, exact: typeof tab === 'string' }))
+    await capture(name, 3200)
+  }
+
+  // ── procurement (Emily/Lydia destination, 8/1) ──
+  await click(page.getByRole('button', { name: 'PROCUREMENT' }))
+  await capture('proc_home', 3500)
+  await click(page.getByText('Queue', { exact: true }).first())
+  await capture('proc_queue', 4000)
+  for (const [tab, name] of [
+    ['WIP', 'proc_wip'], ['NEW Goods', 'proc_newgoods'],
+    ['Procurement WIP', 'proc_procwip'],
+  ]) {
+    await click(page.getByRole('button', { name: tab, exact: true }))
     await capture(name, 3200)
   }
 
