@@ -31,9 +31,12 @@ exports.handler = async (event) => {
 
   const siteLabel = p.site === 'passaic' ? 'Passaic (screen)' : p.site === 'bny' ? 'BNY (digital)' : (p.site || '')
   const planned = p.planned ? `📅 ${p.planned}` : '🔴 unscheduled'
+  // Identity line ALL BOLD (Peter, 8/1): SKU · description · PO — the order
+  // should jump off the message; colorway trails unbolded.
+  const idBits = [p.sku, p.desc, p.po].filter(Boolean).join(' · ')
   const text = [
     `💬 *Queue note from ${p.from || 'the dashboard'}* · ${siteLabel}`,
-    `*${p.po}* — ${p.desc || ''}${p.sku ? ` · ${p.sku}` : ''}${p.colorway ? ` · ${p.colorway}` : ''}`,
+    `*${idBits || p.po}*${p.colorway ? ` · ${p.colorway}` : ''}`,
     `Status: *${p.status || 'unknown'}* · ${p.age_days != null ? `${p.age_days}d old · ` : ''}${p.yards != null ? `${p.yards} yd · ` : ''}${planned}`,
     `> ${String(p.comment).slice(0, 600)}`,
   ].join('\n')
