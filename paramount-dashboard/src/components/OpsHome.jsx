@@ -494,6 +494,20 @@ export default function OpsHome({ onOpen }) {
         <Columns bars={d.bars} />
       </Box>
 
+      {/* Queue (Phase 2, Emily/Lydia): the procurement window — every open
+          order, its LIFT status, and the week it's planned for. */}
+      <Box title="Queue" value={fmt(d.wipTotal)} unit="open orders"
+           sub="Procurement window · live status + planned week for every order, both sites"
+           onClick={go('queue')}>
+        <StackBar segs={[
+          { v: d.age.cur,  color: C.sage,      label: '<30d' },
+          { v: d.age.d30,  color: C.yards,     label: '30–59' },
+          { v: d.age.d60,  color: C.amber,     label: '60–89' },
+          { v: d.age.d90,  color: C.scheduled, label: '90–119' },
+          { v: d.age.d120, color: C.rose,      label: '120+' },
+        ]} />
+      </Box>
+
       <Box title="Live ops"
            value={d.tablesScheduled > 0 ? `${d.tablesRecorded}/${d.tablesScheduled}` : (d.actual > 0 ? fmt(d.actual) : '—')}
            unit={d.tablesScheduled > 0

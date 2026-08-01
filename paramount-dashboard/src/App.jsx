@@ -27,6 +27,7 @@ import { FacilityDetail, OperatorScorecard, useProductionData, generateLiveOpsPD
 import WIPTab from './components/WIPTab'
 import NewGoodsTab from './components/NewGoodsTab'
 import SchedulerTab from './components/SchedulerTab'
+import QueueTab from './components/QueueTab'
 import LiveOpsTab from './components/LiveOpsTab'
 import StatusTab from './components/StatusTab'
 import StubPage from './components/StubPage'
@@ -94,6 +95,7 @@ const OPERATIONS_TABS = [
   { id: 'wip',       label: 'WIP'        },
   { id: 'newgoods',  label: 'NEW Goods'  },
   { id: 'scheduler', label: 'Scheduler'  },
+  { id: 'queue',     label: 'Queue'      },
   { id: 'liveops',   label: 'Live Ops'   },
   { id: 'status',    label: 'Status'     },
 ]
@@ -664,6 +666,9 @@ export default function App() {
                 )}
                 {destination === 'operations' && activeTab==='scheduler' && (
                   <SchedulerTab/>
+                )}
+                {destination === 'operations' && activeTab==='queue' && (
+                  <QueueTab currentUser={userProfile?.full_name} />
                 )}
                 {destination === 'operations' && activeTab==='wip' && (
                   <WIPTab weekStart={currentWeek} />
