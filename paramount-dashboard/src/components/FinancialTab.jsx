@@ -477,12 +477,20 @@ export default function FinancialTab({ weekStart, section = 'all' }) {
             const pdNow = sumFrom(sec.now.buckets, sec.pdFrom)
             const expKey = expandedAging && expandedAging.type === sec.type ? expandedAging.key : null
             const expGroup = expKey ? sec.groups.find(g => g.key === expKey) : null
-            const partyRows = expGroup
-              ? sec.now.parties
-                  .map(p => ({ name: p.name, v: sumFrom(p.buckets, expGroup.from) }))
-                  .filter(p => Math.abs(p.v) >= 0.5)
-                  .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
-              : []
+            // Aggregate by party NAME — the table stores multiple rows per
+            // party (per business unit / sub-account), and listing raw rows
+            // showed "Quadrille Inc." a dozen times instead of once, big.
+            let partyRows = []
+            if (expGroup) {
+              const byName = {}
+              for (const p of sec.now.parties) {
+                const v = sumFrom(p.buckets, expGroup.from)
+                if (Math.abs(v) >= 0.5) byName[p.name] = (byName[p.name] || 0) + v
+              }
+              partyRows = Object.entries(byName)
+                .map(([name, v]) => ({ name, v }))
+                .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+            }
             const shown = partyRows.slice(0, 18)
             const restN = partyRows.length - shown.length
             const restV = partyRows.slice(18).reduce((s, p) => s + p.v, 0)
