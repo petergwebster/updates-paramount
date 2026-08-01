@@ -112,10 +112,11 @@ const QA_OPERATIONS_TABS = [
 // PROCUREMENT destination (Emily/Lydia initiative, 8/1): the pipe team's own
 // front door — grantable without opening the production floor or the books.
 const PROCUREMENT_TABS = [
-  { id: 'queue',    label: 'Queue'            },
-  { id: 'wip',      label: 'WIP'              },
-  { id: 'newgoods', label: 'NEW Goods'        },
-  { id: 'procwip',  label: 'Procurement WIP'  },
+  { id: 'queue',     label: 'Queue'            },
+  { id: 'wip',       label: 'WIP'              },
+  { id: 'newgoods',  label: 'NEW Goods'        },
+  { id: 'procwip',   label: 'Procurement WIP'  },
+  { id: 'inventory', label: 'Inventory'        },
 ]
 
 /**
@@ -697,6 +698,9 @@ export default function App() {
                 )}
                 {destination === 'procurement' && activeTab==='procwip' && (
                   <QueueTab currentUser={userProfile?.full_name} defaultSite="procurement" />
+                )}
+                {destination === 'procurement' && activeTab==='inventory' && (
+                  <InventoryTab profile={userProfile} />
                 )}
                 {destination === 'operations' && activeTab==='wip' && (
                   <WIPTab weekStart={currentWeek} />

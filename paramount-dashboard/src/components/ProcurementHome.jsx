@@ -36,6 +36,20 @@ export default function ProcurementHome({ onOpen }) {
           .select('site, order_status, is_new_goods, age_days, yards_written, income_written')
           .eq('snapshot_id', snapId).range(0, 4999)
         if (e2) throw e2
+        // Inventory (Peter, 8/1): the on-hand book, latest snapshot.
+        let inv = null
+        try {
+          const { data: invDates } = await supabase.from('inventory_snapshot')
+            .select('as_of').order('as_of', { ascending: false }).limit(1)
+          const asOf = invDates?.[0]?.as_of
+          if (asOf) {
+            const { data: invRows } = await supabase.from('inventory_snapshot')
+              .select('on_hand_curr, cost_per_yard').eq('as_of', asOf).limit(2000)
+            const yards = (invRows || []).reduce((s, r) => s + Number(r.on_hand_curr || 0), 0)
+            const value = (invRows || []).reduce((s, r) => s + Number(r.on_hand_curr || 0) * Number(r.cost_per_yard || 0), 0)
+            inv = { asOf, yards, value, skus: (invRows || []).length }
+          }
+        } catch { /* box simply hides if inventory isn't loaded */ }
         if (cancelled) return
         const open = (rows || []).filter(r => !TERMINAL.has(r.order_status || ''))
         const prod = open.filter(r => r.site === 'passaic' || r.site === 'bny')
@@ -60,6 +74,7 @@ export default function ProcurementHome({ onOpen }) {
           procCount: proc.length,
           procRev: proc.reduce((s, r) => s + Number(r.income_written || 0), 0),
           procAge: ageStack(proc),
+          inv,
           asOf: snaps?.[0]?.uploaded_at,
         })
       } catch (e) {
@@ -112,6 +127,16 @@ export default function ProcurementHome({ onOpen }) {
              onClick={go('procwip')}>
           <StackBar segs={stackSegs(d.procAge)} />
         </Box>
+
+        {d.inv && (
+          <Box title="Inventory" value={fmt(Math.round(d.inv.yards))} unit="yds on hand"
+               sub={`$${fmt(Math.round(d.inv.value))} across ${fmt(d.inv.skus)} SKUs · as of ${d.inv.asOf}`}
+               onClick={go('inventory')}>
+            <div style={{ fontSize: 11, color: C.inkLight }}>
+              Ground goods and materials — the monthly on-hand workbook, browsable by site, supplier and material group.
+            </div>
+          </Box>
+        )}
 
       </div>
     </div>

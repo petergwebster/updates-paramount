@@ -149,7 +149,7 @@ async function main() {
   await capture('proc_queue', 4000)
   for (const [tab, name] of [
     ['WIP', 'proc_wip'], ['NEW Goods', 'proc_newgoods'],
-    ['Procurement WIP', 'proc_procwip'],
+    ['Procurement WIP', 'proc_procwip'], ['Inventory', 'proc_inventory'],
   ]) {
     await click(page.getByRole('button', { name: tab, exact: true }))
     await capture(name, 3200)
