@@ -68,11 +68,14 @@ export async function computePrefill(weekKey) {
     for (const r of (wip || [])) if (r.po_number && r.bny_bucket) bucketMap[r.po_number] = r.bny_bucket
   }
 
-  // Ledger slices — three date lenses on the same table
+  // Ledger slices — date lenses on the same table. printed slice carries the
+  // bucket so BNY produced-by-bucket can come from LIFT's own printed dates
+  // (Brooklyn's Live Ops PO-lines are too sparse to attribute buckets — the
+  // −73% Replen-prod finding on the 7/19 test).
   const [invQ, prtQ, wrtQ] = await Promise.all([
     supabase.from('order_ledger').select('po_number, site, customer_type, product_type, yards_invoiced, invoiced_revenue, bny_bucket').gte('invoice_date', weekKey).lte('invoice_date', weekEnd).range(0, 4999),
-    supabase.from('order_ledger').select('site, customer_type, qty_printed').gte('printed_date', weekKey).lte('printed_date', weekEnd).range(0, 4999),
-    supabase.from('order_ledger').select('site, customer_type, yards_written').gte('first_seen', weekKey).lte('first_seen', weekEnd + 'T23:59:59').range(0, 4999),
+    supabase.from('order_ledger').select('site, customer_type, qty_printed, bny_bucket, po_number').gte('printed_date', weekKey).lte('printed_date', weekEnd).range(0, 4999),
+    supabase.from('order_ledger').select('site, customer_type, yards_written').gte('order_created', weekKey).lte('order_created', weekEnd).range(0, 4999),
   ])
   const inv = invQ.data || [], prt = prtQ.data || [], wrt = wrtQ.data || []
 
@@ -107,6 +110,7 @@ export async function computePrefill(weekKey) {
   let procRevenue = 0
   const sch = { passaic: { w: 0, p: 0, i: 0 }, bny: { w: 0, p: 0, i: 0 } }
   const tp = { passaic: { w: 0, p: 0, i: 0 }, bny: { w: 0, p: 0, i: 0 } }
+  const bnyProd = {}
   const BKEY = { 'Replen': 'Replen', 'MTO': 'MTO', 'HOS': 'HOS', 'Memo': 'Memo', 'Contract': 'Contract', '3P': 'Contract' }
   let uncatN = 0, uncatY = 0, uncatR = 0
   for (const r of inv) {
@@ -129,19 +133,21 @@ export async function computePrefill(weekKey) {
   for (const r of prt) {
     const t = r.site === 'passaic' ? 'passaic' : r.site === 'bny' ? 'bny' : null
     if (t) (is3P(r.customer_type) ? tp : sch)[t].p += Number(r.qty_printed || 0)
+    // BNY produced-by-bucket from LIFT's printed dates (grain: an order's
+    // qty_printed lands in its latest printed week — close enough weekly,
+    // and far better than Brooklyn's sparse Live Ops lines).
+    if (r.site === 'bny') {
+      const bucket = BKEY[r.bny_bucket || bucketMap[r.po_number]] || null
+      if (bucket) bnyProd[bucket] = (bnyProd[bucket] || 0) + Number(r.qty_printed || 0)
+    }
   }
   for (const r of wrt) {
     const t = r.site === 'passaic' ? 'passaic' : r.site === 'bny' ? 'bny' : null
     if (t) (is3P(r.customer_type) ? tp : sch)[t].w += Number(r.yards_written || 0)
   }
 
-  // ── BNY produced by bucket (lines → po → bucket) + machines grid ──
-  const bnyProd = {}
-  for (const l of lines.filter(l => l.site === 'bny')) {
-    const bucket = BKEY[bucketMap[l.po_number]] || null
-    if (bucket) bnyProd[bucket] = (bnyProd[bucket] || 0) + Number(l.actual_yards || 0)
-    else gaps.unknownBucket.push(l.po_number)
-  }
+  // ── BNY produced by bucket ── primary source is the printed slice above;
+  // Live Ops lines remain only as machine-grid input, not bucket attribution.
   const machines = {}
   for (const o of ops.filter(o => o.site === 'bny')) {
     machines[o.table_code] = (machines[o.table_code] || 0) + Number(o.actual_yards || 0)

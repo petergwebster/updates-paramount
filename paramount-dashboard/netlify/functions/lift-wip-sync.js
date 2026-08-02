@@ -339,8 +339,13 @@ function buildRows(ordersText, productsText, asOf) {
         // here means buckets survive an order's death; the hourly ledger pass
         // over the full orders.csv also backfills all history automatically.
         bny_bucket: bnyBucket,
+        // True written date (8/2): first_seen is ledger bookkeeping (when the
+        // SYNC first saw the order — late July for all history), useless for
+        // "written this week." order_created is LIFT's own date.
+        order_created: orderCreated ? orderCreated.toISOString().slice(0, 10) : null,
       }
       if (!cur.bny_bucket && bnyBucket) cur.bny_bucket = bnyBucket
+      if (!cur.order_created && orderCreated) cur.order_created = orderCreated.toISOString().slice(0, 10)
       cur.yards_written    += yardsWritten
       cur.qty_invoiced     += qtyInvoiced
       cur.income_written   += incomeWritten
