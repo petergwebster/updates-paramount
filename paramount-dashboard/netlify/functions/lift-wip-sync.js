@@ -245,6 +245,7 @@ function buildRows(ordersText, productsText, asOf) {
   // line's invoiced_revenue carries the bundled kit total). Per-order here,
   // merged into the ledger below.
   const groundMap = new Map()
+  const groundByPo = new Map()
   let terminalSkipped = 0, missingColorSku = 0, unknownSite = 0, groundFeeSkipped = 0
 
   for (const rec of O.records) {
@@ -289,12 +290,16 @@ function buildRows(ordersText, productsText, asOf) {
     // ~2x; the manual export omits them entirely).
     if (EXCLUDED_PRODUCT_TYPES.has(productType)) {
       groundFeeSkipped++
+      const g0 = { gy: yardsWritten, gr: invoicedRevenue, gw: incomeWritten }
       if (orderNumber) {
         const g = groundMap.get(orderNumber) || { gy: 0, gr: 0, gw: 0 }
-        g.gy += yardsWritten
-        g.gr += invoicedRevenue
-        g.gw += incomeWritten
+        g.gy += g0.gy; g.gr += g0.gr; g.gw += g0.gw
         groundMap.set(orderNumber, g)
+      }
+      if (poNumber) {
+        const g = groundByPo.get(poNumber) || { gy: 0, gr: 0, gw: 0 }
+        g.gy += g0.gy; g.gr += g0.gr; g.gw += g0.gw
+        groundByPo.set(poNumber, g)
       }
       continue
     }
@@ -359,6 +364,10 @@ function buildRows(ordersText, productsText, asOf) {
         // SYNC first saw the order — late July for all history), useless for
         // "written this week." order_created is LIFT's own date.
         order_created: orderCreated ? orderCreated.toISOString().slice(0, 10) : null,
+        // Uniform defaults — PostgREST bulk upserts require every object in a
+        // batch to carry the same keys; heterogeneous batches 400 silently
+        // into the ledger's try/catch (the 8/2 all-zeros ground mystery).
+        ground_yards: 0, ground_revenue: 0, ground_income_written: 0,
       }
       if (!cur.bny_bucket && bnyBucket) cur.bny_bucket = bnyBucket
       if (!cur.order_created && orderCreated) cur.order_created = orderCreated.toISOString().slice(0, 10)
@@ -431,7 +440,9 @@ function buildRows(ordersText, productsText, asOf) {
 
   return { rows, summary, notes, ordersHeaders: seen, productCount: prod.size,
            ledger: Array.from(ledgerMap.values()).map(o => {
-             const g = groundMap.get(o.order_number)
+             // Grounds kit to the print order by shared order_number when LIFT
+             // writes them that way, else by shared customer PO.
+             const g = groundMap.get(o.order_number) || (o.po_number && groundByPo.get(o.po_number))
              if (g) { o.ground_yards = g.gy; o.ground_revenue = g.gr; o.ground_income_written = g.gw }
              return o
            }) }
