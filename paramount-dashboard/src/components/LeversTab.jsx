@@ -24,6 +24,12 @@ const ACCENT = { sage: '#3DD68C', amber: '#F5B544', rose: '#F2555A', teal: '#3E8
 
 const LEVERS = [
   {
+    key: 'produce', title: 'Restructure → 9,400 produced yd / wk',
+    sub: 'Screenprint · +$61K EBITDA · planner + floor lead + pinners',
+    target: 9400, baseline: 'baseline 6,957 (Jan–May avg) · becomes 11,000 in \'27', fmt: (v) => Math.round(v).toLocaleString(),
+    status: (v) => v >= 9400 ? 'sage' : v >= 8200 ? 'amber' : 'rose',
+  },
+  {
     key: 'ship', title: 'Ship → 8,500 invoiced yd / wk',
     sub: 'Screenprint · +$1.33M EBITDA · the biggest lever in the bridge',
     target: 8500, baseline: 'baseline 6,344 (Jan–May avg)', fmt: (v) => Math.round(v).toLocaleString(),
@@ -130,6 +136,7 @@ export default function LeversTab() {
         const bnyProd = num(bny.schProduced) + num(bny.tpProduced)
         return {
           week: r.week_start,
+          produce: prod > 0 ? prod : null,
           ship: inv > 0 ? inv : null,
           waste: prod > 0 ? (waste / prod) * 100 : null,
           bny: bnyProd > 0 ? bnyProd : null,

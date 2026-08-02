@@ -206,8 +206,8 @@ export default function FinanceHome({ onOpen }) {
         if (inv > 0 || prod > 0 || bnyProd > 0) {
           lever = {
             week: r.week_start,
-            ship: inv, wastePct: prod > 0 ? (waste / prod) * 100 : null, bny: bnyProd,
-            hits: (inv >= 8500 ? 1 : 0) + (prod > 0 && (waste / prod) * 100 <= 8 ? 1 : 0) + (bnyProd >= 15000 ? 1 : 0),
+            ship: inv, wastePct: prod > 0 ? (waste / prod) * 100 : null, bny: bnyProd, produce: prod,
+            hits: (prod >= 9400 ? 1 : 0) + (inv >= 8500 ? 1 : 0) + (prod > 0 && (waste / prod) * 100 <= 8 ? 1 : 0) + (bnyProd >= 15000 ? 1 : 0),
           }
           break
         }
@@ -276,16 +276,16 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
-        <Box title="Levers" value={d.lever ? `${d.lever.hits}/3` : '—'}
+        <Box title="Levers" value={d.lever ? `${d.lever.hits}/4` : '—'}
              unit={d.lever ? `on target · wk ${String(d.lever.week).slice(5)}` : 'no production weeks saved'}
              sub={d.lever
-                  ? `Ship ${Math.round(d.lever.ship).toLocaleString()} vs 8,500 · waste ${d.lever.wastePct == null ? '—' : d.lever.wastePct.toFixed(1) + '%'} vs 8% · digital ${Math.round(d.lever.bny).toLocaleString()} vs 15K`
+                  ? `Produce ${Math.round(d.lever.produce).toLocaleString()}/9.4K · ship ${Math.round(d.lever.ship).toLocaleString()}/8.5K · waste ${d.lever.wastePct == null ? '—' : d.lever.wastePct.toFixed(1) + '%'}/8% · digital ${Math.round(d.lever.bny).toLocaleString()}/15K`
                   : 'The 2027 bridge tracked weekly'}
              subTone={d.lever && d.lever.hits === 0 ? 'warn' : undefined}
              onClick={go('levers')}>
           <StackBar segs={[
             { v: d.lever?.hits || 0, color: C.revenue, label: 'On' },
-            { v: d.lever ? 3 - d.lever.hits : 3, color: C.waste, label: 'Off' },
+            { v: d.lever ? 4 - d.lever.hits : 4, color: C.waste, label: 'Off' },
           ]} />
         </Box>
 
