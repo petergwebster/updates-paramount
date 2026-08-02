@@ -276,19 +276,6 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
-        <Box title="Levers" value={d.lever ? `${d.lever.hits}/4` : '—'}
-             unit={d.lever ? `on target · wk ${String(d.lever.week).slice(5)}` : 'no production weeks saved'}
-             sub={d.lever
-                  ? `Produce ${Math.round(d.lever.produce).toLocaleString()}/9.4K · ship ${Math.round(d.lever.ship).toLocaleString()}/8.5K · waste ${d.lever.wastePct == null ? '—' : d.lever.wastePct.toFixed(1) + '%'}/8% · digital ${Math.round(d.lever.bny).toLocaleString()}/15K`
-                  : 'The 2027 bridge tracked weekly'}
-             subTone={d.lever && d.lever.hits === 0 ? 'warn' : undefined}
-             onClick={go('levers')}>
-          <StackBar segs={[
-            { v: d.lever?.hits || 0, color: C.revenue, label: 'On' },
-            { v: d.lever ? 4 - d.lever.hits : 4, color: C.waste, label: 'Off' },
-          ]} />
-        </Box>
-
         <Box title="Spend" value={money(d.opex)} unit="opex purchases"
              sub={d.latestTxn ? `through ${String(d.latestTxn).slice(0, 10)}` : 'no transactions loaded'}
              onClick={go('spend')}>
@@ -339,6 +326,19 @@ export default function FinanceHome({ onOpen }) {
           <StackBar segs={[
             { v: Math.max(d.summaryCount, 0), color: C.coloryards, label: 'Saved' },
             { v: d.summaryCount === 0 ? 1 : 0, color: C.warm, label: 'None yet' },
+          ]} />
+        </Box>
+
+        <Box title="Levers" value={d.lever ? `${d.lever.hits}/4` : '—'}
+             unit={d.lever ? `on target · wk ${String(d.lever.week).slice(5)}` : 'no production weeks saved'}
+             sub={d.lever
+                  ? `Produce ${Math.round(d.lever.produce).toLocaleString()}/9.4K · ship ${Math.round(d.lever.ship).toLocaleString()}/8.5K · waste ${d.lever.wastePct == null ? '—' : d.lever.wastePct.toFixed(1) + '%'}/8% · digital ${Math.round(d.lever.bny).toLocaleString()}/15K`
+                  : 'The 2027 bridge tracked weekly'}
+             subTone={d.lever && d.lever.hits === 0 ? 'warn' : undefined}
+             onClick={go('levers')}>
+          <StackBar segs={[
+            { v: d.lever?.hits || 0, color: C.revenue, label: 'On' },
+            { v: d.lever ? 4 - d.lever.hits : 4, color: C.waste, label: 'Off' },
           ]} />
         </Box>
 
