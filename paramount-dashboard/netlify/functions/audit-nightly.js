@@ -229,6 +229,58 @@ async function checkLedger() {
   }
 }
 
+async function checkKitAnatomy() {
+  // 14 + 15 — the LIFT kit doctrine as machinery (8/2). Hand-screen orders
+  // kit a PRINT line (carries the FULL kit $) with a GROUND line (~1:1 yards,
+  // ~$0), linked by shared PO. Outliers here are almost always LIFT ENTRY
+  // ERRORS — a price keyed per-roll instead of per-yard, a kit built without
+  // its ground — and the whole point is catching them the morning after
+  // they're keyed, while the order is still warm. Peter's doctrine: track
+  // problems back to what was ENTERED, not what a report spat out.
+  const d7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+  const d14 = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)
+
+  // 14. kit_price_band — SCH intercompany per-yd kit price inside its band.
+  // Bands from observed July ranges with headroom: Grass $14–26, Paper $4–9.
+  // 3P excluded (list pricing ~2x); Fabric excluded (residual unexplained —
+  // COM/specialty grounds; open with Brynn before it can carry a band).
+  const BAND = { Grass: [14, 26], Paper: [4, 9] }
+  const inv = await sb(
+    'order_ledger?select=order_number,product_type,yards_invoiced,invoiced_revenue'
+    + `&site=eq.passaic&customer_type=eq.Schumacher&product_type=in.(Grass,Paper)`
+    + `&invoice_date=gte.${d7}&yards_invoiced=gt.0`)
+  const outliers = []
+  for (const r of (inv || [])) {
+    const perYd = Number(r.invoiced_revenue) / Number(r.yards_invoiced)
+    const [lo, hi] = BAND[r.product_type]
+    if (perYd < lo || perYd > hi)
+      outliers.push({ order: r.order_number, type: r.product_type, perYd: Math.round(perYd * 100) / 100, band: `${lo}–${hi}` })
+  }
+  const band = outliers.length === 0
+    ? { status: 'pass', summary: `All SCH kit prices invoiced this week sit inside their bands (${(inv || []).length} order(s))`, detail: { checked: (inv || []).length } }
+    : { status: 'warn', summary: `${outliers.length} order(s) invoiced outside the SCH kit price band — likely LIFT entry error`, detail: { outliers: outliers.slice(0, 10) } }
+
+  // 15. kit_integrity — ground yards ≈ print yards (1:1 kitting) on recently
+  // written Grass/Paper orders. Missing or badly mismatched ground = the kit
+  // was built wrong at entry. Ratio tolerance 0.7–1.3.
+  const wrt = await sb(
+    'order_ledger?select=order_number,product_type,yards_written,ground_yards'
+    + `&site=eq.passaic&product_type=in.(Grass,Paper)`
+    + `&order_created=gte.${d14}&yards_written=gt.0`)
+  const broken = []
+  for (const r of (wrt || [])) {
+    const gy = Number(r.ground_yards || 0), py = Number(r.yards_written)
+    const ratio = gy / py
+    if (gy === 0 || ratio < 0.7 || ratio > 1.3)
+      broken.push({ order: r.order_number, type: r.product_type, printYds: py, groundYds: gy })
+  }
+  const integrity = broken.length === 0
+    ? { status: 'pass', summary: `Every recent Grass/Paper order kits its ground ~1:1 (${(wrt || []).length} order(s))`, detail: { checked: (wrt || []).length } }
+    : { status: 'warn', summary: `${broken.length} recent order(s) with missing or mismatched kitted ground — check the LIFT entry`, detail: { broken: broken.slice(0, 10) } }
+
+  return { band, integrity }
+}
+
 // ── the run ─────────────────────────────────────────────────────────────────
 async function runAudit(trigger = 'nightly', dryRun = false) {
   const t0 = Date.now()
@@ -246,6 +298,8 @@ async function runAudit(trigger = 'nightly', dryRun = false) {
   add('sharefile_health', (await checkShareFile()).health)
   add('people_freshness', (await checkPeople()).people)
   add('order_ledger_floor', (await checkLedger()).ledger)
+  const kit = await checkKitAnatomy()
+  add('kit_price_band', kit.band); add('kit_integrity', kit.integrity)
 
   const passed = findings.filter(f => f.status === 'pass').length
   const warned = findings.filter(f => f.status === 'warn').length
