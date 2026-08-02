@@ -290,15 +290,22 @@ function buildRows(ordersText, productsText, asOf) {
     // ~2x; the manual export omits them entirely).
     if (EXCLUDED_PRODUCT_TYPES.has(productType)) {
       groundFeeSkipped++
-      const g0 = { gy: yardsWritten, gr: invoicedRevenue, gw: incomeWritten }
-      if (orderNumber) {
-        const g = groundMap.get(orderNumber) || { gy: 0, gr: 0, gw: 0 }
+      const g0 = { gy: yardsWritten, gr: invoicedRevenue, gw: incomeWritten, gsku: itemSku || null }
+      const acc = (g) => {
         g.gy += g0.gy; g.gr += g0.gr; g.gw += g0.gw
+        // Keep the FIRST ground SKU seen for the order — kits are 1 ground:1
+        // print in practice; if LIFT ever kits two grounds, first-wins and the
+        // #15 yardage-ratio check is what will notice the anomaly.
+        if (!g.gsku && g0.gsku) g.gsku = g0.gsku
+      }
+      if (orderNumber) {
+        const g = groundMap.get(orderNumber) || { gy: 0, gr: 0, gw: 0, gsku: null }
+        acc(g)
         groundMap.set(orderNumber, g)
       }
       if (poNumber) {
-        const g = groundByPo.get(poNumber) || { gy: 0, gr: 0, gw: 0 }
-        g.gy += g0.gy; g.gr += g0.gr; g.gw += g0.gw
+        const g = groundByPo.get(poNumber) || { gy: 0, gr: 0, gw: 0, gsku: null }
+        acc(g)
         groundByPo.set(poNumber, g)
       }
       continue
@@ -367,7 +374,7 @@ function buildRows(ordersText, productsText, asOf) {
         // Uniform defaults — PostgREST bulk upserts require every object in a
         // batch to carry the same keys; heterogeneous batches 400 silently
         // into the ledger's try/catch (the 8/2 all-zeros ground mystery).
-        ground_yards: 0, ground_revenue: 0, ground_income_written: 0,
+        ground_yards: 0, ground_revenue: 0, ground_income_written: 0, ground_sku: null,
       }
       if (!cur.bny_bucket && bnyBucket) cur.bny_bucket = bnyBucket
       if (!cur.order_created && orderCreated) cur.order_created = orderCreated.toISOString().slice(0, 10)
@@ -443,7 +450,7 @@ function buildRows(ordersText, productsText, asOf) {
              // Grounds kit to the print order by shared order_number when LIFT
              // writes them that way, else by shared customer PO.
              const g = groundMap.get(o.order_number) || (o.po_number && groundByPo.get(o.po_number))
-             if (g) { o.ground_yards = g.gy; o.ground_revenue = g.gr; o.ground_income_written = g.gw }
+             if (g) { o.ground_yards = g.gy; o.ground_revenue = g.gr; o.ground_income_written = g.gw; o.ground_sku = g.gsku || null }
              return o
            }) }
 }

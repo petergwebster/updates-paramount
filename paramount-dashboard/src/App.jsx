@@ -15,6 +15,7 @@ import FinancialTab from './components/FinancialTab'
 import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
 import DeckKpiTrend from './components/DeckKpiTrend'
+import LeversTab from './components/LeversTab'
 import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
@@ -80,7 +81,8 @@ const NJ_DAYS = [
 // tab is a follow-up, not a fiction to add here before it exists.
 const FINANCE_TABS = [
   { id: 'pnl',        label: 'P&L' },
-  { id: 'kpis',       label: 'KPIs', isNew: true },
+  { id: 'kpis',       label: 'KPIs' },
+  { id: 'levers',     label: 'Levers', isNew: true },
   { id: 'spend',      label: 'Spend detail' },
   { id: 'arap',       label: 'AR / AP' },
   { id: 'inventory',  label: 'Inventory' },
@@ -644,6 +646,13 @@ export default function App() {
                     keeps only things that produce a document. */}
                 {destination === 'finance' && activeTab==='kpis' && (
                   <DeckKpiTrend />
+                )}
+                {/* Levers — the 2027 strategy deck's committed weekly targets
+                    (ship 8.5K · waste 8% · digital 15K) tracked against the
+                    production rows. Lever attainment as a chart, not a
+                    quarterly argument. Added 8/2026. */}
+                {destination === 'finance' && activeTab==='levers' && (
+                  <LeversTab />
                 )}
                 {destination === 'finance' && activeTab==='spend' && (
                   <FinancialTab section="spend" weekStart={currentWeek} currentPeriod={format(currentWeek,'yyyy-MM-dd').slice(0,7)}/>
