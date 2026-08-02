@@ -239,6 +239,12 @@ function buildRows(ordersText, productsText, asOf) {
   // recorded here it is unrecoverable. GP's financial_transactions.reference
   // carries this same order number, so invoice → ledger → yards.
   const ledgerMap = new Map()
+  // Ground capture (8/2): kitted ground/fee lines are excluded from WIP and
+  // from the ledger's print figures — but their yards and $ answer the
+  // print-vs-kit pricing question (the weekly reports print-only; the print
+  // line's invoiced_revenue carries the bundled kit total). Per-order here,
+  // merged into the ledger below.
+  const groundMap = new Map()
   let terminalSkipped = 0, missingColorSku = 0, unknownSite = 0, groundFeeSkipped = 0
 
   for (const rec of O.records) {
@@ -281,7 +287,17 @@ function buildRows(ordersText, productsText, asOf) {
 
     // Drop non-scheduled ground/fee lines (kitted grounds inflate hand-screen
     // ~2x; the manual export omits them entirely).
-    if (EXCLUDED_PRODUCT_TYPES.has(productType)) { groundFeeSkipped++; continue }
+    if (EXCLUDED_PRODUCT_TYPES.has(productType)) {
+      groundFeeSkipped++
+      if (orderNumber) {
+        const g = groundMap.get(orderNumber) || { gy: 0, gr: 0, gw: 0 }
+        g.gy += yardsWritten
+        g.gr += invoicedRevenue
+        g.gw += incomeWritten
+        groundMap.set(orderNumber, g)
+      }
+      continue
+    }
     if (colorsCount == null) missingColorSku++
 
     // Site routing: order_type (Division) primary, material prefix fallback.
@@ -414,7 +430,11 @@ function buildRows(ordersText, productsText, asOf) {
   }
 
   return { rows, summary, notes, ordersHeaders: seen, productCount: prod.size,
-           ledger: Array.from(ledgerMap.values()) }
+           ledger: Array.from(ledgerMap.values()).map(o => {
+             const g = groundMap.get(o.order_number)
+             if (g) { o.ground_yards = g.gy; o.ground_revenue = g.gr; o.ground_income_written = g.gw }
+             return o
+           }) }
 }
 
 // ─── Supabase REST helpers (raw fetch, same as lock-wip) ───────────────────
