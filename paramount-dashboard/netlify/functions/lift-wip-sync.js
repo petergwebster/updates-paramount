@@ -290,6 +290,13 @@ function buildRows(ordersText, productsText, asOf) {
     // ~2x; the manual export omits them entirely).
     if (EXCLUDED_PRODUCT_TYPES.has(productType)) {
       groundFeeSkipped++
+      // Packing Charge is a FEE line, not a ground. On SCH hand-screen orders
+      // LIFT writes the pack line carrying the SAME yardage as the print, so
+      // summing it into ground_yards read exactly 2x print (the 8/2
+      // kit_integrity false-positive family F0017651-57) and "PACK" was
+      // winning ground_sku by line order. Fees are excluded from WIP but do
+      // NOT accumulate into the ground kit figures.
+      if (productType === 'Packing Charge') continue
       const g0 = { gy: yardsWritten, gr: invoicedRevenue, gw: incomeWritten, gsku: itemSku || null }
       const acc = (g) => {
         g.gy += g0.gy; g.gr += g0.gr; g.gw += g0.gw

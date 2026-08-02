@@ -1,11 +1,29 @@
 # SYSTEM MAP
 
-Generated 2026-07-28 13:22 by system-map.ps1. Do not edit by hand.
+Generated 2026-08-02 14:07 by system-map.ps1. Do not edit by hand.
 
 Read this BEFORE proposing any new intake, parser, table, upload path or data
 source. If the thing you are about to build appears below, it already exists.
 
 ## Inbound feeds (Netlify functions)
+
+### audit-digest.js
+
+- schedule: cron 30 10 * * *  (schedule() wrapper)
+- touches tables: audit_runs, integration_state, sched_snapshots
+
+### audit-nightly.js
+
+- schedule: cron 0 5 * * *  (schedule() wrapper)
+- touches tables: audit_exceptions, audit_findings, audit_runs, deck_kpis, financial_transactions, integration_state, order_ledger, people_weekly, sched_snapshots, vena_monthly
+
+### audit-run.js
+
+- schedule: not scheduled
+
+### digest-run.js
+
+- schedule: not scheduled
 
 ### lift-wip-run.js
 
@@ -19,6 +37,10 @@ source. If the thing you are about to build appears below, it already exists.
 
 - schedule: not scheduled
 
+### sharefile-cron.js
+
+- schedule: cron 0 13 * * *  (schedule() wrapper)
+
 ### sharefile-run.js
 
 - schedule: not scheduled
@@ -26,15 +48,19 @@ source. If the thing you are about to build appears below, it already exists.
 ### sharefile-sync.js
 
 - schedule: cron 0 13 * * *  (in-code config export)
-- source paths: JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases'] ; VENA_PATH = ['Parmount Monthly Results'] ; INV_PATH = ['Inventory Reports']
-- parsers: inventoryWorkbook, purchasesWorkbook, venaWorkbook
-- touches tables: financial_transactions, integration_state, inventory_snapshot, vena_monthly
+- source paths: JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases'] ; CLAUDE_PATH = ['DASH WORK', 'Claude Files'] ; VENA_PATH = ['Parmount Monthly Results'] ; INV_PATH = ['Inventory Reports'] ; PAYROLL_PATH = ['DASH WORK', 'Claude Files', 'Payroll'] ; DECKS_PATH = ['Paramount Month End Decks']
+- parsers: arApLock, inventoryWorkbook, payrollWorkbook, purchasesWorkbook, venaWorkbook
+- touches tables: financial_aging, financial_transactions, integration_state, inventory_snapshot, month_end_decks, people_weekly, vena_monthly
+
+### slack-queue-notify.js
+
+- schedule: not scheduled
 
 ## Libraries in src/lib, and what imports them
 
 - access.js  <-  AdminLayout.jsx, App.jsx, DestinationNav.jsx, LandingPage.jsx, UserManagement.jsx
-- arApLock.js  <-  AdminFinancials.jsx
-- budgets.js  <-  BNYScheduler.jsx, HeartbeatPage.jsx, LiveOpsTab.jsx, monthlyBriefData.js, PassaicScheduler.jsx, ProductionDashboard.jsx
+- arApLock.js  <-  AdminFinancials.jsx, sharefile-sync.js
+- budgets.js  <-  BNYScheduler.jsx, HeartbeatPage.jsx, LiveOpsTab.jsx, monthlyBriefData.js, PassaicScheduler.jsx, ProductionDashboard.jsx, WeekRevenueChip.jsx
 - contextBuilder.js  <-  ClaudeReadBlock.jsx
 - dailyOps.js  <-  BNYScheduler.jsx, LiveOpsTab.jsx, PassaicScheduler.jsx, poTotals.js, StatusTab.jsx, weeklyProdSummaryData.js
 - fileFingerprint.js  <-  UploadTile.jsx
@@ -49,12 +75,14 @@ source. If the thing you are about to build appears below, it already exists.
 - parsers\parseMosMaterialColor.js  <-  **NOTHING IMPORTS THIS**
 - parsers\parserHelpers.js  <-  parseInventoryFile.js, parseMosFile.js, parseWipFile.js
 - parsers\parseWipFile.js  <-  LIFTDataRefresh.jsx
+- payrollWorkbook.js  <-  sharefile-sync.js
 - persistSnapshot.js  <-  LIFTDataRefresh.jsx, UploadTile.jsx
 - poTotals.js  <-  BNYScheduler.jsx, LiveOpsTab.jsx, PassaicScheduler.jsx, StatusTab.jsx
+- productionPrefill.js  <-  AdminPanel.jsx
 - prompts\dashboardNarrative.js  <-  ClaudeReadBlock.jsx
 - prompts\weeklyRecapNarrative.js  <-  ExecutiveDashboardPage.jsx
 - purchasesWorkbook.js  <-  AdminFinancials.jsx, sharefile-sync.js
-- scheduleUtils.js  <-  BNYScheduler.jsx, BNYSection.jsx, dailyOps.js, FinanceHome.jsx, HeartbeatPage.jsx, InventoryTab.jsx, LiftFreshnessBadge.jsx, LiveOpsTab.jsx, NewGoodsTab.jsx, NewGoodsView.jsx, OpsAttentionPanel.jsx, OpsDailyChart.jsx, OpsHome.jsx, OpsPulseTiles.jsx, OpsSectionGrid.jsx, PassaicScheduler.jsx, PassaicSection.jsx, PeopleTab.jsx, SchedulerTab.jsx, ShareFileFreshnessBadge.jsx, StatusTab.jsx, WIPTab.jsx
+- scheduleUtils.js  <-  BNYScheduler.jsx, BNYSection.jsx, dailyOps.js, FinanceHome.jsx, HeartbeatPage.jsx, InventoryTab.jsx, LiftFreshnessBadge.jsx, LiveOpsTab.jsx, NewGoodsTab.jsx, NewGoodsView.jsx, OpsAttentionPanel.jsx, OpsDailyChart.jsx, OpsHome.jsx, OpsPulseTiles.jsx, OpsSectionGrid.jsx, PassaicScheduler.jsx, PassaicSection.jsx, PeopleTab.jsx, ProcurementHome.jsx, QueueTab.jsx, SchedulerTab.jsx, ShareFileFreshnessBadge.jsx, StatusTab.jsx, WeekRevenueChip.jsx, WIPTab.jsx
 - venaWorkbook.js  <-  sharefile-sync.js
 - weeklyProdSummaryData.js  <-  WeeklyProductionSummary.jsx
 - weeklyProdSummaryNarrative.js  <-  WeeklyProductionSummary.jsx
@@ -86,13 +114,13 @@ pulled\_sync_manifest.json, which sf_pull v2 keeps per file.
 | folder | files | newest file | last synced | feeds a table? |
 | --- | --- | --- | --- | --- |
 | _legacy | 76 | Paramount Prints- February 2026 Purchases 2.24... | 2026-06-19 | no - mirrored only |
-| DASH WORK | 161 | Automation - Paramount Prints Weekly7.26.xlsx | 2026-07-26 | partial - one subfolder only |
+| DASH WORK | 165 | 2026 3RD PARTY PRICING.pdf | 2026-08-02 | partial - one subfolder only |
 | Inventory Reports | 9 | Transfered Aug 2025.xlsx | 2026-07-25 | yes |
 | lift | 7 | mv_dash_current_month.json | 2026-07-01 | no - mirrored only |
 | LIFT_docs | 17 | LIFT Issues 2-25.docx | 2026-07-25 | no - mirrored only |
 | Management Financial Reporting | 95 | BNY - Planned P&L - 7-11-2025_APratt Version.x... | 2026-07-25 | no - mirrored only |
-| Management Sales Reporting | 147 | Dashboard-Produced @ Job Level.xlsx | 2026-07-28 | no - mirrored only |
-| Paramount Month End Decks | 8 | Paramount Prints June 2026 Results.pdf | 2026-07-25 | no - mirrored only |
+| Management Sales Reporting | 147 | Dashboard-Produced @ Job Level.xlsx | 2026-08-02 | no - mirrored only |
+| Paramount Month End Decks | 14 | Paramount Prints January Results.pdf | 2026-07-29 | yes |
 | Parmount Monthly Results | 8 | Paramount Results vs Forecast_May 2026.xlsx | 2026-07-25 | yes |
 | reports | 17 | spark_check.txt | 2026-07-07 | no - mirrored only |
 | Reports fr JD | 9 | 07Jul Paramount Prints - Monthly Results (610)... | 2026-07-25 | no - mirrored only |

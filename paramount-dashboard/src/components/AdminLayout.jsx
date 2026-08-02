@@ -143,7 +143,7 @@ export default function AdminLayout({
           {view === 'system-info' && (
             <>
               <SystemInfoPanel dbReady={dbReady} userProfile={userProfile} />
-              <AuditPanel />
+              <AuditPanel userProfile={userProfile} />
             </>
           )}
         </section>
@@ -317,24 +317,32 @@ const CHECK_LABELS = {
   sharefile_health:   'Finance feed health',
   people_freshness:   'Payroll freshness',
   order_ledger_floor: 'Order ledger never shrinks',
+  kit_price_band:     'Kit price band (SCH invoiced)',
+  kit_integrity:      'Kit integrity — ground per print',
+  files_triage:       'Claude Files all triaged',
 }
 const STATUS_ORDER = { fail: 0, warn: 1, pass: 2 }
 const STATUS_DOT   = { fail: 'systemDot_error', warn: 'systemDot_info', pass: 'systemDot_ok' }
 
-function AuditPanel() {
+function AuditPanel({ userProfile }) {
   const [run, setRun]           = useState(null)
   const [findings, setFindings] = useState(null)
   const [firing, setFiring]     = useState(false)
   const [fireNote, setFireNote] = useState('')
+  // Trained exceptions — (check_key|entity) pairs the checks now skip. Loaded
+  // so an item trained today shows as such even before the next run clears it.
+  const [exceptions, setExceptions] = useState(new Set())
 
   async function load() {
+    const { data: ex } = await supabase.from('audit_exceptions').select('check_key, entity')
+    setExceptions(new Set((ex || []).map(e => `${e.check_key}|${e.entity}`)))
     const { data: r } = await supabase.from('audit_runs')
       .select('id, ran_at, trigger_by, checks_run, passed, warned, failed, duration_ms')
       .order('ran_at', { ascending: false }).limit(1).maybeSingle()
     setRun(r || null)
     if (r) {
       const { data: f } = await supabase.from('audit_findings')
-        .select('check_key, status, summary')
+        .select('check_key, status, summary, detail')
         .eq('run_id', r.id)
       setFindings((f || []).sort((a, b) =>
         (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)
@@ -364,6 +372,23 @@ function AuditPanel() {
     setFiring(false)
   }
 
+  // TRAIN — Peter's triage loop (8/2): a flagged item confirmed correct by
+  // the team gets an audit_exceptions row and never flags again; anything NOT
+  // trained keeps appearing in the nightly + daily digest until the LIFT data
+  // changes — that recurrence IS the open fix queue. Quick, not month-end.
+  async function train(checkKey, entity, why) {
+    const reason = window.prompt(
+      `Mark ${entity} as CORRECT for \"${CHECK_LABELS[checkKey] || checkKey}\" — it will never flag again.\nWhy is it correct?`,
+      why || '')
+    if (reason == null) return
+    const { error } = await supabase.from('audit_exceptions').insert({
+      check_key: checkKey, entity, reason,
+      decided_by: userProfile?.full_name || null,
+    })
+    if (!error) setExceptions(prev => new Set(prev).add(`${checkKey}|${entity}`))
+    else window.alert(`Could not save: ${error.message}`)
+  }
+
   const headline = !run ? 'Never run'
     : `${run.checks_run} checks · ${run.passed} pass / ${run.warned} warn / ${run.failed} fail`
   const headDot = !run ? 'systemDot_error'
@@ -377,7 +402,9 @@ function AuditPanel() {
         <div>
           <h2 className={styles.systemTitle}>Nightly audit</h2>
           <p className={styles.systemSub}>
-            Thirteen data-integrity checks, every night at ~1am — the header Audit light is this run.
+            Sixteen data-integrity checks, every night at ~1am — the header Audit light is this run.
+            Amber items list below: “Correct — train it” teaches the check; anything left keeps
+            flagging daily until it’s fixed in LIFT.
           </p>
         </div>
         <button
@@ -401,15 +428,49 @@ function AuditPanel() {
       {findings && findings.length > 0 && (
         <table className={styles.systemTable}>
           <tbody>
-            {findings.map(f => (
-              <tr key={f.check_key}>
-                <td className={styles.systemLabel}>{CHECK_LABELS[f.check_key] || f.check_key}</td>
-                <td className={styles.systemValue}>
-                  <span className={`${styles.systemDot} ${styles[STATUS_DOT[f.status] || 'systemDot_error']}`} />
-                  {f.summary}
-                </td>
-              </tr>
-            ))}
+            {findings.map(f => {
+              const items = (f.detail && (f.detail.outliers || f.detail.broken)) || []
+              return (
+                <React.Fragment key={f.check_key}>
+                  <tr>
+                    <td className={styles.systemLabel}>{CHECK_LABELS[f.check_key] || f.check_key}</td>
+                    <td className={styles.systemValue}>
+                      <span className={`${styles.systemDot} ${styles[STATUS_DOT[f.status] || 'systemDot_error']}`} />
+                      {f.summary}
+                    </td>
+                  </tr>
+                  {items.map((it, i) => {
+                    const entity = it.order || ''
+                    const trained = entity && exceptions.has(`${f.check_key}|${entity}`)
+                    return (
+                      <tr key={`${f.check_key}-${entity}-${i}`}>
+                        <td className={styles.systemLabel} style={{ paddingLeft: 26, fontSize: 12, color: 'var(--ink-40)' }}>
+                          {entity}{it.type ? ` · ${it.type}` : ''}
+                        </td>
+                        <td className={styles.systemValue} style={{ fontSize: 12 }}>
+                          <span style={{ color: 'var(--ink-60)' }}>
+                            {it.why || ''}
+                            {it.printYds != null ? ` · print ${it.printYds} / ground ${it.groundYds}` : ''}
+                            {it.perYd != null ? ` · $${it.perYd}/yd` : ''}
+                            {it.perColor != null ? ` · $${it.perColor}/color` : ''}
+                          </span>
+                          {trained ? (
+                            <span style={{ marginLeft: 10, fontSize: 11, color: 'var(--ink-40)' }}>trained — clears next run</span>
+                          ) : entity ? (
+                            <button
+                              onClick={() => train(f.check_key, entity, it.why)}
+                              style={{ marginLeft: 10, fontSize: 11, fontWeight: 600, padding: '3px 9px',
+                                       borderRadius: 6, border: '1px solid var(--border)',
+                                       background: 'var(--surface-2)', color: 'var(--ink)', cursor: 'pointer' }}
+                            >Correct — train it</button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </React.Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}

@@ -1,43 +1,55 @@
 SUPABASE SELECT AUDIT
-generated 2026-07-27 21:20
+generated 2026-08-02 14:07
 
 Cross-check each table/column pair against information_schema.columns.
 
 src\components\AdminFinancials.jsx:112  financial_transactions  <-  fiscal_month, source_tab, net
 src\components\AdminFinancials.jsx:165  financial_transactions  <-  *
 src\components\AdminFinancials.jsx:212  financial_aging  <-  as_of_date
-src\components\AdminLayout.jsx:188  sched_snapshots  <-  uploaded_at
-src\components\AdminLayout.jsx:190  integration_state  <-  value, updated_at
-src\components\AdminLayout.jsx:192  financial_transactions  <-  trx_date, source_file
-src\components\AdminLayout.jsx:195  vena_monthly  <-  period
-src\components\AdminLayout.jsx:197  financial_aging  <-  as_of_date
-src\components\AdminLayout.jsx:199  people_weekly  <-  week_start
-src\components\AdminLayout.jsx:201  sched_snapshots  <-  *
-src\components\AdminPanel.jsx:306  production  <-  *
+src\components\AdminLayout.jsx:191  sched_snapshots  <-  uploaded_at
+src\components\AdminLayout.jsx:193  integration_state  <-  value, updated_at
+src\components\AdminLayout.jsx:195  financial_transactions  <-  trx_date, source_file
+src\components\AdminLayout.jsx:198  vena_monthly  <-  period
+src\components\AdminLayout.jsx:200  financial_aging  <-  as_of_date
+src\components\AdminLayout.jsx:202  people_weekly  <-  week_start
+src\components\AdminLayout.jsx:204  sched_snapshots  <-  *
+src\components\AdminLayout.jsx:337  audit_exceptions  <-  check_key, entity
+src\components\AdminLayout.jsx:339  audit_runs  <-  id, ran_at, trigger_by, checks_run, passed, warned, failed, duration_ms
+src\components\AdminLayout.jsx:344  audit_findings  <-  check_key, status, summary, detail
+src\components\AdminPanel.jsx:358  production  <-  *
 src\components\AdminPeople.jsx:32  people_weekly  <-  *
-src\components\BNYScheduler.jsx:145  sched_assignments  <-  po_number, item_sku, color, planned_yards, week_start
+src\components\BNYScheduler.jsx:141  sched_submissions  <-  id, version, submitted_at, submitted_by, totals, rows
+src\components\BNYScheduler.jsx:153  sched_shift_log  <-  change_kind, po_number, item_sku, color
+src\components\BNYScheduler.jsx:176  sched_assignments  <-  po_number, item_sku, color, planned_yards, week_start
 src\components\ClaudeReadBlock.jsx:97  dashboard_narratives  <-  *
 src\components\CommentButton.jsx:62  section_comments  <-  *
 src\components\CommentButton.jsx:94  section_comments  <-  id
 src\components\Correspondence.jsx:66  correspondence  <-  *
 src\components\DashboardPage.jsx:296  production  <-  week_start, nj_data, bny_data
+src\components\DeckKpiTrend.jsx:88  deck_kpis  <-  *
+src\components\DeckKpiTrend.jsx:106  vena_monthly  <-  period,cost_center,line_key,amount
 src\components\ExecutiveDashboardPage.jsx:88  production  <-  bny_data, nj_data
-src\components\FeedHealthStrip.jsx:86  sched_snapshots  <-  uploaded_at
-src\components\FeedHealthStrip.jsx:88  integration_state  <-  value, updated_at
-src\components\FinanceHome.jsx:59  vena_monthly  <-  period
-src\components\FinanceHome.jsx:69  vena_monthly  <-  cost_center,line_key,account_code,amount
-src\components\FinanceHome.jsx:72  vena_monthly  <-  cost_center,line_key,amount
-src\components\FinanceHome.jsx:92  financial_transactions  <-  fiscal_month
-src\components\FinanceHome.jsx:100  financial_transactions  <-  source_tab,net,business_unit,trx_date
-src\components\FinanceHome.jsx:116  financial_aging  <-  as_of_date
-src\components\FinanceHome.jsx:132  financial_aging  <-  aging_type,balance
-src\components\FinanceHome.jsx:144  people_weekly  <-  week_start
-src\components\FinanceHome.jsx:150  weekly_prod_summaries  <-  *
-src\components\FinancialTab.jsx:127  financial_transactions  <-  fiscal_month
-src\components\FinancialTab.jsx:140  financial_transactions  <-  uploaded_at
-src\components\FinancialTab.jsx:141  financial_aging  <-  as_of_date
-src\components\FinancialTab.jsx:178  financial_aging  <-  as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets
-src\components\FinancialTab.jsx:191  financial_transactions  <-  master_name,net,fiscal_week
+src\components\FeedHealthStrip.jsx:92  sched_snapshots  <-  uploaded_at
+src\components\FeedHealthStrip.jsx:94  integration_state  <-  value, updated_at
+src\components\FeedHealthStrip.jsx:96  audit_runs  <-  ran_at, checks_run, passed, warned, failed
+src\components\FinanceHome.jsx:60  vena_monthly  <-  period
+src\components\FinanceHome.jsx:70  vena_monthly  <-  cost_center,line_key,account_code,amount
+src\components\FinanceHome.jsx:73  vena_monthly  <-  cost_center,line_key,amount
+src\components\FinanceHome.jsx:93  financial_transactions  <-  fiscal_month
+src\components\FinanceHome.jsx:101  financial_transactions  <-  source_tab,net,business_unit,trx_date
+src\components\FinanceHome.jsx:117  financial_aging  <-  as_of_date
+src\components\FinanceHome.jsx:133  financial_aging  <-  aging_type,balance
+src\components\FinanceHome.jsx:145  people_weekly  <-  week_start
+src\components\FinanceHome.jsx:151  weekly_prod_summaries  <-  *
+src\components\FinanceHome.jsx:158  deck_kpis  <-  period
+src\components\FinanceHome.jsx:165  deck_kpis  <-  cost_center,metric_key,scenario,value,display
+src\components\FinanceHome.jsx:169  deck_kpis  <-  period
+src\components\FinanceHome.jsx:191  production  <-  week_start, nj_data, bny_data
+src\components\FinancialTab.jsx:136  financial_transactions  <-  fiscal_month
+src\components\FinancialTab.jsx:149  financial_transactions  <-  uploaded_at
+src\components\FinancialTab.jsx:150  financial_aging  <-  as_of_date
+src\components\FinancialTab.jsx:187  financial_aging  <-  as_of_date,aging_type,business_unit,party_name,balance,past_due,buckets
+src\components\FinancialTab.jsx:200  financial_transactions  <-  master_name,net,fiscal_week
 src\components\HeartbeatPage.jsx:171  sched_assignments  <-  site, po_number, product_type, table_code, day_of_week, shift, planned_yards, planned_cy, status, operator
 src\components\HeartbeatPage.jsx:175  sched_daily_ops  <-  site, table_code, day_of_week, shift, planned_yards, actual_yards, waste_yards, operator_1, operator_2, notes, note_assigned_to, note_status
 src\components\HeartbeatPage.jsx:179  v_current_wip_rollup  <-  yard_order_status, num_orders, yards_written
@@ -47,25 +59,27 @@ src\components\HistoryPanel.jsx:20  weeks  <-  *
 src\components\InventoryTab.jsx:72  inventory_snapshot  <-  as_of
 src\components\InventoryTab.jsx:89  inventory_snapshot  <-  *
 src\components\KPIScorecard.jsx:65  kpi_reactions  <-  emoji, author
+src\components\LeversTab.jsx:123  production  <-  week_start, nj_data, bny_data
 src\components\LiftFreshnessBadge.jsx:70  sched_snapshots  <-  uploaded_at, source_filename
 src\components\LiveOpsTab.jsx:99  sched_po_flags  <-  po_number, item_sku, color, needs_tint
 src\components\LiveOpsTab.jsx:135  sched_assignments  <-  week_start
 src\components\LiveOpsTab.jsx:169  sched_assignments  <-  *
 src\components\LoginScreen.jsx:30  profiles  <-  full_name, role
+src\components\MonthEndDecks.jsx:37  month_end_decks  <-  *
 src\components\OpsAttentionPanel.jsx:35  sched_snapshots  <-  id,uploaded_at
 src\components\OpsAttentionPanel.jsx:37  sched_assignments  <-  site,planned_yards
 src\components\OpsAttentionPanel.jsx:38  sched_daily_ops_lines  <-  site,actual_yards,waste_yards
-src\components\OpsAttentionPanel.jsx:47  sched_wip_rows  <-  *
-src\components\OpsDailyChart.jsx:34  sched_daily_ops_lines  <-  site,work_date,actual_yards,waste_yards
+src\components\OpsAttentionPanel.jsx:52  sched_wip_rows  <-  *
+src\components\OpsDailyChart.jsx:34  sched_daily_ops_lines  <-  site,day_of_week,actual_yards,waste_yards
 src\components\OpsDailyChart.jsx:36  sched_assignments  <-  site,planned_yards
-src\components\OpsHome.jsx:184  sched_snapshots  <-  id
-src\components\OpsHome.jsx:199  sched_daily_ops_lines  <-  actual_yards
-src\components\OpsHome.jsx:203  sched_daily_ops_lines  <-  actual_yards
-src\components\OpsHome.jsx:213  sched_wip_rows  <-  age_days,is_new_goods,yards_written
-src\components\OpsHome.jsx:216  sched_assignments  <-  planned_yards,product_type
-src\components\OpsHome.jsx:225  sched_daily_ops_lines  <-  actual_yards,waste_yards,is_complete,day_of_week
-src\components\OpsHome.jsx:274  sched_assignments  <-  planned_yards
-src\components\OpsHome.jsx:275  sched_daily_ops_lines  <-  actual_yards,waste_yards
+src\components\OpsHome.jsx:209  sched_snapshots  <-  id
+src\components\OpsHome.jsx:224  sched_daily_ops_lines  <-  actual_yards
+src\components\OpsHome.jsx:228  sched_daily_ops_lines  <-  actual_yards
+src\components\OpsHome.jsx:238  sched_wip_rows  <-  age_days,is_new_goods,yards_written
+src\components\OpsHome.jsx:241  sched_assignments  <-  site,planned_yards,product_type,table_code
+src\components\OpsHome.jsx:251  sched_daily_ops_lines  <-  actual_yards,waste_yards,is_complete,day_of_week,site,table_code
+src\components\OpsHome.jsx:378  sched_assignments  <-  planned_yards
+src\components\OpsHome.jsx:379  sched_daily_ops_lines  <-  actual_yards,waste_yards
 src\components\OpsPulseTiles.jsx:80  sched_assignments  <-  site,po_number,item_sku,color,planned_yards,planned_cy
 src\components\OpsPulseTiles.jsx:82  sched_daily_ops_lines  <-  site,po_number,item_sku,color,actual_yards,waste_yards,is_complete
 src\components\OpsPulseTiles.jsx:84  sched_snapshots  <-  id
@@ -73,26 +87,38 @@ src\components\OpsPulseTiles.jsx:93  sched_wip_rows  <-  *
 src\components\OpsSectionGrid.jsx:66  sched_snapshots  <-  id
 src\components\OpsSectionGrid.jsx:72  sched_wip_rows  <-  age_days,is_new_goods,order_status
 src\components\OpsSectionGrid.jsx:75  sched_assignments  <-  planned_yards
-src\components\OpsSectionGrid.jsx:76  sched_daily_ops_lines  <-  actual_yards,waste_yards,is_complete,work_date
-src\components\PassaicScheduler.jsx:116  sched_po_flags  <-  po_number, item_sku, color, needs_tint
-src\components\PassaicScheduler.jsx:169  sched_assignments  <-  po_number, item_sku, color, planned_yards, week_start
+src\components\OpsSectionGrid.jsx:76  sched_daily_ops_lines  <-  actual_yards,waste_yards,is_complete,day_of_week
+src\components\PassaicScheduler.jsx:114  sched_submissions  <-  id, version, submitted_at, submitted_by, totals, rows
+src\components\PassaicScheduler.jsx:127  sched_shift_log  <-  change_kind, po_number, item_sku, color
+src\components\PassaicScheduler.jsx:150  sched_po_flags  <-  po_number, item_sku, color, needs_tint
+src\components\PassaicScheduler.jsx:203  sched_assignments  <-  po_number, item_sku, color, planned_yards, week_start
 src\components\PeopleTab.jsx:34  people_weekly  <-  week_start
 src\components\PeopleTab.jsx:35  people_weekly  <-  updated_at
 src\components\PeopleTab.jsx:46  people_weekly  <-  *
-src\components\PeopleTab.jsx:370  people_weekly  <-  week_start, bny_reg_hrs, bny_ot_hrs, bny_pto_hrs, nj_reg_hrs, nj_ot_hrs, nj_pto_hrs
+src\components\PeopleTab.jsx:383  people_weekly  <-  week_start, bny_reg_hrs, bny_ot_hrs, bny_pto_hrs, nj_reg_hrs, nj_ot_hrs, nj_pto_hrs
+src\components\ProcurementHome.jsx:30  sched_snapshots  <-  id, uploaded_at
+src\components\ProcurementHome.jsx:35  sched_wip_rows  <-  site, order_status, is_new_goods, age_days, yards_written, income_written
+src\components\ProcurementHome.jsx:42  inventory_snapshot  <-  as_of
+src\components\ProcurementHome.jsx:46  inventory_snapshot  <-  on_hand_curr, cost_per_yard
 src\components\ProductionDashboard.jsx:258  production  <-  *
 src\components\ProductionDashboard.jsx:287  production  <-  *
 src\components\ProductionDashboard.jsx:300  production  <-  *
 src\components\ProductionDashboard.jsx:316  production  <-  *
-src\components\SchedulerTab.jsx:41  sched_snapshots  <-  *
-src\components\SchedulerTab.jsx:56  sched_wip_rows  <-  *
-src\components\SchedulerTab.jsx:70  sched_assignments  <-  *
-src\components\SchedulerTab.jsx:87  sched_assignments  <-  *
+src\components\QueueTab.jsx:113  sched_snapshots  <-  id, uploaded_at
+src\components\QueueTab.jsx:122  sched_wip_rows  <-  *
+src\components\QueueTab.jsx:126  sched_assignments  <-  site, po_number, item_sku, color, table_code, week_start, day_of_week, planned_yards
+src\components\QueueTab.jsx:209  sched_shift_log  <-  change_kind, reason_category, requested_by, noted_by, note, detail, week_start, created_at
+src\components\SchedulerTab.jsx:42  sched_snapshots  <-  *
+src\components\SchedulerTab.jsx:57  sched_wip_rows  <-  *
+src\components\SchedulerTab.jsx:71  sched_assignments  <-  *
+src\components\SchedulerTab.jsx:88  sched_assignments  <-  *
 src\components\ShareFileFreshnessBadge.jsx:71  integration_state  <-  value, updated_at
 src\components\StatusTab.jsx:54  sched_assignments  <-  *
-src\components\UserManagement.jsx:54  profiles  <-  id, full_name, role, active, created_at
-src\components\VenaPnLTab.jsx:61  vena_monthly  <-  period
-src\components\VenaPnLTab.jsx:78  vena_monthly  <-  *
+src\components\UserManagement.jsx:74  profiles  <-  id, full_name, role, active, department, created_at
+src\components\VenaPnLTab.jsx:72  vena_monthly  <-  period
+src\components\VenaPnLTab.jsx:89  vena_monthly  <-  *
+src\components\VenaPnLTab.jsx:114  vena_monthly  <-  period,line_key,line_label,account_code,line_order,amount
+src\components\VenaPnLTab.jsx:117  vena_monthly  <-  period,line_key,line_label,account_code,line_order,amount
 src\components\WeekPaceStrip.jsx:93  production  <-  week_start, nj_data, bny_data
 src\components\WIPTab.jsx:277  sched_snapshots  <-  *
 src\components\WIPTab.jsx:303  sched_wip_rows  <-  site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, line_description, order_status, yards_written, qty_invoiced, income_written, age_days, age_bucket
@@ -130,20 +156,42 @@ src\lib\poTotals.js:147  sched_wip_rows  <-  po_number, yards_written, color_yar
 src\lib\poTotals.js:173  order_ledger  <-  po_number, yards_written, colors_count, invoice_date, last_status
 src\lib\poTotals.js:212  sched_daily_ops_lines  <-  po_number, item_sku, color, table_code, week_start, actual_yards, waste_yards
 src\lib\poTotals.js:218  sched_assignments  <-  po_number, item_sku, color, table_code, week_start, planned_yards, planned_cy
+src\lib\productionPrefill.js:53  sched_daily_ops  <-  site, table_code, day_of_week, actual_yards, waste_yards
+src\lib\productionPrefill.js:54  sched_daily_ops_lines  <-  site, table_code, po_number, actual_yards, waste_yards
+src\lib\productionPrefill.js:55  sched_assignments  <-  site, table_code, po_number, planned_yards, planned_cy
+src\lib\productionPrefill.js:56  sched_snapshots  <-  id
+src\lib\productionPrefill.js:66  sched_wip_rows  <-  po_number, bny_bucket
+src\lib\productionPrefill.js:76  order_ledger  <-  po_number, site, customer_type, product_type, yards_invoiced, invoiced_revenue, bny_bucket
+src\lib\productionPrefill.js:77  order_ledger  <-  site, customer_type, qty_printed, bny_bucket, po_number
+src\lib\productionPrefill.js:78  order_ledger  <-  site, customer_type, yards_written
 src\lib\weeklyProdSummaryData.js:72  sched_assignments  <-  *
 src\lib\weeklyProdSummaryData.js:73  sched_daily_ops  <-  *
 src\lib\weeklyProdSummaryData.js:74  sched_daily_ops_lines  <-  *
 src\lib\weeklyProdSummaryData.js:75  sched_daily_ops_notes  <-  *
 src\lib\weeklyProdSummaryData.js:363  weekly_prod_summaries  <-  id, week_start, scope, narrative, saved_at, saved_by_email
 src\lib\weeklyProdSummaryData.js:374  weekly_prod_summaries  <-  *
-src\App.jsx:246  profiles  <-  full_name, role, active
-src\App.jsx:341  weeks  <-  *
-src\App.jsx:370  section_comments  <-  *
-src\App.jsx:374  section_comments  <-  *
+src\App.jsx:265  profiles  <-  full_name, role, active
+src\App.jsx:365  weeks  <-  *
+src\App.jsx:394  section_comments  <-  *
+src\App.jsx:398  section_comments  <-  *
 
 ==============================================================================
 DISTINCT table/column PAIRS  (this is the list to verify)
 ==============================================================================
+  ('audit_exceptions','check_key'),
+  ('audit_exceptions','entity'),
+  ('audit_findings','check_key'),
+  ('audit_findings','detail'),
+  ('audit_findings','status'),
+  ('audit_findings','summary'),
+  ('audit_runs','checks_run'),
+  ('audit_runs','duration_ms'),
+  ('audit_runs','failed'),
+  ('audit_runs','id'),
+  ('audit_runs','passed'),
+  ('audit_runs','ran_at'),
+  ('audit_runs','trigger_by'),
+  ('audit_runs','warned'),
   ('business_facts','category'),
   ('business_facts','fact'),
   ('business_facts','fact_number'),
@@ -151,6 +199,12 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('dashboard_narratives','narrative'),
   ('dashboard_narratives','time_window'),
   ('dashboard_narratives','week_start'),
+  ('deck_kpis','cost_center'),
+  ('deck_kpis','display'),
+  ('deck_kpis','metric_key'),
+  ('deck_kpis','period'),
+  ('deck_kpis','scenario'),
+  ('deck_kpis','value'),
   ('financial_aging','aging_type'),
   ('financial_aging','as_of_date'),
   ('financial_aging','balance'),
@@ -170,6 +224,8 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('integration_state','updated_at'),
   ('integration_state','value'),
   ('inventory_snapshot','as_of'),
+  ('inventory_snapshot','cost_per_yard'),
+  ('inventory_snapshot','on_hand_curr'),
   ('kpi_reactions','author'),
   ('kpi_reactions','emoji'),
   ('monthly_briefs','id'),
@@ -180,10 +236,17 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('monthly_briefs','saved_at'),
   ('monthly_briefs','saved_by'),
   ('monthly_briefs','saved_by_email'),
+  ('order_ledger','bny_bucket'),
   ('order_ledger','colors_count'),
+  ('order_ledger','customer_type'),
   ('order_ledger','invoice_date'),
+  ('order_ledger','invoiced_revenue'),
   ('order_ledger','last_status'),
   ('order_ledger','po_number'),
+  ('order_ledger','product_type'),
+  ('order_ledger','qty_printed'),
+  ('order_ledger','site'),
+  ('order_ledger','yards_invoiced'),
   ('order_ledger','yards_written'),
   ('people_weekly','bny_ot_hrs'),
   ('people_weekly','bny_pto_hrs'),
@@ -198,6 +261,7 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('production','week_start'),
   ('profiles','active'),
   ('profiles','created_at'),
+  ('profiles','department'),
   ('profiles','full_name'),
   ('profiles','id'),
   ('profiles','role'),
@@ -224,7 +288,6 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('sched_daily_ops_lines','table_code'),
   ('sched_daily_ops_lines','waste_yards'),
   ('sched_daily_ops_lines','week_start'),
-  ('sched_daily_ops_lines','work_date'),
   ('sched_daily_ops','actual_yards'),
   ('sched_daily_ops','day_of_week'),
   ('sched_daily_ops','note_assigned_to'),
@@ -241,9 +304,26 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('sched_po_flags','item_sku'),
   ('sched_po_flags','needs_tint'),
   ('sched_po_flags','po_number'),
+  ('sched_shift_log','change_kind'),
+  ('sched_shift_log','color'),
+  ('sched_shift_log','created_at'),
+  ('sched_shift_log','detail'),
+  ('sched_shift_log','item_sku'),
+  ('sched_shift_log','note'),
+  ('sched_shift_log','noted_by'),
+  ('sched_shift_log','po_number'),
+  ('sched_shift_log','reason_category'),
+  ('sched_shift_log','requested_by'),
+  ('sched_shift_log','week_start'),
   ('sched_snapshots','id'),
   ('sched_snapshots','source_filename'),
   ('sched_snapshots','uploaded_at'),
+  ('sched_submissions','id'),
+  ('sched_submissions','rows'),
+  ('sched_submissions','submitted_at'),
+  ('sched_submissions','submitted_by'),
+  ('sched_submissions','totals'),
+  ('sched_submissions','version'),
   ('sched_wip_rows','age_bucket'),
   ('sched_wip_rows','age_days'),
   ('sched_wip_rows','bny_bucket'),
@@ -277,6 +357,8 @@ DISTINCT table/column PAIRS  (this is the list to verify)
   ('vena_monthly','amount'),
   ('vena_monthly','cost_center'),
   ('vena_monthly','line_key'),
+  ('vena_monthly','line_label'),
+  ('vena_monthly','line_order'),
   ('vena_monthly','period'),
   ('weekly_prod_summaries','id'),
   ('weekly_prod_summaries','narrative'),
@@ -292,5 +374,7 @@ DISTINCT table/column PAIRS  (this is the list to verify)
 ROW-CAP RISK  -  .limit(n) where n > 1000, or a bare fetch of many rows
 ==============================================================================
   src\components\AdminFinancials.jsx:115  .limit(20000);
+  src\components\DeckKpiTrend.jsx:89  .select('*').limit(2000)
   src\components\InventoryTab.jsx:90  .select('*').eq('as_of', asOf).limit(2000)
-  src\components\OpsHome.jsx:8  // `.limit(5000)` does NOT defeat that — it looks like a fix, returns exactly
+  src\components\OpsHome.jsx:30  // `.limit(5000)` does NOT defeat that — it looks like a fix, returns exactly
+  src\components\ProcurementHome.jsx:47  .select('on_hand_curr, cost_per_yard').eq('as_of', asOf).limit(2000)

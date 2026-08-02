@@ -229,7 +229,8 @@ async function checkLedger() {
   }
 }
 
-async function checkKitAnatomy() {
+async function checkKitAnatomy(exceptions) {
+  const skip = (key, entity) => exceptions.has(key + '|' + entity)
   // 14 + 15 — the LIFT kit doctrine as machinery (8/2). Hand-screen orders
   // kit a PRINT line (carries the FULL kit $) with a GROUND line (~1:1 yards,
   // ~$0), linked by shared PO. Outliers here are almost always LIFT ENTRY
@@ -240,21 +241,29 @@ async function checkKitAnatomy() {
   const d7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
   const d14 = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)
 
-  // 14. kit_price_band — SCH intercompany per-yd kit price inside its band.
-  // Bands from observed July ranges with headroom: Grass $14–26, Paper $4–9.
-  // 3P excluded (list pricing ~2x); Fabric excluded (residual unexplained —
-  // COM/specialty grounds; open with Brynn before it can carry a band).
-  const BAND = { Grass: [14, 26], Paper: [4, 9] }
+  // 14. kit_price_band — colors-aware (v2, Peter's correction 8/2): print
+  // price ALWAYS scales with # colors, so the axis is per-COLOR, not per-yd.
+  // Calibrated on Jun–Jul SCH orders (grass n=66 median $8.00/color, paper
+  // n=37 median $2.74/color). Two asymmetric flags: kit priced at/below the
+  // ground alone (selling below substrate — keyed too low), or per-color
+  // beyond observed max (keyed too high). Legit multi-color passes.
+  const GROUND_RATE = { Grass: 7.5, Paper: 1.66 }
+  const PER_COLOR_MAX = { Grass: 20, Paper: 7 }
   const inv = await sb(
-    'order_ledger?select=order_number,product_type,yards_invoiced,invoiced_revenue'
+    'order_ledger?select=order_number,product_type,yards_invoiced,invoiced_revenue,colors_count'
     + `&site=eq.passaic&customer_type=eq.Schumacher&product_type=in.(Grass,Paper)`
     + `&invoice_date=gte.${d7}&yards_invoiced=gt.0`)
   const outliers = []
   for (const r of (inv || [])) {
+    if (skip('kit_price_band', r.order_number)) continue
     const perYd = Number(r.invoiced_revenue) / Number(r.yards_invoiced)
-    const [lo, hi] = BAND[r.product_type]
-    if (perYd < lo || perYd > hi)
-      outliers.push({ order: r.order_number, type: r.product_type, perYd: Math.round(perYd * 100) / 100, band: `${lo}–${hi}` })
+    const colors = Number(r.colors_count) > 0 ? Number(r.colors_count) : 1
+    const ground = GROUND_RATE[r.product_type]
+    const perColor = (perYd - ground) / colors
+    if (perYd <= ground + 1)
+      outliers.push({ order: r.order_number, type: r.product_type, perYd: Math.round(perYd * 100) / 100, why: `kit priced at/below ground ($${ground}) — keyed too low?` })
+    else if (perColor > PER_COLOR_MAX[r.product_type])
+      outliers.push({ order: r.order_number, type: r.product_type, colors, perColor: Math.round(perColor * 100) / 100, why: `$${Math.round(perColor)}/color exceeds observed max $${PER_COLOR_MAX[r.product_type]} — keyed too high?` })
   }
   const band = outliers.length === 0
     ? { status: 'pass', summary: `All SCH kit prices invoiced this week sit inside their bands (${(inv || []).length} order(s))`, detail: { checked: (inv || []).length } }
@@ -263,22 +272,55 @@ async function checkKitAnatomy() {
   // 15. kit_integrity — ground yards ≈ print yards (1:1 kitting) on recently
   // written Grass/Paper orders. Missing or badly mismatched ground = the kit
   // was built wrong at entry. Ratio tolerance 0.7–1.3.
+  const PRE_MATERIAL = new Set(['Waiting for Material', 'Waiting for Approval'])
   const wrt = await sb(
-    'order_ledger?select=order_number,product_type,yards_written,ground_yards'
+    'order_ledger?select=order_number,product_type,customer_type,last_status,yards_written,ground_yards'
     + `&site=eq.passaic&product_type=in.(Grass,Paper)`
     + `&order_created=gte.${d14}&yards_written=gt.0`)
   const broken = []
   for (const r of (wrt || [])) {
+    if (skip('kit_integrity', r.order_number)) continue
     const gy = Number(r.ground_yards || 0), py = Number(r.yards_written)
     const ratio = gy / py
-    if (gy === 0 || ratio < 0.7 || ratio > 1.3)
-      broken.push({ order: r.order_number, type: r.product_type, printYds: py, groundYds: gy })
+    if (gy === 0) {
+      // A ground not kitted YET is not an error — don't flag orders still
+      // upstream of material allocation (Peter 8/2: flag fast, but not before
+      // the step that creates the thing being checked has happened).
+      if (PRE_MATERIAL.has(r.last_status || '')) continue
+      broken.push({ order: r.order_number, type: r.product_type, printYds: py, groundYds: 0,
+        why: r.customer_type === '3rd Party'
+          ? 'no kitted ground — 3rd party; customer-supplied material? (trainable)'
+          : 'no kitted ground past material stage — check the LIFT entry' })
+    } else if (ratio < 0.7 || ratio > 1.3) {
+      broken.push({ order: r.order_number, type: r.product_type, printYds: py, groundYds: gy,
+        why: `ground:print ratio ${Math.round(ratio * 100) / 100} outside 0.7-1.3` })
+    }
   }
   const integrity = broken.length === 0
     ? { status: 'pass', summary: `Every recent Grass/Paper order kits its ground ~1:1 (${(wrt || []).length} order(s))`, detail: { checked: (wrt || []).length } }
     : { status: 'warn', summary: `${broken.length} recent order(s) with missing or mismatched kitted ground — check the LIFT entry`, detail: { broken: broken.slice(0, 10) } }
 
   return { band, integrity }
+}
+
+async function checkFilesTriage() {
+  // 16. files_triage — the Claude Files hard lock (Peter, 8/2): every file in
+  // the ShareFile drop zone (DASH WORK/Claude Files, inventoried by
+  // sharefile-sync each run) must be either feed-covered (folder prefix in
+  // the triaged list) or explicitly triaged by path after Claude reads it.
+  // Anything else is READING DEBT and ambers the panel until dealt with —
+  // a dropped file can never again sit invisible for months.
+  const inv = await sb('integration_state?select=value&key=eq.claude_files_inventory')
+  const tri = await sb('integration_state?select=value&key=eq.claude_files_triaged')
+  const files = (inv && inv[0] && inv[0].value && inv[0].value.files) || []
+  const t = (tri && tri[0] && tri[0].value) || {}
+  const folders = t.folders || []
+  const paths = new Set(t.paths || [])
+  const untriaged = files.map(f => f.path)
+    .filter(p => !paths.has(p) && !folders.some(fo => p.startsWith(fo)))
+  return { triage: untriaged.length === 0
+    ? { status: 'pass', summary: `All ${files.length} Claude Files are feed-covered or triaged`, detail: { files: files.length } }
+    : { status: 'warn', summary: `${untriaged.length} Claude File(s) awaiting triage — reading debt`, detail: { untriaged: untriaged.slice(0, 15) } } }
 }
 
 // ── the run ─────────────────────────────────────────────────────────────────
@@ -298,8 +340,11 @@ async function runAudit(trigger = 'nightly', dryRun = false) {
   add('sharefile_health', (await checkShareFile()).health)
   add('people_freshness', (await checkPeople()).people)
   add('order_ledger_floor', (await checkLedger()).ledger)
-  const kit = await checkKitAnatomy()
+  const excRows = await sb('audit_exceptions?select=check_key,entity').catch(() => [])
+  const exceptions = new Set((excRows || []).map(e => e.check_key + '|' + e.entity))
+  const kit = await checkKitAnatomy(exceptions)
   add('kit_price_band', kit.band); add('kit_integrity', kit.integrity)
+  add('files_triage', (await checkFilesTriage()).triage)
 
   const passed = findings.filter(f => f.status === 'pass').length
   const warned = findings.filter(f => f.status === 'warn').length
