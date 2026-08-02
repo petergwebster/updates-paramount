@@ -70,7 +70,7 @@ export async function computePrefill(weekKey) {
 
   // Ledger slices — three date lenses on the same table
   const [invQ, prtQ, wrtQ] = await Promise.all([
-    supabase.from('order_ledger').select('po_number, site, customer_type, product_type, yards_invoiced, invoiced_revenue').gte('invoice_date', weekKey).lte('invoice_date', weekEnd).range(0, 4999),
+    supabase.from('order_ledger').select('po_number, site, customer_type, product_type, yards_invoiced, invoiced_revenue, bny_bucket').gte('invoice_date', weekKey).lte('invoice_date', weekEnd).range(0, 4999),
     supabase.from('order_ledger').select('site, customer_type, qty_printed').gte('printed_date', weekKey).lte('printed_date', weekEnd).range(0, 4999),
     supabase.from('order_ledger').select('site, customer_type, yards_written').gte('first_seen', weekKey).lte('first_seen', weekEnd + 'T23:59:59').range(0, 4999),
   ])
@@ -117,7 +117,8 @@ export async function computePrefill(weekKey) {
       else { uncatN++; uncatY += yds; uncatR += rev }
       ;(is3P(r.customer_type) ? tp : sch).passaic.i += yds
     } else if (r.site === 'bny') {
-      const bucket = BKEY[bucketMap[r.po_number]] || null
+      // Ledger's own bucket first (survives invoicing); snapshot map fallback.
+      const bucket = BKEY[r.bny_bucket || bucketMap[r.po_number]] || null
       if (bucket) { bnyInv[bucket] = (bnyInv[bucket] || 0) + yds; bnyIncome[bucket] = (bnyIncome[bucket] || 0) + rev }
       else gaps.unknownBucket.push(r.po_number)
       ;(is3P(r.customer_type) ? tp : sch).bny.i += yds

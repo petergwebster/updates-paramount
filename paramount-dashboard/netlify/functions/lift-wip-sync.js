@@ -333,7 +333,14 @@ function buildRows(ordersText, productsText, asOf) {
         yards_invoiced: 0, invoiced_revenue: 0, qty_printed: 0,
         invoice_date: null, printed_date: null, invoice_status: null,
         colors_count: colorsCount, last_status: null,
+        // Bucket persisted at the LEDGER level (8/2): an invoiced order leaves
+        // sched_wip_rows, and with it its bucket — which made invoiced-by-bucket
+        // underivable (160 unknown POs on the wk-7/19 prefill test). Stamping it
+        // here means buckets survive an order's death; the hourly ledger pass
+        // over the full orders.csv also backfills all history automatically.
+        bny_bucket: bnyBucket,
       }
+      if (!cur.bny_bucket && bnyBucket) cur.bny_bucket = bnyBucket
       cur.yards_written    += yardsWritten
       cur.qty_invoiced     += qtyInvoiced
       cur.income_written   += incomeWritten
