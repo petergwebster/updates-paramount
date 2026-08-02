@@ -186,12 +186,39 @@ export default function FinanceHome({ onOpen }) {
         kpiCounts = { g, a, r }
       }
 
+      // ── Levers ── the strategy deck's three committed weekly targets, read
+      // from the latest saved production week (same source as the Levers tab).
+      const { data: prodRows } = await supabase.from('production')
+        .select('week_start, nj_data, bny_data')
+        .order('week_start', { ascending: false }).limit(6)
+      if (dead) return
+      const pnum = (v) => { const n = parseFloat(String(v ?? '').replace(/,/g, '')); return isFinite(n) ? n : 0 }
+      let lever = null
+      for (const r of (prodRows || [])) {
+        const nj = r.nj_data || {}, bny = r.bny_data || {}
+        let inv = 0, waste = 0, prod = 0
+        for (const c of ['fabric', 'grass', 'paper']) {
+          const x = nj[c] || {}
+          inv += pnum(x.invoiceYds); prod += pnum(x.yards)
+          waste += pnum(x.waste) + pnum(x.postWaste)
+        }
+        const bnyProd = pnum(bny.schProduced) + pnum(bny.tpProduced)
+        if (inv > 0 || prod > 0 || bnyProd > 0) {
+          lever = {
+            week: r.week_start,
+            ship: inv, wastePct: prod > 0 ? (waste / prod) * 100 : null, bny: bnyProd,
+            hits: (inv >= 8500 ? 1 : 0) + (prod > 0 && (waste / prod) * 100 <= 8 ? 1 : 0) + (bnyProd >= 15000 ? 1 : 0),
+          }
+          break
+        }
+      }
+
       setD({
         period, revenue, revenuePrev, ebitda, eb610, eb609, eb612,
         fm, opex, inv, capex, latestTxn,
         buNJ: buSum('NJ'), buBNY: buSum('BNY'), buSH: buSum('SHARED'),
         agingAsOf, ar, ap, peopleAsOf, summaryCount: summaryCount || 0,
-        kpiPeriod, kpiCounts, kpiMonths,
+        kpiPeriod, kpiCounts, kpiMonths, lever,
       })
     })()
     return () => { dead = true }
@@ -246,6 +273,19 @@ export default function FinanceHome({ onOpen }) {
             { v: d.kpiCounts?.g || 0, color: C.revenue, label: 'On' },
             { v: d.kpiCounts?.a || 0, color: C.scheduled, label: 'Close' },
             { v: d.kpiCounts?.r || 0, color: C.waste, label: 'Off' },
+          ]} />
+        </Box>
+
+        <Box title="Levers" value={d.lever ? `${d.lever.hits}/3` : '—'}
+             unit={d.lever ? `on target · wk ${String(d.lever.week).slice(5)}` : 'no production weeks saved'}
+             sub={d.lever
+                  ? `Ship ${Math.round(d.lever.ship).toLocaleString()} vs 8,500 · waste ${d.lever.wastePct == null ? '—' : d.lever.wastePct.toFixed(1) + '%'} vs 8% · digital ${Math.round(d.lever.bny).toLocaleString()} vs 15K`
+                  : 'The 2027 bridge tracked weekly'}
+             subTone={d.lever && d.lever.hits === 0 ? 'warn' : undefined}
+             onClick={go('levers')}>
+          <StackBar segs={[
+            { v: d.lever?.hits || 0, color: C.revenue, label: 'On' },
+            { v: d.lever ? 3 - d.lever.hits : 3, color: C.waste, label: 'Off' },
           ]} />
         </Box>
 
