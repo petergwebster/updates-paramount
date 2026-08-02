@@ -65,6 +65,12 @@ const HEALTH_KEY = 'sharefile_health'
 // Where Jen's weekly workbook lives, relative to "Shared Folders".
 const JEN_PATH = ['DASH WORK', 'Claude Files', 'Purchases']
 
+// The Claude drop zone (8/2): anything Peter puts under Claude Files is
+// inventoried every run, and any single file can be fetched over the bridge
+// (POST {getFile:"Price Lists/x.pdf"}) so Claude can read it directly.
+// First residents: the FSCO + 3rd-party price lists — the pricing baseline.
+const CLAUDE_PATH = ['DASH WORK', 'Claude Files']
+
 // Where Abigail's Vena monthly close lands. Folder name is misspelled on
 // ShareFile ("Parmount") — that is the real name, do not "fix" it.
 const VENA_PATH = ['Parmount Monthly Results']
@@ -221,6 +227,46 @@ async function downloadBuffer(itemId, token) {
   })
   if (!res.ok) throw new Error(`ShareFile download failed: HTTP ${res.status}`)
   return Buffer.from(await res.arrayBuffer())
+}
+
+// ─── Claude Files: inventory + fetch bridge ──────────────────────────
+async function inventoryClaudeFiles(token, opts, result) {
+  const rootId = await resolvePath(CLAUDE_PATH, token)
+  const files = []
+  const walk = async (id, prefix, depth) => {
+    for (const k of await children(id, token)) {
+      const type = k['odata.type'] || ''
+      if (type.includes('Folder') && depth < 2) {
+        await walk(k.Id, `${prefix}${k.Name}/`, depth + 1)
+      } else if (type.includes('File')) {
+        files.push({
+          path: `${prefix}${k.Name}`, id: k.Id,
+          size: k.FileSizeBytes || 0,
+          modified: k.ClientModifiedDate || k.ProgenyEditDate || k.CreationDate || null,
+        })
+      }
+    }
+  }
+  await walk(rootId, '', 0)
+  const prior = (await stateGet('claude_files_inventory')) || { files: [] }
+  const priorPaths = new Set((prior.files || []).map(f => f.path))
+  const fresh = files.filter(f => !priorPaths.has(f.path)).map(f => f.path)
+  if (!opts.dryRun) await stateSet('claude_files_inventory', { listed_at: new Date().toISOString(), files })
+  result.claude_files = { count: files.length, new: fresh }
+}
+
+async function fetchClaudeFile(token, relPath) {
+  const segs = String(relPath).split('/').map(s => s.trim()).filter(Boolean)
+  const fileName = segs.pop()
+  const folderId = await resolvePath([...CLAUDE_PATH, ...segs], token)
+  const kids = await children(folderId, token)
+  const hit = kids.find(k => (k['odata.type'] || '').includes('File')
+    && String(k.Name || '').toLowerCase() === fileName.toLowerCase())
+  if (!hit) throw new Error(`File not found under Claude Files: ${relPath}`)
+  const size = hit.FileSizeBytes || 0
+  if (size > 4.5 * 1024 * 1024) throw new Error(`${hit.Name} is ${(size / 1048576).toFixed(1)}MB — over the 4.5MB bridge limit; split or compress it`)
+  const buf = await downloadBuffer(hit.Id, token)
+  return { file: hit.Name, size, base64: buf.toString('base64') }
 }
 
 // ─── Jen's weekly GP workbook ──────────────────────────────────────────────
@@ -764,6 +810,13 @@ async function runSync(event) {
     }
     const token = await accessToken()
 
+    // FETCH BRIDGE: return one Claude Files item as base64 and do nothing
+    // else — read-only, touches no production data.
+    if (opts.getFile) {
+      const out = await fetchClaudeFile(token, opts.getFile)
+      return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ran_at: result.ran_at, ...out }) }
+    }
+
     // Each feed is isolated: a failure in one must not block the other.
     try { await ingestJen(token, opts, result) }
     catch (e) { console.error('jen feed:', e); result.jen = { error: e.message } }
@@ -783,6 +836,10 @@ async function runSync(event) {
     // Month-end inventory — both sites, each isolated inside the function.
     try { await ingestInventory(token, opts, result) }
     catch (e) { console.error('inventory feed:', e); result.inventory = { error: e.message } }
+
+    // Claude Files drop-zone inventory — non-critical, never affects ok.
+    try { await inventoryClaudeFiles(token, opts, result) }
+    catch (e) { console.error('claude files:', e); result.claude_files = { error: e.message } }
 
     // HEALTH RECORD — what the dashboard badge reads. Written on every run,
     // success or failure. Recency matters as much as outcome: if this function
