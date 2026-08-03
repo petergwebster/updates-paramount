@@ -1,0 +1,47 @@
+# Daily triggers — the CLOUD clock that doesn't sleep.
+#
+# Why this exists: Netlify's scheduler on this site has skipped daily ticks
+# (proven Sat 8/1), and Peter's laptop — the Task Scheduler host — is not on
+# 24/7 (proven the very next night, 8/3, when the 1:05am task never fired).
+# GitHub Actions is a third, independent scheduler: different infrastructure
+# from Netlify, always on, free, and living in the repo so it travels with
+# the code. Every endpoint is idempotent, so overlapping clocks are harmless;
+# these times are staggered ~10 min AFTER Netlify's slots so this acts as the
+# sweeper — if Netlify fired, these calls are no-ops.
+#
+# NOTE: GitHub cron is UTC and can drift minutes late under load — fine here,
+# a late run beats a skipped one. workflow_dispatch = manual test button in
+# the GitHub UI (Actions tab -> Daily triggers -> Run workflow).
+
+name: Daily triggers
+
+on:
+  schedule:
+    - cron: '10 5 * * *'    # nightly audit sweep   (Netlify runs 05:00 UTC)
+    - cron: '40 10 * * *'   # daily digest sweep    (Netlify runs 10:30 UTC)
+    - cron: '10 13 * * *'   # finance sync sweep    (Netlify runs 13:00 UTC)
+  workflow_dispatch: {}
+
+jobs:
+  fire:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire the matching endpoint(s)
+        run: |
+          BASE="https://updates-paramount.netlify.app/.netlify/functions"
+          HOUR=$(date -u +%H)
+          post () {
+            echo "POST $1"
+            curl -s -m 300 -X POST "$BASE/$1" -H "Content-Type: application/json" -d '{}' | head -c 400
+            echo
+          }
+          # Route by the hour we woke up in; manual dispatch fires all three.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            post audit-run; post digest-run; post sharefile-run
+          elif [ "$HOUR" -lt 8 ]; then
+            post audit-run
+          elif [ "$HOUR" -lt 12 ]; then
+            post digest-run
+          else
+            post sharefile-run
+          fi
