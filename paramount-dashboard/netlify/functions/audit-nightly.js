@@ -251,14 +251,24 @@ async function checkKitAnatomy(exceptions) {
   const GROUND_RATE = { Grass: 7.5, Paper: 1.66 }
   const PER_COLOR_MAX = { Grass: 20, Paper: 7 }
   const inv = await sb(
-    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,product_type,yards_invoiced,invoiced_revenue,colors_count'
+    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,ground_sku,ground_yards,yards_written,product_type,yards_invoiced,invoiced_revenue,colors_count'
     + `&site=eq.passaic&customer_type=eq.Schumacher&product_type=in.(Grass,Paper)`
     + `&invoice_date=gte.${d7}&yards_invoiced=gt.0`)
   const outliers = []
   for (const r of (inv || [])) {
     if (skip('kit_price_band', r.order_number)) continue
     ident.set(r.order_number, { po: r.po_number, sku: r.item_sku, pattern: r.pattern, colorway: r.color, customer: r.customer_name })
-    const perYd = Number(r.invoiced_revenue) / Number(r.yards_invoiced)
+    // N-UP correction (8/3, proven on F0016572: $576.36 = 36 SOLD yd ×
+    // $16.01, but the CSV reports 18 PRESS yd @ $32.02): LIFT reports BOTH
+    // written and invoiced yards on the press basis for n-up jobs, so the
+    // raw per-yd reads up-count × the real unit price. Same kit signature as
+    // kit_integrity: component SKU embeds the print SKU, ratio ≈ whole 2–4.
+    const upRaw = (r.ground_sku && r.item_sku && String(r.ground_sku).includes(String(r.item_sku))
+                   && Number(r.yards_written) > 0)
+      ? Number(r.ground_yards || 0) / Number(r.yards_written) : 1
+    const upN0 = Math.round(upRaw)
+    const up = (upN0 >= 2 && upN0 <= 4 && Math.abs(upRaw - upN0) <= upN0 * 0.02) ? upN0 : 1
+    const perYd = Number(r.invoiced_revenue) / (Number(r.yards_invoiced) * up)
     const colors = Number(r.colors_count) > 0 ? Number(r.colors_count) : 1
     const ground = GROUND_RATE[r.product_type]
     const perColor = (perYd - ground) / colors
@@ -276,7 +286,7 @@ async function checkKitAnatomy(exceptions) {
   // was built wrong at entry. Ratio tolerance 0.7–1.3.
   const PRE_MATERIAL = new Set(['Waiting for Material', 'Waiting for Approval'])
   const wrt = await sb(
-    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,product_type,customer_type,last_status,yards_written,ground_yards'
+    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,ground_sku,product_type,customer_type,last_status,yards_written,ground_yards'
     + `&site=eq.passaic&product_type=in.(Grass,Paper)`
     + `&order_created=gte.${d14}&yards_written=gt.0`)
   const broken = []
@@ -295,6 +305,17 @@ async function checkKitAnatomy(exceptions) {
           ? 'no kitted ground — 3rd party; customer-supplied material? (trainable)'
           : 'no kitted ground past material stage — check the LIFT entry' })
     } else if (ratio < 0.7 || ratio > 1.3) {
+      // N-UP KITS (Brynn, 8/3, order F0017657): the ground component is
+      // written for the SOLD yardage (297) while orders.csv TOTAL_YARDS
+      // reports PRESS yards (sold ÷ up-count, e.g. 148.5 on a 2-up) — so a
+      // legitimate n-up kit reads as a clean integer ratio. Signature: the
+      // kit component SKU embeds the print SKU (ParaGR-FS-<print sku>) AND
+      // the ratio sits within 2% of a whole 2–4. Invoicing bills the sold
+      // basis (297 × $12.01 tied to the penny), so pricing/deck figures are
+      // unaffected — this is purely a written-yards geometry artifact.
+      const upN = Math.round(ratio)
+      const isKitComponent = r.ground_sku && r.item_sku && String(r.ground_sku).includes(String(r.item_sku))
+      if (isKitComponent && upN >= 2 && upN <= 4 && Math.abs(ratio - upN) <= upN * 0.02) continue
       broken.push({ order: r.order_number, type: r.product_type, printYds: py, groundYds: gy,
         why: `ground:print ratio ${Math.round(ratio * 100) / 100} outside 0.7-1.3` })
     }
