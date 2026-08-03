@@ -165,12 +165,53 @@ async function buildDigest() {
     audit_nightly: { last: run?.ran_at || null, ok: hoursSince(run?.ran_at) < 26 },
   }
 
+  // ── BUSINESS BLOCK (Peter, 8/3: "feed me info the way I need to see it
+  // daily so I can make decisions") ── the four decision numbers, computed
+  // from the same canonical sources the dashboard uses: WTD produced vs plan
+  // by site (sched_daily_ops actuals / sched_assignments plan — the
+  // weeklyProdSummaryData unit model), and invoiced $ WTD by site from the
+  // order ledger (LIFT-dated, hourly-fresh; GP would lag until Sunday).
+  // Weekly revenue forecasts MIRROR budgets.js forecastWeeklyRevenue()
+  // (June 2026 Vena forecast ÷ 5 fiscal weeks) — update BOTH together.
+  const FORECAST_WEEKLY = { passaic: 107775, bny: 128064 }
+  const etNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
+  const sun = new Date(etNow); sun.setDate(sun.getDate() - sun.getDay())
+  const p2 = (x) => String(x).padStart(2, '0')
+  const sunKey = `${sun.getFullYear()}-${p2(sun.getMonth() + 1)}-${p2(sun.getDate())}`
+  const sumBy = (rows, key, val) => (rows || []).reduce((a, r) => {
+    const k = r[key]; a[k] = (a[k] || 0) + Number(r[val] || 0); return a
+  }, {})
+  let business = null
+  try {
+    const [ops, plan, led] = await Promise.all([
+      sb(`sched_daily_ops?select=site,actual_yards&week_start=eq.${sunKey}`),
+      sb(`sched_assignments?select=site,planned_yards&week_start=eq.${sunKey}`),
+      sb(`order_ledger?select=site,invoiced_revenue&invoice_date=gte.${sunKey}`),
+    ])
+    const act = sumBy(ops, 'site', 'actual_yards')
+    const pln = sumBy(plan, 'site', 'planned_yards')
+    const inv = sumBy(led, 'site', 'invoiced_revenue')
+    const k = (n) => Math.round(Number(n || 0)).toLocaleString('en-US')
+    const pct = (a, p) => p > 0 ? ` (${Math.round(100 * a / p)}%)` : ''
+    const lines = [
+      `📊 Production WTD (week of ${sunKey}) — Passaic ${k(act.passaic)} yd of ${k(pln.passaic)} planned${pct(act.passaic, pln.passaic)} · BNY ${k(act.bny)} yd of ${k(pln.bny)} planned${pct(act.bny, pln.bny)}.`,
+      `💵 Invoiced WTD — Passaic $${k(inv.passaic)} · BNY $${k(inv.bny)} · weekly forecast $${k(FORECAST_WEEKLY.passaic)} / $${k(FORECAST_WEEKLY.bny)}.`,
+    ]
+    if (etNow.getDay() <= 1) lines.push('ℹ️ Week just started — WTD figures fill in as the floor reports.')
+    business = { week_start: sunKey, produced: act, planned: pln, invoiced: inv, forecast_weekly: FORECAST_WEEKLY, lines }
+  } catch (e) {
+    business = { error: String(e.message || e), lines: ['⚠️ Business block unavailable this morning: ' + String(e.message || e)] }
+  }
+
   const report = composeReport(run, findings, clocks)
+  report.business = business
+  report.narrative = [...(business?.lines || []), ...report.narrative]
 
   // Slack digest = the short version; the memo + table live in the report.
   const clockLine = Object.entries(clocks)
     .map(([k, v]) => `${v.ok ? '✓' : '✗'} ${k.replace(/_/g, ' ')}`).join(' · ')
   const slackText = `☀️ *Paramount daily digest — ${etDay()}*\n${report.headline}\n${clockLine}`
+    + (business?.lines?.length ? `\n${business.lines.join('\n')}` : '')
     + (report.items.length
         ? `\n${report.items.length} item(s) on the research list — full report + forward-ready memo in the morning brief and on Dashboard → gear → Feed health.`
         : '')

@@ -3,7 +3,6 @@ import { format, startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { computePrefill } from '../lib/productionPrefill'
 import { supabase } from '../supabase'
 import { getFiscalInfo } from '../fiscalCalendar'
-import AdminFinancials from './AdminFinancials'
 import AdminPeople from './AdminPeople'
 import styles from './AdminPanel.module.css'
 
@@ -482,12 +481,17 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
   const hasKPIData = KPIS.some(k => kpis[k.id]?.status && kpis[k.id].status !== 'gray')
   const activeDayData = days[activeDay] || { text: '', status: 'gray' }
 
+  // RETIRED 8/3 (Peter): 'kpis' (KPI Scorecard) and 'financials' (Financial
+  // Data) are gone from entry. Hand-keyed KPIs were a second source of truth
+  // that would diverge from the computed/canonical definitions Perdoo will
+  // drink from (Finance › KPIs holds the deck-extracted history); Financial
+  // Data was a hand-keyed duplicate of what the ShareFile/Vena feeds now own.
+  // Their old saved data stays in `weeks`/`production` untouched. The dead
+  // KPI helpers above remain until the next cleanup pass — unreferenced.
   const SECTIONS = [
     { id: 'production', label: '📊 Production Data' },
-    { id: 'kpis', label: '🎯 KPI Scorecard' },
     { id: 'people', label: '👥 People' },
     { id: 'log', label: '📋 Weekly Log' },
-    { id: 'financials', label: '💰 Financial Data' },
   ]
 
   return (
@@ -823,91 +827,10 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         </div>
       )}
 
-      {/* ── KPI SCORECARD ── */}
-      {activeSection === 'kpis' && (
-        <div className={styles.panel}>
-          <div className={styles.panelActions}>
-            {saved === 'kpis' && <span className={styles.savedMsg}>✓ Saved</span>}
-            <button className="primary" onClick={saveKPIs} disabled={saving}>{saving ? 'Saving…' : 'Save Scorecard'}</button>
-          </div>
-
-          {/* AI Narrative */}
-          <div className={styles.narrativeBlock}>
-            <div className={styles.narrativeBlockHeader}>
-              <div>
-                <div className={styles.narrativeBlockTitle}>Executive Narrative</div>
-                <div className={styles.narrativeBlockSub}>AI-drafted from your KPI notes — edit freely before saving</div>
-              </div>
-              <button
-                className={`${styles.generateBtn} ${generating ? styles.generateBtnLoading : ''}`}
-                onClick={generateNarrative}
-                disabled={generating || !hasKPIData}
-                title={!hasKPIData ? 'Fill in at least one KPI status below first' : ''}
-              >
-                {generating ? <>⏳ Drafting…</> : <>✦ Draft with AI</>}
-              </button>
-            </div>
-            {genError && <p className={styles.genError}>{genError}</p>}
-            <textarea
-              className={styles.narrativeTextarea}
-              value={narrative}
-              onChange={e => setNarrative(e.target.value)}
-              placeholder={hasKPIData ? 'Click "Draft with AI" to generate…' : 'Fill in KPI statuses below first, then click "Draft with AI"…'}
-              rows={8}
-            />
-          </div>
-
-          {/* KPI inputs */}
-          <div className={styles.kpiInputList}>
-            {KPIS.map(kpi => {
-              const data = kpis[kpi.id] || { status: 'gray', notes: '' }
-              const isExpanded = expandedKpi === kpi.id
-              return (
-                <div key={kpi.id} className={`${styles.kpiInputCard} ${styles[`kpiCard_${data.status}`]}`}>
-                  <div className={styles.kpiInputTop} onClick={() => setExpandedKpi(isExpanded ? null : kpi.id)}>
-                    <div className={styles.kpiInputLeft}>
-                      <span className={`dot dot-${data.status}`} />
-                      <span className={styles.kpiInputName}>{kpi.name}</span>
-                    </div>
-                    <div className={styles.kpiInputRight}>
-                      <span className={`badge badge-${data.status}`}>{STATUS_LABELS[data.status]}</span>
-                      <span className={styles.chevron}>{isExpanded ? '▲' : '▼'}</span>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className={styles.kpiInputExpanded}>
-                      <p className={styles.kpiDesc}>{kpi.desc}</p>
-                      <p className={styles.kpiTarget}><strong>2027 Target:</strong> {kpi.target}</p>
-                      <div className={styles.statusPicker}>
-                        {KPI_STATUS_OPTIONS.map(s => (
-                          <button key={s.value} className={`${styles.statusBtn} ${data.status === s.value ? styles[`statusActive_${s.value}`] : ''}`} onClick={() => updateKPI(kpi.id, 'status', s.value)}>
-                            <span className={`dot dot-${s.value}`} />{s.label}
-                          </button>
-                        ))}
-                      </div>
-                      <label className={styles.inputLabel} style={{ marginTop: 12, display: 'block' }}>Notes for this week</label>
-                      <textarea value={data.notes || ''} onChange={e => updateKPI(kpi.id, 'notes', e.target.value)} placeholder={`What happened this week on ${kpi.name}?`} rows={3} style={{ marginTop: 6, width: '100%' }} />
-                      <KPIFileAttach kpiId={kpi.id} kpiName={kpi.name} fileData={kpiFiles[kpi.id]} onFileData={setKpiFileData} />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
       {/* ── PEOPLE (payroll / HR upload) ── */}
       {activeSection === 'people' && (
         <div className={styles.panel}>
           <AdminPeople weekStart={weekKey} />
-        </div>
-      )}
-
-      {/* ── FINANCIAL DATA ── */}
-      {activeSection === 'financials' && (
-        <div className={styles.panel}>
-          <AdminFinancials weekStart={effectiveWeek} />
         </div>
       )}
 
