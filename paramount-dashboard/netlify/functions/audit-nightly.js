@@ -247,15 +247,17 @@ async function checkKitAnatomy(exceptions) {
   // n=37 median $2.74/color). Two asymmetric flags: kit priced at/below the
   // ground alone (selling below substrate — keyed too low), or per-color
   // beyond observed max (keyed too high). Legit multi-color passes.
+  const ident = new Map()  // order -> research identity (PO/SKU/pattern/colorway/customer)
   const GROUND_RATE = { Grass: 7.5, Paper: 1.66 }
   const PER_COLOR_MAX = { Grass: 20, Paper: 7 }
   const inv = await sb(
-    'order_ledger?select=order_number,product_type,yards_invoiced,invoiced_revenue,colors_count'
+    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,product_type,yards_invoiced,invoiced_revenue,colors_count'
     + `&site=eq.passaic&customer_type=eq.Schumacher&product_type=in.(Grass,Paper)`
     + `&invoice_date=gte.${d7}&yards_invoiced=gt.0`)
   const outliers = []
   for (const r of (inv || [])) {
     if (skip('kit_price_band', r.order_number)) continue
+    ident.set(r.order_number, { po: r.po_number, sku: r.item_sku, pattern: r.pattern, colorway: r.color, customer: r.customer_name })
     const perYd = Number(r.invoiced_revenue) / Number(r.yards_invoiced)
     const colors = Number(r.colors_count) > 0 ? Number(r.colors_count) : 1
     const ground = GROUND_RATE[r.product_type]
@@ -274,12 +276,13 @@ async function checkKitAnatomy(exceptions) {
   // was built wrong at entry. Ratio tolerance 0.7–1.3.
   const PRE_MATERIAL = new Set(['Waiting for Material', 'Waiting for Approval'])
   const wrt = await sb(
-    'order_ledger?select=order_number,product_type,customer_type,last_status,yards_written,ground_yards'
+    'order_ledger?select=order_number,po_number,item_sku,pattern,color,customer_name,product_type,customer_type,last_status,yards_written,ground_yards'
     + `&site=eq.passaic&product_type=in.(Grass,Paper)`
     + `&order_created=gte.${d14}&yards_written=gt.0`)
   const broken = []
   for (const r of (wrt || [])) {
     if (skip('kit_integrity', r.order_number)) continue
+    ident.set(r.order_number, { po: r.po_number, sku: r.item_sku, pattern: r.pattern, colorway: r.color, customer: r.customer_name })
     const gy = Number(r.ground_yards || 0), py = Number(r.yards_written)
     const ratio = gy / py
     if (gy === 0) {
@@ -300,6 +303,10 @@ async function checkKitAnatomy(exceptions) {
     ? { status: 'pass', summary: `Every recent Grass/Paper order kits its ground ~1:1 (${(wrt || []).length} order(s))`, detail: { checked: (wrt || []).length } }
     : { status: 'warn', summary: `${broken.length} recent order(s) with missing or mismatched kitted ground — check the LIFT entry`, detail: { broken: broken.slice(0, 10) } }
 
+  // Stamp the research identity onto every flagged item AFTER the fact —
+  // detail arrays hold the same object refs, so this reaches the findings
+  // without rewriting the push lines (which carry $$ the editor corrupts).
+  for (const arr of [outliers, broken]) for (const o of arr) Object.assign(o, ident.get(o.order) || {})
   return { band, integrity }
 }
 

@@ -368,6 +368,12 @@ function buildRows(ordersText, productsText, asOf) {
         yards_invoiced: 0, invoiced_revenue: 0, qty_printed: 0,
         invoice_date: null, printed_date: null, invoice_status: null,
         colors_count: colorsCount, last_status: null,
+        // Research columns (8/3, Peter's disposition-list format): every
+        // flagged order must carry PO · SKU · pattern/colorway · customer so
+        // the daily audit report is forward-ready without a manual join.
+        // First print line's identity wins; multi-SKU orders keep line 1.
+        item_sku: itemSku || null, pattern: lineDescription || null,
+        color: color || null, customer_name: customerName || null,
         // Bucket persisted at the LEDGER level (8/2): an invoiced order leaves
         // sched_wip_rows, and with it its bucket — which made invoiced-by-bucket
         // underivable (160 unknown POs on the wk-7/19 prefill test). Stamping it
@@ -399,6 +405,10 @@ function buildRows(ordersText, productsText, asOf) {
       if (invoiceStatus) cur.invoice_status = invoiceStatus
       if (orderStatus) cur.last_status = orderStatus
       if (!cur.po_number && poNumber) cur.po_number = poNumber
+      if (!cur.item_sku && itemSku) cur.item_sku = itemSku
+      if (!cur.pattern && lineDescription) cur.pattern = lineDescription
+      if (!cur.color && color) cur.color = color
+      if (!cur.customer_name && customerName) cur.customer_name = customerName
       ledgerMap.set(orderNumber, cur)
     }
 

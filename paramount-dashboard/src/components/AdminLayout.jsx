@@ -143,6 +143,7 @@ export default function AdminLayout({
           {view === 'system-info' && (
             <>
               <SystemInfoPanel dbReady={dbReady} userProfile={userProfile} />
+              <DailyReportPanel />
               <AuditPanel userProfile={userProfile} />
             </>
           )}
@@ -296,6 +297,94 @@ function SystemInfoPanel({ dbReady, userProfile }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Daily audit report — the forward-ready version of the nightly's findings.
+// Same source the Slack digest and Peter's morning brief read (daily_digest,
+// composed by audit-digest.js): headline, plain-English narrative, the
+// research table (PO · order · SKU · pattern/colorway · customer · yards ·
+// why), and a one-click copy of the Slack memo Peter forwards to the team.
+// The three surfaces can never disagree because none of them composes —
+// they all relay.
+function DailyReportPanel() {
+  const [row, setRow] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      const { data } = await supabase.from('daily_digest')
+        .select('digest_date, built_at, headline, body')
+        .order('digest_date', { ascending: false }).limit(1).maybeSingle()
+      if (!dead) setRow(data || null)
+    })()
+    return () => { dead = true }
+  }, [])
+
+  const report = row?.body?.report
+  async function copyMemo() {
+    try {
+      await navigator.clipboard.writeText(report.memo)
+      setCopied(true); setTimeout(() => setCopied(false), 2500)
+    } catch { window.prompt('Copy the memo:', report.memo) }
+  }
+
+  if (!row) return null
+  return (
+    <div className={styles.systemInfo} style={{ marginTop: 28 }}>
+      <div className={styles.systemHeader} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <h2 className={styles.systemTitle}>Daily audit report</h2>
+          <p className={styles.systemSub}>
+            {report?.generated ? `Generated ${report.generated}` : `Digest of ${row.digest_date}`} —
+            the forward-ready version: what's off, in plain terms, with the research list.
+          </p>
+        </div>
+        {report?.memo && (
+          <button
+            onClick={copyMemo}
+            style={{ fontSize: 12, fontWeight: 600, padding: '8px 14px', borderRadius: 8,
+                     border: '1px solid var(--border)', background: 'var(--surface-2)',
+                     color: 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >{copied ? 'Copied ✓' : 'Copy team memo'}</button>
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, marginBottom: 8 }}>
+        {row.headline}
+      </div>
+
+      {(report?.narrative || []).map((p, i) => (
+        <p key={i} style={{ fontSize: 13, color: 'var(--ink-60)', margin: '0 0 8px', lineHeight: 1.5 }}>{p}</p>
+      ))}
+
+      {report?.items?.length > 0 && (
+        <table className={styles.systemTable} style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              {['Client PO', 'LIFT order', 'SKU', 'Pattern / Colorway', 'Customer', 'Yds', 'Issue'].map(h => (
+                <th key={h} style={{ textAlign: 'left', fontSize: 11, color: 'var(--ink-40)',
+                                     fontWeight: 600, padding: '4px 10px 4px 0', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {report.items.map((it, i) => (
+              <tr key={i}>
+                <td style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 10px 4px 0', whiteSpace: 'nowrap' }}>{it.po}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink)', padding: '4px 10px 4px 0', whiteSpace: 'nowrap' }}>{it.order}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 10px 4px 0', whiteSpace: 'nowrap' }}>{it.sku}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 10px 4px 0' }}>{it.pattern}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 10px 4px 0' }}>{it.customer}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink-60)', padding: '4px 10px 4px 0', whiteSpace: 'nowrap' }}>{it.yards}</td>
+                <td style={{ fontSize: 12, color: 'var(--ink-40)', padding: '4px 0' }}>{it.why}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 // Audit panel — the nightly battery's latest verdicts, and the answer to
 // "the header light is red, what happened." Every check writes a row every
 // run, so this is the latest run's thirteen lines, fails first, in the same
