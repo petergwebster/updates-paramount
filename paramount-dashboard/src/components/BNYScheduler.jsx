@@ -33,9 +33,15 @@ const BNY_TARGETS = {
 }
 
 const BNY_BUCKETS = ['Replen', 'NEW GOODS', 'Custom', 'MTO', 'HOS', 'Memo', '3P']
-// Aubergine inline for Custom — palette `C` has 6 named accent colors, we need 7
-const CUSTOM_COLOR = '#7B5675'
-const CUSTOM_BG    = '#F2EAF1'
+// Aubergine inline for Custom — palette `C` has 6 named accent colors, we need 7.
+// DARK-THEME FIX (Chandler 8/4: white-on-white cards in the BNY Custom
+// section): the original #F2EAF1 bg was light-theme lavender — the classic
+// hardcoded-hex-assigned-to-a-const bug the theme sweeps couldn't catch
+// (nothing says "background:" on the line). Saturated accent + dark tint,
+// same recipe as the C.*Bg tokens: muted color on dark reads as grey, and
+// light tints on dark read as glare.
+const CUSTOM_COLOR = '#A855F7'
+const CUSTOM_BG    = '#2B2138'
 const BUCKET_COLOR = {
   'Replen':    C.navy,
   'NEW GOODS': C.gold,

@@ -50,6 +50,25 @@ export default function ProcurementHome({ onOpen }) {
             inv = { asOf, yards, value, skus: (invRows || []).length }
           }
         } catch { /* box simply hides if inventory isn't loaded */ }
+        // INCOMING (Brynn 8/3-4): the purchasing side — open mill PO lines.
+        // Box hides until the first hourly sync lands rows.
+        let incoming = null
+        try {
+          const { data: poRows } = await supabase.from('po_lines')
+            .select('po_number, open_qty, unit_cost, extended_cost, due_date')
+            .gt('open_qty', 0).range(0, 3999)
+          if (poRows && poRows.length > 0) {
+            const today = new Date().toISOString().slice(0, 10)
+            incoming = {
+              pos: new Set(poRows.map(r => r.po_number)).size,
+              qty: poRows.reduce((s, r) => s + Number(r.open_qty || 0), 0),
+              value: poRows.reduce((s, r) => s + (Number(r.unit_cost || 0) > 0
+                ? Number(r.open_qty || 0) * Number(r.unit_cost || 0)
+                : Number(r.extended_cost || 0)), 0),
+              overdue: poRows.filter(r => r.due_date && r.due_date < today).length,
+            }
+          }
+        } catch { /* box simply hides until the purchasing feed lands */ }
         if (cancelled) return
         const open = (rows || []).filter(r => !TERMINAL.has(r.order_status || ''))
         const prod = open.filter(r => r.site === 'passaic' || r.site === 'bny')
@@ -75,6 +94,7 @@ export default function ProcurementHome({ onOpen }) {
           procRev: proc.reduce((s, r) => s + Number(r.income_written || 0), 0),
           procAge: ageStack(proc),
           inv,
+          incoming,
           asOf: snaps?.[0]?.uploaded_at,
         })
       } catch (e) {
@@ -108,6 +128,19 @@ export default function ProcurementHome({ onOpen }) {
              onClick={go('queue')}>
           <StackBar segs={stackSegs(d.prodAge)} />
         </Box>
+
+        {d.incoming && (
+          <Box title="Incoming" value={fmt(d.incoming.pos)} unit="open mill POs"
+               sub={d.incoming.overdue > 0
+                 ? `$${fmt(Math.round(d.incoming.value))} on order · ${d.incoming.overdue} line${d.incoming.overdue !== 1 ? 's' : ''} past due`
+                 : `$${fmt(Math.round(d.incoming.value))} on order · ${fmt(Math.round(d.incoming.qty))} units open`}
+               subTone={d.incoming.overdue > 0 ? 'warn' : 'good'}
+               onClick={go('incoming')}>
+            <div style={{ fontSize: 11, color: C.inkLight }}>
+              The purchasing side — what's on order from the mills, at what cost, received vs open, due when. Brynn's screen, live.
+            </div>
+          </Box>
+        )}
 
         <Box title="WIP" value={fmt(Math.round(d.prodYards))} unit="yds open"
              sub={`${fmt(d.prodCount)} production lines across Passaic + BNY`}

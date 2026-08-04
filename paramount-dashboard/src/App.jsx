@@ -30,6 +30,7 @@ import NewGoodsTab from './components/NewGoodsTab'
 import SchedulerTab from './components/SchedulerTab'
 import QueueTab from './components/QueueTab'
 import ProcurementHome from './components/ProcurementHome'
+import IncomingPOs from './components/IncomingPOs'
 import LiveOpsTab from './components/LiveOpsTab'
 import StatusTab from './components/StatusTab'
 import StubPage from './components/StubPage'
@@ -115,6 +116,7 @@ const QA_OPERATIONS_TABS = [
 // front door — grantable without opening the production floor or the books.
 const PROCUREMENT_TABS = [
   { id: 'queue',     label: 'Queue'            },
+  { id: 'incoming',  label: 'Incoming', isNew: true },
   { id: 'wip',       label: 'WIP'              },
   { id: 'newgoods',  label: 'NEW Goods'        },
   { id: 'procwip',   label: 'Procurement WIP'  },
@@ -698,6 +700,12 @@ export default function App() {
                 )}
                 {destination === 'procurement' && activeTab==='queue' && (
                   <QueueTab currentUser={userProfile?.full_name} />
+                )}
+                {/* INCOMING (Brynn 8/3-4): the PURCHASING side — mill POs from
+                    LIFT's po_details report, the screen Brynn maintains live.
+                    Inbound complement to the outbound order views. */}
+                {destination === 'procurement' && activeTab==='incoming' && (
+                  <IncomingPOs />
                 )}
                 {destination === 'procurement' && activeTab==='wip' && (
                   <WIPTab weekStart={currentWeek} />

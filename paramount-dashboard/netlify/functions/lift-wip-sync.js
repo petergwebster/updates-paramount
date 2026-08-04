@@ -843,6 +843,57 @@ const runSync = async (event) => {
       console.error('(note) order_ledger upsert failed — snapshot still written:', e.message)
       result.ledger_error = e.message
     }
+    // PO LINES — the PURCHASING side (Brynn 8/3): LIFT's po_details report is
+    // the screen procurement maintains live — vendor, cost, received/open
+    // quantities, due dates, invoice linkage. Own fetch + own try/catch AFTER
+    // the guard, same isolation doctrine as the ledger: purchasing data can
+    // never poison or fail the WIP snapshot the floor depends on. Upsert by
+    // LIFT's own po_line_id; history accumulates, never pruned.
+    try {
+      const poText = await fetchCsv('po_details')
+      const { records: poRecs } = parseCsv(poText)
+      const num = v => { const n = Number(String(v).replace(/,/g, '')); return Number.isFinite(n) ? n : null }
+      const dt = v => /^\d{4}-\d{2}-\d{2}/.test(String(v || '')) ? String(v).slice(0, 10) : null
+      const poRows = poRecs.filter(r => r.POLINEID).map(r => ({
+        po_line_id: r.POLINEID,
+        po_number: r.PONUMBER || null,
+        line_number: num(r.LINENUMBER),
+        material: r.MATERIAL || null,
+        description: r.DESCRIPTION || null,
+        storage_type: r.STORAGETYPE || null,
+        uom: r.UOM || null,
+        material_category: r.MATERIALCATEGORY || null,
+        material_sub_category: r.MATERIALSUBCATEGORY || null,
+        vendor_name: r.VENDORNAME || null,
+        ordered_qty: num(r.ORDEREDQUANTITY),
+        received_qty: num(r.RECEIVEDQUANTITY),
+        open_qty: num(r.OPENQUANTITY),
+        unit_cost: num(r.UNITCOST),
+        extended_cost: num(r.EXTENDEDCOST),
+        status: r.STATUS || null,
+        creation_date: dt(r.CREATIONDATE),
+        created_by: r.CREATEDBY || null,
+        due_date: dt(r.DUEDATE),
+        received_date: dt(r.RECEIVEDDATE),
+        invoice_number: r.INVOICENUMBER || null,
+        invoice_date: dt(r.INVOICEDATE),
+        last_update_date: dt(r.LASTUPDATEDATE),
+        last_seen: new Date().toISOString(),
+      }))
+      if (poRows.length >= 10) {
+        const B2 = 500
+        for (let i = 0; i < poRows.length; i += B2) {
+          await sbUpsert('po_lines', poRows.slice(i, i + B2), 'po_line_id')
+        }
+        result.po_lines_upserted = poRows.length
+      } else {
+        result.po_lines_skipped = `only ${poRows.length} po lines parsed — refused (mini completeness guard)`
+      }
+    } catch (e) {
+      console.error('(note) po_lines ingest failed — snapshot still written:', e.message)
+      result.po_lines_error = e.message
+    }
+
     result.snapshot_id = snapshotId
     console.log(`lift-wip-sync: wrote snapshot ${snapshotId} with ${rows.length} rows`)
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
