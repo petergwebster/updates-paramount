@@ -426,6 +426,11 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   // version; resubmits bump the version, never overwrite.
   async function submitWeek() {
     if (!enrichedAssignments.length || submitBusy) return
+    // Ramon 8/4: capture the off-board context at the moment of commitment.
+    // Cancel aborts the submit (the escape hatch); OK with an empty box
+    // submits with no note.
+    const note = window.prompt("Anything you're accounting for that isn't on this board?\n(Optional — leave blank and hit OK to skip. Cancel aborts the submit.)", '')
+    if (note === null) return
     setSubmitBusy(true)
     const rows = enrichedAssignments.map(a => ({
       table_code: a.table_code, day_of_week: a.day_of_week ?? null,
@@ -436,10 +441,24 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     }))
     const totals = { count: rows.length, yards: Math.round(mixTotals.yards), revenue: Math.round(mixTotals.revenue), brooklyn_yards: Math.round(mixTotals.brooklyn_yards), passaic_yards: Math.round(mixTotals.passaic_yards) }
     const { data, error } = await supabase.from('sched_submissions')
-      .insert({ site: 'bny', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows })
+      .insert({ site: 'bny', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows, note: note.trim() || null })
       .select('id, version, submitted_at, totals, rows').single()
     if (error) alert('Submit failed: ' + (error.message || error))
-    else { setSubmission(data); setDriftOpen(false) }
+    else {
+      setSubmission(data); setDriftOpen(false)
+      // Post the plan to Slack for thread annotation — fire-and-forget; a
+      // Slack hiccup must never make a successful submit look failed.
+      try {
+        fetch('/.netlify/functions/slack-plan-notify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            site: 'bny', week_start: isoDate(weekStart), version: data.version,
+            totals, note: note.trim() || null,
+            lines: rows.map(r => ({ table: r.table_code, day: r.day_of_week != null ? DAY_LABELS[r.day_of_week] : null, po: r.po_number, desc: r.line_description, yards: r.planned_yards })),
+          }),
+        }).catch(() => {})
+      } catch { /* non-fatal */ }
+    }
     setSubmitBusy(false)
   }
 

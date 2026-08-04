@@ -504,6 +504,10 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   // Resubmitting never overwrites — v2, v3… preserve the history of intent.
   async function submitWeek() {
     if (!enrichedAssignments.length || submitBusy) return
+    // Ramon 8/4: capture the off-board context at the moment of commitment.
+    // Cancel aborts the submit; OK with an empty box submits with no note.
+    const note = window.prompt("Anything you're accounting for that isn't on this board?\n(Optional — leave blank and hit OK to skip. Cancel aborts the submit.)", '')
+    if (note === null) return
     setSubmitBusy(true)
     const rows = enrichedAssignments.map(a => ({
       table_code: a.table_code, day_of_week: a.day_of_week || null, shift: a.shift || '1st',
@@ -515,10 +519,24 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     }))
     const totals = { count: rows.length, yards: Math.round(mixTotals.yards), cy: Math.round(mixTotals.cy), revenue: Math.round(mixTotals.revenue) }
     const { data, error } = await supabase.from('sched_submissions')
-      .insert({ site: 'passaic', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows })
+      .insert({ site: 'passaic', week_start: isoDate(weekStart), version: (submission?.version || 0) + 1, totals, rows, note: note.trim() || null })
       .select('id, version, submitted_at, totals, rows').single()
     if (error) alert('Submit failed: ' + (error.message || error))
-    else { setSubmission(data); setDriftOpen(false) }
+    else {
+      setSubmission(data); setDriftOpen(false)
+      // Post the plan to Slack for thread annotation — fire-and-forget; a
+      // Slack hiccup must never make a successful submit look failed.
+      try {
+        fetch('/.netlify/functions/slack-plan-notify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            site: 'passaic', week_start: isoDate(weekStart), version: data.version,
+            totals, note: note.trim() || null,
+            lines: rows.map(r => ({ table: r.table_code, day: r.day_of_week || null, po: r.po_number, desc: r.line_description, yards: r.planned_yards })),
+          }),
+        }).catch(() => {})
+      } catch { /* non-fatal */ }
+    }
     setSubmitBusy(false)
   }
 
