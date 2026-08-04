@@ -8,6 +8,7 @@ import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek,
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards, weeklyBudgetRevenue, forecastWeeklyRevenue, PASSAIC_BUDGET } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
+import PoolSearchExplain from './PoolSearchExplain'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
 // Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan
@@ -907,7 +908,10 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
           {/* Only the PO list scrolls — header, search and filter chips stay pinned. */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredPool.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
+              <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>
+                No POs match these filters
+                <PoolSearchExplain query={poolFilter} site="passaic" wipRows={wipRows} />
+              </div>
             )}
             {filteredPool.map(r => (
               <PoolCard key={r.id} r={r}

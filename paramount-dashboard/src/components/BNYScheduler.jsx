@@ -5,6 +5,7 @@ import { C, fmt, fmtD, fmtK, isoDate, weekLabel, weekLabelFiscal, addWeeks, defa
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
 import { BNY_BUDGET, weeklyBudgetYards, forecastWeeklyRevenue } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
+import PoolSearchExplain from './PoolSearchExplain'
 
 // ─── BNY-specific constants ────────────────────────────────────────────────
 // Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan).
@@ -873,7 +874,10 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
               each time he assigns to a machine lower down the board. */}
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredPool.length === 0 && (
-              <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>No POs match these filters</div>
+              <div style={{ padding: 24, textAlign: 'center', color: C.inkLight, fontSize: 12 }}>
+                No POs match these filters
+                <PoolSearchExplain query={poolFilter} site="bny" wipRows={wipRows} />
+              </div>
             )}
             {filteredPool.map(r => (
               <PoolCardBNY key={r.id} r={r}
