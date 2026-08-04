@@ -84,6 +84,15 @@ const SHIFT_REASON_LABEL = {
 export default function QueueTab({ currentUser, defaultSite = 'all' }) {
   const [wipRows, setWipRows] = useState([])
   const [plans, setPlans] = useState([])          // sched_assignments, this Monday forward
+  // PASS-THROUGH LANGUAGE (Peter 8/4): procurement orders are never scheduled
+  // — they're fulfilled by mill shipments, not the floor — so production
+  // framing (unscheduled / LATE-vs-production-SLA) on them is permanent noise
+  // that teaches people to ignore the screen. Procurement rows instead show
+  // their INBOUND linkage: open po_lines (the purchasing feed) matched by SKU
+  // — the mill PO number and the customer PO live in different numbering
+  // worlds, but po_lines.material embeds the SKU, e.g. "BURL WOOD (5019500)
+  // BROWN". That turns "427d · unscheduled" into "inbound due 9/12 · P+W".
+  const [inbound, setInbound] = useState({})      // sku -> open po_lines, soonest due first
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState(null)
 
@@ -126,7 +135,24 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
           .from('sched_assignments').select('site, po_number, item_sku, color, table_code, week_start, day_of_week, planned_yards')
           .gte('week_start', thisMonday).range(0, 4999)
         if (e3) throw e3
+        // Inbound purchasing lines for the pass-through match — open only.
+        // Failure here degrades gracefully: procurement rows just show the
+        // neutral pass-through chip without inbound detail.
+        let inb = {}
+        try {
+          const { data: poL } = await supabase.from('po_lines')
+            .select('po_number, material, vendor_name, open_qty, uom, due_date')
+            .gt('open_qty', 0).range(0, 3999)
+          for (const l of (poL || [])) {
+            const m = String(l.material || '').match(/\((\d{6,8})\)/)
+            if (!m) continue
+            ;(inb[m[1]] = inb[m[1]] || []).push(l)
+          }
+          for (const key of Object.keys(inb))
+            inb[key].sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999'))
+        } catch { /* inbound chip simply absent */ }
         if (cancelled) return
+        setInbound(inb)
         setWipRows((rows || []).filter(r => !TERMINAL.has(r.order_status || '')))
         setPlans(asn || [])
       } catch (err) {
@@ -264,7 +290,11 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
     background: active ? color : 'transparent', color: active ? '#fff' : C.inkMid,
   })
 
-  const unschedYd = filtered.filter(r => !r.planned).reduce((s, r) => s + Number(r.yards_written || 0), 0)
+  // Pass-through rows are excluded from the "not yet planned" math — they are
+  // never planned, by doctrine, so counting them red would be a lie.
+  const unschedYd = filtered.filter(r => !r.planned && r.site !== 'procurement').reduce((s, r) => s + Number(r.yards_written || 0), 0)
+  const passRows = filtered.filter(r => r.site === 'procurement')
+  const passMatched = passRows.filter(r => (inbound[(r.item_sku || '').trim()] || []).length > 0).length
 
   if (loading) return <div style={{ padding: 40, color: C.inkLight }}>Loading the queue…</div>
   if (loadErr) return <div style={{ padding: 40, color: C.rose }}>Queue failed to load: {loadErr}</div>
@@ -358,6 +388,9 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
       <div style={{ fontSize: 12, color: C.inkLight, marginBottom: 8 }}>
         {fmt(filtered.length)} orders · {fmt(filtered.reduce((s, r) => s + Number(r.yards_written || 0), 0))} yd open
         {unschedYd > 0 && <span style={{ color: C.rose, fontWeight: 600 }}> · {fmt(unschedYd)} yd not yet planned</span>}
+        {passRows.length > 0 && (
+          <span style={{ color: C.inkMid }}> · {fmt(passRows.length)} pass-through (mill-fulfilled, never scheduled) — {fmt(passMatched)} with an open inbound PO</span>
+        )}
         {filtered.length > 300 && <span> · showing first 300 — refine filters or export for the full set</span>}
       </div>
 
@@ -367,7 +400,13 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
           const k = lineKey(r) + r.site
           const fam = statusFamily(r.order_status)
           const open = openKey === k
-          const late = lateness(r)
+          const passThrough = r.site === 'procurement'
+          // Production lateness proxy is the WRONG frame for pass-through —
+          // the inbound due date is the real signal there.
+          const late = passThrough ? { level: 'ok', sla: 0 } : lateness(r)
+          const inbLines = passThrough ? (inbound[(r.item_sku || '').trim()] || []) : []
+          const inbFirst = inbLines[0] || null
+          const inbLate = inbFirst?.due_date && inbFirst.due_date < new Date().toISOString().slice(0, 10)
           return (
             <div key={k} onClick={() => openRow(r, k, open)}
               style={{ background: 'var(--surface)', border: `1px solid ${open ? C.navy : C.border}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}>
@@ -393,7 +432,19 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
                 )}
                 <span style={{ fontSize: 11, color: (r.age_days || 0) > 90 ? C.rose : C.inkLight, fontWeight: (r.age_days || 0) > 90 ? 700 : 400 }}>{r.age_days ?? '—'}d</span>
                 <span style={{ fontSize: 11, color: C.inkMid }}>{fmt(Number(r.yards_written || 0))} yd</span>
-                {r.planned ? (
+                {passThrough ? (
+                  inbFirst ? (
+                    <span title={`Open inbound mill PO ${inbFirst.po_number} · ${inbFirst.vendor_name || ''} · ${fmt(Math.round(inbFirst.open_qty || 0))} open`}
+                      style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: inbLate ? C.roseBg : C.sageBg, color: inbLate ? C.rose : C.sage }}>
+                      inbound due {inbFirst.due_date || '?'}{inbLate ? ' ⚠' : ''}
+                    </span>
+                  ) : (
+                    <span title="Pass-through: fulfilled by a mill shipment, not the floor — no open inbound PO found for this SKU"
+                      style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--surface-2)', color: C.inkMid }}>
+                      pass-through · no open inbound
+                    </span>
+                  )
+                ) : r.planned ? (
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: C.sageBg, color: C.sage }}>
                     wk {r.firstWeek?.slice(5).replace('-', '/')} · {r.placements[0]?.table}
                   </span>
@@ -409,7 +460,20 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
                     {r.item_sku || 'no SKU'}{r.color ? ` · ${r.color}` : ''} · {r.product_type || '—'} · {r.colors_count || 0} colors ·
                     {' '}{fmt(Number(r.color_yards || 0))} CY · ${fmt(Math.round(Number(r.income_written || 0)))} · ordered {r.order_created || '—'}
                   </div>
-                  {r.placements.length === 0 && (
+                  {passThrough && (
+                    <div style={{ color: C.inkMid }}>
+                      Pass-through: this order is fulfilled by a mill shipment, not a table or machine — it never appears on a schedule.
+                    </div>
+                  )}
+                  {passThrough && inbLines.map((l, i) => (
+                    <div key={i} style={{ color: (l.due_date && l.due_date < new Date().toISOString().slice(0, 10)) ? C.rose : C.sage }}>
+                      ⤴ Inbound · mill PO {l.po_number} · {l.vendor_name || 'vendor ?'} · {fmt(Math.round(l.open_qty || 0))} {l.uom === 'YARD' ? 'yd' : (l.uom || '').toLowerCase()} open · due {l.due_date || 'no date'}
+                    </div>
+                  ))}
+                  {passThrough && inbLines.length === 0 && (
+                    <div style={{ color: C.amber }}>No open inbound mill PO found for this SKU — either fully received, or not yet placed with the mill. One for Brynn's screen.</div>
+                  )}
+                  {!passThrough && r.placements.length === 0 && (
                     <div style={{ color: C.rose }}>Not on any week's board yet — it competes in the pool on age, mix and status.</div>
                   )}
                   {r.placements.map((p, i) => (
