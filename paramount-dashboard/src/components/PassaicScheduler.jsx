@@ -195,6 +195,47 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   // the order is still in WIP it needs scheduling now, not netting-out.
   const [otherWeeksByLine, setOtherWeeksByLine] = useState({})
   const [otherWeeksByPO, setOtherWeeksByPO]     = useState({})
+  // BURN-DOWN v2 (8/4): PLANS RESERVE ONLY THE FUTURE; PRODUCTION SUBTRACTS
+  // FOREVER. The .gt below already stops past phantom plans hiding live POs
+  // (Monkey Madness, 7/24). These maps close the MIRROR bug (Acanthus Stripe
+  // pair, Ramon 8/4): work PRODUCED in a past week — LIFT still "In
+  // Progress" — resurfaced in the pool with full remaining, because past
+  // weeks no longer net anything. Produced actuals now consume remaining in
+  // EVERY week, and Sami's is_complete flag (≥80% produced) closes runs that
+  // came in slightly short (288 of 300). Phantom plans have no actuals →
+  // can't hide anything. Finished work has actuals → can't resurface.
+  const [producedByLine, setProducedByLine]     = useState({})
+  const [producedByPO, setProducedByPO]         = useState({})
+  const [completeKeys, setCompleteKeys]         = useState(() => new Set())
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.from('sched_daily_ops_lines')
+        .select('po_number, item_sku, color, actual_yards, is_complete')
+        .eq('site', 'passaic')
+        .not('po_number', 'is', null)
+        .range(0, 9999)
+      if (cancelled) return
+      if (error) { console.error('[Passaic burn-down] actuals load failed', error); return }
+      const prodLine = {}, prodPO = {}, done = new Set()
+      for (const l of (data || [])) {
+        const yd = Number(l.actual_yards || 0)
+        if (l.item_sku) {
+          const k = schedLineKey(l)
+          if (yd > 0) prodLine[k] = (prodLine[k] || 0) + yd
+          if (l.is_complete) done.add(k)
+        } else if (yd > 0) {
+          prodPO[l.po_number] = (prodPO[l.po_number] || 0) + yd
+        }
+        if (l.is_complete) done.add(l.po_number)
+      }
+      setProducedByLine(prodLine)
+      setProducedByPO(prodPO)
+      setCompleteKeys(done)
+    })()
+    return () => { cancelled = true }
+  }, [weekStart, assignments])
 
   useEffect(() => {
     let cancelled = false
@@ -365,18 +406,26 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         // down globally: plan 300 of a 300-yd PO anywhere and 0 remain to plan
         // anywhere else. The current week is excluded from the other-weeks fetch,
         // so this week's own plan is never double-counted.
-        const already =
-            (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
-          + (otherWeeksByLine[schedLineKey(r)] || 0) + (otherWeeksByPO[r.po_number] || 0)
+        const k = schedLineKey(r)
+        const planned =
+            (assignedByLine[k] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+          + (otherWeeksByLine[k] || 0) + (otherWeeksByPO[r.po_number] || 0)
+        // Produced actuals consume remaining in EVERY week — burn-down v2.
+        const produced = (producedByLine[k] || 0) + (producedByPO[r.po_number] || 0)
+        const already = planned + produced
         const written = Number(r.yards_written || 0)
         // Memos / customs carry NO yardage in LIFT — schedulable, but with no
         // total to burn down against. Flagged so the qty is entered at drop time.
         const unquantified = written <= 0
-        const remaining = unquantified ? 0 : Math.max(0, written - already)
+        let remaining = unquantified ? 0 : Math.max(0, written - already)
+        // Sami's complete flag closes short runs (≥80% produced + flagged
+        // complete → remaining 0 — the missing yards are waste, not future work).
+        if (!unquantified && remaining > 0 && produced >= 0.8 * written
+            && (completeKeys.has(k) || completeKeys.has(r.po_number))) remaining = 0
         return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
       .filter(r => r.unquantified || r.remaining_yards > 0)
-  }, [wipRows, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO])
+  }, [wipRows, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO, producedByLine, producedByPO, completeKeys])
 
   const filteredPool = useMemo(() => {
     let list = pool

@@ -166,28 +166,45 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
   }, [weekStart, submission])
   const [activeDragPO, setActiveDragPO] = useState(null)
 
-  // CROSS-WEEK BURN-DOWN (Ramon's bug, same fix as PassaicScheduler): the
-  // `assignments` prop is week-scoped, so the pool's "remaining" only netted
-  // THIS week's plan. A PO fully planned in another week still showed its full
-  // yardage as available here. Fix: fetch each PO/line's planned yards across
-  // ALL OTHER weeks and subtract that too. Caps the PLAN only — Live Ops
-  // actuals (overproduction) are untouched.
+  // CROSS-WEEK BURN-DOWN, v2 (Ramon's TWO bugs, unified 8/4). The rule:
+  //   PLANS RESERVE ONLY THE FUTURE; PRODUCTION SUBTRACTS FOREVER.
+  // v1 history: netting ALL other weeks' plans let stale April phantom plans
+  // hide live POs (Monkey Madness, fixed 7/25 at Passaic with .gt). But
+  // future-only planning burn re-opened the mirror bug: work PRODUCED in a
+  // past week (LIFT still "In Progress") resurfaced in the pool with full
+  // remaining (Acanthus Stripe pair, Ramon 8/4). Both die under one rule:
+  //   remaining = written − future-planned − produced-actuals(all time)
+  // plus Sami's is_complete flag closing runs that came in slightly short
+  // (≥80% produced + flagged complete → remaining 0, e.g. 288 of 300).
+  // Phantom plans have no actuals → can't hide anything. Finished work has
+  // actuals → can't resurface. Overproduction still never inflates the pool
+  // (remaining floors at 0).
   const [otherWeeksByLine, setOtherWeeksByLine] = useState({})
   const [otherWeeksByPO, setOtherWeeksByPO]     = useState({})
+  const [producedByLine, setProducedByLine]     = useState({})
+  const [producedByPO, setProducedByPO]         = useState({})
+  const [completeKeys, setCompleteKeys]         = useState(() => new Set())
 
   useEffect(() => {
     let cancelled = false
     async function loadOtherWeeks() {
       const thisWeek = isoDate(weekStart)
-      const { data, error } = await supabase
-        .from('sched_assignments')
-        .select('po_number, item_sku, color, planned_yards, week_start')
-        .eq('site', 'bny')
-        .neq('week_start', thisWeek)
+      const [planRes, prodRes] = await Promise.all([
+        supabase.from('sched_assignments')
+          .select('po_number, item_sku, color, planned_yards, week_start')
+          .eq('site', 'bny')
+          .gt('week_start', thisWeek),
+        supabase.from('sched_daily_ops_lines')
+          .select('po_number, item_sku, color, actual_yards, is_complete')
+          .eq('site', 'bny')
+          .not('po_number', 'is', null)
+          .range(0, 9999),
+      ])
       if (cancelled) return
-      if (error) { console.error('[BNY burn-down] load failed', error); setOtherWeeksByLine({}); setOtherWeeksByPO({}); return }
+      if (planRes.error) { console.error('[BNY burn-down] plan load failed', planRes.error) }
+      if (prodRes.error) { console.error('[BNY burn-down] actuals load failed', prodRes.error) }
       const byLine = {}, byPO = {}
-      for (const a of (data || [])) {
+      for (const a of (planRes.data || [])) {
         const yd = Number(a.planned_yards || 0)
         if (yd <= 0) continue
         if (a.item_sku) {
@@ -197,8 +214,24 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
           byPO[a.po_number] = (byPO[a.po_number] || 0) + yd
         }
       }
+      const prodLine = {}, prodPO = {}, done = new Set()
+      for (const l of (prodRes.data || [])) {
+        const yd = Number(l.actual_yards || 0)
+        if (l.item_sku) {
+          const k = schedLineKey(l)
+          if (yd > 0) prodLine[k] = (prodLine[k] || 0) + yd
+          if (l.is_complete) done.add(k)
+        } else {
+          if (yd > 0) prodPO[l.po_number] = (prodPO[l.po_number] || 0) + yd
+          if (l.is_complete) done.add(l.po_number)
+        }
+        if (l.is_complete) done.add(l.po_number)
+      }
       setOtherWeeksByLine(byLine)
       setOtherWeeksByPO(byPO)
+      setProducedByLine(prodLine)
+      setProducedByPO(prodPO)
+      setCompleteKeys(done)
     }
     loadOtherWeeks()
     return () => { cancelled = true }
@@ -309,21 +342,29 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       .filter(r => (r.po_number && String(r.po_number).trim())
         || !(r.is_new_goods && ngPreprodStatuses.has(r.order_status || '')))
       .map(r => {
-        // this week's plan + EVERY OTHER week's plan — nets globally so a PO
-        // burns down across all weeks. Current week excluded from the fetch, so
-        // this week's own plan isn't double-counted.
-        const already =
-            (assignedByLine[schedLineKey(r)] || 0) + (assignedByPOLegacy[r.po_number] || 0)
-          + (otherWeeksByLine[schedLineKey(r)] || 0) + (otherWeeksByPO[r.po_number] || 0)
+        // remaining = written − (this week's plan) − (FUTURE weeks' plans)
+        //           − (produced actuals, ANY week). Past plans don't reserve
+        // (phantom-plan protection); past production always consumes.
+        const k = schedLineKey(r)
+        const planned =
+            (assignedByLine[k] || 0) + (assignedByPOLegacy[r.po_number] || 0)
+          + (otherWeeksByLine[k] || 0) + (otherWeeksByPO[r.po_number] || 0)
+        const produced = (producedByLine[k] || 0) + (producedByPO[r.po_number] || 0)
+        const already = planned + produced
         const written = Number(r.yards_written || 0)
         // No yardage in LIFT (memos/customs) — schedulable, but with no total to
         // burn down against, so we can't compute a "remaining".
         const unquantified = written <= 0
-        const remaining = unquantified ? 0 : Math.max(0, written - already)
+        let remaining = unquantified ? 0 : Math.max(0, written - already)
+        // Sami's complete flag closes short runs: produced ≥80% of written and
+        // marked complete on the floor → nothing left to schedule (the missing
+        // yards are waste/short-cut, not future work).
+        if (!unquantified && remaining > 0 && produced >= 0.8 * written
+            && (completeKeys.has(k) || completeKeys.has(r.po_number))) remaining = 0
         return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
       })
       .filter(r => r.unquantified || r.remaining_yards > 0)
-  }, [schedulableWip, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO])
+  }, [schedulableWip, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO, producedByLine, producedByPO, completeKeys])
 
   const filteredPool = useMemo(() => {
     let list = pool
