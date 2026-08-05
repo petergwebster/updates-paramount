@@ -131,9 +131,13 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
           .from('sched_wip_rows').select('*')
           .eq('snapshot_id', snapId).range(0, 4999)
         if (e2) throw e2
+        // FULL board history — the board only goes back to the 4/12 go-live
+        // (~2.2K rows), and past runs are what answer procurement's real
+        // question: "did this ever get scheduled?" (In Packing rows were
+        // reading "unscheduled" because this join was current-week-forward.)
         const { data: asn, error: e3 } = await supabase
           .from('sched_assignments').select('site, po_number, item_sku, color, table_code, week_start, day_of_week, planned_yards')
-          .gte('week_start', thisMonday).range(0, 4999)
+          .range(0, 9999)
         if (e3) throw e3
         // Inbound purchasing lines for the pass-through match — open only.
         // Failure here degrades gracefully: procurement rows just show the
@@ -178,9 +182,18 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
   }, [plans])
 
   const rows = useMemo(() => wipRows.map(r => {
-    const placements = plansByKey[lineKey(r)] || plansByKey[`po:${r.po_number}`] || []
-    return { ...r, placements, planned: placements.length > 0, firstWeek: placements[0]?.week || null }
-  }), [wipRows, plansByKey])
+    const all = plansByKey[lineKey(r)] || plansByKey[`po:${r.po_number}`] || []
+    const future = all.filter(p => p.week >= thisMonday)
+    const past = all.filter(p => p.week < thisMonday)
+    return {
+      ...r, placements: all, future, past,
+      planned: future.length > 0,                       // on the board this week or ahead
+      ranPast: past.length > 0,                         // has a board run on record
+      firstWeek: future[0]?.week || null,
+      lastRanWeek: past[past.length - 1]?.week || null,
+      lastRanTable: past[past.length - 1]?.table || null,
+    }
+  }), [wipRows, plansByKey, thisMonday])
 
   const mixOptions = useMemo(() => {
     const s = new Set(rows.map(mixGroup)); return ['all', ...[...s].sort()]
@@ -193,8 +206,8 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
     if (family !== 'all') list = list.filter(r => statusFamily(r.order_status) === family)
     if (mix !== 'all') list = list.filter(r => mixGroup(r) === mix)
     if (cat !== 'all') list = list.filter(r => catGroup(r) === cat)
-    if (plannedF === 'scheduled') list = list.filter(r => r.planned)
-    if (plannedF === 'unscheduled') list = list.filter(r => !r.planned)
+    if (plannedF === 'scheduled') list = list.filter(r => r.planned || r.ranPast)
+    if (plannedF === 'unscheduled') list = list.filter(r => !r.planned && !r.ranPast && statusFamily(r.order_status) !== 'production')
     if (lateF) list = list.filter(r => lateness(r).level !== 'ok')
     if (needle) list = list.filter(r =>
       (r.po_number || '').toLowerCase().includes(needle)
@@ -253,7 +266,7 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
           po: r.po_number, desc: r.line_description, sku: r.item_sku, colorway: r.color,
           site: r.site, status: r.order_status, age_days: r.age_days,
           yards: Math.round(Number(r.yards_written || 0)),
-          planned: r.planned ? `wk ${r.firstWeek} · ${r.placements[0]?.table}` : null,
+          planned: r.planned ? `wk ${r.firstWeek} · ${r.future[0]?.table}` : r.ranPast ? `ran wk ${r.lastRanWeek} · ${r.lastRanTable}` : null,
           comment, from: currentUser || 'the dashboard',
         }),
       })
@@ -272,7 +285,7 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
       r.site, r.po_number, r.line_description, r.item_sku || '', r.color || '',
       r.customer_name_clean || '', mixGroup(r), r.order_status || '', r.age_days ?? '',
       Math.round(Number(r.yards_written || 0)), Math.round(Number(r.income_written || 0)),
-      r.planned ? 'yes' : 'NO',
+      r.planned ? 'yes' : r.ranPast ? 'ran' : statusFamily(r.order_status) === 'production' ? 'off-board' : 'NO',
       [...new Set(r.placements.map(p => p.week))].join(' + '),
       [...new Set(r.placements.map(p => p.table))].join(' + '),
     ].map(esc).join(','))
@@ -292,7 +305,9 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
 
   // Pass-through rows are excluded from the "not yet planned" math — they are
   // never planned, by doctrine, so counting them red would be a lie.
-  const unschedYd = filtered.filter(r => !r.planned && r.site !== 'procurement').reduce((s, r) => s + Number(r.yards_written || 0), 0)
+  // "Not yet planned" = genuinely awaiting a scheduling decision: no future
+  // placement, no past run, not already in production, not pass-through.
+  const unschedYd = filtered.filter(r => !r.planned && !r.ranPast && r.site !== 'procurement' && statusFamily(r.order_status) !== 'production').reduce((s, r) => s + Number(r.yards_written || 0), 0)
   const passRows = filtered.filter(r => r.site === 'procurement')
   const passMatched = passRows.filter(r => (inbound[(r.item_sku || '').trim()] || []).length > 0).length
 
@@ -446,7 +461,17 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
                   )
                 ) : r.planned ? (
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: C.sageBg, color: C.sage }}>
-                    wk {r.firstWeek?.slice(5).replace('-', '/')} · {r.placements[0]?.table}
+                    wk {r.firstWeek?.slice(5).replace('-', '/')} · {r.future[0]?.table}
+                  </span>
+                ) : r.ranPast ? (
+                  <span title="On the board in a past week — today's status is the LIFT pill"
+                    style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--surface-2)', color: C.inkMid }}>
+                    ran wk {r.lastRanWeek?.slice(5).replace('-', '/')} · {r.lastRanTable}
+                  </span>
+                ) : fam === 'production' ? (
+                  <span title="In production with no board record — ran before the 4/12 scheduler go-live, or off-board (BNY / wallpaper day-plan gap)"
+                    style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--surface-2)', color: C.inkMid }}>
+                    in production · off-board
                   </span>
                 ) : (
                   <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: C.roseBg, color: C.rose }}>
@@ -473,12 +498,20 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
                   {passThrough && inbLines.length === 0 && (
                     <div style={{ color: C.amber }}>No open inbound mill PO found for this SKU — either fully received, or not yet placed with the mill. One for Brynn's screen.</div>
                   )}
-                  {!passThrough && r.placements.length === 0 && (
+                  {!passThrough && r.placements.length === 0 && fam !== 'production' && (
                     <div style={{ color: C.rose }}>Not on any week's board yet — it competes in the pool on age, mix and status.</div>
                   )}
-                  {r.placements.map((p, i) => (
-                    <div key={i} style={{ color: C.sage }}>
+                  {!passThrough && r.placements.length === 0 && fam === 'production' && (
+                    <div style={{ color: C.inkMid }}>In production with no board record — it ran before the scheduler went live (4/12), or it's off-board work (the BNY / wallpaper day-plan gap).</div>
+                  )}
+                  {r.future.map((p, i) => (
+                    <div key={`f${i}`} style={{ color: C.sage }}>
                       ✓ Planned · week of {p.week} · {p.table}{p.day ? ` · ${p.day}` : ''} · {fmt(p.yards)} yd
+                    </div>
+                  ))}
+                  {r.past.map((p, i) => (
+                    <div key={`p${i}`} style={{ color: C.inkMid }}>
+                      ✓ Ran · week of {p.week} · {p.table}{p.day ? ` · ${p.day}` : ''} · {fmt(p.yards)} yd
                     </div>
                   ))}
                   {late.level !== 'ok' && (
