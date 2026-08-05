@@ -98,7 +98,7 @@ export const DESTINATIONS = {
     shortName: 'Procurement',
     mission: 'The Pipe · The HUB',
     tagline: 'Where every order sits in the queue, what the next 30 days look like, and the line back to the HUB, SPO/MTO customers, and the exec team.',
-    accessSummary: 'Queue · WIP · New Goods · Procurement WIP',
+    accessSummary: 'Queue · Incoming · WIP · New Goods · Inventory',
     accentClass: 'operations',
   },
 }
