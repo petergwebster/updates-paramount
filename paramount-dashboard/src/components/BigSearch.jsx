@@ -24,7 +24,12 @@ export default function BigSearch({ value, onChange, placeholder, count = null, 
           width: '100%', boxSizing: 'border-box',
           padding: '12px 96px 12px 42px',
           fontSize: 14, borderRadius: 10,
-          border: `2px solid ${value ? C.navy : C.border}`,
+          // Brand clay outline (the PP monogram color) — deliberately NOT a
+          // status green/amber so the bar never reads as a state indicator.
+          border: '2px solid #D97757',
+          boxShadow: value
+            ? '0 0 0 4px rgba(217,119,87,0.25)'
+            : '0 0 0 3px rgba(217,119,87,0.12)',
           background: 'var(--surface)', color: C.ink,
           outline: 'none',
         }}
