@@ -19,6 +19,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtK } from '../lib/scheduleUtils'
+import BigSearch from './BigSearch'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -117,6 +118,10 @@ export default function IncomingPOs() {
         </span>
       </div>
 
+      <BigSearch value={q} onChange={setQ}
+        placeholder="Find a PO, material, vendor, or invoice…"
+        count={q.trim() ? filtered.length : null} />
+
       {/* Totals strip */}
       <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', padding: '10px 14px', background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, marginBottom: 12, fontSize: 12, color: C.inkMid }}>
         <span><strong style={{ color: C.ink }}>{fmt(totals.pos)}</strong> open POs</span>
@@ -129,15 +134,11 @@ export default function IncomingPOs() {
         )}
       </div>
 
-      <input
-        value={q} onChange={e => setQ(e.target.value)}
-        placeholder="Search material, PO, vendor, invoice, category…"
-        style={{ width: '100%', maxWidth: 440, padding: '7px 12px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, marginBottom: 14, boxSizing: 'border-box', background: 'var(--surface)', color: C.ink }}
-      />
-
-      {/* Vendor groups — click a vendor row to drill into its lines */}
+      {/* Vendor groups — click a vendor row to drill into its lines.
+          A live search auto-expands every matching vendor so the found PO
+          line is visible without a second click. */}
       {byVendor.map(g => {
-        const open = openVendors.has(g.vendor)
+        const open = openVendors.has(g.vendor) || q.trim().length > 0
         return (
           <div key={g.vendor} style={{ marginBottom: 8, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }}>
             <div

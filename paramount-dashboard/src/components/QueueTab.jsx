@@ -19,6 +19,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../supabase'
 import { C, fmt, fmtK, isoDate, addWeeks, defaultSchedulerWeek } from '../lib/scheduleUtils'
 import LiftFreshnessBadge from './LiftFreshnessBadge'
+import BigSearch from './BigSearch'
 
 // Same terminal blacklist as both schedulers — the Queue shows open work.
 const TERMINAL = new Set([
@@ -329,6 +330,12 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
         </button>
       </div>
 
+      {/* THE search bar — how procurement actually uses this board (Peter 8/5):
+          find a specific PO or pattern first, browse second. */}
+      <BigSearch value={q} onChange={setQ}
+        placeholder="Find a PO, pattern, customer, or SKU…"
+        count={q.trim() ? filtered.length : null} />
+
       {/* FORWARD 30 DAYS — Emily's monthly-review ask as a live view. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 10, margin: '14px 0 16px' }}>
         {forward.map((c, i) => {
@@ -359,8 +366,6 @@ export default function QueueTab({ currentUser, defaultSite = 'all' }) {
 
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search PO · pattern · customer · SKU"
-          style={{ padding: '7px 12px', border: `1px solid ${C.border}`, borderRadius: 7, fontSize: 12, minWidth: 240, background: 'var(--surface)', color: C.ink }} />
         {['all', 'passaic', 'bny', 'procurement'].map(s => (
           <button key={s} onClick={() => setSite(s)} style={chip(site === s, C.navy)}>
             {s === 'all' ? 'All' : s === 'passaic' ? 'Passaic (screen)' : s === 'bny' ? 'BNY (digital)' : 'Procurement'}
