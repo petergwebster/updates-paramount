@@ -457,11 +457,13 @@ export default function OpsHome({ onOpen }) {
       )}
       <div style={grid}>
 
+      {/* Since 8/5 the home IS the pulse — this box is the headline, not a
+          door (its old destination tab is retired; chart + heartbeat live
+          further down this very page). */}
       <Box title="Pulse" value={fmt(d.actual)} unit="yds"
            sub={d.sched > 0 ? `against a ${fmt(d.sched)} yd plan` : 'Nothing scheduled yet'}
            subTone={d.sched === 0 ? undefined : attain >= 95 ? 'good' : attain >= 75 ? 'warn' : 'bad'}
-           delta={<Delta now={d.actual} prev={d.prevActual} />}
-           onClick={go('pulse')}>
+           delta={<Delta now={d.actual} prev={d.prevActual} />}>
         <Ring pct={attain} color={attainCol} caption={'of the week\u2019s plan produced so far'} />
       </Box>
 

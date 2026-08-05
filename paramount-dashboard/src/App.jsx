@@ -92,10 +92,12 @@ const FINANCE_TABS = [
 ]
 
 // Operations tab order reflects the actual flow:
-// Pulse (where the plant stands) → WIP (the universe) → Scheduler (commit the
-// week) → Live Ops (capture execution) → Status.
+// (Home = the pulse: boxes + attention + daily chart + heartbeat feed) →
+// WIP (the universe) → Scheduler (commit the week) → Live Ops → Status.
+// 'pulse' RETIRED 8/5 (coherence sweep, Chandler's blessing): it was a second
+// glance layer duplicating the home. Its chart + heartbeat feed moved onto
+// the home page; the tile strip died with it (the home boxes ARE the tiles).
 const OPERATIONS_TABS = [
-  { id: 'pulse',     label: 'Pulse'      },
   { id: 'wip',       label: 'WIP'        },
   { id: 'newgoods',  label: 'NEW Goods'  },
   { id: 'scheduler', label: 'Scheduler'  },
@@ -106,7 +108,6 @@ const OPERATIONS_TABS = [
 
 // QA users get a stripped-down Operations tab list (no WIP — Sami's role doesn't need the universe view)
 const QA_OPERATIONS_TABS = [
-  { id: 'pulse',     label: 'Pulse'     },
   { id: 'scheduler', label: 'Scheduler' },
   { id: 'liveops',   label: 'Live Ops'  },
   { id: 'status',    label: 'Status'    },
@@ -730,21 +731,14 @@ export default function App() {
                   <StatusTab />
                 )}
 
-                {/* HOME — no section chosen yet. Six boxes, no tab strip. */}
+                {/* HOME — no section chosen yet. Since 8/5 the home IS the
+                    pulse: boxes + attention (inside OpsHome), then the daily
+                    chart and the heartbeat feed. One glance layer, one door. */}
                 {destination === 'operations' && !activeTab && (
-                  <OpsHome onOpen={handleTabChange} />
-                )}
-                {destination === 'finance' && !activeTab && (
-                  <FinanceHome onOpen={handleTabChange} />
-                )}
-
-                {/* Operations · Pulse — the week at a glance, once you're in. */}
-                {destination === 'operations' && activeTab==='pulse' && (
                   <>
-                    <OpsPulseTiles onNavigate={handleTabChange} />
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)', gap: 10, marginBottom: 26 }}>
+                    <OpsHome onOpen={handleTabChange} />
+                    <div style={{ marginTop: 16 }}>
                       <OpsDailyChart embedded />
-                      <OpsAttentionPanel onNavigate={handleTabChange} embedded />
                     </div>
                     <HeartbeatPage
                       weekStart={currentWeek}
@@ -753,6 +747,11 @@ export default function App() {
                     />
                   </>
                 )}
+                {destination === 'finance' && !activeTab && (
+                  <FinanceHome onOpen={handleTabChange} />
+                )}
+
+                {/* 'pulse' tab retired 8/5 — its content lives on the home above. */}
               </>
             )}
           </>

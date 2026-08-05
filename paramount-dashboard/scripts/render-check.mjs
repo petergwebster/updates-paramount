@@ -114,11 +114,13 @@ async function main() {
   await capture('ops_home', 8000)
 
   // ── operations sections ──
-  // First section from a home box (summons the tab strip), rest via nav.
-  await click(page.getByText('Pulse', { exact: true }))
-  await capture('ops_pulse', 8000)
+  // 'pulse' tab retired 8/5 — its chart + heartbeat now render ON the home
+  // (captured above in ops_home). First section from a home box (summons the
+  // tab strip), rest via nav.
+  await click(page.getByText('WIP', { exact: true }))
+  await capture('ops_wip', 3000)
   for (const [tab, name] of [
-    ['WIP', 'ops_wip'], ['NEW Goods', 'ops_newgoods'], ['Scheduler', 'ops_scheduler'],
+    ['NEW Goods', 'ops_newgoods'], ['Scheduler', 'ops_scheduler'],
     ['Queue', 'ops_queue'],
     ['Live Ops', 'ops_liveops'], ['Status', 'ops_status'],
   ]) {
