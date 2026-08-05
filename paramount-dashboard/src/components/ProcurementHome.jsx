@@ -44,10 +44,21 @@ export default function ProcurementHome({ onOpen }) {
           const asOf = invDates?.[0]?.as_of
           if (asOf) {
             const { data: invRows } = await supabase.from('inventory_snapshot')
-              .select('on_hand_curr, cost_per_yard').eq('as_of', asOf).limit(2000)
+              .select('on_hand_curr, cost_per_yard, material_group').eq('as_of', asOf).limit(2000)
             const yards = (invRows || []).reduce((s, r) => s + Number(r.on_hand_curr || 0), 0)
             const value = (invRows || []).reduce((s, r) => s + Number(r.on_hand_curr || 0) * Number(r.cost_per_yard || 0), 0)
-            inv = { asOf, yards, value, skus: (invRows || []).length }
+            // Top material groups by on-hand yards — gives the box its strip
+            // (it was the only home box without a visual; Peter 8/5).
+            const byGroup = {}
+            for (const r of (invRows || [])) {
+              const g = (r.material_group || 'Other').trim() || 'Other'
+              byGroup[g] = (byGroup[g] || 0) + Number(r.on_hand_curr || 0)
+            }
+            const groups = Object.entries(byGroup).sort((a, b) => b[1] - a[1])
+            const top = groups.slice(0, 4)
+            const rest = groups.slice(4).reduce((s, [, v]) => s + v, 0)
+            if (rest > 0) top.push(['Other', rest])
+            inv = { asOf, yards, value, skus: (invRows || []).length, groups: top }
           }
         } catch { /* box simply hides if inventory isn't loaded */ }
         // INCOMING (Brynn 8/3-4): the purchasing side — open mill PO lines.
@@ -160,12 +171,13 @@ export default function ProcurementHome({ onOpen }) {
             click away: Queue → Procurement chip. */}
 
         {d.inv && (
-          <Box title="Inventory" value={fmt(Math.round(d.inv.yards))} unit="yds on hand"
+          <Box title="Inventory" value={fmt(Math.round(d.inv.yards))} unit="yds"
                sub={`$${fmt(Math.round(d.inv.value))} across ${fmt(d.inv.skus)} SKUs · as of ${d.inv.asOf}`}
                onClick={go('inventory')}>
-            <div style={{ fontSize: 11, color: C.inkLight }}>
-              Ground goods and materials — the monthly on-hand workbook, browsable by site, supplier and material group.
-            </div>
+            <StackBar segs={(d.inv.groups || []).map(([label, v], i) => ({
+              v, label,
+              color: [C.sage, C.yards, C.coloryards, C.gold, C.slate][i % 5],
+            }))} />
           </Box>
         )}
 
