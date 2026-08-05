@@ -494,10 +494,12 @@ export default function OpsHome({ onOpen }) {
         <Columns bars={d.bars} />
       </Box>
 
-      {/* Queue (Phase 2, Emily/Lydia): the procurement window — every open
-          order, its LIFT status, and the week it's planned for. */}
-      <Box title="Queue" value={fmt(d.wipTotal)} unit="open orders"
-           sub="Procurement window · live status + planned week for every order, both sites"
+      {/* Queue: the flagship order-line view — both production sites plus
+          procurement pass-through, live LIFT status, planned week. Label
+          fixed 8/5: these are order LINES (one PO can carry several), and
+          the same figure must wear the same name everywhere it appears. */}
+      <Box title="Queue" value={fmt(d.wipTotal)} unit="open order lines"
+           sub="Every open order line, its LIFT status, and the week it's planned for — both sites + procurement"
            onClick={go('queue')}>
         <StackBar segs={[
           { v: d.age.cur,  color: C.sage,      label: '<30d' },

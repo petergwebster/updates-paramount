@@ -148,10 +148,13 @@ async function main() {
   await click(page.getByText('Queue', { exact: true }).first())
   await capture('proc_queue', 4000)
   for (const [tab, name] of [
+    // Regex tolerates the NEW badge inside Incoming's accessible name.
+    [/Incoming/, 'proc_incoming'],
     ['WIP', 'proc_wip'], ['NEW Goods', 'proc_newgoods'],
-    ['Procurement WIP', 'proc_procwip'], ['Inventory', 'proc_inventory'],
+    // 'Procurement WIP' retired 8/5 — was a duplicate of Queue + chip.
+    ['Inventory', 'proc_inventory'],
   ]) {
-    await click(page.getByRole('button', { name: tab, exact: true }))
+    await click(page.getByRole('button', { name: tab, exact: typeof tab === 'string' }))
     await capture(name, 3200)
   }
 

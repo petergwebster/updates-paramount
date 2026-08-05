@@ -123,8 +123,8 @@ export default function ProcurementHome({ onOpen }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
 
-        <Box title="Queue" value={fmt(d.prodCount)} unit="open production orders"
-             sub="The flagship — every order, its LIFT status, and the week it's planned for. Slack the team from any row."
+        <Box title="Queue" value={fmt(d.prodCount)} unit="open order lines"
+             sub="The flagship — every order line, its LIFT status, and the week it's planned for. Slack the team from any row."
              onClick={go('queue')}>
           <StackBar segs={stackSegs(d.prodAge)} />
         </Box>
@@ -155,11 +155,9 @@ export default function ProcurementHome({ onOpen }) {
           <StackBar segs={stackSegs(d.ngAge)} />
         </Box>
 
-        <Box title="Procurement WIP" value={fmt(d.procCount)} unit="orders"
-             sub={`$${fmt(Math.round(d.procRev))} in the procurement division's own book`}
-             onClick={go('procwip')}>
-          <StackBar segs={stackSegs(d.procAge)} />
-        </Box>
+        {/* "Procurement WIP" box retired 8/5 with its tab — it was the Queue
+            through a second door. The division's pass-through book lives one
+            click away: Queue → Procurement chip. */}
 
         {d.inv && (
           <Box title="Inventory" value={fmt(Math.round(d.inv.yards))} unit="yds on hand"

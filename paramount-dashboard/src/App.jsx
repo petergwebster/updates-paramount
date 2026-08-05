@@ -119,7 +119,10 @@ const PROCUREMENT_TABS = [
   { id: 'incoming',  label: 'Incoming', isNew: true },
   { id: 'wip',       label: 'WIP'              },
   { id: 'newgoods',  label: 'NEW Goods'        },
-  { id: 'procwip',   label: 'Procurement WIP'  },
+  // 'procwip' RETIRED 8/5 (coherence sweep): it rendered the SAME QueueTab
+  // component as the Queue tab, pre-filtered to procurement — two doors, one
+  // screen, in one destination. The Queue's "Procurement" chip is the same
+  // one click. First true within-destination duplicate found and killed.
   { id: 'inventory', label: 'Inventory'        },
 ]
 
@@ -713,9 +716,7 @@ export default function App() {
                 {destination === 'procurement' && activeTab==='newgoods' && (
                   <NewGoodsTab currentUser={userProfile?.full_name} />
                 )}
-                {destination === 'procurement' && activeTab==='procwip' && (
-                  <QueueTab currentUser={userProfile?.full_name} defaultSite="procurement" />
-                )}
+                {/* 'procwip' retired 8/5 — duplicate of Queue + Procurement chip. */}
                 {destination === 'procurement' && activeTab==='inventory' && (
                   <InventoryTab profile={userProfile} />
                 )}
