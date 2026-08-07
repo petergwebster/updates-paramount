@@ -2096,6 +2096,100 @@ function ShiftTab({ label, sub, active, hasData, onClick }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ASK CLAUDE PANEL — conversational AI scheduler with streaming (Passaic)
 // ═══════════════════════════════════════════════════════════════════════════
+// ── DRAFT VALIDATOR (Ramon 8/7) — Claude proposes, code disposes ──────────
+// Ramon's first real draft test: 5 of 30 proposals were in excluded statuses,
+// fabric over-planned by 5k+ yd, mix off, color-yards off by 7k. Root cause:
+// every rule lived in prose and nothing checked the model's homework. This
+// gate sits between the draft and the Apply button:
+//   · status, pool membership, table-category routing, duplicates and
+//     already-placed POs are enforced in code — blocked rows never apply
+//     silently (Ramon can override per-row; he sometimes knows LIFT is stale)
+//   · CY and revenue are RECOMPUTED here — the model's arithmetic is never
+//     trusted, same doctrine as everywhere else in this system
+//   · a scorecard shows draft totals vs targets (category / mix / CY /
+//     revenue) BEFORE anything hits the board
+const SCHEDULABLE_STATUSES = new Set(['ready to print', 'print', 'approved to print'])
+const tableCategoryOf = (code) =>
+  !code ? null : code.startsWith('GC') ? 'grass' : code.startsWith('FAB') ? 'fabric' : code.startsWith('WP') ? 'wallpaper' : null
+const poolCategoryOf = (p) => {
+  const s = (p.product_type || '').toLowerCase()
+  if (s.includes('grass')) return 'grass'
+  if (s.includes('paper') || s.includes('panel')) return 'wallpaper'
+  return 'fabric'
+}
+
+function validateDraft(proposals, pool, assignments, weekStartIso) {
+  const byPo = new Map()
+  for (const r of pool) {
+    if (!byPo.has(r.po_number)) byPo.set(r.po_number, [])
+    byPo.get(r.po_number).push(r)
+  }
+  const placedPos = new Set((assignments || []).map(a => a.po_number))
+  const seen = new Set()
+
+  const rows = proposals.map((p, i) => {
+    const reasons = []
+    const warns = []
+    const week = p.week_start || weekStartIso
+    const cands = byPo.get(p.po_number) || []
+    const schedCand = cands.find(r => SCHEDULABLE_STATUSES.has((r.order_status || '').toLowerCase()))
+    const cand = schedCand || cands[0] || null
+    const status = cand ? (cand.order_status || 'unknown') : 'not in pool'
+
+    if (!cand) reasons.push('PO not found in the pool')
+    else if (!schedCand) reasons.push(`status "${status}" is not schedulable`)
+
+    const tableCat = tableCategoryOf(p.table_code)
+    const poCat = cand ? poolCategoryOf(cand) : null
+    if (!tableCat) reasons.push(`unknown table "${p.table_code}"`)
+    if (cand && tableCat && poCat && tableCat !== poCat) reasons.push(`${poCat} PO routed to a ${tableCat} table`)
+
+    const yds = Number(p.planned_yards || 0)
+    if (!(yds > 0)) reasons.push('no yardage')
+
+    if (week === weekStartIso && placedPos.has(p.po_number)) reasons.push("already on this week's board")
+    const dupKey = `${week}|${p.po_number}|${p.table_code}`
+    if (seen.has(dupKey)) reasons.push('duplicate within this draft')
+    seen.add(dupKey)
+
+    const colors = Number(cand?.colors_count || 0)
+    const remaining = Number(cand?.remaining_yards || 0)
+    if (cand && remaining > 0 && yds > remaining * 1.02) warns.push(`${fmt(yds)} yd proposed, only ${fmt(remaining)} remain`)
+    if (colors >= HIGH_COLOR_THRESHOLD) warns.push(`${colors} colors`)
+    if (cand && hasWasteHistory(cand.line_description)) warns.push('waste-history pattern')
+
+    // CODE-computed numbers. planned_cy from the model is discarded.
+    const cy = Math.round(yds * Math.max(1, colors))
+    const yw = Number(cand?.yards_written || 0)
+    const rev = Math.round((yw > 0 ? Number(cand?.income_written || 0) / yw : 0) * yds)
+    const cust = (cand?.customer_type || '').toLowerCase() === 'schumacher' ? 'SCH' : '3P'
+
+    return {
+      i, p, week, yds, cy, rev, cust, status,
+      cat: poCat || tableCat || 'fabric',
+      verdict: reasons.length ? 'blocked' : warns.length ? 'warn' : 'ok',
+      reasons, warns,
+    }
+  })
+
+  const weeks = [...new Set(rows.map(r => r.week))].sort().map(week => {
+    const rs = rows.filter(r => r.week === week && r.verdict !== 'blocked')
+    const t = { yards: 0, cy: 0, rev: 0, schRev: 0, schYds: 0, byCat: { grass: 0, fabric: 0, wallpaper: 0 } }
+    for (const r of rs) {
+      t.yards += r.yds; t.cy += r.cy; t.rev += r.rev
+      if (r.cust === 'SCH') { t.schRev += r.rev; t.schYds += r.yds }
+      t.byCat[r.cat] += r.yds
+    }
+    return { week, count: rs.length, ...t }
+  })
+
+  return {
+    rows, weeks,
+    blocked: rows.filter(r => r.verdict === 'blocked').length,
+    clean: rows.filter(r => r.verdict !== 'blocked').length,
+  }
+}
+
 function AskClaudePanel({ onClose, weekStart, pool, assignments, mixTotals, onApplyAssignments, tintFlags = {} }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -2267,7 +2361,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     const dailyOps = await loadWeekDailyOps('passaic', weekStart)
     const actualsBlock = buildRecentActualsSummary(dailyOps, weekStart, 3)
 
-    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL: the pool_pos array in the JSON above IS the pool — up to 400 POs, schedulable statuses first then oldest first, each with status / customer / category / colors / age / yards / color-yards / revenue / waste & tint flags. placed_assignments is the current week's board.\n\nMULTI-WEEK PLANNING: weeks are Monday-anchored. This week = ${isoDate(weekStart)}; the next three Mondays are ${isoDate(addWeeks(weekStart, 1))}, ${isoDate(addWeeks(weekStart, 2))}, ${isoDate(addWeeks(weekStart, 3))}. When Ramon asks to plan beyond this week (e.g. "the next 4 weeks"), include "week_start" (one of those Mondays) on each proposal — omitted means this week. You are only shown THIS week's placed board; treat future weeks as empty unless Ramon says otherwise, and narrate totals per week (yards / CY / revenue / mix) so he can sanity-check each against the weekly targets.\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"week_start":"${isoDate(weekStart)}","rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Only include it when you're ready to commit to a draft Ramon can accept/edit/reject.]`
+    const contextNote = `\n\n[CURRENT STATE — not from user, for your context:\n${JSON.stringify(context, null, 2)}\n${actualsBlock ? `\nRECENT DAILY ACTUALS (from Sami — use these to pivot the remaining week. If a table fell short, consider adding catch-up; if a table ran over or a PO finished, don't re-propose it. Watch for patterns in the notes — registration issues, color problems — worth flagging):\n${actualsBlock}\n` : ''}\nPOOL: the pool_pos array in the JSON above IS the pool — up to 400 POs, schedulable statuses first then oldest first, each with status / customer / category / colors / age / yards / color-yards / revenue / waste & tint flags. placed_assignments is the current week's board.\n\nMULTI-WEEK PLANNING: weeks are Monday-anchored. This week = ${isoDate(weekStart)}; the next three Mondays are ${isoDate(addWeeks(weekStart, 1))}, ${isoDate(addWeeks(weekStart, 2))}, ${isoDate(addWeeks(weekStart, 3))}. When Ramon asks to plan beyond this week (e.g. "the next 4 weeks"), include "week_start" (one of those Mondays) on each proposal — omitted means this week. You are only shown THIS week's placed board; treat future weeks as empty unless Ramon says otherwise, and narrate totals per week (yards / CY / revenue / mix) so he can sanity-check each against the weekly targets.\n\nYou can draft a schedule by responding with a narrative explanation PLUS a JSON code block like:\n\`\`\`json\n{"proposals":[{"po_number":"PO12345","table_code":"WP-12","planned_yards":450,"planned_cy":2700,"week_start":"${isoDate(weekStart)}","rationale":"..."}]}\n\`\`\`\n\nIf you include a JSON code block, the frontend will apply those assignments to the board automatically. Every proposal is then machine-validated in code before Ramon can apply it — non-schedulable statuses, wrong-category tables, already-placed POs, duplicates and over-remaining yardage are BLOCKED with reasons shown, and CY/revenue are recomputed from the pool data (your planned_cy is discarded). So: only propose POs whose status in pool_pos is schedulable, route categories to matching tables, and keep yardage within yds_left — anything else will visibly bounce. Only include the block when you're ready to commit to a draft Ramon can accept/edit/reject.]`
     convo[convo.length - 1].content += contextNote
 
     try {
@@ -2358,10 +2452,13 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     }
 
     const proposals = extractProposals(fullText)
+    // Validate BEFORE the message finalizes — the panel renders verdicts, not
+    // raw proposals. weekStart/pool/assignments are the panel's live props.
+    const validation = proposals ? validateDraft(proposals, pool, assignments, isoDate(weekStart)) : null
 
     setMessages(prev => {
       const copy = [...prev]
-      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, streaming: false, writingProposals: false }
+      copy[copy.length - 1] = { role: 'assistant', content: fullText, proposals, validation, streaming: false, writingProposals: false }
       return copy
     })
 
@@ -2486,6 +2583,9 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
 }
 
 function MessageBubble({ message, onApplyProposals, applying }) {
+  // Per-row override for blocked proposals (Ramon sometimes knows LIFT's
+  // status is stale). Hook must sit ABOVE the early returns — hooks rule.
+  const [overrides, setOverrides] = useState(() => new Set())
   if (message.role === 'system') {
     return (
       <div style={{ padding: '8px 12px', background: C.sageBg, border: `1px solid ${C.sage}`, borderRadius: 6, fontSize: 11, color: C.sage, marginBottom: 10, fontWeight: 600 }}>
@@ -2520,23 +2620,95 @@ function MessageBubble({ message, onApplyProposals, applying }) {
           </div>
         )}
       </div>
-      {message.proposals && message.proposals.length > 0 && !message.streaming && (
+      {message.proposals && message.proposals.length > 0 && !message.streaming && (() => {
+        const v = message.validation
+        // Fallback: no validation attached (shouldn't happen) — old flat list.
+        if (!v) {
+          return (
+            <div style={{ marginTop: 8, padding: '10px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
+                ✦ Claude proposed {message.proposals.length} assignment{message.proposals.length !== 1 ? 's' : ''}
+              </div>
+              <button onClick={() => onApplyProposals(message.proposals)} disabled={applying}
+                style={{ padding: '6px 14px', background: applying ? C.warm : C.surface2, color: applying ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: applying ? 'not-allowed' : 'pointer' }}>
+                {applying ? 'Applying…' : 'Apply all to board'}
+              </button>
+            </div>
+          )
+        }
+        const applyRows = v.rows.filter(r => r.verdict !== 'blocked' || overrides.has(r.i))
+        const applyList = applyRows.map(r => ({ ...r.p, planned_cy: r.cy }))
+        const tone = (val, target) => {
+          if (!target) return C.inkMid
+          const p = (val / target) * 100
+          return p >= 85 && p <= 115 ? C.sage : p >= 60 && p < 140 ? C.amber : C.rose
+        }
+        const Stat = ({ label, val, target }) => (
+          <span style={{ marginRight: 12, whiteSpace: 'nowrap', color: tone(val, target) }}>
+            {label} <strong>{fmt(val)}</strong><span style={{ color: C.inkLight }}> / {fmt(target)}</span>
+          </span>
+        )
+        return (
         <div style={{ marginTop: 8, padding: '10px 12px', background: C.goldBg, border: `1px solid ${C.gold}`, borderRadius: 6 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.ink, marginBottom: 6 }}>
-            ✦ Claude proposed {message.proposals.length} assignment{message.proposals.length !== 1 ? 's' : ''}
+            ✦ {v.clean} of {v.rows.length} proposals pass validation{v.blocked > 0 ? ` · ${v.blocked} blocked` : ''}
           </div>
-          <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8, maxHeight: 100, overflowY: 'auto' }}>
-            {message.proposals.slice(0, 8).map((p, i) => (
-              <div key={i}>→ {p.table_code}: {p.po_number} · {fmt(p.planned_yards)}yd</div>
+
+          {/* Scorecard — code-computed draft totals vs weekly targets */}
+          {v.weeks.map(w => {
+            const schRevPct = w.rev > 0 ? Math.round((w.schRev / w.rev) * 100) : 0
+            const schYdsPct = w.yards > 0 ? Math.round((w.schYds / w.yards) * 100) : 0
+            return (
+              <div key={w.week} style={{ fontSize: 10, color: C.inkMid, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 5, padding: '7px 9px', marginBottom: 8, lineHeight: 1.9 }}>
+                <div style={{ fontWeight: 700, color: C.ink, marginBottom: 2 }}>Draft check · week of {w.week} · {w.count} rows</div>
+                <Stat label="Yards" val={w.yards} target={PASSAIC_TARGETS.total.yards} />
+                <Stat label="CY" val={w.cy} target={PASSAIC_TARGETS.total.cy} />
+                <Stat label="Rev $" val={w.rev} target={PASSAIC_TARGETS.total.revenue} />
+                <br />
+                <Stat label="Grass" val={w.byCat.grass} target={PASSAIC_TARGETS.grass.yards} />
+                <Stat label="Fabric" val={w.byCat.fabric} target={PASSAIC_TARGETS.fabric.yards} />
+                <Stat label="Wallpaper" val={w.byCat.wallpaper} target={PASSAIC_TARGETS.wallpaper.yards} />
+                <br />
+                <span style={{ color: Math.abs(schRevPct - 60) <= 8 ? C.sage : Math.abs(schRevPct - 60) <= 15 ? C.amber : C.rose }}>
+                  Mix <strong>{schRevPct}%</strong> SCH by revenue (target 60)
+                </span>
+                <span style={{ color: C.inkLight }}> · {schYdsPct}% by yards</span>
+              </div>
+            )
+          })}
+
+          {/* Passing rows (warnings inline) */}
+          <div style={{ fontSize: 10, color: C.inkMid, marginBottom: 8, maxHeight: 120, overflowY: 'auto' }}>
+            {v.rows.filter(r => r.verdict !== 'blocked').map(r => (
+              <div key={r.i}>
+                → {r.p.table_code}: {r.p.po_number} · {fmt(r.yds)}yd · {fmt(r.cy)}CY · {r.cust}
+                {r.warns.length > 0 && <span style={{ color: C.amber }}> ⚠ {r.warns.join(' · ')}</span>}
+              </div>
             ))}
-            {message.proposals.length > 8 && <div>+ {message.proposals.length - 8} more</div>}
           </div>
-          <button onClick={() => onApplyProposals(message.proposals)} disabled={applying}
-            style={{ padding: '6px 14px', background: applying ? C.warm : C.surface2, color: applying ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: applying ? 'not-allowed' : 'pointer' }}>
-            {applying ? 'Applying…' : 'Apply all to board'}
+
+          {/* Blocked rows — reason shown, per-row override */}
+          {v.blocked > 0 && (
+            <div style={{ fontSize: 10, background: C.roseBg, border: `1px solid ${C.rose}`, borderRadius: 5, padding: '7px 9px', marginBottom: 8, maxHeight: 140, overflowY: 'auto' }}>
+              <div style={{ fontWeight: 700, color: C.rose, marginBottom: 4 }}>Blocked — will not apply unless you override:</div>
+              {v.rows.filter(r => r.verdict === 'blocked').map(r => (
+                <label key={r.i} style={{ display: 'block', color: C.ink, cursor: 'pointer', marginBottom: 3 }}>
+                  <input type="checkbox" checked={overrides.has(r.i)}
+                    onChange={() => setOverrides(prev => { const n = new Set(prev); n.has(r.i) ? n.delete(r.i) : n.add(r.i); return n })}
+                    style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                  {r.p.table_code}: {r.p.po_number} · {fmt(r.yds)}yd — <span style={{ color: C.rose }}>{r.reasons.join('; ')}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          <button onClick={() => onApplyProposals(applyList)} disabled={applying || applyList.length === 0}
+            style={{ padding: '6px 14px', background: (applying || applyList.length === 0) ? C.warm : C.surface2, color: (applying || applyList.length === 0) ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: (applying || applyList.length === 0) ? 'not-allowed' : 'pointer' }}>
+            {applying ? 'Applying…' : `Apply ${applyList.length} validated to board`}
           </button>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
