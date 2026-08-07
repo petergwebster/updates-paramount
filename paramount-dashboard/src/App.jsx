@@ -737,7 +737,9 @@ export default function App() {
                 {destination === 'operations' && !activeTab && (
                   <>
                     <OpsHome onOpen={handleTabChange} />
-                    <div style={{ marginTop: 16 }}>
+                    {/* Anchor for the Pulse box's scroll-to — the pulse detail
+                        (daily chart + heartbeat) that replaced the retired tab. */}
+                    <div id="ops-pulse-detail" style={{ marginTop: 16, scrollMarginTop: 90 }}>
                       <OpsDailyChart embedded />
                     </div>
                     <HeartbeatPage

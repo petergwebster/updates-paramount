@@ -457,13 +457,16 @@ export default function OpsHome({ onOpen }) {
       )}
       <div style={grid}>
 
-      {/* Since 8/5 the home IS the pulse — this box is the headline, not a
-          door (its old destination tab is retired; chart + heartbeat live
-          further down this very page). */}
+      {/* Since 8/5 the home IS the pulse — the old destination tab is
+          retired; chart + heartbeat live further down this very page. But a
+          box that does NOTHING on click reads as broken (Peter, 8/7 — first
+          click after the sweep was on Pulse). So the click scrolls to the
+          pulse detail below instead of navigating. */}
       <Box title="Pulse" value={fmt(d.actual)} unit="yds"
            sub={d.sched > 0 ? `against a ${fmt(d.sched)} yd plan` : 'Nothing scheduled yet'}
            subTone={d.sched === 0 ? undefined : attain >= 95 ? 'good' : attain >= 75 ? 'warn' : 'bad'}
-           delta={<Delta now={d.actual} prev={d.prevActual} />}>
+           delta={<Delta now={d.actual} prev={d.prevActual} />}
+           onClick={() => document.getElementById('ops-pulse-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
         <Ring pct={attain} color={attainCol} caption={'of the week\u2019s plan produced so far'} />
       </Box>
 
