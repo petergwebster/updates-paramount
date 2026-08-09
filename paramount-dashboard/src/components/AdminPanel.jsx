@@ -316,20 +316,26 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
       const out = await res.json().catch(() => ({}))
       if (!res.ok || out.error) throw new Error(out.error || `HTTP ${res.status}`)
 
-      // CY derivation (assignments-based) — optional, only its colorYards used.
+      // CY: LIFT's own colour counts (produced × NUMBER_OF_COLORS) are the
+      // primary source now; the assignment-ratio derivation is the fallback
+      // for weeks/categories where LIFT colours are missing.
       let cy = null
-      try { cy = await computePrefill(weekKey) } catch { /* CY stays manual */ }
+      const needsCyFallback = ['fabric', 'grass', 'paper'].some(c => !Number(out.nj?.[c]?.colorYards))
+      if (needsCyFallback) {
+        try { cy = await computePrefill(weekKey) } catch { /* CY stays manual */ }
+      }
 
       setNjData(prev => {
         const next = { ...prev }
         for (const cat of ['fabric', 'grass', 'paper']) {
+          const liftCy = Number(out.nj[cat].colorYards) || 0
           next[cat] = {
             ...prev[cat],
             yards: s(out.nj[cat].produced),
             waste: s(out.nj[cat].waste),
             invoiceYds: s(out.nj[cat].invoiceYds),
             invoiceRev: s(out.nj[cat].invoiceRev),
-            ...(cy?.nj?.[cat]?.colorYards != null ? { colorYards: s(cy.nj[cat].colorYards) } : {}),
+            colorYards: liftCy > 0 ? s(liftCy) : (cy?.nj?.[cat]?.colorYards != null ? s(cy.nj[cat].colorYards) : prev[cat].colorYards),
           }
         }
         for (const k of ['schWritten', 'schProduced', 'schInvoiced', 'tpWritten', 'tpProduced', 'tpInvoiced']) next[k] = s(out.nj[k])

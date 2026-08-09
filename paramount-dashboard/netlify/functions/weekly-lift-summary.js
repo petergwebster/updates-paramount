@@ -195,23 +195,36 @@ exports.handler = async (event) => {
   let payload = {}
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'bad JSON' }) }
 
-  let orders
+  let orders, products
   try {
-    orders = parseCsv(await fetchCsv('orders')).records
-  } catch (e) { return json(502, { error: `orders pull failed: ${e.message}` }) }
+    // PRODUCT_TYPE is NOT on the orders export — it lives on the products
+    // report, joined on ITEM_SKU (exactly what lift-wip-sync and the Data
+    // Lift 4.0 model both do). products also carries NUMBER_OF_COLORS, which
+    // gives true LIFT color-yards (produced × colors) — better than the
+    // assignment-ratio derivation with its coverage holes.
+    const [oTxt, pTxt] = await Promise.all([fetchCsv('orders'), fetchCsv('products')])
+    orders = parseCsv(oTxt).records
+    products = parseCsv(pTxt).records
+  } catch (e) { return json(502, { error: `LIFT pull failed: ${e.message}` }) }
   if (orders.length < MIN_ORDER_LINES) {
     return json(502, { error: `completeness guard: only ${orders.length} order lines (< ${MIN_ORDER_LINES}) — refusing to summarize a truncated pull` })
+  }
+  const skuInfo = new Map()
+  for (const p of products) {
+    if (p.ITEMSKU) skuInfo.set(p.ITEMSKU, { type: p.PRODUCTTYPE || '', colors: num(p.NUMBEROFCOLORS) })
   }
 
   if (payload.probe) {
     const types = {}, unmappedCust = new Set()
+    let noSku = 0
     for (const r of orders) {
-      const t = normKey(r.PRODUCTTYPE)
-      types[t] = (types[t] || 0) + 1
+      const t = normKey(skuInfo.get(r.ITEMSKU)?.type || r.PRODUCTTYPE)
+      if (!t) noSku++
+      types[t || '(none)'] = (types[t || '(none)'] || 0) + 1
       if (!CUSTOMER_MAP[normKey(r.CUSTOMERNAME)]) unmappedCust.add(r.CUSTOMERNAME)
     }
-    const unknownTypes = Object.keys(types).filter(t => !PRODUCT_MAP[t])
-    return json(200, { lines: orders.length, productTypes: types, unknownTypes, unmappedCustomers: [...unmappedCust].slice(0, 40) })
+    const unknownTypes = Object.keys(types).filter(t => t !== '(none)' && !PRODUCT_MAP[t])
+    return json(200, { lines: orders.length, productRows: products.length, linesWithoutSkuType: noSku, productTypes: types, unknownTypes, unmappedCustomers: [...unmappedCust].slice(0, 40) })
   }
 
   const weekStart = String(payload.week_start || '')
@@ -221,9 +234,9 @@ exports.handler = async (event) => {
   const to = new Date(Date.parse(weekStart + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10)
 
   const unmappedCust = new Set(), unknownTypes = new Set(), unknownMachines = new Set()
-  let correctionsApplied = 0, designSkipped = 0
+  let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0
 
-  const zeroCat = () => ({ produced: 0, waste: 0, invoiceYds: 0, invoiceRev: 0 })
+  const zeroCat = () => ({ produced: 0, colorYards: 0, waste: 0, invoiceYds: 0, invoiceRev: 0 })
   const nj = {
     fabric: zeroCat(), grass: zeroCat(), paper: zeroCat(), other: zeroCat(),
     schWritten: 0, schProduced: 0, schInvoiced: 0, tpWritten: 0, tpProduced: 0, tpInvoiced: 0,
@@ -238,8 +251,11 @@ exports.handler = async (event) => {
   let prodLines = 0, invLines = 0
 
   for (const r of orders) {
-    const pm = PRODUCT_MAP[normKey(r.PRODUCTTYPE)]
-    if (!pm) { if (r.PRODUCTTYPE) unknownTypes.add(r.PRODUCTTYPE); continue }
+    const info = skuInfo.get(r.ITEMSKU)
+    const typeRaw = info?.type || r.PRODUCTTYPE || ''
+    if (!typeRaw) { noTypeLines++; continue }
+    const pm = PRODUCT_MAP[normKey(typeRaw)]
+    if (!pm) { unknownTypes.add(typeRaw); continue }
     if (pm.kind === 'skip') { designSkipped++; continue }
     if (pm.kind === 'ground' || pm.kind === 'fee') continue   // model excludes from yard math
 
@@ -254,6 +270,9 @@ exports.handler = async (event) => {
       if (inWin(printed, from, to)) {
         const y = producedYds(r)
         nj[pm.cat].produced += y
+        const colors = info?.colors || 0
+        if (colors > 0) nj[pm.cat].colorYards += y * colors
+        else colorlessProduced += y
         nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += y
         prodLines++
       }
@@ -302,6 +321,8 @@ exports.handler = async (event) => {
   const r2 = o => { const out = {}; for (const [k, v] of Object.entries(o)) out[k] = typeof v === 'number' ? Math.round(v * 100) / 100 : (v && typeof v === 'object' ? r2(v) : v); return out }
   const warnings = []
   if (nj.other.produced || nj.other.invoiceYds) warnings.push(`Strike-offs/untyped: ${Math.round(nj.other.produced)} yd produced / ${Math.round(nj.other.invoiceYds)} yd invoiced — counted in SCH/3P totals, excluded from Fabric/Grass/Paper splits (matches the model)`)
+  if (noTypeLines) warnings.push(`${noTypeLines} order line(s) whose SKU isn't in the products report — skipped entirely`)
+  if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
   if (unmappedCust.size) warnings.push(`${unmappedCust.size} customer name(s) not in the model's table (bucketed to Contract): ${[...unmappedCust].slice(0, 5).join(' · ')}${unmappedCust.size > 5 ? '…' : ''}`)
   if (unknownTypes.size) warnings.push(`Unknown product type(s) skipped: ${[...unknownTypes].slice(0, 5).join(' · ')}`)
   if (correctionsApplied) warnings.push(`${correctionsApplied} line(s) used LIFT's CORRECT_AMOUNT_PRINTED override`)
