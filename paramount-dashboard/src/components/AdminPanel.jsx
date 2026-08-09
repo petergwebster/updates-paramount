@@ -294,55 +294,65 @@ export default function AdminPanel({ weekStart, weekData, onSave, dbReady, hideC
   const [days, setDays] = useState(getDefaultDays())
   const [concerns, setConcerns] = useState('')
   const [activeDay, setActiveDay] = useState('Monday')
-  // Prefill-from-live-systems (8/2): autoVals holds the computed proposal;
-  // the diff panel compares it to what's on screen. Manual always wins —
-  // nothing applies without a click.
-  const [autoVals, setAutoVals] = useState(null)
-  const [prefillBusy, setPrefillBusy] = useState(false)
-  const [prefillErr, setPrefillErr] = useState(null)
+  // ── Load week from LIFT (Brynn/Peter 8/9) ──────────────────────
+  // Replaces the AUTO-vs-CURRENT diff panel (awkward per Brynn) AND the
+  // Live-Ops-derived numbers (not reliable enough yet per Brynn). Fields
+  // fill IN PLACE from the same LIFT export Data Lift 4.0's model reads,
+  // aggregated with that model's own mapping tables server-side. Everything
+  // stays editable; nothing saves until Save. Color-yards still come from
+  // the board-assignment derivation (LIFT carries no colour counts).
+  const [liftInfo, setLiftInfo] = useState(null)
+  const [liftBusy, setLiftBusy] = useState(false)
+  const [liftErr, setLiftErr] = useState(null)
 
-  async function runPrefill() {
-    setPrefillBusy(true)
-    setPrefillErr(null)
+  async function loadFromLift() {
+    setLiftBusy(true); setLiftErr(null)
+    const s = v => (v == null || v === 0 || v === '') ? '' : String(Math.round(Number(v) * 100) / 100)
     try {
-      const result = await computePrefill(weekKey)
-      setAutoVals(result)
+      const res = await fetch('/.netlify/functions/weekly-lift-summary', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week_start: weekKey }),
+      })
+      const out = await res.json().catch(() => ({}))
+      if (!res.ok || out.error) throw new Error(out.error || `HTTP ${res.status}`)
+
+      // CY derivation (assignments-based) — optional, only its colorYards used.
+      let cy = null
+      try { cy = await computePrefill(weekKey) } catch { /* CY stays manual */ }
+
+      setNjData(prev => {
+        const next = { ...prev }
+        for (const cat of ['fabric', 'grass', 'paper']) {
+          next[cat] = {
+            ...prev[cat],
+            yards: s(out.nj[cat].produced),
+            waste: s(out.nj[cat].waste),
+            invoiceYds: s(out.nj[cat].invoiceYds),
+            invoiceRev: s(out.nj[cat].invoiceRev),
+            ...(cy?.nj?.[cat]?.colorYards != null ? { colorYards: s(cy.nj[cat].colorYards) } : {}),
+          }
+        }
+        for (const k of ['schWritten', 'schProduced', 'schInvoiced', 'tpWritten', 'tpProduced', 'tpInvoiced']) next[k] = s(out.nj[k])
+        return next
+      })
+      setBnyData(prev => {
+        const next = { ...prev, machines: { ...prev.machines } }
+        for (const k of ['replen', 'mto', 'hos', 'memo', 'contract',
+          'invYdsReplen', 'invYdsMto', 'invYdsHos', 'invYdsMemo', 'invYdsContract',
+          'incomeReplen', 'incomeMto', 'incomeHos', 'incomeMemo', 'incomeContract',
+          'schWritten', 'schProduced', 'schInvoiced', 'tpWritten', 'tpProduced', 'tpInvoiced']) next[k] = s(out.bny[k])
+        if (out.machines) for (const [m, v] of Object.entries(out.machines)) {
+          if (next.machines[m] !== undefined) next.machines[m] = s(v)
+        }
+        return next
+      })
+      const warns = [...(out.warnings || [])]
+      if (cy?.gaps?.cyUncovered > 0) warns.push(`CY ratio missing for ${cy.gaps.cyUncovered}/${cy.gaps.cyTotalLines} lines (no matching assignment) — CY undercounted by that share`)
+      setLiftInfo({ at: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), coverage: out.coverage, warnings: warns })
     } catch (e) {
-      setPrefillErr(String(e?.message || e))
+      setLiftErr(String(e?.message || e))
     } finally {
-      setPrefillBusy(false)
-    }
-  }
-
-  // Flat field map: label · read current · read auto · apply auto. Machines
-  // grid collapses to "Apply all". postWaste/commentary/miscFees stay human.
-  function prefillFields() {
-    if (!autoVals) return []
-    const F = []
-    const cats = [['fabric', 'Fabric'], ['grass', 'Grass'], ['paper', 'Paper']]
-    const sub = [['yards', 'yards'], ['colorYards', 'color yds'], ['waste', 'waste'], ['invoiceYds', 'inv yds'], ['invoiceRev', 'inv $']]
-    for (const [ck, cl] of cats) for (const [sk, sl] of sub) {
-      F.push({ id: `nj.${ck}.${sk}`, label: `NJ ${cl} · ${sl}`, cur: () => njData[ck]?.[sk], auto: autoVals.nj[ck]?.[sk], apply: v => updateNJ(`${ck}.${sk}`, v) })
-    }
-    for (const [k, l] of [['schWritten', 'NJ SCH written'], ['schProduced', 'NJ SCH produced'], ['schInvoiced', 'NJ SCH invoiced'], ['tpWritten', 'NJ 3P written'], ['tpProduced', 'NJ 3P produced'], ['tpInvoiced', 'NJ 3P invoiced']]) {
-      F.push({ id: `nj.${k}`, label: l, cur: () => njData[k], auto: autoVals.nj[k], apply: v => updateNJ(k, v) })
-    }
-    for (const [k, l] of [['replen', 'BNY Replen prod'], ['mto', 'BNY MTO prod'], ['hos', 'BNY HOS prod'], ['memo', 'BNY Memo prod'], ['contract', 'BNY Contract prod'],
-      ['invYdsReplen', 'BNY Replen inv yds'], ['invYdsMto', 'BNY MTO inv yds'], ['invYdsHos', 'BNY HOS inv yds'], ['invYdsMemo', 'BNY Memo inv yds'], ['invYdsContract', 'BNY Contract inv yds'],
-      ['incomeReplen', 'BNY Replen income $'], ['incomeMto', 'BNY MTO income $'], ['incomeHos', 'BNY HOS income $'], ['incomeMemo', 'BNY Memo income $'], ['incomeContract', 'BNY Contract income $'],
-      ['schWritten', 'BNY SCH written'], ['schProduced', 'BNY SCH produced'], ['schInvoiced', 'BNY SCH invoiced'], ['tpWritten', 'BNY 3P written'], ['tpProduced', 'BNY 3P produced'], ['tpInvoiced', 'BNY 3P invoiced'],
-      ['procurement', 'Procurement inv $']]) {
-      F.push({ id: `bny.${k}`, label: l, cur: () => bnyData[k], auto: autoVals.bny[k], apply: v => updateBNY(k, v) })
-    }
-    return F.filter(f => f.auto != null)
-  }
-
-  function applyAllPrefill() {
-    for (const f of prefillFields()) f.apply(f.auto)
-    if (autoVals?.bny?.machines) {
-      for (const [m, v] of Object.entries(autoVals.bny.machines)) {
-        if (v != null) setBnyData(prev => ({ ...prev, machines: { ...prev.machines, [m]: v } }))
-      }
+      setLiftBusy(false)
     }
   }
 
@@ -647,52 +657,28 @@ Keep it under 200 words. Write in first person as Peter. No bullet points. No he
         <div className={styles.panel}>
           <div className={styles.panelActions}>
             {saved === 'production' && <span className={styles.savedMsg}>✓ Saved</span>}
-            <button onClick={runPrefill} disabled={prefillBusy || saving}
+            <button onClick={loadFromLift} disabled={liftBusy || saving}
               style={{ marginRight: 10, padding: '8px 14px', borderRadius: 8, border: '1px solid #3E8FA8', background: 'transparent', color: '#3E8FA8', fontWeight: 700, cursor: 'pointer' }}>
-              {prefillBusy ? 'Computing…' : '⚡ Prefill from live systems'}
+              {liftBusy ? 'Pulling from LIFT…' : '⚡ Load week from LIFT'}
             </button>
             <button className="primary" onClick={saveProduction} disabled={saving}>{saving ? 'Saving…' : 'Save Production Data'}</button>
           </div>
 
-          {prefillErr && <div style={{ margin: '8px 0', color: '#F2555A', fontSize: 13 }}>Prefill failed: {prefillErr}</div>}
+          {liftErr && <div style={{ margin: '8px 0', color: '#F2555A', fontSize: 13 }}>LIFT load failed: {liftErr}</div>}
 
-          {autoVals && (
-            <div style={{ margin: '12px 0 18px', border: '1px solid #2A3340', borderRadius: 10, background: '#12161d', padding: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.08em', color: '#3E8FA8' }}>AUTO vs CURRENT — week of {weekKey}</span>
-                <button onClick={applyAllPrefill} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#3E8FA8', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>Apply all</button>
-                <button onClick={() => setAutoVals(null)} style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #2A3340', background: 'transparent', color: '#737A82', cursor: 'pointer', fontSize: 12 }}>Close</button>
+          {liftInfo && (
+            <div style={{ margin: '12px 0 18px', border: '1px solid #2A3340', borderRadius: 10, background: '#12161d', padding: '12px 16px' }}>
+              <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.06em', color: '#3E8FA8', marginBottom: 6 }}>
+                ✓ LOADED FROM LIFT at {liftInfo.at} · week of {weekKey} · {liftInfo.coverage?.producedLines ?? '–'} produced / {liftInfo.coverage?.invoicedLines ?? '–'} invoiced lines
               </div>
-              {(autoVals.gaps.missingOps.length > 0 || autoVals.gaps.unknownBucket.length > 0 || autoVals.gaps.cyUncovered > 0 || autoVals.gaps.notes.length > 0) && (
-                <div style={{ marginBottom: 10, fontSize: 12, color: '#F5B544' }}>
-                  {autoVals.gaps.missingOps.map((m, i) => <div key={i}>⚠ {m}</div>)}
-                  {autoVals.gaps.notes.map((m, i) => <div key={'n' + i}>⚠ {m}</div>)}
-                  {autoVals.gaps.cyUncovered > 0 && <div>⚠ CY ratio missing for {autoVals.gaps.cyUncovered}/{autoVals.gaps.cyTotalLines} lines (no matching assignment) — CY undercounted by that share</div>}
-                  {autoVals.gaps.unknownBucket.length > 0 && <div>⚠ {autoVals.gaps.unknownBucket.length} PO(s) with no BNY bucket — excluded from bucket splits: {autoVals.gaps.unknownBucket.slice(0, 5).join(', ')}{autoVals.gaps.unknownBucket.length > 5 ? '…' : ''}</div>}
+              <div style={{ fontSize: 12, color: '#A2A9B1' }}>
+                Fields below now hold LIFT's numbers — the same source Data Lift 4.0 reads. Edit anything that's wrong; post-waste, commentary and misc fees stay human-entered. Nothing saves until you hit Save.
+              </div>
+              {liftInfo.warnings.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#F5B544' }}>
+                  {liftInfo.warnings.map((m, i) => <div key={i}>⚠ {m}</div>)}
                 </div>
               )}
-              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-                  <thead><tr style={{ color: '#737A82', textAlign: 'left' }}><th style={{ padding: '4px 6px' }}>Field</th><th style={{ padding: '4px 6px', textAlign: 'right' }}>Current</th><th style={{ padding: '4px 6px', textAlign: 'right' }}>Auto</th><th style={{ padding: '4px 6px', textAlign: 'right' }}>Δ</th><th></th></tr></thead>
-                  <tbody>
-                    {prefillFields().map(f => {
-                      const cur = Number(f.cur() || 0), auto = Number(f.auto || 0)
-                      const delta = cur === 0 ? null : Math.round(100 * (auto - cur) / cur)
-                      const off = delta != null && Math.abs(delta) > 5
-                      return (
-                        <tr key={f.id} style={{ borderTop: '1px solid #1E2632' }}>
-                          <td style={{ padding: '4px 6px', color: '#A2A9B1' }}>{f.label}</td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right', color: '#F4F3EF' }}>{f.cur() || '—'}</td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right', color: '#3E8FA8', fontWeight: 700 }}>{f.auto}</td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right', color: off ? '#F5B544' : '#737A82' }}>{delta == null ? 'new' : `${delta > 0 ? '+' : ''}${delta}%`}</td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right' }}><button onClick={() => f.apply(f.auto)} style={{ padding: '2px 8px', borderRadius: 5, border: '1px solid #3E8FA8', background: 'transparent', color: '#3E8FA8', cursor: 'pointer', fontSize: 11 }}>apply</button></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ marginTop: 8, fontSize: 11, color: '#737A82', fontStyle: 'italic' }}>Machines grid applies with “Apply all.” Post-waste, commentary and misc fees stay human-entered. Nothing saves until you hit Save.</div>
             </div>
           )}
 
