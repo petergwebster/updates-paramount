@@ -298,10 +298,13 @@ exports.handler = async (event) => {
     if (num(r.CORRECTAMOUNTPRINTED)) correctionsApplied++
 
     // The consultant's transform: every yard = qty × per-SKU Yield.
+    // DAX-VERBATIM: Yards Produced uses raw QTY_PRINTED. CORRECT_AMOUNT_PRINTED
+    // exists on the export but her measure does NOT apply it — overriding with
+    // it read consistently LOW vs her pivot (8/9 tie-out). Count it, don't use it.
     let yieldF = ref?.yield
     if (yieldF == null) { yieldF = 1; noYieldLines++ }
     const writtenY  = num(r.QTYORDERED) * yieldF
-    const producedQ = num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)
+    const producedQ = num(r.QTYPRINTED)
     const producedY = producedQ * yieldF
     const invoicedY = num(r.QTYINVOICED) * yieldF
     const wasteY    = Math.max(0, (producedQ - num(r.QTYINVOICED)) * yieldF)
@@ -397,7 +400,7 @@ exports.handler = async (event) => {
       const id = MACHINE_MAP[normKey(r.MACHINENAME)]
       if (!id) { if (r.MACHINENAME) unknownMachines.add(r.MACHINENAME); continue }
       const yf = yieldMap.get(String(r.ITEMSKU))?.yield ?? 1
-      machines[id] = (machines[id] || 0) + (num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)) * yf
+      machines[id] = (machines[id] || 0) + num(r.QTYPRINTED) * yf
     }
     machinesOk = true
   } catch { /* degrade */ }
@@ -411,7 +414,7 @@ exports.handler = async (event) => {
   if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
   if (unmappedCust.size) warnings.push(`${unmappedCust.size} customer name(s) not in the model's table (bucketed to Contract): ${[...unmappedCust].slice(0, 5).join(' · ')}${unmappedCust.size > 5 ? '…' : ''}`)
   if (unknownTypes.size) warnings.push(`Unknown product type(s) skipped: ${[...unknownTypes].slice(0, 5).join(' · ')}`)
-  if (correctionsApplied) warnings.push(`${correctionsApplied} line(s) used LIFT's CORRECT_AMOUNT_PRINTED override`)
+  if (correctionsApplied) warnings.push(`${correctionsApplied} line(s) carry CORRECT_AMOUNT_PRINTED — present but NOT applied (DAX uses raw QTY_PRINTED)`)
   if (adjustments == null) warnings.push('InvoiceAdjustments pull failed — invoiced numbers are GROSS (credits not netted)')
   else if (creditLines) warnings.push(`Net of ${creditLines} credit line(s): ${Math.round(creditYds)} yd / $${Math.round(creditRev).toLocaleString()} (DAX Net = Gross + Credited)`)
   if (!machinesOk) warnings.push('Machine outputs unavailable (print_jobs pull failed) — machine grid left as-is')
