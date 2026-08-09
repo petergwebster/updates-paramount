@@ -312,13 +312,12 @@ exports.handler = async (event) => {
     if (pm.div === 'sp') {
       if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        // MODEL RULE (proven 2/9 tie-out on her own rows): "Yards Produced"
-        // counts printed lines whose ORDER has reached Invoiced/Shipped —
-        // printed-but-held (In Packing / In Production etc.) is excluded until
-        // it invoices, exactly the deck's Held-to-Invoice machinery. In closed
-        // months this equals the Approved-invoice reading; in recent months
-        // invoiced-pending-approval lines COUNT (her flag is order-based).
-        const done = ['invoiced', 'shipped'].includes((r.ORDERSTATUS || '').toLowerCase())
+        // MODEL RULE, third reading (the literal one): "Holding to Invoice"
+        // means NO INVOICE EXISTS YET. Done = the line carries an INVOICE_DATE,
+        // regardless of physical order status (an In-Packing order with its
+        // invoice raised is not held). Proven the only reading consistent with
+        // her Feb (closed) AND Jul/Aug (open) pivot numbers simultaneously.
+        const done = !!invoiced
         if (done) {
           nj[pm.cat].produced += producedY
           const colors = info?.colors || 0
@@ -340,7 +339,7 @@ exports.handler = async (event) => {
     } else if (pm.div === 'dg') {
       if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        const done = ['invoiced', 'shipped'].includes((r.ORDERSTATUS || '').toLowerCase())
+        const done = !!invoiced
         if (done) {
           bny[cust.bucket] += producedY
           bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
