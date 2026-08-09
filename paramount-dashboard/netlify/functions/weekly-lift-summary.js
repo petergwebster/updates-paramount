@@ -191,12 +191,12 @@ async function fetchYieldMap() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return map
   let off = 0
   for (;;) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield&limit=5000&offset=${off}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&limit=5000&offset=${off}`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     })
     if (!res.ok) throw new Error(`ref_product_yield fetch failed: HTTP ${res.status}`)
     const rows = await res.json()
-    for (const r of rows) if (r.item_sku) map.set(String(r.item_sku), Number(r.yield) || 1)
+    for (const r of rows) if (r.item_sku) map.set(String(r.item_sku), { yield: Number(r.yield) || 1, type: r.product_type || '' })
     if (rows.length < 5000) break
     off += 5000
   }
@@ -262,7 +262,7 @@ exports.handler = async (event) => {
   const to = new Date(Date.parse(weekStart + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10)
 
   const unmappedCust = new Set(), unknownTypes = new Set(), unknownMachines = new Set()
-  let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0, noYieldLines = 0
+  let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0, noYieldLines = 0, heldYds = 0, heldLines = 0
 
   const zeroCat = () => ({ produced: 0, colorYards: 0, waste: 0, invoiceYds: 0, invoiceRev: 0 })
   const nj = {
@@ -280,7 +280,11 @@ exports.handler = async (event) => {
 
   for (const r of orders) {
     const info = skuInfo.get(r.ITEMSKU)
-    const typeRaw = info?.type || r.PRODUCTTYPE || ''
+    const ref = yieldMap.get(String(r.ITEMSKU))
+    // Type: live products report first, then the consultant's master
+    // (ref_product_yield carries product_type for RETIRED SKUs the live
+    // report has dropped — recovered 2/9 tie-out, was ~1,700 skipped lines).
+    const typeRaw = info?.type || ref?.type || r.PRODUCTTYPE || ''
     if (!typeRaw) { noTypeLines++; continue }
     const pm = PRODUCT_MAP[normKey(typeRaw)]
     if (!pm) { unknownTypes.add(typeRaw); continue }
@@ -294,7 +298,7 @@ exports.handler = async (event) => {
     if (num(r.CORRECTAMOUNTPRINTED)) correctionsApplied++
 
     // The consultant's transform: every yard = qty × per-SKU Yield.
-    let yieldF = yieldMap.get(String(r.ITEMSKU))
+    let yieldF = ref?.yield
     if (yieldF == null) { yieldF = 1; noYieldLines++ }
     const writtenY  = num(r.QTYORDERED) * yieldF
     const producedQ = num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)
@@ -305,12 +309,21 @@ exports.handler = async (event) => {
     if (pm.div === 'sp') {
       if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        nj[pm.cat].produced += producedY
-        const colors = info?.colors || 0
-        if (colors > 0) nj[pm.cat].colorYards += producedY * colors
-        else colorlessProduced += producedY
-        nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
-        prodLines++
+        // MODEL RULE (proven 2/9 tie-out on her own rows): "Yards Produced"
+        // counts printed lines whose invoice is APPROVED — printed-but-held
+        // (INVOICE_STATUS Pending) is excluded until it invoices, exactly the
+        // deck's Held-to-Invoice machinery. Held yardage is surfaced, never
+        // silently dropped.
+        if ((r.INVOICESTATUS || '').toLowerCase() === 'approved') {
+          nj[pm.cat].produced += producedY
+          const colors = info?.colors || 0
+          if (colors > 0) nj[pm.cat].colorYards += producedY * colors
+          else colorlessProduced += producedY
+          nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
+          prodLines++
+        } else {
+          heldYds += producedY; heldLines++
+        }
       }
       if (inWin(invoiced, from, to)) {
         nj[pm.cat].invoiceYds += invoicedY
@@ -322,9 +335,13 @@ exports.handler = async (event) => {
     } else if (pm.div === 'dg') {
       if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        bny[cust.bucket] += producedY
-        bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
-        prodLines++
+        if ((r.INVOICESTATUS || '').toLowerCase() === 'approved') {
+          bny[cust.bucket] += producedY
+          bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
+          prodLines++
+        } else {
+          heldYds += producedY; heldLines++
+        }
       }
       if (inWin(invoiced, from, to)) {
         bny['invYds' + bucketKey(cust.bucket)] += invoicedY
@@ -348,7 +365,7 @@ exports.handler = async (event) => {
       const typeRaw = info?.type || ''
       const pm = PRODUCT_MAP[normKey(typeRaw)]
       if (!pm || pm.kind === 'skip' || pm.kind === 'ground' || pm.kind === 'fee') continue
-      const yf = yieldMap.get(String(a.ITEMSKU)) ?? 1
+      const yf = yieldMap.get(String(a.ITEMSKU))?.yield ?? 1
       const dy = num(a.QTYCHANGE) * yf              // negative
       const dr = num(a.EXTENDEDPRICECHANGE)         // negative
       const cust = customerOf(a.CUSTOMERNAME, unmappedCust)
@@ -376,7 +393,7 @@ exports.handler = async (event) => {
       if (!inWin(printed, from, to)) continue
       const id = MACHINE_MAP[normKey(r.MACHINENAME)]
       if (!id) { if (r.MACHINENAME) unknownMachines.add(r.MACHINENAME); continue }
-      const yf = yieldMap.get(String(r.ITEMSKU)) ?? 1
+      const yf = yieldMap.get(String(r.ITEMSKU))?.yield ?? 1
       machines[id] = (machines[id] || 0) + (num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)) * yf
     }
     machinesOk = true
@@ -385,6 +402,7 @@ exports.handler = async (event) => {
   const r2 = o => { const out = {}; for (const [k, v] of Object.entries(o)) out[k] = typeof v === 'number' ? Math.round(v * 100) / 100 : (v && typeof v === 'object' ? r2(v) : v); return out }
   const warnings = []
   if (nj.other.produced || nj.other.invoiceYds) warnings.push(`Strike-offs/untyped: ${Math.round(nj.other.produced)} yd produced / ${Math.round(nj.other.invoiceYds)} yd invoiced — counted in SCH/3P totals, excluded from Fabric/Grass/Paper splits (matches the model)`)
+  if (heldLines) warnings.push(`${Math.round(heldYds)} yd printed in-window still Held to Invoice (${heldLines} lines) — excluded from Produced per the model's rule; they back-fill when invoiced`)
   if (noTypeLines) warnings.push(`${noTypeLines} order line(s) whose SKU isn't in the products report — skipped entirely`)
   if (noYieldLines) warnings.push(`${noYieldLines} counted line(s) missing from ref_product_yield — Yield defaulted to 1 (doctrine: flag, don't guess)`)
   if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
