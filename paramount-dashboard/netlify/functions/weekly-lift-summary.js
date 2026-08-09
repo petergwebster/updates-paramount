@@ -310,11 +310,13 @@ exports.handler = async (event) => {
       if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
         // MODEL RULE (proven 2/9 tie-out on her own rows): "Yards Produced"
-        // counts printed lines whose invoice is APPROVED — printed-but-held
-        // (INVOICE_STATUS Pending) is excluded until it invoices, exactly the
-        // deck's Held-to-Invoice machinery. Held yardage is surfaced, never
-        // silently dropped.
-        if ((r.INVOICESTATUS || '').toLowerCase() === 'approved') {
+        // counts printed lines whose ORDER has reached Invoiced/Shipped —
+        // printed-but-held (In Packing / In Production etc.) is excluded until
+        // it invoices, exactly the deck's Held-to-Invoice machinery. In closed
+        // months this equals the Approved-invoice reading; in recent months
+        // invoiced-pending-approval lines COUNT (her flag is order-based).
+        const done = ['invoiced', 'shipped'].includes((r.ORDERSTATUS || '').toLowerCase())
+        if (done) {
           nj[pm.cat].produced += producedY
           const colors = info?.colors || 0
           if (colors > 0) nj[pm.cat].colorYards += producedY * colors
@@ -335,7 +337,8 @@ exports.handler = async (event) => {
     } else if (pm.div === 'dg') {
       if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        if ((r.INVOICESTATUS || '').toLowerCase() === 'approved') {
+        const done = ['invoiced', 'shipped'].includes((r.ORDERSTATUS || '').toLowerCase())
+        if (done) {
           bny[cust.bucket] += producedY
           bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
           prodLines++
