@@ -312,22 +312,19 @@ exports.handler = async (event) => {
     if (pm.div === 'sp') {
       if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        // MODEL RULE, third reading (the literal one): "Holding to Invoice"
-        // means NO INVOICE EXISTS YET. Done = the line carries an INVOICE_DATE,
-        // regardless of physical order status (an In-Packing order with its
-        // invoice raised is not held). Proven the only reading consistent with
-        // her Feb (closed) AND Jul/Aug (open) pivot numbers simultaneously.
-        const done = !!invoiced
-        if (done) {
-          nj[pm.cat].produced += producedY
-          const colors = info?.colors || 0
-          if (colors > 0) nj[pm.cat].colorYards += producedY * colors
-          else colorlessProduced += producedY
-          nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
-          prodLines++
-        } else {
-          heldYds += producedY; heldLines++
-        }
+        // DAX-VERBATIM: Yards Produced has NO held filter — SUMX(IF Type=
+        // "Yards", QTY_PRINTED × Yield). Every printed line counts. (The 8/9
+        // tie-out chased a held filter through three definitions; the Feb
+        // "proof" was dataset drift between her March export and live LIFT —
+        // lines get re-dated/revised after the fact.) Pending-invoice yardage
+        // is tracked as INFO so held-to-invoice stays visible, never subtracted.
+        nj[pm.cat].produced += producedY
+        const colors = info?.colors || 0
+        if (colors > 0) nj[pm.cat].colorYards += producedY * colors
+        else colorlessProduced += producedY
+        nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
+        prodLines++
+        if (!invoiced) { heldYds += producedY; heldLines++ }
       }
       if (inWin(invoiced, from, to)) {
         nj[pm.cat].invoiceYds += invoicedY
@@ -339,14 +336,10 @@ exports.handler = async (event) => {
     } else if (pm.div === 'dg') {
       if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        const done = !!invoiced
-        if (done) {
-          bny[cust.bucket] += producedY
-          bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
-          prodLines++
-        } else {
-          heldYds += producedY; heldLines++
-        }
+        bny[cust.bucket] += producedY
+        bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
+        prodLines++
+        if (!invoiced) { heldYds += producedY; heldLines++ }
       }
       if (inWin(invoiced, from, to)) {
         bny['invYds' + bucketKey(cust.bucket)] += invoicedY
@@ -407,7 +400,7 @@ exports.handler = async (event) => {
   const r2 = o => { const out = {}; for (const [k, v] of Object.entries(o)) out[k] = typeof v === 'number' ? Math.round(v * 100) / 100 : (v && typeof v === 'object' ? r2(v) : v); return out }
   const warnings = []
   if (nj.other.produced || nj.other.invoiceYds) warnings.push(`Strike-offs/untyped: ${Math.round(nj.other.produced)} yd produced / ${Math.round(nj.other.invoiceYds)} yd invoiced — counted in SCH/3P totals, excluded from Fabric/Grass/Paper splits (matches the model)`)
-  if (heldLines) warnings.push(`${Math.round(heldYds)} yd printed in-window still Held to Invoice (${heldLines} lines) — excluded from Produced per the model's rule; they back-fill when invoiced`)
+  if (heldLines) warnings.push(`INFO: ${Math.round(heldYds)} yd of in-window production not yet invoiced (held-to-invoice, ${heldLines} lines) — counted in Produced per the model; shown for visibility`)
   if (noTypeLines) warnings.push(`${noTypeLines} order line(s) whose SKU isn't in the products report — skipped entirely`)
   if (noYieldLines) warnings.push(`${noYieldLines} counted line(s) missing from ref_product_yield — Yield defaulted to 1 (doctrine: flag, don't guess)`)
   if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
