@@ -218,16 +218,21 @@ exports.handler = async (event) => {
   let payload = {}
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'bad JSON' }) }
 
-  let orders, products, yieldMap
+  let orders, products, yieldMap, adjustments
   try {
     // PRODUCT_TYPE is NOT on the orders export — it lives on the products
     // report, joined on ITEM_SKU (exactly what lift-wip-sync and the Data
     // Lift 4.0 model both do). products also carries NUMBER_OF_COLORS.
     // Yield comes from ref_product_yield — the consultant's master.
-    const [oTxt, pTxt, yMap] = await Promise.all([fetchCsv('orders'), fetchCsv('products'), fetchYieldMap()])
+    // InvoiceAdjustments = the credits feed: DAX "Net" = Gross + Credited.
+    const [oTxt, pTxt, yMap, aTxt] = await Promise.all([
+      fetchCsv('orders'), fetchCsv('products'), fetchYieldMap(),
+      fetchCsv('InvoiceAdjustments').catch(() => null),
+    ])
     orders = parseCsv(oTxt).records
     products = parseCsv(pTxt).records
     yieldMap = yMap
+    adjustments = aTxt ? parseCsv(aTxt).records : null
   } catch (e) { return json(502, { error: `pull failed: ${e.message}` }) }
   if (orders.length < MIN_ORDER_LINES) {
     return json(502, { error: `completeness guard: only ${orders.length} order lines (< ${MIN_ORDER_LINES}) — refusing to summarize a truncated pull` })
@@ -330,6 +335,36 @@ exports.handler = async (event) => {
     }
   }
 
+  // ── CREDITS (DAX: Net Yards Invoiced = Gross + Yards Credited) ────────
+  // InvoiceAdjustments carries per-line QTY_CHANGE (negative yards) and
+  // EXTENDED_PRICE_CHANGE, dated by CANCELLED_DATE. Same Yield transform,
+  // same category/bucket routing, subtracted inside the window.
+  let creditYds = 0, creditRev = 0, creditLines = 0
+  if (adjustments) {
+    for (const a of adjustments) {
+      const cd = dateOf(a.CANCELLEDDATE)
+      if (!inWin(cd, from, to)) continue
+      const info = skuInfo.get(a.ITEMSKU)
+      const typeRaw = info?.type || ''
+      const pm = PRODUCT_MAP[normKey(typeRaw)]
+      if (!pm || pm.kind === 'skip' || pm.kind === 'ground' || pm.kind === 'fee') continue
+      const yf = yieldMap.get(String(a.ITEMSKU)) ?? 1
+      const dy = num(a.QTYCHANGE) * yf              // negative
+      const dr = num(a.EXTENDEDPRICECHANGE)         // negative
+      const cust = customerOf(a.CUSTOMERNAME, unmappedCust)
+      creditYds += dy; creditRev += dr; creditLines++
+      if (pm.div === 'sp') {
+        nj[pm.cat].invoiceYds += dy
+        nj[pm.cat].invoiceRev += dr
+        nj[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += dy
+      } else if (pm.div === 'dg') {
+        bny['invYds' + bucketKey(cust.bucket)] += dy
+        bny['income' + bucketKey(cust.bucket)] += dr
+        bny[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += dy
+      }
+    }
+  }
+
   // Machines — print_jobs report carries MACHINE_NAME per run. Optional:
   // if the report name differs or the pull fails, degrade with a warning.
   const machines = {}
@@ -356,6 +391,8 @@ exports.handler = async (event) => {
   if (unmappedCust.size) warnings.push(`${unmappedCust.size} customer name(s) not in the model's table (bucketed to Contract): ${[...unmappedCust].slice(0, 5).join(' · ')}${unmappedCust.size > 5 ? '…' : ''}`)
   if (unknownTypes.size) warnings.push(`Unknown product type(s) skipped: ${[...unknownTypes].slice(0, 5).join(' · ')}`)
   if (correctionsApplied) warnings.push(`${correctionsApplied} line(s) used LIFT's CORRECT_AMOUNT_PRINTED override`)
+  if (adjustments == null) warnings.push('InvoiceAdjustments pull failed — invoiced numbers are GROSS (credits not netted)')
+  else if (creditLines) warnings.push(`Net of ${creditLines} credit line(s): ${Math.round(creditYds)} yd / $${Math.round(creditRev).toLocaleString()} (DAX Net = Gross + Credited)`)
   if (!machinesOk) warnings.push('Machine outputs unavailable (print_jobs pull failed) — machine grid left as-is')
   if (unknownMachines.size) warnings.push(`Machine name(s) not in the form grid, skipped: ${[...unknownMachines].slice(0, 6).join(' · ')}`)
 
