@@ -189,16 +189,21 @@ for (const [id, label] of [['glow', 'GLOW'], ['sasha', 'SASHA'], ['trish', 'TRIS
 async function fetchYieldMap() {
   const map = new Map()
   if (!SUPABASE_URL || !SUPABASE_KEY) return map
+  // PostgREST caps every response at 1,000 rows REGARDLESS of ?limit — the
+  // documented trap (asking for 5,000 returned 1,000, the loop read that as
+  // "last page" and quit with 1k of 12k SKUs — the entire BNY yield bug, 8/9).
+  // Page by exactly 1,000 and keep going while pages come back full.
+  const PAGE = 1000
   let off = 0
   for (;;) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&limit=5000&offset=${off}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&order=item_sku&limit=${PAGE}&offset=${off}`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     })
     if (!res.ok) throw new Error(`ref_product_yield fetch failed: HTTP ${res.status}`)
     const rows = await res.json()
     for (const r of rows) if (r.item_sku) map.set(String(r.item_sku), { yield: Number(r.yield) || 1, type: r.product_type || '' })
-    if (rows.length < 5000) break
-    off += 5000
+    if (rows.length < PAGE) break
+    off += PAGE
   }
   return map
 }
