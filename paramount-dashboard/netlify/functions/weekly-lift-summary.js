@@ -244,7 +244,27 @@ exports.handler = async (event) => {
   }
   const skuInfo = new Map()
   for (const p of products) {
-    if (p.ITEMSKU) skuInfo.set(p.ITEMSKU, { type: p.PRODUCTTYPE || '', colors: num(p.NUMBEROFCOLORS) })
+    if (p.ITEMSKU) skuInfo.set(p.ITEMSKU, {
+      type: p.PRODUCTTYPE || '', colors: num(p.NUMBEROFCOLORS),
+      up: num(p.NUMBERUP), hy: num(p.HISTORICALYIELD),
+    })
+  }
+
+  // Yield resolution — consultant's master is canonical; for SKUs born after
+  // its last refresh (new goods), derive from the live products report:
+  // HISTORICAL_YIELD where present (matches master where both exist), else
+  // 1/NUMBER_UP for the n-up digital types (exact by the n-up doctrine), else
+  // the memo-type constant. Anything still unresolved defaults to 1. All
+  // fallbacks count toward the missing-from-master warning.
+  const NUP_TYPES = new Set(['REGULAR', 'CONTRACT WALLPAPER', 'PEEL & STICK'])
+  function resolveYield(ref, info, typeRaw, missCounter) {
+    if (ref?.yield != null) return ref.yield
+    missCounter.n++
+    if (info?.hy > 0) return info.hy
+    const t = normKey(typeRaw)
+    if (NUP_TYPES.has(t) && info?.up > 1) return 1 / info.up
+    if (t === 'MEMO') return 0.08
+    return 1
   }
 
   if (payload.probe) {
@@ -282,7 +302,7 @@ exports.handler = async (event) => {
       if (pm.kind !== 'yards') continue
       const dt0 = grain === 'produced' ? dateOf(r.PRINTEDDATE) : dateOf(r.INVOICEDATE)
       if (!inWin(dt0, from, to)) continue
-      const yf = ref?.yield ?? 1
+      const yf = resolveYield(ref, info, typeRaw, { n: 0 })
       const q = grain === 'produced' ? num(r.QTYPRINTED) : num(r.QTYINVOICED)
       out.push({ o: r.ORDERNUMBER, l: r.LINENUMBER, sku: r.ITEMSKU, t: typeRaw, d: dt0, q, y: yf, yds: Math.round(q * yf * 100) / 100 })
     }
@@ -329,8 +349,9 @@ exports.handler = async (event) => {
     // DAX-VERBATIM: Yards Produced uses raw QTY_PRINTED. CORRECT_AMOUNT_PRINTED
     // exists on the export but her measure does NOT apply it — overriding with
     // it read consistently LOW vs her pivot (8/9 tie-out). Count it, don't use it.
-    let yieldF = ref?.yield
-    if (yieldF == null) { yieldF = 1; noYieldLines++ }
+    const missCounter = { n: 0 }
+    const yieldF = resolveYield(ref, info, typeRaw, missCounter)
+    noYieldLines += missCounter.n
     const writtenY  = num(r.QTYORDERED) * yieldF
     const producedQ = num(r.QTYPRINTED)
     const producedY = producedQ * yieldF
@@ -430,7 +451,7 @@ exports.handler = async (event) => {
   if (nj.other.produced || nj.other.invoiceYds) warnings.push(`Strike-offs/untyped: ${Math.round(nj.other.produced)} yd produced / ${Math.round(nj.other.invoiceYds)} yd invoiced — counted in SCH/3P totals, excluded from Fabric/Grass/Paper splits (matches the model)`)
   if (heldLines) warnings.push(`INFO: ${Math.round(heldYds)} yd of in-window production not yet invoiced (held-to-invoice, ${heldLines} lines) — counted in Produced per the model; shown for visibility`)
   if (noTypeLines) warnings.push(`${noTypeLines} order line(s) whose SKU isn't in the products report — skipped entirely`)
-  if (noYieldLines) warnings.push(`${noYieldLines} counted line(s) missing from ref_product_yield — Yield defaulted to 1 (doctrine: flag, don't guess)`)
+  if (noYieldLines) warnings.push(`${noYieldLines} counted line(s) not in the consultant's yield master — yield derived from live product data (HISTORICAL_YIELD / NUMBER_UP / memo constant); refresh 2-PRODUCT MASTER + ref_product_yield to make these canonical`)
   if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
   if (unmappedCust.size) warnings.push(`${unmappedCust.size} customer name(s) not in the model's table (bucketed to Contract): ${[...unmappedCust].slice(0, 5).join(' · ')}${unmappedCust.size > 5 ? '…' : ''}`)
   if (unknownTypes.size) warnings.push(`Unknown product type(s) skipped: ${[...unknownTypes].slice(0, 5).join(' · ')}`)
