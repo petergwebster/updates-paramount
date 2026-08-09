@@ -24,6 +24,8 @@
 // ===========================================================================
 
 const LIFT_BASE_URL = process.env.LIFT_BASE_URL
+const SUPABASE_URL  = process.env.VITE_SUPABASE_URL
+const SUPABASE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // Completeness guard — a full orders export runs ~16k+ lines. A truncated
 // pull must never quietly produce a half-week (stale-but-complete doctrine).
@@ -180,12 +182,33 @@ for (const [id, label] of [['glow', 'GLOW'], ['sasha', 'SASHA'], ['trish', 'TRIS
   ['valhalla', 'VALHALLA'], ['xia', 'XIA'], ['apollo', 'APOLLO'], ['nemesis', 'NEMESIS'],
   ['poseidon', 'POSEIDON'], ['zoey', 'ZOEY']]) MACHINE_MAP[label] = id
 
-// ─── Per-line value helpers (mirror the model's measures) ──────────────────
+// ── Yield map — the consultant's per-SKU conversion (dax_measures_reference.md:
+// "CANONICAL — DO NOT RE-DERIVE"). Every yard in Data Lift 4.0 is qty × [Yield]
+// per line; Panel ≈8.6, Memo ≈0.08, most Screen Print = 1.0. Lives in
+// ref_product_yield (loaded from 2-PRODUCT MASTER.csv). Missing SKU → 1, flagged.
+async function fetchYieldMap() {
+  const map = new Map()
+  if (!SUPABASE_URL || !SUPABASE_KEY) return map
+  let off = 0
+  for (;;) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield&limit=5000&offset=${off}`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    })
+    if (!res.ok) throw new Error(`ref_product_yield fetch failed: HTTP ${res.status}`)
+    const rows = await res.json()
+    for (const r of rows) if (r.item_sku) map.set(String(r.item_sku), Number(r.yield) || 1)
+    if (rows.length < 5000) break
+    off += 5000
+  }
+  return map
+}
+
+// ─── Per-line date helpers ──────────────────────────────────────
+// Yard math lives inline in the loop: qty × [Yield] per line, verbatim from
+// the DAX — Produced = QTY_PRINTED×Yield (CORRECT_AMOUNT wins), Gross
+// Invoiced = QTY_INVOICED×Yield, Written ≈ QTY_ORDERED×Yield.
 const inWin = (d, from, to) => d && d >= from && d < to     // ISO string compare
 const dateOf = v => String(v || '').slice(0, 10)
-function writtenYds(r)  { const t = num(r.TOTALYARDS); return t || ((r.UOM === 'YD') ? num(r.QTYORDERED) : 0) }
-function producedYds(r) { const c = num(r.CORRECTAMOUNTPRINTED); return c || num(r.QTYPRINTED) }
-function invoicedYds(r) { const y = num(r.YARDSINVOICED); return y || ((r.UOM === 'YD') ? num(r.QTYINVOICED) : 0) }
 
 exports.handler = async (event) => {
   const json = (code, body) => ({ statusCode: code, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -195,17 +218,17 @@ exports.handler = async (event) => {
   let payload = {}
   try { payload = JSON.parse(event.body || '{}') } catch { return json(400, { error: 'bad JSON' }) }
 
-  let orders, products
+  let orders, products, yieldMap
   try {
     // PRODUCT_TYPE is NOT on the orders export — it lives on the products
     // report, joined on ITEM_SKU (exactly what lift-wip-sync and the Data
-    // Lift 4.0 model both do). products also carries NUMBER_OF_COLORS, which
-    // gives true LIFT color-yards (produced × colors) — better than the
-    // assignment-ratio derivation with its coverage holes.
-    const [oTxt, pTxt] = await Promise.all([fetchCsv('orders'), fetchCsv('products')])
+    // Lift 4.0 model both do). products also carries NUMBER_OF_COLORS.
+    // Yield comes from ref_product_yield — the consultant's master.
+    const [oTxt, pTxt, yMap] = await Promise.all([fetchCsv('orders'), fetchCsv('products'), fetchYieldMap()])
     orders = parseCsv(oTxt).records
     products = parseCsv(pTxt).records
-  } catch (e) { return json(502, { error: `LIFT pull failed: ${e.message}` }) }
+    yieldMap = yMap
+  } catch (e) { return json(502, { error: `pull failed: ${e.message}` }) }
   if (orders.length < MIN_ORDER_LINES) {
     return json(502, { error: `completeness guard: only ${orders.length} order lines (< ${MIN_ORDER_LINES}) — refusing to summarize a truncated pull` })
   }
@@ -234,7 +257,7 @@ exports.handler = async (event) => {
   const to = new Date(Date.parse(weekStart + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10)
 
   const unmappedCust = new Set(), unknownTypes = new Set(), unknownMachines = new Set()
-  let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0
+  let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0, noYieldLines = 0
 
   const zeroCat = () => ({ produced: 0, colorYards: 0, waste: 0, invoiceYds: 0, invoiceRev: 0 })
   const nj = {
@@ -265,38 +288,43 @@ exports.handler = async (event) => {
     const invoiced = dateOf(r.INVOICEDATE)
     if (num(r.CORRECTAMOUNTPRINTED)) correctionsApplied++
 
+    // The consultant's transform: every yard = qty × per-SKU Yield.
+    let yieldF = yieldMap.get(String(r.ITEMSKU))
+    if (yieldF == null) { yieldF = 1; noYieldLines++ }
+    const writtenY  = num(r.QTYORDERED) * yieldF
+    const producedQ = num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)
+    const producedY = producedQ * yieldF
+    const invoicedY = num(r.QTYINVOICED) * yieldF
+    const wasteY    = Math.max(0, (producedQ - num(r.QTYINVOICED)) * yieldF)
+
     if (pm.div === 'sp') {
-      if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenYds(r)
+      if (inWin(created, from, to)) nj[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        const y = producedYds(r)
-        nj[pm.cat].produced += y
+        nj[pm.cat].produced += producedY
         const colors = info?.colors || 0
-        if (colors > 0) nj[pm.cat].colorYards += y * colors
-        else colorlessProduced += y
-        nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += y
+        if (colors > 0) nj[pm.cat].colorYards += producedY * colors
+        else colorlessProduced += producedY
+        nj[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
         prodLines++
       }
       if (inWin(invoiced, from, to)) {
-        const iy = invoicedYds(r)
-        nj[pm.cat].invoiceYds += iy
+        nj[pm.cat].invoiceYds += invoicedY
         nj[pm.cat].invoiceRev += num(r.INVOICEDREVENUE)
-        nj[pm.cat].waste += Math.max(0, producedYds(r) - num(r.QTYINVOICED || r.YARDSINVOICED))
-        nj[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += iy
+        nj[pm.cat].waste += wasteY
+        nj[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += invoicedY
         invLines++
       }
     } else if (pm.div === 'dg') {
-      if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenYds(r)
+      if (inWin(created, from, to)) bny[cust.house === SCH ? 'schWritten' : 'tpWritten'] += writtenY
       if (inWin(printed, from, to)) {
-        const y = producedYds(r)
-        bny[cust.bucket] += y
-        bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += y
+        bny[cust.bucket] += producedY
+        bny[cust.house === SCH ? 'schProduced' : 'tpProduced'] += producedY
         prodLines++
       }
       if (inWin(invoiced, from, to)) {
-        const iy = invoicedYds(r)
-        bny['invYds' + bucketKey(cust.bucket)] += iy
+        bny['invYds' + bucketKey(cust.bucket)] += invoicedY
         bny['income' + bucketKey(cust.bucket)] += num(r.INVOICEDREVENUE)
-        bny[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += iy
+        bny[cust.house === SCH ? 'schInvoiced' : 'tpInvoiced'] += invoicedY
         invLines++
       }
     }
@@ -313,7 +341,8 @@ exports.handler = async (event) => {
       if (!inWin(printed, from, to)) continue
       const id = MACHINE_MAP[normKey(r.MACHINENAME)]
       if (!id) { if (r.MACHINENAME) unknownMachines.add(r.MACHINENAME); continue }
-      machines[id] = (machines[id] || 0) + producedYds(r)
+      const yf = yieldMap.get(String(r.ITEMSKU)) ?? 1
+      machines[id] = (machines[id] || 0) + (num(r.CORRECTAMOUNTPRINTED) || num(r.QTYPRINTED)) * yf
     }
     machinesOk = true
   } catch { /* degrade */ }
@@ -322,6 +351,7 @@ exports.handler = async (event) => {
   const warnings = []
   if (nj.other.produced || nj.other.invoiceYds) warnings.push(`Strike-offs/untyped: ${Math.round(nj.other.produced)} yd produced / ${Math.round(nj.other.invoiceYds)} yd invoiced — counted in SCH/3P totals, excluded from Fabric/Grass/Paper splits (matches the model)`)
   if (noTypeLines) warnings.push(`${noTypeLines} order line(s) whose SKU isn't in the products report — skipped entirely`)
+  if (noYieldLines) warnings.push(`${noYieldLines} counted line(s) missing from ref_product_yield — Yield defaulted to 1 (doctrine: flag, don't guess)`)
   if (colorlessProduced > 0) warnings.push(`${Math.round(colorlessProduced)} produced yd on SKUs with no color count — CY undercounted by that share`)
   if (unmappedCust.size) warnings.push(`${unmappedCust.size} customer name(s) not in the model's table (bucketed to Contract): ${[...unmappedCust].slice(0, 5).join(' · ')}${unmappedCust.size > 5 ? '…' : ''}`)
   if (unknownTypes.size) warnings.push(`Unknown product type(s) skipped: ${[...unknownTypes].slice(0, 5).join(' · ')}`)
