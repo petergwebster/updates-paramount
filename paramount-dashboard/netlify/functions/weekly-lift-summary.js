@@ -261,6 +261,29 @@ exports.handler = async (event) => {
   const from = weekStart
   const to = new Date(Date.parse(weekStart + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10)
 
+  // DEBUG LINES MODE — line-level dump for tie-out diffs (8/9). Returns the
+  // window's counted lines for one division+grain so they can be diffed
+  // against the model's fact-table export offline. Read-only, no UI use.
+  if (payload.lines) {
+    const grain = payload.lines === 'produced' ? 'produced' : 'invoiced'
+    const wantDiv = payload.division === 'sp' ? 'sp' : 'dg'
+    const out = []
+    for (const r of orders) {
+      const info = skuInfo.get(r.ITEMSKU)
+      const ref = yieldMap.get(String(r.ITEMSKU))
+      const typeRaw = info?.type || ref?.type || r.PRODUCTTYPE || ''
+      const pm = PRODUCT_MAP[normKey(typeRaw)]
+      if (!pm || pm.div !== wantDiv) continue
+      if (pm.kind !== 'yards') continue
+      const dt0 = grain === 'produced' ? dateOf(r.PRINTEDDATE) : dateOf(r.INVOICEDATE)
+      if (!inWin(dt0, from, to)) continue
+      const yf = ref?.yield ?? 1
+      const q = grain === 'produced' ? num(r.QTYPRINTED) : num(r.QTYINVOICED)
+      out.push({ o: r.ORDERNUMBER, l: r.LINENUMBER, sku: r.ITEMSKU, t: typeRaw, d: dt0, q, y: yf, yds: Math.round(q * yf * 100) / 100 })
+    }
+    return json(200, { grain, division: wantDiv, window: { from, to }, count: out.length, total: Math.round(out.reduce((s, x) => s + x.yds, 0)), lines: out })
+  }
+
   const unmappedCust = new Set(), unknownTypes = new Set(), unknownMachines = new Set()
   let correctionsApplied = 0, designSkipped = 0, noTypeLines = 0, colorlessProduced = 0, noYieldLines = 0, heldYds = 0, heldLines = 0
 
