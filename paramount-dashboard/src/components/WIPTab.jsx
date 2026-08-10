@@ -301,7 +301,7 @@ export default function WIPTab() {
       while (true) {
         const { data, error: re } = await supabase
           .from('sched_wip_rows')
-          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, line_description, order_status, yards_written, qty_invoiced, income_written, age_days, age_bucket')
+          .select('site, division_raw, customer_type, customer_name_clean, product_type, is_new_goods, bny_bucket, order_number, po_number, line_description, item_sku, color, order_status, yards_written, qty_invoiced, income_written, age_days, age_bucket')
           .eq('snapshot_id', snap.id)
           .range(from, from + pageSize - 1)
         if (re) throw re
@@ -486,6 +486,19 @@ export default function WIPTab() {
   const sitePivots = useMemo(() => buildDivisionPivots(filteredRows, 'all'), [filteredRows])
   const divisionsToRender = divisionRenderOrder(Object.keys(sitePivots))
 
+  // Line-level rows per division — feeds the clickable status drill-down.
+  // Same filteredRows the pivot aggregates, so the detail ALWAYS ties to the
+  // numbers shown (team ask 8/9: click a LIFT step, see the POs inside it).
+  const rowsByDivision = useMemo(() => {
+    const m = {}
+    for (const r of filteredRows) {
+      const d = divisionLabelFor(r)
+      if (!m[d]) m[d] = []
+      m[d].push(r)
+    }
+    return m
+  }, [filteredRows])
+
   // Helpers to toggle pill filters
   function toggleCategory(catId) {
     setCategoryFilters(prev => {
@@ -630,6 +643,7 @@ export default function WIPTab() {
                 key={div}
                 division={div}
                 agg={sitePivots[div]}
+                rows={rowsByDivision[div] || []}
               />
             ))
           )}
@@ -706,9 +720,55 @@ function ConnectionNote() {
 
 // ─── Division pivot — one section per division ─────────────────────────────
 
-function DivisionPivot({ division, agg }) {
+function DivisionPivot({ division, agg, rows }) {
   const { statuses, totalPOs, schedulablePOs, hasScheduler } = agg
   const statusKeys = statusRenderOrder(Object.keys(statuses))
+  // Which status rows are expanded to show their POs (team ask 8/9).
+  const [openStatuses, setOpenStatuses] = useState(() => new Set())
+  function toggleStatus(s) {
+    setOpenStatuses(prev => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
+
+  // Group this division's line rows by status → by PO. One drill-down row per
+  // PO: lines aggregated (yards/income summed, age = max), description shows
+  // the first line + "+N more" when a PO has several. Sorted oldest-first —
+  // stuck-ness is what WIP exists to surface.
+  const poDetailByStatus = useMemo(() => {
+    const byStatus = {}
+    for (const r of rows) {
+      const status = (r.order_status || '').trim() || '(no status)'
+      const poKey = (r.po_number && String(r.po_number).trim())
+                  || (r.order_number && String(r.order_number).trim())
+                  || '(no PO)'
+      if (!byStatus[status]) byStatus[status] = new Map()
+      const m = byStatus[status]
+      if (!m.has(poKey)) m.set(poKey, {
+        po: poKey,
+        customer: r.customer_name_clean || r.customer_type || '—',
+        descs: [],
+        isNewGoods: false,
+        lines: 0, yards: 0, income: 0, age: 0,
+      })
+      const e = m.get(poKey)
+      e.lines++
+      e.yards  += Number(r.yards_written || 0)
+      e.income += Number(r.income_written || 0)
+      e.age = Math.max(e.age, Number(r.age_days || 0))
+      if (r.is_new_goods) e.isNewGoods = true
+      const d = [r.item_sku, r.color].filter(Boolean).join(' · ') || r.line_description || ''
+      if (d && e.descs.length < 3 && !e.descs.includes(d)) e.descs.push(d)
+    }
+    const out = {}
+    for (const s in byStatus) {
+      out[s] = [...byStatus[s].values()].sort((a, b) => b.age - a.age)
+    }
+    return out
+  }, [rows])
 
   // Roll up totals across all statuses for the section header
   const totals = statusKeys.reduce((acc, s) => {
@@ -747,23 +807,76 @@ function DivisionPivot({ division, agg }) {
         <span style={{ textAlign: 'right' }}>Income Written</span>
       </div>
 
-      {/* Status rows */}
+      {/* Status rows — clickable: expand to show the POs inside the step */}
       {statusKeys.map((status, i) => {
         const v = statuses[status]
+        const open = openStatuses.has(status)
+        const detail = poDetailByStatus[status] || []
         return (
-          <div key={status} style={{
-            display: 'grid',
-            gridTemplateColumns: '1.6fr 80px 110px 110px 130px',
-            padding: '10px 16px',
-            borderTop: i === 0 ? 'none' : `1px solid ${C.border}`,
-            fontSize: 13,
-            alignItems: 'center',
-          }}>
-            <span style={{ color: C.ink, fontWeight: 500 }}>{status}</span>
-            <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.orders)}</span>
-            <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.yards)}</span>
-            <span style={{ textAlign: 'right', color: C.inkMid }}>{v.qtyInvoiced > 0 ? fmt(v.qtyInvoiced) : '—'}</span>
-            <span style={{ textAlign: 'right', color: C.inkMid }}>{fmtD(v.income)}</span>
+          <div key={status}>
+            <div
+              onClick={() => toggleStatus(status)}
+              title={open ? 'Click to collapse' : 'Click to see the POs in this step'}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.6fr 80px 110px 110px 130px',
+                padding: '10px 16px',
+                borderTop: i === 0 ? 'none' : `1px solid ${C.border}`,
+                fontSize: 13,
+                alignItems: 'center',
+                cursor: 'pointer',
+                background: open ? C.parchment : 'transparent',
+                userSelect: 'none',
+              }}>
+              <span style={{ color: C.ink, fontWeight: open ? 700 : 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 10, color: C.inkLight, width: 10, display: 'inline-block' }}>{open ? '▾' : '▸'}</span>
+                {status}
+              </span>
+              <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.orders)}</span>
+              <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(v.yards)}</span>
+              <span style={{ textAlign: 'right', color: C.inkMid }}>{v.qtyInvoiced > 0 ? fmt(v.qtyInvoiced) : '—'}</span>
+              <span style={{ textAlign: 'right', color: C.inkMid }}>{fmtD(v.income)}</span>
+            </div>
+
+            {open && (
+              <div style={{ background: 'var(--surface)', borderTop: `1px dashed ${C.border}` }}>
+                {/* detail header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1.1fr 1.5fr 46px 64px 90px 100px', padding: '6px 16px 6px 40px', fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.inkLight, background: C.parchment }}>
+                  <span>PO</span>
+                  <span>Customer</span>
+                  <span>Item · Color</span>
+                  <span style={{ textAlign: 'right' }}>Lines</span>
+                  <span style={{ textAlign: 'right' }}>Age</span>
+                  <span style={{ textAlign: 'right' }}>Yards</span>
+                  <span style={{ textAlign: 'right' }}>Income</span>
+                </div>
+                {detail.map((e, j) => (
+                  <div key={e.po + j} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '120px 1.1fr 1.5fr 46px 64px 90px 100px',
+                    padding: '7px 16px 7px 40px',
+                    borderTop: j === 0 ? 'none' : `1px solid ${C.border}`,
+                    fontSize: 12, alignItems: 'center',
+                  }}>
+                    <span style={{ color: C.ink, fontWeight: 600 }}>
+                      {e.po}
+                      {e.isNewGoods && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: C.inkLight, border: `1px solid ${C.border}`, borderRadius: 4, padding: '1px 4px', verticalAlign: 'middle' }}>NG</span>}
+                    </span>
+                    <span style={{ color: C.inkMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.customer}</span>
+                    <span style={{ color: C.inkMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e.descs.join(', ')}>
+                      {e.descs[0] || '—'}{e.descs.length > 1 ? `  +${e.descs.length - 1} more` : ''}
+                    </span>
+                    <span style={{ textAlign: 'right', color: C.inkLight }}>{e.lines > 1 ? e.lines : '—'}</span>
+                    <span style={{ textAlign: 'right', color: e.age >= 90 ? STATUS_BAD : e.age >= 60 ? STATUS_WARN : C.inkMid, fontWeight: e.age >= 60 ? 700 : 400 }}>{e.age}d</span>
+                    <span style={{ textAlign: 'right', color: C.inkMid }}>{fmt(e.yards)}</span>
+                    <span style={{ textAlign: 'right', color: C.inkMid }}>{fmtD(e.income)}</span>
+                  </div>
+                ))}
+                {detail.length === 0 && (
+                  <div style={{ padding: '8px 16px 8px 40px', fontSize: 12, color: C.inkLight, fontStyle: 'italic' }}>No line detail for this step.</div>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
