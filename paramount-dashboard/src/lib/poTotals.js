@@ -176,12 +176,18 @@ export async function loadPoTotals(poNumbers) {
         .range(a, b))
       for (const r of rows) {
         const cur = out.get(r.po_number) || { yards: 0, colorYards: 0, cyKnown: false, lineCount: 0, source: 'ledger', invoiced: false }
-        const yd = num(r.yards_written)
+        // AN INVOICED PO'S SIZE IS WHAT INVOICED, NOT WHAT WAS WRITTEN.
+        // Ramon 8/13 (PO2032815 / Seraphina): written 200 yd, invoiced 94.1 —
+        // the dashboard said "200 (600 cy), 100 to go" on a finished job.
+        // Open work plans against written yards; closed work reports actuals.
+        // qty_invoiced falls back to written when LIFT left it empty.
+        const closed = !!r.invoice_date
+        const yd = closed ? (num(r.qty_invoiced) || num(r.yards_written)) : num(r.yards_written)
         const cc = num(r.colors_count)
         cur.yards += yd
         if (yd > 0 && cc > 0) { cur.colorYards += yd * cc; cur.cyKnown = true }
         cur.lineCount += 1
-        if (r.invoice_date) cur.invoiced = true
+        if (closed) cur.invoiced = true
         out.set(r.po_number, cur)
       }
     }
