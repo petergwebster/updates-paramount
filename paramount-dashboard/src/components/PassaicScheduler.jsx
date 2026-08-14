@@ -317,6 +317,11 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     const activeData = e.active?.data?.current
     const overData = e.over?.data?.current
     const src = activeData?.moveAssignment          // dragging a placed card
+    if (src && !src.category_override) {
+      // Assignments don't persist the override — rehydrate it so placed
+      // cards of override POs can still be drag-moved between their tables.
+      src.category_override = catOverrides[schedLineKey(src)] || null
+    }
     const overAsg = overData?.assignment            // dropped over another placed card
 
     // ── MOVE / REORDER of an existing placed card ───────────────────────
@@ -1618,6 +1623,12 @@ function CrewStrip({ tableCode, dailyOps, weeklyYards }) {
 }
 
 function categoryFitsPO(category, po) {
+  // Manual override wins here too — this is the gate the DRAG path actually
+  // consults (Ramon 8/13: the "Run as Fabric" selector changed the card's
+  // badge but not this function, so the drop still refused; and an empty
+  // product_type fit NO category, which is why kit ground rows couldn't drop
+  // anywhere at all).
+  if (po.category_override) return po.category_override === category
   const pt = (po.product_type || '').toLowerCase()
   if (category === 'grass')     return pt.includes('grass')
   if (category === 'fabric')    return pt.includes('fabric') || pt.includes('strike-off')
