@@ -65,6 +65,44 @@ export default function SchedulerTab() {
         if (data.length < pageSize) break
         from += pageSize
       }
+      // KIT IDENTITY ENRICHMENT (Ramon 8/13, Tropical Isle POs). New-goods
+      // orders kit a print line with a ground line, and the feed routes the
+      // print line (type SCHUMACHER PROC) to site='procurement' — correctly,
+      // that's Lydia's queue — leaving Passaic's pool a headless ground card
+      // ("Diamond", no colors, no material). Graft the sibling's identity
+      // onto the ground row: pattern description + colour count. Yardage,
+      // status, and category stay the ground row's own. ~13 orders affected
+      // in the 8/13 snapshot; harmless when zero.
+      if (site === 'passaic') {
+        const headless = all.filter(r => !r.product_type && !(Number(r.colors_count) > 0) && r.order_number)
+        if (headless.length) {
+          const orderNos = [...new Set(headless.map(r => r.order_number))]
+          const { data: sibs } = await supabase
+            .from('sched_wip_rows')
+            .select('order_number, item_sku, line_description, colors_count, product_type, site')
+            .eq('snapshot_id', snap.id)
+            .in('order_number', orderNos)
+            .neq('site', site)
+          const byOrder = new Map()
+          for (const s2 of (sibs || [])) {
+            if ((Number(s2.colors_count) > 0 || s2.product_type) && !byOrder.has(s2.order_number)) {
+              byOrder.set(s2.order_number, s2)
+            }
+          }
+          for (const r of headless) {
+            const s2 = byOrder.get(r.order_number)
+            if (!s2) continue
+            if (s2.line_description && s2.line_description !== r.line_description) {
+              const groundBit = r.line_description || r.item_sku || ''
+              r.line_description = groundBit
+                ? `${s2.line_description} · ground: ${groundBit}`
+                : s2.line_description
+            }
+            if (!(Number(r.colors_count) > 0) && Number(s2.colors_count) > 0) r.colors_count = s2.colors_count
+            r.kit_identity_from = s2.site
+          }
+        }
+      }
       setWipRows(all)
 
       const { data: asg, error: ae } = await supabase
