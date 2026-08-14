@@ -49,7 +49,7 @@ export default function SchedulerTab() {
 
       if (!snap) { setWipRows([]); setAssignments([]); return }
 
-      const all = []
+      let all = []
       const pageSize = 1000
       let from = 0
       while (true) {
@@ -65,15 +65,47 @@ export default function SchedulerTab() {
         if (data.length < pageSize) break
         from += pageSize
       }
-      // KIT IDENTITY ENRICHMENT (Ramon 8/13, Tropical Isle POs). New-goods
-      // orders kit a print line with a ground line, and the feed routes the
-      // print line (type SCHUMACHER PROC) to site='procurement' — correctly,
-      // that's Lydia's queue — leaving Passaic's pool a headless ground card
-      // ("Diamond", no colors, no material). Graft the sibling's identity
-      // onto the ground row: pattern description + colour count. Yardage,
-      // status, and category stay the ground row's own. ~13 orders affected
-      // in the 8/13 snapshot; harmless when zero.
+      // KIT HANDLING (Ramon 8/13, Tropical Isle + Seraphina Bronze). New-goods
+      // orders kit a print line with a ground line. Two shapes appear:
+      //
+      // PASS 1 — both lines in the passaic pool (Seraphina): the print line
+      // carries identity (type/colors) but ZERO yards (panels are piece-goods);
+      // the ground line ("Ella") carries the yardage but no identity. Result
+      // before this fix: a duplicate card pair — one headless, one
+      // unquantified. Merge: identity row absorbs the ground yardage, ground
+      // card is dropped (grounds never schedule as their own job when the
+      // print line is present).
+      //
+      // PASS 2 — print line routed to site='procurement' (Tropical Isle,
+      // type SCHUMACHER PROC — correctly Lydia's queue): passaic keeps only
+      // the ground row. Graft the sibling's identity (pattern + colors) onto
+      // it so the card is schedulable; yardage/status stay the ground's own.
       if (site === 'passaic') {
+        // ── Pass 1: same-site kit merge ───────────────────────────
+        const byOrder = new Map()
+        for (const r of all) {
+          if (!r.order_number) continue
+          if (!byOrder.has(r.order_number)) byOrder.set(r.order_number, [])
+          byOrder.get(r.order_number).push(r)
+        }
+        const dropRows = new Set()
+        for (const rows of byOrder.values()) {
+          const idRows = rows.filter(r => r.product_type || Number(r.colors_count) > 0)
+          const blanks = rows.filter(r => !r.product_type && !(Number(r.colors_count) > 0))
+          if (!idRows.length || !blanks.length) continue
+          const groundYds = blanks.reduce((s2, b) => s2 + Number(b.yards_written || 0), 0)
+          const primary = idRows[0]   // multi-colorway kits keep extra id rows untouched
+          if (!(Number(primary.yards_written) > 0) && groundYds > 0) {
+            primary.yards_written = groundYds
+            const groundName = blanks.map(b => b.line_description || b.item_sku).filter(Boolean).join(', ')
+            if (groundName) primary.line_description = `${primary.line_description || ''} · ground: ${groundName}`.replace(/^ · /, '')
+            primary.kit_merged = true
+          }
+          for (const b of blanks) dropRows.add(b)
+        }
+        if (dropRows.size) all = all.filter(r => !dropRows.has(r))
+
+        // ── Pass 2: cross-site identity graft for still-headless rows ─────
         const headless = all.filter(r => !r.product_type && !(Number(r.colors_count) > 0) && r.order_number)
         if (headless.length) {
           const orderNos = [...new Set(headless.map(r => r.order_number))]
@@ -83,14 +115,14 @@ export default function SchedulerTab() {
             .eq('snapshot_id', snap.id)
             .in('order_number', orderNos)
             .neq('site', site)
-          const byOrder = new Map()
+          const sibByOrder = new Map()
           for (const s2 of (sibs || [])) {
-            if ((Number(s2.colors_count) > 0 || s2.product_type) && !byOrder.has(s2.order_number)) {
-              byOrder.set(s2.order_number, s2)
+            if ((Number(s2.colors_count) > 0 || s2.product_type) && !sibByOrder.has(s2.order_number)) {
+              sibByOrder.set(s2.order_number, s2)
             }
           }
           for (const r of headless) {
-            const s2 = byOrder.get(r.order_number)
+            const s2 = sibByOrder.get(r.order_number)
             if (!s2) continue
             if (s2.line_description && s2.line_description !== r.line_description) {
               const groundBit = r.line_description || r.item_sku || ''
