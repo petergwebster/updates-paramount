@@ -143,23 +143,52 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
   // every refresh. Tinting ALREADY counts inside colors_count, so this changes
   // no maths anywhere — it's purely a heads-up for the floor.
   const [tintFlags, setTintFlags] = useState({})   // schedLineKey -> true
+  const [catOverrides, setCatOverrides] = useState({})  // schedLineKey -> 'grass'|'fabric'|'wallpaper'
 
   useEffect(() => {
     let cancelled = false
     async function loadTintFlags() {
       const { data, error } = await supabase
         .from('sched_po_flags')
-        .select('po_number, item_sku, color, needs_tint')
-        .eq('needs_tint', true)
+        .select('po_number, item_sku, color, needs_tint, category_override')
       if (cancelled) return
       if (error) { console.error('[tint flags] load failed', error); return }
-      const m = {}
-      for (const f of (data || [])) m[schedLineKey(f)] = true
+      const m = {}, co = {}
+      for (const f of (data || [])) {
+        const k = schedLineKey(f)
+        if (f.needs_tint) m[k] = true
+        if (f.category_override) co[k] = f.category_override
+      }
       setTintFlags(m)
+      setCatOverrides(co)
     }
     loadTintFlags()
     return () => { cancelled = true }
   }, [])
+
+  // CATEGORY OVERRIDE (Ramon 8/13). Same persistence doctrine as tinting:
+  // a property of the JOB, stored on sched_po_flags so it survives the hourly
+  // feed. Empty string clears back to auto-classification.
+  async function setCategoryOverride(row, cat) {
+    const key = schedLineKey(row)
+    setCatOverrides(prev => {
+      const next = { ...prev }
+      if (cat) next[key] = cat
+      else delete next[key]
+      return next
+    })
+    const { error } = await supabase.from('sched_po_flags').upsert({
+      po_number: row.po_number,
+      item_sku: row.item_sku || '',
+      color: row.color || '',
+      category_override: cat || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'po_number,item_sku,color' })
+    if (error) {
+      console.error('[category override] save failed', error)
+      alert('Could not save the category override — it will revert on refresh. ' + (error.message || ''))
+    }
+  }
 
   async function toggleTint(row, next) {
     const key = schedLineKey(row)
@@ -422,10 +451,10 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
         // complete → remaining 0 — the missing yards are waste, not future work).
         if (!unquantified && remaining > 0 && produced >= 0.8 * written
             && (completeKeys.has(k) || completeKeys.has(r.po_number))) remaining = 0
-        return { ...r, assigned_already: already, remaining_yards: remaining, unquantified }
+        return { ...r, assigned_already: already, remaining_yards: remaining, unquantified, category_override: catOverrides[schedLineKey(r)] || null }
       })
       .filter(r => r.unquantified || r.remaining_yards > 0)
-  }, [wipRows, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO, producedByLine, producedByPO, completeKeys])
+  }, [wipRows, assignedByLine, assignedByPOLegacy, otherWeeksByLine, otherWeeksByPO, producedByLine, producedByPO, completeKeys, catOverrides])
 
   const filteredPool = useMemo(() => {
     let list = pool
@@ -986,6 +1015,8 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
                 selected={selectedPO?.po_number === r.po_number}
                 tint={!!tintFlags[schedLineKey(r)]}
                 onToggleTint={(v) => toggleTint(r, v)}
+                catOverride={catOverrides[schedLineKey(r)] || ''}
+                onSetCategory={(cat) => setCategoryOverride(r, cat)}
                 onToggle={() => setSelectedPO(selectedPO?.po_number === r.po_number ? null : r)} />
             ))}
           </div>
@@ -1243,7 +1274,7 @@ function TableCategoryRow({ category, label, tables, assignments, dailyOps, sele
 // Draggable pool card. Keeps the original click-to-select behavior (onToggle)
 // AND becomes a drag source. The PointerSensor's 6px activation constraint
 // means a plain click still selects; a drag needs deliberate movement.
-function PoolCard({ r, poTotal = null, selected, tint, onToggleTint, onToggle }) {
+function PoolCard({ r, poTotal = null, selected, tint, onToggleTint, onToggle, catOverride = '', onSetCategory = null }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `pool-${r.id}`, data: { po: r } })
   const isSch = (r.customer_type||'').toLowerCase() === 'schumacher'
   const is3P = (r.customer_type||'').toLowerCase().includes('3rd')
@@ -1308,6 +1339,19 @@ function PoolCard({ r, poTotal = null, selected, tint, onToggleTint, onToggle })
           style={{ width: 12, height: 12, accentColor: C.gold, cursor: 'pointer', margin: 0 }} />
         Tinting?
       </label>
+      {onSetCategory && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: C.inkLight, cursor: 'pointer' }}
+          onClick={(e) => e.stopPropagation()}>
+          Run as
+          <select value={catOverride} onChange={(e) => onSetCategory(e.target.value)}
+            style={{ fontSize: 10, padding: '1px 4px', borderRadius: 4, border: `1px solid ${C.border}`, background: 'var(--surface)', color: catOverride ? C.gold : C.inkMid, cursor: 'pointer' }}>
+            <option value=''>auto</option>
+            <option value='grass'>Grass</option>
+            <option value='fabric'>Fabric</option>
+            <option value='wallpaper'>Wallpaper</option>
+          </select>
+        </label>
+      )}
     </div>
   )
 }
@@ -2112,6 +2156,12 @@ const SCHEDULABLE_STATUSES = new Set(['ready to print', 'print', 'approved to pr
 const tableCategoryOf = (code) =>
   !code ? null : code.startsWith('GC') ? 'grass' : code.startsWith('FAB') ? 'fabric' : code.startsWith('WP') ? 'wallpaper' : null
 const poolCategoryOf = (p) => {
+  // Manual override wins — sched_po_flags.category_override (Ramon 8/13:
+  // new-goods kit POs like Tropical Isle carry a paper-ground SKU but the
+  // floor runs them as fabric; the person on the board decides, the
+  // classifier defers). Flows to filters, scorecards, and the validator
+  // because they all route through this one function.
+  if (p.category_override) return p.category_override
   const s = (p.product_type || '').toLowerCase()
   if (s.includes('grass')) return 'grass'
   if (s.includes('paper') || s.includes('panel')) return 'wallpaper'
