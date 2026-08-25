@@ -21,38 +21,57 @@ const SUPABASE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
 const MIN_ORDER_LINES = 5000
 const WEEK_TARGET = { sp: 8610, dg: 12000 }
 
-function parseCsv(text) {
+// ── LIFT fetch + parse — VERBATIM from weekly-lift-summary (win1252; the
+// export does NOT use RFC quoting but descriptions contain inch marks like
+// 54" WIDE — a naive quote-aware parser swallows whole row blocks between
+// stray quotes. That exact bug hid 120 of Wendy's 134 held lines, 8/25.) ──
+function reportUrl(report) { return `${LIFT_BASE_URL}/${report}/${report}.csv?` }
+async function fetchCsv(report) {
+  const res = await fetch(reportUrl(report))
+  if (!res.ok) throw new Error(`LIFT ${report} fetch failed: HTTP ${res.status}`)
+  const buf = await res.arrayBuffer()
+  return new TextDecoder('windows-1252').decode(buf)
+}
+function splitRowsRfc(text) {
   const rows = []
-  let row = [], field = '', inQ = false
+  let field = '', record = [], inQuotes = false
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
-    if (inQ) {
-      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else inQ = false }
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else inQuotes = false }
       else field += c
-    } else if (c === '"') inQ = true
-    else if (c === ',') { row.push(field); field = '' }
-    else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(field); field = ''
-      if (row.length > 1 || row[0] !== '') rows.push(row)
-      row = []
-    } else field += c
+    } else {
+      if (c === '"') inQuotes = true
+      else if (c === ',') { record.push(field); field = '' }
+      else if (c === '\n') { record.push(field); rows.push(record); record = []; field = '' }
+      else if (c === '\r') { /* \n handles */ }
+      else field += c
+    }
   }
-  if (field !== '' || row.length) { row.push(field); rows.push(row) }
-  if (!rows.length) return { headers: [], records: [] }
-  const headers = rows[0].map(h => h.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
-  const records = rows.slice(1).map(r => {
-    const o = {}
-    for (let i = 0; i < headers.length; i++) o[headers[i]] = (r[i] || '').trim()
-    return o
-  })
-  return { headers, records }
+  if (field.length > 0 || record.length > 0) { record.push(field); rows.push(record) }
+  return rows
 }
-
-async function fetchCsv(report) {
-  const res = await fetch(`${LIFT_BASE_URL}/${report}/${report}.csv`)
-  if (!res.ok) throw new Error(`${report}: HTTP ${res.status}`)
-  return res.text()
+function parseCsv(text) {
+  const quotesAreReal = text.charAt(0) === '"'
+  let rows
+  if (quotesAreReal) rows = splitRowsRfc(text)
+  else {
+    rows = []
+    for (const line of text.split(/\r?\n/)) {
+      if (/^[\s,]*$/.test(line)) continue
+      rows.push(line.split(','))
+    }
+  }
+  if (rows.length === 0) return { headers: [], records: [] }
+  const norm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const headers = rows[0].map(norm)
+  const records = []
+  for (let r = 1; r < rows.length; r++) {
+    const obj = {}
+    for (let c = 0; c < headers.length; c++) obj[headers[c]] = (rows[r][c] ?? '').trim()
+    records.push(obj)
+  }
+  return { headers, records }
 }
 
 async function fetchYieldMap() {
