@@ -62,7 +62,7 @@ async function fetchYieldMap() {
   const PAGE = 1000
   let off = 0
   for (;;) {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&order=item_sku&limit=${PAGE}&offset=${off}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ref_product_yield?select=item_sku,yield,product_type&limit=${PAGE}&offset=${off}`, {
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     })
     if (!res.ok) throw new Error(`ref_product_yield fetch failed: HTTP ${res.status}`)
@@ -141,6 +141,7 @@ exports.handler = async function () {
   const ageOf = d => Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 86400000))
 
   const lines = []
+  let unresolvedLines = 0
   const site = {
     sp: { yds: 0, lines: 0, byCat: {}, byCustomer: {}, ages: { d7: 0, d14: 0, d30: 0, d60: 0, d60plus: 0 } },
     dg: { yds: 0, lines: 0, byCat: {}, byCustomer: {}, ages: { d7: 0, d14: 0, d30: 0, d60: 0, d60plus: 0 } },
@@ -158,15 +159,28 @@ exports.handler = async function () {
     const ref = yieldMap.get(String(r.ITEMSKU))
     const typeRaw = info?.type || ref?.type || r.PRODUCTTYPE || ''
     const pm = PRODUCT_MAP[normKey(typeRaw)]
-    if (!pm || pm.kind !== 'yards') continue
+    // KNOWN non-yards types (grounds, fees, packing, procurement) stay out.
+    if (pm && pm.kind !== 'yards') continue
+    // UNKNOWN type — overwhelmingly NEW-GOODS SKUs absent from the live
+    // products report, and new goods sit held longest (Wendy's 8/25 drill:
+    // largest holders all FSCO NEW GOODS). Skipping these was a 5–15×
+    // undercount. Keep the line: division from LIFT's ORDER_TYPE, category
+    // 'new goods', yield via the fallback chain.
+    let div, cat
+    if (pm) { div = pm.div; cat = pm.cat }
+    else {
+      div = ((r.ORDERTYPE || '').toLowerCase().includes('digital')) ? 'dg' : 'sp'
+      cat = 'new goods'
+      unresolvedLines++
+    }
 
     const yf = resolveYield(ref, info, typeRaw)
     const yds = q * yf
     const printed = dateOf(r.PRINTEDDATE)
     const age = printed ? ageOf(printed) : null
-    const s = site[pm.div]
+    const s = site[div]
     s.yds += yds; s.lines++
-    s.byCat[pm.cat] = (s.byCat[pm.cat] || 0) + yds
+    s.byCat[cat] = (s.byCat[cat] || 0) + yds
     const cust = r.CUSTOMERNAME || '—'
     s.byCustomer[cust] = (s.byCustomer[cust] || 0) + yds
     if (age != null) {
@@ -177,9 +191,9 @@ exports.handler = async function () {
       else s.ages.d60plus += yds
     }
     lines.push({
-      div: pm.div, po: r.PONUMBER || '', order: r.ORDERNUMBER || '',
+      div, po: r.PONUMBER || '', order: r.ORDERNUMBER || '',
       sku: r.ITEMSKU || '', desc: r.LINEDESCRIPTION || '', customer: cust,
-      cat: pm.cat, status: r.ORDERSTATUS || '', printed, age,
+      cat, status: r.ORDERSTATUS || '', printed, age,
       qty: q, yield: yf, yds: Math.round(yds * 10) / 10,
     })
   }
@@ -203,6 +217,7 @@ exports.handler = async function () {
     goal: "Each site ≤ one week's production target in held-to-invoice",
     sites: { passaic: shape('sp'), bny: shape('dg') },
     lineCount: lines.length,
+    unresolvedTypeLines: unresolvedLines,
     lines,
   })
 }
