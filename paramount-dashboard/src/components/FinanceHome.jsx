@@ -329,6 +329,15 @@ export default function FinanceHome({ onOpen }) {
           ]} />
         </Box>
 
+        <Box title="Held to Invoice" value="LIVE" unit="from LIFT"
+             sub="Printed, not yet billed · goal ≤ one week's production per site · click to pull the stock"
+             onClick={go('hti')}>
+          <StackBar segs={[
+            { v: 8610,  color: C.siteNJ,  label: 'NJ bar 8.6K' },
+            { v: 12000, color: C.siteBNY, label: 'BK bar 12K' },
+          ]} />
+        </Box>
+
         <Box title="Levers" value={d.lever ? `${d.lever.hits}/4` : '—'}
              unit={d.lever ? `on target · wk ${String(d.lever.week).slice(5)}` : 'no production weeks saved'}
              sub={d.lever

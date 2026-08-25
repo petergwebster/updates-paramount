@@ -16,6 +16,7 @@ import VenaPnLTab from './components/VenaPnLTab'
 import FinanceReportsTab from './components/FinanceReportsTab'
 import DeckKpiTrend from './components/DeckKpiTrend'
 import LeversTab from './components/LeversTab'
+import HeldToInvoiceTab from './components/HeldToInvoiceTab'
 import FeedHealthStrip from './components/FeedHealthStrip'
 import OpsPulseTiles from './components/OpsPulseTiles'
 import OpsDailyChart from './components/OpsDailyChart'
@@ -86,6 +87,7 @@ const FINANCE_TABS = [
   { id: 'levers',     label: 'Levers', isNew: true },
   { id: 'spend',      label: 'Spend detail' },
   { id: 'arap',       label: 'AR / AP' },
+  { id: 'hti',        label: 'Held to Invoice', isNew: true },
   { id: 'inventory',  label: 'Inventory' },
   { id: 'people',     label: 'People' },
   { id: 'reports',    label: 'Reports' },
@@ -668,6 +670,13 @@ export default function App() {
                     set of views, two doors — the tabs cannot disagree. */}
                 {destination === 'finance' && activeTab==='arap' && (
                   <FinancialTab section="arap" weekStart={currentWeek} />
+                )}
+                {/* HELD TO INVOICE (Peter + Wendy, 8/25): the live stock of
+                    printed-but-unbilled work vs the exec goal of ≤ one week's
+                    production target per site. John's DAX measure, live from
+                    LIFT, lines drop off as invoices date. */}
+                {destination === 'finance' && activeTab==='hti' && (
+                  <HeldToInvoiceTab />
                 )}
                 {destination === 'finance' && activeTab==='inventory' && (
                   <InventoryTab profile={userProfile} />
