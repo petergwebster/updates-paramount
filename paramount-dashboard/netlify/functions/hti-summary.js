@@ -109,7 +109,10 @@ function json(status, body) {
   return { statusCode: status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
 }
 
-exports.handler = async function () {
+exports.handler = async function (event) {
+  let debugOrder = null
+  try { debugOrder = JSON.parse(event?.body || '{}').trace || null } catch { /* no body */ }
+
   let orders, products, yieldMap
   try {
     const [oTxt, pTxt, yMap] = await Promise.all([fetchCsv('orders'), fetchCsv('products'), fetchYieldMap()])
@@ -135,6 +138,31 @@ exports.handler = async function () {
     if (NUP_TYPES.has(t) && info?.up > 1) return 1 / info.up
     if (t === 'MEMO') return 0.08
     return 1
+  }
+
+  // TRACE MODE: report every gate decision for one order number.
+  if (debugOrder) {
+    const trace = []
+    for (const r of orders) {
+      if ((r.ORDERNUMBER || '') !== debugOrder) continue
+      const info = skuInfo.get(r.ITEMSKU)
+      const ref = yieldMap.get(String(r.ITEMSKU))
+      const typeRaw = info?.type || ref?.type || r.PRODUCTTYPE || ''
+      trace.push({
+        sku: r.ITEMSKU, line: r.LINENUMBER,
+        INVOICEDATE: r.INVOICEDATE || '(blank)',
+        QTYPRINTED: r.QTYPRINTED || '(blank)',
+        ORDERSTATUS: r.ORDERSTATUS || '(blank)',
+        typeRaw, pmKind: PRODUCT_MAP[normKey(typeRaw)]?.kind || '(unknown type)',
+        gates: {
+          invoiceGate: dateOf(r.INVOICEDATE) ? 'DROPPED: has invoice date' : 'pass',
+          qtyGate: num(r.QTYPRINTED) > 0 ? 'pass' : 'DROPPED: no printed qty',
+          statusGate: /cancel|void/.test((r.ORDERSTATUS || '').toLowerCase()) ? 'DROPPED: cancelled' : 'pass',
+          typeGate: (PRODUCT_MAP[normKey(typeRaw)] && PRODUCT_MAP[normKey(typeRaw)].kind !== 'yards') ? 'DROPPED: non-yards type' : 'pass',
+        },
+      })
+    }
+    return json(200, { trace: debugOrder, found: trace.length, rows: trace })
   }
 
   const today = new Date().toISOString().slice(0, 10)
