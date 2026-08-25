@@ -6,7 +6,7 @@ import { C, fmt, fmtD, fmtK, isoDate, weekLabel, addWeeks, defaultSchedulerWeek,
   STATUS_BAD_BORDER, schedLineKey,
 } from '../lib/scheduleUtils'
 import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../lib/dailyOps'
-import { weeklyBudgetYards, weeklyBudgetColorYards, weeklyBudgetRevenue, forecastWeeklyRevenue, PASSAIC_BUDGET } from '../lib/budgets'
+import { weeklyBudgetYards, weeklyBudgetColorYards, weeklyBudgetRevenue, forecastWeeklyRevenue, forecastWeeklyCategoryRevenue, PASSAIC_BUDGET } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 import PoolSearchExplain from './PoolSearchExplain'
 
@@ -1212,7 +1212,7 @@ function CategoryStrip({ totals }) {
                     gauge. Flagged to Peter; corrected category numbers drop
                     in via budgets.js when he has them. */}
                 {(() => {
-                  const revTgt = weeklyBudgetRevenue('passaic', CATEGORY_TO_BUDGET_KEY[c.key])
+                  const revTgt = forecastWeeklyCategoryRevenue(CATEGORY_TO_BUDGET_KEY[c.key])
                   const revPct = revTgt ? Math.round((t.revenue / revTgt) * 100) : null
                   return (
                     <div style={{ fontWeight: 700, color: C.ink }}>

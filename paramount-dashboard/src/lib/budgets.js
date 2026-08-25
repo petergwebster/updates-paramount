@@ -222,6 +222,22 @@ export function forecastWeeklyRevenue(site) {
   return FORECAST_WEEKLY_REV[site] ?? null
 }
 
+/**
+ * Per-category forecast revenue target — the forecast pro-rated by each
+ * category's share of the annual-plan revenue split (the only category
+ * split that exists; Vena forecasts don't break out by category).
+ * Grass $51,240 · Fabric $19,730 · Paper $36,805 — sums to $107,775, so
+ * every bar on the scheduler scores against the same basis and the tiles
+ * reconcile to the header. Closes the 7/30 "KNOWN TIE-OUT GAP" — Ramon
+ * caught the plan-vs-forecast mismatch on 8/21.
+ */
+export function forecastWeeklyCategoryRevenue(category) {
+  const cats = PASSAIC_BUDGET.categories
+  const planSum = cats.grass.invoiceRev + cats.fabric.invoiceRev + cats.paper.invoiceRev
+  const share = (cats[category]?.invoiceRev ?? 0) / planSum
+  return Math.round((FORECAST_WEEKLY_REV.passaic) * share)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Raw exports for callers that need structural access (e.g., the
 // ProductionDashboard category input form iterates categories.* keys).
