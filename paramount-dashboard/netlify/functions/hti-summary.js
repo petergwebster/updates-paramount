@@ -186,13 +186,20 @@ exports.handler = async function (event) {
 
   const today = new Date().toISOString().slice(0, 10)
   const ageOf = d => Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 86400000))
+  // Current fiscal week start (Sunday — company 4-4-5 anchor). Anything
+  // printed BEFORE this Sunday and still held is a CARRYOVER — it survived
+  // at least one whole week without invoicing. Immediate flag (Peter 8/25).
+  const dow = new Date(today + 'T00:00:00Z').getUTCDay()
+  const weekStart = new Date(Date.parse(today + 'T00:00:00Z') - dow * 86400000).toISOString().slice(0, 10)
 
   const lines = []
   let unresolvedLines = 0
-  const site = {
-    sp: { yds: 0, lines: 0, byCat: {}, byCustomer: {}, ages: { d7: 0, d14: 0, d30: 0, d60: 0, d60plus: 0 } },
-    dg: { yds: 0, lines: 0, byCat: {}, byCustomer: {}, ages: { d7: 0, d14: 0, d30: 0, d60: 0, d60plus: 0 } },
-  }
+  const mkSite = () => ({
+    coreYds: 0, coreLines: 0, ngYds: 0, ngLines: 0,
+    byCustomer: {}, ages: { d7: 0, d14: 0, d30: 0, d60: 0, d60plus: 0 },
+    cats: {},   // category -> { yds, lines, oldest, carryYds, carryLines, ng }
+  })
+  const site = { sp: mkSite(), dg: mkSite() }
 
   for (const r of orders) {
     const invoiced = dateOf(r.INVOICEDATE)
@@ -225,22 +232,34 @@ exports.handler = async function (event) {
     const yds = q * yf
     const printed = dateOf(r.PRINTEDDATE)
     const age = printed ? ageOf(printed) : null
-    const s = site[div]
-    s.yds += yds; s.lines++
-    s.byCat[cat] = (s.byCat[cat] || 0) + yds
     const cust = r.CUSTOMERNAME || '—'
-    s.byCustomer[cust] = (s.byCustomer[cust] || 0) + yds
-    if (age != null) {
-      if (age < 7) s.ages.d7 += yds
-      else if (age < 14) s.ages.d14 += yds
-      else if (age < 30) s.ages.d30 += yds
-      else if (age < 60) s.ages.d60 += yds
-      else s.ages.d60plus += yds
+    // NEW GOODS is a DESIGN-APPROVAL hold, not a shipping hold (Peter 8/25):
+    // it does not count against the site's one-week bar. Split it out.
+    const isNG = /NEW GOODS/i.test(cust) || cat === 'new goods'
+    const carry = !!(printed && printed < weekStart)
+    const s = site[div]
+    if (isNG) { s.ngYds += yds; s.ngLines++ }
+    else {
+      s.coreYds += yds; s.coreLines++
+      s.byCustomer[cust] = (s.byCustomer[cust] || 0) + yds
+      if (age != null) {
+        if (age < 7) s.ages.d7 += yds
+        else if (age < 14) s.ages.d14 += yds
+        else if (age < 30) s.ages.d30 += yds
+        else if (age < 60) s.ages.d60 += yds
+        else s.ages.d60plus += yds
+      }
     }
+    const catKey = isNG ? 'new goods' : cat
+    if (!s.cats[catKey]) s.cats[catKey] = { yds: 0, lines: 0, oldest: 0, carryYds: 0, carryLines: 0, ng: isNG }
+    const cd = s.cats[catKey]
+    cd.yds += yds; cd.lines++
+    if (age != null && age > cd.oldest) cd.oldest = age
+    if (carry) { cd.carryYds += yds; cd.carryLines++ }
     lines.push({
       div, po: r.PONUMBER || '', order: r.ORDERNUMBER || '',
       sku: r.ITEMSKU || '', desc: r.LINEDESCRIPTION || '', customer: cust,
-      cat, status: r.ORDERSTATUS || '', printed, age,
+      cat: catKey, status: r.ORDERSTATUS || '', printed, age, ng: isNG, carry,
       qty: q, yield: yf, yds: Math.round(yds * 10) / 10,
     })
   }
@@ -250,18 +269,22 @@ exports.handler = async function (event) {
     const s = site[k]
     const topCustomers = Object.entries(s.byCustomer).sort((a, b) => b[1] - a[1]).slice(0, 6)
       .map(([name, yds]) => ({ name, yds: Math.round(yds) }))
+    const cats = Object.entries(s.cats)
+      .map(([cat, v]) => ({ cat, yds: Math.round(v.yds), lines: v.lines, oldest: v.oldest, carryYds: Math.round(v.carryYds), carryLines: v.carryLines, ng: v.ng }))
+      .sort((a, b) => (a.ng - b.ng) || (b.yds - a.yds))   // ng row(s) last
     return {
-      yds: Math.round(s.yds), lines: s.lines,
-      target: WEEK_TARGET[k], pctOfTarget: Math.round((s.yds / WEEK_TARGET[k]) * 100),
-      byCat: Object.fromEntries(Object.entries(s.byCat).map(([c, v]) => [c, Math.round(v)])),
+      coreYds: Math.round(s.coreYds), coreLines: s.coreLines,
+      ngYds: Math.round(s.ngYds), ngLines: s.ngLines,
+      target: WEEK_TARGET[k], pctOfTarget: Math.round((s.coreYds / WEEK_TARGET[k]) * 100),
       ages: Object.fromEntries(Object.entries(s.ages).map(([c, v]) => [c, Math.round(v)])),
-      topCustomers,
+      cats, topCustomers,
     }
   }
 
   return json(200, {
     asOf: new Date().toISOString(),
-    goal: "Each site ≤ one week's production target in held-to-invoice",
+    weekStart,
+    goal: "Each site ≤ one week's production target in held-to-invoice (new goods excluded — design-approval hold, not shipping)",
     sites: { passaic: shape('sp'), bny: shape('dg') },
     lineCount: lines.length,
     unresolvedTypeLines: unresolvedLines,
