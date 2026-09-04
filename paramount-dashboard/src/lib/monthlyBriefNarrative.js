@@ -33,7 +33,7 @@ import { format } from 'date-fns'
 // ---------------------------------------------------------------------------
 
 function formatBriefContext(data) {
-  const { pacing, targets, production: p, financials: f, ap, ar, cash, people, wip, includeFinancials } = data
+  const { pacing, targets, production: p, financials: f, ap, ar, cash, people, wip, includeFinancials, dataQuality } = data
   const lines = []
 
   // Header
@@ -44,11 +44,23 @@ function formatBriefContext(data) {
   lines.push(`Fiscal: ${pacing.fiscalQuarter || 'unknown'} · ${pacing.weeksInMonth}-week month · ${pacing.weeksElapsed} weeks of data`)
   lines.push('')
 
+  // DATA QUALITY LEADS — the narrative must see the caveats before the numbers.
+  if (dataQuality) {
+    lines.push('## DATA QUALITY & COVERAGE — READ FIRST')
+    lines.push(`Basis: ${dataQuality.basis}`)
+    const cc = dataQuality.revenueCrossCheck
+    if (cc?.flagged) lines.push(`REVENUE CROSS-CHECK FLAG: ${cc.note}`)
+    else if (cc) lines.push(`Revenue cross-check (ledger vs GP): NJ ${cc.njVariancePct}% · BNY ${cc.bnyVariancePct}% — within tolerance.`)
+    for (const c of (dataQuality.coverage || [])) lines.push(`- ${c}`)
+    lines.push('')
+  }
+
   // Production — by site, then combined
   lines.push('## BNY (Brooklyn digital)')
   lines.push(`Produced: ${fmt(p.bnyYards)} yards (${pct(p.bnyVsTargetPct)} of expected MTD pace, target ${fmt(targets.expectedBnyMtd)} of monthly ${fmt(targets.monthBnyTarget)})`)
   lines.push(`Invoiced/Shipped: ${fmt(p.bnyInvoicedYds)} yards`)
   lines.push(`Operating revenue: ${money(p.bnyRevenue)}${p.bnyMiscRevenue ? ` (+${money(p.bnyMiscRevenue)} misc fees → ${money(p.bnyOperatingRevenue)} operating total)` : ''}`)
+  if (targets.bnyRevenueTarget) lines.push(`Revenue vs plan: ${pct(100 * p.bnyOperatingRevenue / targets.bnyRevenueTarget)} of ${money(targets.bnyRevenueTarget)}`)
   if (p.bnyProcurement) {
     lines.push(`Procurement (PASS-THROUGH, not operating revenue): ${money(p.bnyProcurement)}`)
     lines.push(`Total inflows BNY (for budget reconciliation): ${money(p.bnyTotalInflows)}`)
@@ -72,8 +84,9 @@ function formatBriefContext(data) {
   lines.push(`Waste: ${fmt(p.njWaste)} yards (${p.njWastePct != null ? p.njWastePct.toFixed(1) + '% waste rate' : 'rate unavailable'})`)
   lines.push(`Invoiced/Shipped: ${fmt(p.njInvoicedYds)} yards`)
   lines.push(`Operating revenue: ${money(p.njRevenue)}${p.njMiscRevenue ? ` (+${money(p.njMiscRevenue)} misc fees → ${money(p.njOperatingRevenue)} operating total)` : ''}`)
+  if (targets.njOperatingRevenueTarget) lines.push(`Revenue vs plan: ${pct(100 * p.njOperatingRevenue / targets.njOperatingRevenueTarget)} of ${money(targets.njOperatingRevenueTarget)} (plan EXCLUDES its procurement line)`)
   if (p.njProcurement) {
-    lines.push(`Procurement (PASS-THROUGH, not operating revenue): ${money(p.njProcurement)}`)
+    lines.push(`Procurement (PASS-THROUGH, not operating revenue): ${money(p.njProcurement)}${targets.procurementTarget ? ` vs its own plan line ${money(targets.procurementTarget)}` : ''}`)
   }
 
   if (p.weekRows.length) {
@@ -119,7 +132,7 @@ function formatBriefContext(data) {
   // production-only, i.e. includeFinancials is false)
   if (includeFinancials) {
     lines.push('## Cost / financial picture')
-    lines.push(`OpEx total: ${money(f.opex)}  ·  by unit:  NJ ${money(f.byUnit?.nj?.opex)}  ·  BNY ${money(f.byUnit?.bny?.opex)}  ·  Shared ${money(f.byUnit?.shared?.opex)}`)
+    lines.push(`NON-PAYROLL operating spend (GP; payroll is under People): ${money(f.opex)}  ·  NJ ${money(f.byUnit?.nj?.opex)}  ·  BNY ${money(f.byUnit?.bny?.opex)}  ·  Shared ${money(f.byUnit?.shared?.opex)}`)
     lines.push(`Inventory purchases total: ${money(f.invPurchases)}  ·  NJ ${money(f.byUnit?.nj?.invPurchases)}  ·  BNY ${money(f.byUnit?.bny?.invPurchases)}  ·  Shared ${money(f.byUnit?.shared?.invPurchases)}`)
     if (f.cogsAvailable) {
       lines.push(`COGS total: ${money(f.cogsTotal)} (Material ${money(f.cogsMaterial)}, Labor ${money(f.cogsLabor)}, Other ${money(f.cogsOther)})`)
@@ -146,7 +159,9 @@ function formatBriefContext(data) {
     lines.push('## People MTD')
     lines.push(`BNY: ${people.bny.headcount} active · ${fmt(people.bny.hours)} hours · ${money(people.bny.pay)} payroll · ${people.bny.otPct != null ? people.bny.otPct.toFixed(1) + '% OT' : 'no OT data'}`)
     lines.push(`Passaic: ${people.nj.headcount} active · ${fmt(people.nj.hours)} hours · ${money(people.nj.pay)} payroll · ${people.nj.otPct != null ? people.nj.otPct.toFixed(1) + '% OT' : 'no OT data'}`)
-    lines.push(`Combined headcount: ${people.combined.headcount} · combined payroll MTD ${money(people.combined.pay)}`)
+    lines.push(`Combined headcount: ${people.combined.headcount} · combined payroll MTD ${money(people.combined.pay)} (${people.weekCount} of ${people.expectedWeeks} fiscal weeks loaded)`)
+    if (targets.payrollPlan && people.weekCount === people.expectedWeeks) lines.push(`Payroll vs plan: ${pct(100 * people.combined.pay / targets.payrollPlan)} of ${money(targets.payrollPlan)}`)
+    if (people.missingNote) lines.push(`PAYROLL GAP: ${people.missingNote}`)
     lines.push('')
   }
 
@@ -315,6 +330,29 @@ Three distinct things:
 In the cost paragraph, name the operating revenue figure first, then call out \
 procurement as a separate pass-through line, then note the total inflows for \
 budget reconciliation if procurement is meaningful (>$10k).
+
+**DATA QUALITY COMES FIRST — never rationalize a caveat away.** If the DATA \
+QUALITY & COVERAGE block carries a revenue cross-check flag or coverage notes, \
+state them plainly in the relevant paragraph BEFORE interpreting the number. \
+Never invent an operational story ("real underutilization", "richer mix", \
+"end-of-month timing") to explain a figure the coverage notes already explain. \
+If produced yards come from floor entries with known under-coverage, call them \
+"floor-recorded", do NOT grade the site's true output on them, and say the \
+official production figure comes from LIFT at close. A flagged number is a \
+question, not a finding.
+
+**PLAIN LANGUAGE (per the production team).** Write in the words the team \
+uses: made / printed, billed, held, behind / ahead, short. No analytics jargon \
+— never "derived", "data layer", "pipeline", "utilization dynamics", \
+"conversion", "dynamic". Short sentences. If a term would need a glossary, \
+use a different term.
+
+**OPEX NAMING.** The OpEx figure in this data is NON-PAYROLL operating spend \
+(the weekly GP file carries no payroll by construction). Always call it \
+"non-payroll operating spend". Payroll is its own line under People — state \
+how many of the month's weeks are loaded, and if weeks are missing, name them \
+as missing files, never as low payroll. Only describe total operating spend \
+when explicitly combining both.
 
 Honor the BNY/Passaic accounting convention: when Passaic ran digital work, \
 BNY gets the revenue and production credit. Don't misattribute Passaic-run \

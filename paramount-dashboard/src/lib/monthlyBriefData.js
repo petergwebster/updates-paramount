@@ -305,7 +305,7 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
       if (cat === 'ar_trade' || cat === 'sales_ar_invoiced' || /SALES.*AR.*INVOICED/.test(tab)) {
         if (unit === 'nj') gp.njInvoiced += n
         else if (unit === 'bny') gp.bnyInvoiced += n
-      } else if (cat.startsWith('opex')) {
+      } else if (cat.startsWith('opex') || cat === 'line_dev') {   // line_dev = Design & Dev 4815, an OpEx line in the Vena GL map
         gp.opex[unit] += n
       } else if (/INVENTORY.*INK.*FREIGHT/.test(tab) || ['ink', 'freight', 'material_inventory'].includes(cat)) {
         gp.purch[unit] += n
