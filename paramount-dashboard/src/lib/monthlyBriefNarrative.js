@@ -338,7 +338,10 @@ Never invent an operational story ("real underutilization", "richer mix", \
 "end-of-month timing") to explain a figure the coverage notes already explain. \
 If produced yards come from floor entries with known under-coverage, call them \
 "floor-recorded", do NOT grade the site's true output on them, and say the \
-official production figure comes from LIFT at close. A flagged number is a \
+official production figure comes from LIFT at close. This applies with FULL \
+force to PRODUCED yards, WASTE %, and any combined or headline figure built \
+on them — do not declare a site "at 65%" or a waste rate "clean" off \
+floor-recorded numbers the coverage notes disclaim. A flagged number is a \
 question, not a finding.
 
 **PLAIN LANGUAGE (per the production team).** Write in the words the team \
