@@ -270,8 +270,13 @@ What's happening at Passaic. Yards, color-yards, and what % to target. Waste% an
 implies. Yards invoiced and revenue. One observation about category mix, mixing queue, \
 ready-to-print, or staffing if relevant.
 
-**Paragraph 4 — Cost / financial picture (3-4 sentences):**
-OpEx vs pace. Inventory purchases. AP / AR / cash signals if material. Apply the COGS \
+**Paragraph 4 — Money, in this fixed order (4-6 sentences):**
+Revenue build-up first: operating revenue by site → combined vs plan → procurement \
+pass-through as its OWN called-out line (it swings between zero and massive month to month \
+purely on timing; say so when notable either way) → total revenue including pass-through, \
+reconciling to top-line budget. Then spend, stacked: non-payroll operating spend → payroll \
+(weeks-loaded count) → total operating spend with this exact caveat: "directional — not yet \
+audited or final". Then CapEx last, and one inventory line if notable. Apply the COGS \
 pending guidance — if pending, say so plainly and don't speculate about margin.
 `.trim() : `
 ## Structure — end-of-month, ~300-400 words total
@@ -289,8 +294,17 @@ What happened at Passaic. Yards, color-yards, and final % to target. Waste% and 
 implies. Yards invoiced and revenue. One observation about category mix, mixing queue, or \
 staffing.
 
-**Paragraph 4 — Cost / financial picture (3-4 sentences):**
-OpEx vs budget pace. Inventory purchases. AP / AR / cash signals. Apply the COGS pending \
+**Paragraph 4 — Money, in this EXACT order (5-7 sentences):**
+(1) REVENUE BUILD-UP: operating revenue by site, combined operating vs plan — then \
+procurement pass-through as its OWN called-out line (it swings between zero and massive month \
+to month purely on timing; say so when it's notable either way) — then total revenue \
+including pass-through, reconciling to the top-line budget. Never bury procurement inside a \
+site's number. (2) SPEND, stacked: non-payroll operating spend first, then payroll (with \
+weeks-loaded count), then TOTAL operating spend carrying this exact caveat: "directional — \
+not yet audited or final" (pre-close figures; Vena's close is the audited version). \
+(3) CapEx LAST in the money story — actual vs project budgets when the monthly report is \
+posted; when none is posted, say that plainly, never $0. (4) One inventory line where \
+notable: ink/material/freight purchases, and the on-hand position when fresh. Apply the COGS pending \
 guidance — if pending, say so plainly. Do not speculate about margin.
 
 **Paragraph 5 — WIP and what's carrying forward (2-3 sentences):**
