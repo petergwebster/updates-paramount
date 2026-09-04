@@ -1,66 +1,55 @@
 // ============================================================================
 // monthlyBriefData.js — Aggregate everything needed for a Monthly Brief.
 // ============================================================================
-// One function: gatherMonthlyBriefData({ monthKey, phase }).
-// Returns one object the prompt builder, the preview UI, and the PDF
-// renderer all consume. No formatting in here — just numbers.
+// REPOINTED TO CANONICAL FEEDS (9/2026) — the v1 of this file was the LAST
+// surface on the dash reading the retired hand-keyed layer (`production`
+// form JSON, `financials_monthly` from the retired Financial Data tab), and
+// the August 2026 close proved the cost: the Sep-1 brief reported BNY
+// invoiced 40,380 yds while the ledger said 56,827 — and the ledger matched
+// the back office to 0.2%. The brief was measuring form completeness, not
+// the month. Sources now:
 //
-// monthKey is 'YYYY-MM' (e.g. '2026-04').
-// phase is 'mid' | 'end'. We use it to compute "weeks elapsed" framing.
+//   Invoiced rev + yards → order_ledger by invoice_date within the FISCAL
+//     month (Sunday 4-4-5). site='procurement' is isolated as a PASS-THROUGH
+//     memo (no margin) — the back-office scorecard basis EXCLUDES it (Naomy
+//     9/3: Aug Schumacher $591,575 + procurement $79,835 = $671,410), and
+//     the PARA plan carries its own $50K procurement revenue line.
+//   GP CROSS-CHECK → financial_transactions (sales AR invoiced by unit);
+//     when ledger and GP disagree beyond threshold the brief FLAGS it
+//     loudly instead of printing silently wrong numbers (the 9/1 LIFT
+//     platform upgrade corrupted ledger invoicing for two days — failures
+//     must announce themselves).
+//   Produced → sched_daily_ops actuals per fiscal week. (Phase 4 switches
+//     to LIFT QTY_PRINTED × Yield once Sami's reverse-flow entry is
+//     verified live.)
+//   Waste → sched_daily_ops if the column exists (guarded — a PostgREST
+//     unknown column rejects the whole select). Color-yards deliberately
+//     null: August's manual figure ran ≈2× the dash derivation; until the
+//     method is reconciled we print nothing rather than something wrong.
+//   OpEx + purchases → financial_transactions (Jen's weekly GP file,
+//     pre-capitalization by construction; carries no payroll, no COGS).
+//   COGS → vena_monthly (Abigail's close). Vena's presence for the period
+//     IS the release signal; absent rows render as PENDING, never $0.
+//   Payroll → people_weekly by fiscal week; MISSING weeks are NAMED with
+//     their expected pay date (covered week = pay date − 1 wk), never
+//     silently summed short.
+//   Targets → budgets.js MONTHLY_PLAN (2026 3+9 plan, with the procurement
+//     line split out) + weeklyBudgetYards for yards.
+//   AP/AR/cash → unchanged (aging feed owns those tables).
 //
-// ── Data shape notes (post-bugfix May 4, 2026) ───────────────────────────
-//
-// REVENUE comes from the `production` table, not financials_monthly.
-//   - NJ revenue = nj_data.{fabric,grass,paper}.invoiceRev
-//   - BNY revenue = bny_data.income{Replen,Mto,Hos,Memo,Contract}
-//   - Invoiced yards live alongside as invoiceYds / invYds{Bucket}
-//
-// PRODUCTION JSON values are STRINGS (input type=number returns strings).
-// Every read goes through num(...) which coerces to a finite number or 0.
-//
-// BNY YARDS PRODUCED are direct values on bny_data, not nested under
-// `.actual`. e.g. bny_data.replen = '12000' (string). The earlier
-// historicalSummaries.js read b.replen?.actual which always returned
-// undefined — this brief reads the right shape.
-//
-// FINANCIALS_MONTHLY has no `revenue`, `opex`, `cogs_total`, or
-// `gross_profit` columns. Those are computed from components:
-//   - OpEx = salary + salary_ot + fringe + te + printing + distribution
-//          + office_edp + consulting + building + utilities + rent
-//   - COGS total = cogs_material + cogs_labor + cogs_wip + cogs_other
-//   - Inventory purchases column is `inv_purchases`
-// business_unit keys are lowercase: 'nj' | 'bny' | 'shared'.
-//
-// COGS RULE (per Peter, May 4, 2026): finance does not release COGS until
-// after the 10th of the following month. Until then we surface as PENDING
-// regardless of whatever is or isn't in the table — never invent numbers.
-//
-// Period keys for financials use derivePeriod() math: Math.ceil(d/7)
-// capped at W5. April 2026 keys: 2026-04-W1, W2, W3, W4 (W1 may be empty).
-//
-// WIP snapshot is the most recent successful sched_snapshot's rows.
-//
-// ── Fiscal week alignment (bugfix June 23, 2026) ─────────────────────────
-// production/people week_start values are SUNDAY-dated (e.g. 2026-05-31),
-// but FISCAL_CALENDAR keys are MONDAY-dated (e.g. 2026-06-01) — one day
-// later. A naive YYYY-MM-01 month-start query excluded a Sunday-dated first
-// week, and getFiscalInfo() returned null for Sunday dates (forcing
-// weeksInMonth to fall back to 4 even when the fiscal month has 5 weeks).
-// fiscalMonthOf() normalizes by retrying the lookup at +1 day, and the
-// production query window is widened + filtered by fiscal month.
+// The returned shape is a superset of v1's — everything the preview UI,
+// prompt builder and PDF renderer consumed is still there, plus
+// `dataQuality` (coverage notes + the GP cross-check) and richer targets.
 // ============================================================================
 
 import { supabase } from '../supabase'
 import { format, parseISO, differenceInDays } from 'date-fns'
 import { getFiscalInfo } from '../fiscalCalendar'
-import { weeklyBudgetYards } from './budgets'
+import { weeklyBudgetYards, monthlyPlanFor } from './budgets'
 
 // ---------------------------------------------------------------------------
-// Fiscal calendar normalization — Sunday-dated week_start → Monday key
+// Fiscal helpers — Sunday-dated weeks vs Monday-keyed FISCAL_CALENDAR
 // ---------------------------------------------------------------------------
-// production/people week_start are Sundays; FISCAL_CALENDAR is keyed on the
-// Monday one day later. Try the exact key first (handles any Monday-dated
-// data), then retry at +1 day (handles Sunday-dated data).
 function fiscalMonthOf(weekStart) {
   if (!weekStart) return null
   let info = getFiscalInfo(weekStart)
@@ -72,24 +61,36 @@ function fiscalMonthOf(weekStart) {
   return getFiscalInfo(format(d, 'yyyy-MM-dd'))
 }
 
-// ---------------------------------------------------------------------------
-// Defensive number coercion — JSONB values from production are strings
-// ---------------------------------------------------------------------------
+const iso = d => format(d, 'yyyy-MM-dd')
+
+/** The Sunday week_starts whose fiscal month is the target. */
+function fiscalWeeksForMonth(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number)
+  const targetAbbr = format(new Date(y, m - 1, 1), 'MMM')
+  // First Sunday on/before (calendar month start − 7d), scan ~7 Sundays.
+  const start = new Date(y, m - 1, 1, 12)
+  start.setDate(start.getDate() - 7 - start.getDay())
+  const weeks = []
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i * 7)
+    if (fiscalMonthOf(iso(d))?.month === targetAbbr) weeks.push(iso(d))
+  }
+  return weeks
+}
+
+const sundayOf = dateIso => {
+  const d = new Date(dateIso + 'T12:00:00')
+  d.setDate(d.getDate() - d.getDay())
+  return iso(d)
+}
 
 const num = v => {
   const n = typeof v === 'number' ? v : parseFloat(v)
   return Number.isFinite(n) ? n : 0
 }
 
-// ---------------------------------------------------------------------------
-// Budget helpers — defensive wrapper (weeklyBudgetYards signature varies
-// across builds). Falls back to canonical FY26 weekly values from the
-// May 2 push (12,000 BNY / 8,610 NJ).
-// ---------------------------------------------------------------------------
-
 const FALLBACK_WEEKLY_BNY = 12000
 const FALLBACK_WEEKLY_NJ  = 8610
-
 function safeWeeklyBudget(site) {
   const candidates = site === 'bny'
     ? ['bny', 'BNY', 'brooklyn', 'Brooklyn', 'digital']
@@ -103,240 +104,77 @@ function safeWeeklyBudget(site) {
   return site === 'bny' ? FALLBACK_WEEKLY_BNY : FALLBACK_WEEKLY_NJ
 }
 
-// ---------------------------------------------------------------------------
-// Period-key helpers
-// ---------------------------------------------------------------------------
-
-/** YYYY-MM-W[1..5] for a given Date, matching FinancialTab's derivePeriod(). */
+/** YYYY-MM-W[1..5] period keys (aging tables still use these). */
 function periodKeyForDate(d) {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const w = Math.min(5, Math.ceil(d.getDate() / 7))
   return `${y}-${m}-W${w}`
 }
-
-/** All YYYY-MM-W* keys that fall in the given month's calendar weeks. */
 function allPeriodKeysForMonth(monthKey) {
   const [y, m] = monthKey.split('-').map(Number)
   const last = new Date(y, m, 0).getDate()
   const keys = new Set()
-  for (let day = 1; day <= last; day++) {
-    keys.add(periodKeyForDate(new Date(y, m - 1, day)))
-  }
+  for (let day = 1; day <= last; day++) keys.add(periodKeyForDate(new Date(y, m - 1, day)))
   return Array.from(keys).sort()
 }
 
 // ---------------------------------------------------------------------------
-// Production rollups — match the AdminPanel emptyNJ() / emptyBNY() shape
+// People aggregation (+ named missing weeks — never silently short)
 // ---------------------------------------------------------------------------
-
-const NJ_CATEGORIES = ['fabric', 'grass', 'paper']
-const BNY_BUCKETS = ['replen', 'mto', 'hos', 'memo', 'contract']
-
-function rollupNj(nj) {
-  if (!nj || typeof nj !== 'object') {
-    return { yards: 0, colorYards: 0, waste: 0, invoicedYds: 0, revenue: 0,
-             miscRevenue: 0, procurement: 0, byCategory: {} }
-  }
-  let yards = 0, colorYards = 0, waste = 0, invoicedYds = 0, revenue = 0
-  const byCategory = {}
-  for (const c of NJ_CATEGORIES) {
-    const cell = nj[c] || {}
-    const cy  = num(cell.yards)
-    const ccy = num(cell.colorYards)
-    const cw  = num(cell.waste)
-    const ci  = num(cell.invoiceYds)
-    const cr  = num(cell.invoiceRev)
-    yards       += cy
-    colorYards  += ccy
-    waste       += cw
-    invoicedYds += ci
-    revenue     += cr
-    if (cy || ccy || cw || ci || cr) {
-      byCategory[c] = { yards: cy, colorYards: ccy, waste: cw, invoicedYds: ci, revenue: cr }
-    }
-  }
-  // Misc fees and pass-through procurement live as direct fields on nj_data
-  const miscRevenue = num(nj.miscFees)
-  const procurement = num(nj.procurement)
-  return { yards, colorYards, waste, invoicedYds, revenue, miscRevenue, procurement, byCategory }
-}
-
-function rollupBny(bny) {
-  if (!bny || typeof bny !== 'object') {
-    return { yards: 0, invoicedYds: 0, revenue: 0, miscRevenue: 0, procurement: 0, byBucket: {} }
-  }
-  let yards = 0, invoicedYds = 0, revenue = 0
-  const byBucket = {}
-  for (const b of BNY_BUCKETS) {
-    // produced yards live as direct value: bny.replen / bny.mto / etc.
-    const produced = num(bny[b])
-    // invoiced yards: bny.invYdsReplen / invYdsMto / invYdsHos / invYdsMemo / invYdsContract
-    const invKey = 'invYds' + b[0].toUpperCase() + b.slice(1)
-    const invYd = num(bny[invKey])
-    // revenue dollars: bny.incomeReplen / incomeMto / incomeHos / incomeMemo / incomeContract
-    const incKey = 'income' + b[0].toUpperCase() + b.slice(1)
-    const inc = num(bny[incKey])
-    yards       += produced
-    invoicedYds += invYd
-    revenue     += inc
-    if (produced || invYd || inc) {
-      byBucket[b] = { yards: produced, invoicedYds: invYd, revenue: inc }
-    }
-  }
-  const miscRevenue = num(bny.miscFees)
-  const procurement = num(bny.procurement)
-  return { yards, invoicedYds, revenue, miscRevenue, procurement, byBucket }
-}
-
-// ---------------------------------------------------------------------------
-// Financials_monthly aggregation — compute opex/cogsTotal from components
-// ---------------------------------------------------------------------------
-
-const OPEX_FIELDS = [
-  'salary', 'salary_ot', 'fringe', 'te', 'printing', 'distribution',
-  'office_edp', 'consulting', 'building', 'utilities', 'rent',
-]
-const COGS_FIELDS = ['cogs_material', 'cogs_labor', 'cogs_wip', 'cogs_other']
-
-function rowOpex(r) { return OPEX_FIELDS.reduce((s, k) => s + num(r[k]), 0) }
-function rowCogs(r) { return COGS_FIELDS.reduce((s, k) => s + num(r[k]), 0) }
-
-function aggregateFinancials(rows, { today, monthEnd }) {
-  // COGS availability rule: present only after the 10th of the following month.
-  const monthYear = monthEnd.getFullYear()
-  const monthNum = monthEnd.getMonth() // 0-indexed
-  const cogsAvailableDate = new Date(monthYear, monthNum + 1, 10)
-  const cogsAvailable = today >= cogsAvailableDate
-
-  const blank = () => ({
-    opex: 0, cogsTotal: 0, invPurchases: 0,
-    cogsMaterial: 0, cogsLabor: 0, cogsWip: 0, cogsOther: 0,
+function aggregatePeople(rows, fiscalWeeks) {
+  const loaded = new Set(rows.map(r => r.week_start))
+  const missingWeeks = fiscalWeeks.filter(w => !loaded.has(w)).map(w => {
+    const end = new Date(w + 'T12:00:00'); end.setDate(end.getDate() + 6)
+    const pay = new Date(w + 'T12:00:00'); pay.setDate(pay.getDate() + 12)
+    return { weekStart: w, weekEnding: iso(end), expectedPayDate: iso(pay) }
   })
-  const byUnit = { nj: blank(), bny: blank(), shared: blank() }
-
-  for (const r of rows) {
-    const u = String(r.business_unit || '').trim().toLowerCase()
-    if (!byUnit[u]) byUnit[u] = blank()
-    byUnit[u].opex         += rowOpex(r)
-    byUnit[u].cogsTotal    += rowCogs(r)
-    byUnit[u].invPurchases += num(r.inv_purchases)
-    byUnit[u].cogsMaterial += num(r.cogs_material)
-    byUnit[u].cogsLabor    += num(r.cogs_labor)
-    byUnit[u].cogsWip      += num(r.cogs_wip)
-    byUnit[u].cogsOther    += num(r.cogs_other)
-  }
-
-  const keys = Object.keys(byUnit)
-  const totalOpex         = keys.reduce((s, k) => s + byUnit[k].opex, 0)
-  const totalCogs         = keys.reduce((s, k) => s + byUnit[k].cogsTotal, 0)
-  const totalInvPurchases = keys.reduce((s, k) => s + byUnit[k].invPurchases, 0)
-  const totalCogsMat      = keys.reduce((s, k) => s + byUnit[k].cogsMaterial, 0)
-  const totalCogsLab      = keys.reduce((s, k) => s + byUnit[k].cogsLabor, 0)
-  const totalCogsOther    = keys.reduce((s, k) => s + byUnit[k].cogsWip + byUnit[k].cogsOther, 0)
-
-  // Public-facing shape for byUnit (nullify cogsTotal when not available)
-  const shapedByUnit = {}
-  for (const k of keys) {
-    shapedByUnit[k] = {
-      opex: byUnit[k].opex,
-      invPurchases: byUnit[k].invPurchases,
-      cogsTotal: cogsAvailable ? byUnit[k].cogsTotal : null,
-    }
-  }
-
-  return {
-    rowCount: rows.length,
-    cogsAvailable,
-    cogsPendingNote: cogsAvailable
-      ? null
-      : `COGS not yet released by finance. Available after the 10th of ${format(cogsAvailableDate, 'MMMM')}.`,
-    opex: totalOpex,
-    invPurchases: totalInvPurchases,
-    cogsTotal:    cogsAvailable ? totalCogs       : null,
-    cogsMaterial: cogsAvailable ? totalCogsMat    : null,
-    cogsLabor:    cogsAvailable ? totalCogsLab    : null,
-    cogsOther:    cogsAvailable ? totalCogsOther  : null,
-    byUnit: shapedByUnit,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// People aggregation
-// ---------------------------------------------------------------------------
-
-function aggregatePeople(rows) {
-  if (!rows.length) {
-    return { weekRows: [], bny: null, nj: null, combined: null, latestEmployees: 0 }
-  }
+  const base = { weekCount: rows.length, expectedWeeks: fiscalWeeks.length, missingWeeks,
+    missingNote: missingWeeks.length
+      ? `Payroll: ${rows.length} of ${fiscalWeeks.length} fiscal weeks loaded. Missing: `
+        + missingWeeks.map(m => `week ending ${m.weekEnding} (pay date ${m.expectedPayDate})`).join(', ')
+        + ' — save those UKG files to the ShareFile Payroll folder.'
+      : null }
+  if (!rows.length) return { ...base, bny: null, nj: null, combined: null, latestEmployees: 0 }
   const last = rows[rows.length - 1]
   const sum = rows.reduce((acc, r) => {
-    acc.bnyHrs += num(r.bny_total_hrs)
-    acc.njHrs  += num(r.nj_total_hrs)
-    acc.bnyOt  += num(r.bny_ot_hrs)
-    acc.njOt   += num(r.nj_ot_hrs)
-    acc.bnyPto += num(r.bny_pto_hrs)
-    acc.njPto  += num(r.nj_pto_hrs)
-    acc.bnyPay += num(r.bny_total_pay)
-    acc.njPay  += num(r.nj_total_pay)
-    acc.bnyBonus += num(r.bny_bonus_total)
-    acc.njBonus  += num(r.nj_bonus_total)
+    acc.bnyHrs += num(r.bny_total_hrs); acc.njHrs += num(r.nj_total_hrs)
+    acc.bnyOt  += num(r.bny_ot_hrs);    acc.njOt  += num(r.nj_ot_hrs)
+    acc.bnyPto += num(r.bny_pto_hrs);   acc.njPto += num(r.nj_pto_hrs)
+    acc.bnyPay += num(r.bny_total_pay); acc.njPay += num(r.nj_total_pay)
+    acc.bnyBonus += num(r.bny_bonus_total); acc.njBonus += num(r.nj_bonus_total)
     return acc
   }, { bnyHrs: 0, njHrs: 0, bnyOt: 0, njOt: 0, bnyPto: 0, njPto: 0, bnyPay: 0, njPay: 0, bnyBonus: 0, njBonus: 0 })
-
   return {
-    weekCount: rows.length,
-    bny: {
-      headcount: num(last.bny_headcount),
-      hours: sum.bnyHrs, ot: sum.bnyOt, pto: sum.bnyPto, pay: sum.bnyPay, bonus: sum.bnyBonus,
-      otPct: sum.bnyHrs > 0 ? (100 * sum.bnyOt / sum.bnyHrs) : null,
-    },
-    nj: {
-      headcount: num(last.nj_headcount),
-      hours: sum.njHrs, ot: sum.njOt, pto: sum.njPto, pay: sum.njPay, bonus: sum.njBonus,
-      otPct: sum.njHrs > 0 ? (100 * sum.njOt / sum.njHrs) : null,
-    },
-    combined: {
-      headcount: num(last.bny_headcount) + num(last.nj_headcount),
-      hours: sum.bnyHrs + sum.njHrs,
-      pay: sum.bnyPay + sum.njPay,
-    },
+    ...base,
+    bny: { headcount: num(last.bny_headcount), hours: sum.bnyHrs, ot: sum.bnyOt, pto: sum.bnyPto,
+           pay: sum.bnyPay, bonus: sum.bnyBonus, otPct: sum.bnyHrs > 0 ? (100 * sum.bnyOt / sum.bnyHrs) : null },
+    nj:  { headcount: num(last.nj_headcount), hours: sum.njHrs, ot: sum.njOt, pto: sum.njPto,
+           pay: sum.njPay, bonus: sum.njBonus, otPct: sum.njHrs > 0 ? (100 * sum.njOt / sum.njHrs) : null },
+    combined: { headcount: num(last.bny_headcount) + num(last.nj_headcount),
+                hours: sum.bnyHrs + sum.njHrs, pay: sum.bnyPay + sum.njPay },
     latestEmployees: Array.isArray(last.employees) ? last.employees.length : 0,
   }
 }
 
 // ---------------------------------------------------------------------------
-// WIP snapshot — most recent sched_snapshot's rows
+// WIP snapshot — unchanged (already canonical)
 // ---------------------------------------------------------------------------
-
 async function fetchCurrentWipSnapshot() {
-  const { data: snap } = await supabase
-    .from('sched_snapshots')
-    .select('id, uploaded_at')
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
+  const { data: snap } = await supabase.from('sched_snapshots')
+    .select('id, uploaded_at').order('uploaded_at', { ascending: false }).limit(1).maybeSingle()
   if (!snap) return { available: false }
-
-  const { data: rows, error } = await supabase
-    .from('sched_wip_rows')
+  const { data: rows, error } = await supabase.from('sched_wip_rows')
     .select('site, product_type, customer_type, is_new_goods, color_yards, yards_written, order_status, order_created')
     .eq('snapshot_id', snap.id)
-
   if (error || !rows) return { available: false }
-
   const closedStatuses = new Set(['Closed', 'Shipped', 'Invoiced', 'Complete'])
   const active = rows.filter(r => !closedStatuses.has(r.order_status))
-
   const today = new Date()
   const ageBuckets = { lt30: 0, b30_60: 0, b60_90: 0, gt90: 0 }
-  let activeYards = 0
-  let activeColorYards = 0
-
+  let activeYards = 0, activeColorYards = 0
   for (const r of active) {
-    activeYards      += num(r.yards_written)
-    activeColorYards += num(r.color_yards)
+    activeYards += num(r.yards_written); activeColorYards += num(r.color_yards)
     if (r.order_created) {
       const days = differenceInDays(today, new Date(r.order_created))
       if (days < 30) ageBuckets.lt30++
@@ -345,41 +183,23 @@ async function fetchCurrentWipSnapshot() {
       else ageBuckets.gt90++
     }
   }
-
-  const byProductType = {}
+  const byProductType = {}, bySite = {}
   for (const r of active) {
-    const k = (r.product_type || 'unknown').toLowerCase()
-    if (!byProductType[k]) byProductType[k] = { count: 0, yards: 0, colorYards: 0 }
-    byProductType[k].count++
-    byProductType[k].yards += num(r.yards_written)
-    byProductType[k].colorYards += num(r.color_yards)
+    const p = (r.product_type || 'unknown').toLowerCase()
+    ;(byProductType[p] = byProductType[p] || { count: 0, yards: 0, colorYards: 0 })
+    byProductType[p].count++; byProductType[p].yards += num(r.yards_written); byProductType[p].colorYards += num(r.color_yards)
+    const s = (r.site || 'unknown').toLowerCase()
+    ;(bySite[s] = bySite[s] || { count: 0, yards: 0 })
+    bySite[s].count++; bySite[s].yards += num(r.yards_written)
   }
-
-  const bySite = {}
-  for (const r of active) {
-    const k = (r.site || 'unknown').toLowerCase()
-    if (!bySite[k]) bySite[k] = { count: 0, yards: 0 }
-    bySite[k].count++
-    bySite[k].yards += num(r.yards_written)
-  }
-
-  return {
-    available: true,
-    snapshotAt: snap.uploaded_at,
-    totalActive: active.length,
-    activeYards,
-    activeColorYards,
-    ageBuckets,
-    byProductType,
-    bySite,
-    newGoodsActive: active.filter(r => r.is_new_goods).length,
-  }
+  return { available: true, snapshotAt: snap.uploaded_at, totalActive: active.length,
+           activeYards, activeColorYards, ageBuckets, byProductType, bySite,
+           newGoodsActive: active.filter(r => r.is_new_goods).length }
 }
 
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
-
 export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeFinancials = true }) {
   const [year, monthNum] = monthKey.split('-').map(Number)
   const monthStart = new Date(year, monthNum - 1, 1)
@@ -390,196 +210,264 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
   const daysInMonth = monthEnd.getDate()
   const daysElapsed = isCurrentMonth ? today.getDate() : daysInMonth
 
-  // ── Production: all weeks whose FISCAL month matches the selected month ───
-  // week_start values are Sunday-dated (one day before the Monday fiscal key),
-  // so a month's first week can start in the prior calendar month (e.g. fiscal
-  // June's first week starts Sun 2026-05-31). Pull the query start back 2 days
-  // to capture it, then filter precisely by fiscal month below.
-  const queryStartDate = new Date(monthStart)
-  queryStartDate.setDate(queryStartDate.getDate() - 2)
-  const monthStartIso = format(queryStartDate, 'yyyy-MM-dd')
-  const monthEndIso = format(monthEnd, 'yyyy-MM-dd')
-  const targetMonthAbbr = format(monthStart, 'MMM')   // e.g. "Jun"
+  const coverage = []            // plain-language data-quality notes
+  const plan = monthlyPlanFor(monthKey)
 
-  const { data: weeksProd, error: prodErr } = await supabase
-    .from('production')
-    .select('week_start, nj_data, bny_data')
-    .gte('week_start', monthStartIso)
-    .lte('week_start', monthEndIso)
-    .order('week_start', { ascending: true })
+  // ── The fiscal window ────────────────────────────────────────────────
+  const fiscalWeeks = fiscalWeeksForMonth(monthKey)
+  const weeksInMonth = fiscalWeeks.length || 4
+  const windowStart = fiscalWeeks[0] || iso(monthStart)
+  const windowEndD = new Date((fiscalWeeks[weeksInMonth - 1] || iso(monthEnd)) + 'T12:00:00')
+  windowEndD.setDate(windowEndD.getDate() + 6)
+  const windowEnd = iso(windowEndD)
 
-  if (prodErr) console.warn('monthlyBriefData: production fetch error', prodErr)
+  // ── PRODUCED — sched_daily_ops actuals (waste column guarded) ────────
+  let opsRows = [], wasteAvailable = true
+  {
+    let res = await supabase.from('sched_daily_ops')
+      .select('site, week_start, actual_yards, waste_yards')
+      .gte('week_start', windowStart).lte('week_start', fiscalWeeks[weeksInMonth - 1] || windowEnd)
+      .range(0, 9999)
+    if (res.error) {
+      wasteAvailable = false
+      res = await supabase.from('sched_daily_ops')
+        .select('site, week_start, actual_yards')
+        .gte('week_start', windowStart).lte('week_start', fiscalWeeks[weeksInMonth - 1] || windowEnd)
+        .range(0, 9999)
+    }
+    opsRows = res.data || []
+  }
+  if (!wasteAvailable) coverage.push('Floor waste column unavailable from Live Ops — waste omitted rather than guessed.')
 
-  const weekRows = (weeksProd || [])
-    .filter(w => fiscalMonthOf(w.week_start)?.month === targetMonthAbbr)
-    .map(w => {
-      const bny = rollupBny(w.bny_data)
-      const nj = rollupNj(w.nj_data)
-      const fiscal = fiscalMonthOf(w.week_start)
-      return {
-        weekStart: w.week_start,
-        weekLabel: fiscal ? `Wk ${fiscal.weekInMonth}/${fiscal.weeksInMonth}` : format(parseISO(w.week_start), 'MMM d'),
-        bnyYards: bny.yards,
-        bnyInvoicedYds: bny.invoicedYds,
-        bnyRevenue: bny.revenue,
-        bnyMiscRevenue: bny.miscRevenue,
-        bnyProcurement: bny.procurement,
-        bnyByBucket: bny.byBucket,
-        njYards: nj.yards,
-        njColorYards: nj.colorYards,
-        njWaste: nj.waste,
-        njInvoicedYds: nj.invoicedYds,
-        njRevenue: nj.revenue,
-        njMiscRevenue: nj.miscRevenue,
-        njProcurement: nj.procurement,
-        njByCategory: nj.byCategory,
+  const prodByWeek = {}   // week -> { njYards, bnyYards, njWaste }
+  for (const r of opsRows) {
+    const w = (prodByWeek[r.week_start] = prodByWeek[r.week_start] || { njYards: 0, bnyYards: 0, njWaste: 0 })
+    if (r.site === 'passaic') { w.njYards += num(r.actual_yards); w.njWaste += num(r.waste_yards) }
+    else if (r.site === 'bny') { w.bnyYards += num(r.actual_yards) }
+  }
+
+  // ── INVOICED — order_ledger by invoice_date in the fiscal window ─────
+  const { data: ledRows, error: ledErr } = await supabase.from('order_ledger')
+    .select('site, product_type, yards_invoiced, invoiced_revenue, invoice_date')
+    .gte('invoice_date', windowStart).lte('invoice_date', windowEnd)
+    .range(0, 9999)
+  if (ledErr) coverage.push('Order ledger read failed — invoiced figures unavailable: ' + ledErr.message)
+
+  const invByWeek = {}    // week -> per-site invoiced
+  const njByCategory = {}
+  const led = { nj: { yds: 0, rev: 0 }, bny: { yds: 0, rev: 0 }, proc: { yds: 0, rev: 0, orders: 0 } }
+  for (const r of (ledRows || [])) {
+    const wk = sundayOf(r.invoice_date)
+    const w = (invByWeek[wk] = invByWeek[wk] || { njInvoicedYds: 0, njRevenue: 0, bnyInvoicedYds: 0, bnyRevenue: 0, njProcurement: 0 })
+    const yds = num(r.yards_invoiced), rev = num(r.invoiced_revenue)
+    if (r.site === 'procurement') {
+      led.proc.yds += yds; led.proc.rev += rev; led.proc.orders++
+      w.njProcurement += rev            // pass-through rides the NJ/hub side, memo only
+    } else if (r.site === 'passaic') {
+      led.nj.yds += yds; led.nj.rev += rev
+      w.njInvoicedYds += yds; w.njRevenue += rev
+      const cat = (r.product_type || 'other').toLowerCase()
+      ;(njByCategory[cat] = njByCategory[cat] || { yards: 0, colorYards: 0, waste: 0, invoicedYds: 0, revenue: 0 })
+      njByCategory[cat].invoicedYds += yds; njByCategory[cat].revenue += rev
+    } else if (r.site === 'bny') {
+      led.bny.yds += yds; led.bny.rev += rev
+      w.bnyInvoicedYds += yds; w.bnyRevenue += rev
+    }
+  }
+
+  // ── GP cross-check + OpEx + purchases — financial_transactions ───────
+  let gp = { njInvoiced: 0, bnyInvoiced: 0, opex: { nj: 0, bny: 0, shared: 0 }, purch: { nj: 0, bny: 0, shared: 0 }, rows: 0 }
+  {
+    const { data: txns, error } = await supabase.from('financial_transactions')
+      .select('trx_date, net, business_unit, category, source_tab')
+      .gte('trx_date', windowStart).lte('trx_date', windowEnd)
+      .range(0, 19999)
+    if (error) coverage.push('GP transactions read failed: ' + error.message)
+    for (const t of (txns || [])) {
+      gp.rows++
+      const u = String(t.business_unit || 'shared').toLowerCase()
+      const unit = (u === 'nj' || u === 'bny') ? u : 'shared'
+      const cat = String(t.category || '').toLowerCase()
+      const tab = String(t.source_tab || '').toUpperCase()
+      const n = num(t.net)
+      if (cat === 'ar_trade' || cat === 'sales_ar_invoiced' || /SALES.*AR.*INVOICED/.test(tab)) {
+        if (unit === 'nj') gp.njInvoiced += n
+        else if (unit === 'bny') gp.bnyInvoiced += n
+      } else if (cat.startsWith('opex')) {
+        gp.opex[unit] += n
+      } else if (/INVENTORY.*INK.*FREIGHT/.test(tab) || ['ink', 'freight', 'material_inventory'].includes(cat)) {
+        gp.purch[unit] += n
       }
-    })
+    }
+  }
 
-  // Production MTD totals — revenue and invoiced yards now flow through here too
-  const prod = weekRows.reduce((acc, r) => {
-    acc.bnyYards        += r.bnyYards
-    acc.bnyInvoicedYds  += r.bnyInvoicedYds
-    acc.bnyRevenue      += r.bnyRevenue
-    acc.bnyMiscRevenue  += r.bnyMiscRevenue
-    acc.bnyProcurement  += r.bnyProcurement
-    acc.njYards         += r.njYards
-    acc.njColorYards    += r.njColorYards
-    acc.njWaste         += r.njWaste
-    acc.njInvoicedYds   += r.njInvoicedYds
-    acc.njRevenue       += r.njRevenue
-    acc.njMiscRevenue   += r.njMiscRevenue
-    acc.njProcurement   += r.njProcurement
-    return acc
-  }, { bnyYards: 0, bnyInvoicedYds: 0, bnyRevenue: 0, bnyMiscRevenue: 0, bnyProcurement: 0,
-       njYards: 0, njColorYards: 0, njWaste: 0, njInvoicedYds: 0, njRevenue: 0, njMiscRevenue: 0, njProcurement: 0 })
+  // The GUARD: GP's NJ invoicing INCLUDES procurement (GP books it to 610),
+  // so compare like-for-like. Threshold 7% — beyond that the brief carries a
+  // loud flag (the LIFT-upgrade class: corrupted/re-dated ledger invoicing).
+  const ledNjTotal = led.nj.rev + led.proc.rev
+  const vPct = (a, b) => b > 0 ? Math.round(1000 * (a - b) / b) / 10 : null
+  const revenueCrossCheck = {
+    ledger: { njInclProc: Math.round(ledNjTotal), bny: Math.round(led.bny.rev) },
+    gp:     { nj: Math.round(gp.njInvoiced), bny: Math.round(gp.bnyInvoiced) },
+    njVariancePct:  vPct(ledNjTotal, gp.njInvoiced),
+    bnyVariancePct: vPct(led.bny.rev, gp.bnyInvoiced),
+    flagged: false, note: null,
+  }
+  const worst = Math.max(Math.abs(revenueCrossCheck.njVariancePct ?? 0), Math.abs(revenueCrossCheck.bnyVariancePct ?? 0))
+  if (worst > 7) {
+    revenueCrossCheck.flagged = true
+    revenueCrossCheck.note =
+      `⚠ Ledger vs GP invoicing disagree by up to ${worst}% this month (NJ ${revenueCrossCheck.njVariancePct}%, ` +
+      `BNY ${revenueCrossCheck.bnyVariancePct}%). Timing differences are normal at the edges; a large gap means ` +
+      `re-dated or corrupted LIFT invoicing (as in the Sep 2026 platform upgrade) — reconcile before publishing.`
+    coverage.push(revenueCrossCheck.note)
+  }
 
+  // ── weekRows — one row per fiscal week, feed-sourced ─────────────────
+  const weekRows = fiscalWeeks.map(wk => {
+    const p = prodByWeek[wk] || { njYards: 0, bnyYards: 0, njWaste: 0 }
+    const v = invByWeek[wk] || { njInvoicedYds: 0, njRevenue: 0, bnyInvoicedYds: 0, bnyRevenue: 0, njProcurement: 0 }
+    const fiscal = fiscalMonthOf(wk)
+    return {
+      weekStart: wk,
+      weekLabel: fiscal ? `Wk ${fiscal.weekInMonth}/${fiscal.weeksInMonth}` : format(parseISO(wk), 'MMM d'),
+      bnyYards: p.bnyYards, bnyInvoicedYds: v.bnyInvoicedYds, bnyRevenue: v.bnyRevenue,
+      bnyMiscRevenue: 0, bnyProcurement: 0, bnyByBucket: {},
+      njYards: p.njYards, njColorYards: null, njWaste: wasteAvailable ? p.njWaste : null,
+      njInvoicedYds: v.njInvoicedYds, njRevenue: v.njRevenue,
+      njMiscRevenue: 0, njProcurement: v.njProcurement, njByCategory: {},
+    }
+  })
+
+  // ── MTD totals (same keys the UI/prompt/PDF consume) ─────────────────
+  const prod = {
+    bnyYards: 0, bnyInvoicedYds: 0, bnyRevenue: 0, bnyMiscRevenue: 0, bnyProcurement: 0,
+    njYards: 0, njColorYards: null, njWaste: 0, njInvoicedYds: 0, njRevenue: 0, njMiscRevenue: 0, njProcurement: 0,
+  }
+  for (const r of weekRows) {
+    prod.bnyYards += r.bnyYards; prod.bnyInvoicedYds += r.bnyInvoicedYds; prod.bnyRevenue += r.bnyRevenue
+    prod.njYards += r.njYards; prod.njWaste += (r.njWaste || 0)
+    prod.njInvoicedYds += r.njInvoicedYds; prod.njRevenue += r.njRevenue
+    prod.njProcurement += r.njProcurement
+  }
+  if (!wasteAvailable) prod.njWaste = null
+  prod.njByCategory = njByCategory        // invoiced-basis categories from the ledger
+  prod.bnyByBucket = {}                   // bucket split awaits Custom→MTO mapping on the ledger
   prod.combinedYards       = prod.bnyYards + prod.njYards
   prod.combinedInvoicedYds = prod.bnyInvoicedYds + prod.njInvoicedYds
   prod.combinedRevenue     = prod.bnyRevenue + prod.njRevenue
-  prod.combinedMiscRevenue = prod.bnyMiscRevenue + prod.njMiscRevenue
-  prod.combinedProcurement = prod.bnyProcurement + prod.njProcurement
-  prod.njWastePct = prod.njYards > 0 ? (100 * prod.njWaste / prod.njYards) : null
+  prod.combinedMiscRevenue = 0
+  prod.combinedProcurement = prod.njProcurement
+  prod.njWastePct = (wasteAvailable && prod.njYards > 0) ? (100 * prod.njWaste / prod.njYards) : null
+  prod.procurementOrders = led.proc.orders
+  prod.procurementYds = led.proc.yds
 
-  // ── Revenue ladder for budget reconciliation ─────────────────────────
-  // Operating revenue = invoice rev + misc fees (drives margin).
-  // Procurement = pass-through to FSCO (NOT operating revenue, but counts
-  // toward total cash in and reconciles to top-line budget).
-  // Total inflows = operating + procurement (matches budget).
-  prod.bnyOperatingRevenue  = prod.bnyRevenue + prod.bnyMiscRevenue
-  prod.njOperatingRevenue   = prod.njRevenue  + prod.njMiscRevenue
+  // Revenue ladder — operating (drives margin) vs pass-through (no margin)
+  prod.bnyOperatingRevenue = prod.bnyRevenue
+  prod.njOperatingRevenue  = prod.njRevenue
   prod.combinedOperatingRevenue = prod.bnyOperatingRevenue + prod.njOperatingRevenue
-
-  prod.bnyTotalInflows = prod.bnyOperatingRevenue + prod.bnyProcurement
-  prod.njTotalInflows  = prod.njOperatingRevenue  + prod.njProcurement
+  prod.bnyTotalInflows = prod.bnyOperatingRevenue
+  prod.njTotalInflows  = prod.njOperatingRevenue + prod.njProcurement
   prod.combinedTotalInflows = prod.bnyTotalInflows + prod.njTotalInflows
 
-  // Targets — weeks that exist in this month from fiscal calendar
-  const weeksInMonth = weekRows[0] ? (fiscalMonthOf(weekRows[0].weekStart)?.weeksInMonth || 4) : 4
+  // ── Targets — yards from weekly budget, revenue from MONTHLY_PLAN ────
   const monthBnyTarget = safeWeeklyBudget('bny') * weeksInMonth
   const monthNjTarget  = safeWeeklyBudget('nj')  * weeksInMonth
   const monthCombinedTarget = monthBnyTarget + monthNjTarget
-
-  // For mid-month, "weeks elapsed" follows the fiscal-month rule, NOT how much
-  // data happens to be entered: mid-month = half the fiscal month, rounded up.
-  //   5-week months (Mar/Jun/Sep/Dec) → 3-week mark
-  //   4-week months                   → 2-week mark
-  // This keeps the "X-week mark" label and pro-rata targets deterministic and
-  // tied to the calendar, independent of data-entry timing.
   const weeksElapsed = phase === 'end' ? weeksInMonth : Math.ceil(weeksInMonth / 2)
   const proRataFactor = weeksElapsed / weeksInMonth
   const expectedBnyMtd = phase === 'end' ? monthBnyTarget : monthBnyTarget * proRataFactor
   const expectedNjMtd  = phase === 'end' ? monthNjTarget  : monthNjTarget  * proRataFactor
   const expectedCombMtd = expectedBnyMtd + expectedNjMtd
-
   prod.bnyVsTargetPct  = expectedBnyMtd  > 0 ? (100 * prod.bnyYards      / expectedBnyMtd)  : null
   prod.njVsTargetPct   = expectedNjMtd   > 0 ? (100 * prod.njYards       / expectedNjMtd)   : null
   prod.combVsTargetPct = expectedCombMtd > 0 ? (100 * prod.combinedYards / expectedCombMtd) : null
 
-  // ── Financials — skipped entirely when includeFinancials is false ─────
-  // Lets Peter run a production-only brief while the OpEx/COGS reconciliation
-  // is still in flight: the toggle drops everything finance owns (OpEx, COGS,
-  // inventory purchases, AP/AR/cash) so an un-reconciled number never lands in
-  // a leadership brief. Revenue stays — it flows from weekly production entry
-  // and is trusted.
+  const revTargets = plan ? {
+    bnyRevenueTarget: plan.bnyRevenue * (phase === 'end' ? 1 : proRataFactor),
+    njOperatingRevenueTarget: plan.passaicOperating * (phase === 'end' ? 1 : proRataFactor),
+    procurementTarget: plan.passaicProcurement * (phase === 'end' ? 1 : proRataFactor),
+    combinedOperatingTarget: (plan.bnyRevenue + plan.passaicOperating) * (phase === 'end' ? 1 : proRataFactor),
+    payrollPlan: plan.payrollPlan * (phase === 'end' ? 1 : proRataFactor),
+    planSource: '2026 3+9 plan (Paramount_Planned_PL 39); Passaic operating = plan total minus its $' +
+      Math.round(plan.passaicProcurement / 1000) + 'K procurement revenue line',
+  } : null
+  if (!plan) coverage.push(`No monthly plan constants for ${monthKey} in budgets.js MONTHLY_PLAN — revenue graded against yard-budget only.`)
+
+  // ── Financials — GP for OpEx/purchases, Vena for COGS ────────────────
   let fin, ap = null, ar = null, cash = null
   if (includeFinancials) {
+    // COGS from Vena: presence of the period's actuals IS the release signal.
+    let cogsByUnit = null
+    // line_key 'cost_of_goods_sold_2' is the TRUE total (verified vs the June
+    // close: 610 = $441,513 to the dollar; the un-suffixed key is a $0 header
+    // row and the 41xx leaves sum to the _2 total).
+    const { data: venaRows } = await supabase.from('vena_monthly')
+      .select('cost_center, amount')
+      .eq('period', monthKey).eq('timeframe', 'month').eq('scenario', 'actual')
+      .eq('line_key', 'cost_of_goods_sold_2')
+    if (venaRows && venaRows.length > 0) {
+      cogsByUnit = { nj: 0, bny: 0, shared: 0 }
+      for (const r of venaRows) {
+        const cc = String(r.cost_center)
+        if (cc === '610') cogsByUnit.nj += num(r.amount)
+        else if (cc === '609') cogsByUnit.bny += num(r.amount)
+        else if (cc === '612') cogsByUnit.shared += num(r.amount)
+      }
+    }
+    const cogsAvailable = !!cogsByUnit
+    const cogsAvailDate = new Date(year, monthNum, 10)
+    fin = {
+      rowCount: gp.rows,
+      cogsAvailable,
+      cogsPendingNote: cogsAvailable ? null
+        : `COGS not yet released by finance (Vena ${monthLabel} close pending — typically after ${format(cogsAvailDate, 'MMMM d')}).`,
+      opex: gp.opex.nj + gp.opex.bny + gp.opex.shared,
+      invPurchases: gp.purch.nj + gp.purch.bny + gp.purch.shared,
+      cogsTotal: cogsAvailable ? cogsByUnit.nj + cogsByUnit.bny : null,
+      cogsMaterial: null, cogsLabor: null, cogsOther: null,
+      byUnit: {
+        nj:     { opex: gp.opex.nj,     invPurchases: gp.purch.nj,     cogsTotal: cogsAvailable ? cogsByUnit.nj  : null },
+        bny:    { opex: gp.opex.bny,    invPurchases: gp.purch.bny,    cogsTotal: cogsAvailable ? cogsByUnit.bny : null },
+        shared: { opex: gp.opex.shared, invPurchases: gp.purch.shared, cogsTotal: null },
+      },
+      opexNote: 'Non-payroll operating spend from the weekly GP file (pre-capitalization by construction; payroll reported separately).',
+    }
+
     const periodKeys = allPeriodKeysForMonth(monthKey)
-
-    const { data: finRows } = await supabase
-      .from('financials_monthly')
-      .select('*')
-      .in('period', periodKeys)
-
-    fin = aggregateFinancials(finRows || [], { today, monthEnd })
-
-    // ── AP / AR / Cash — most recent period in the month ────────────────
     const [{ data: apRows }, { data: arRows }, { data: cashRows }] = await Promise.all([
       supabase.from('financial_ap').select('*').in('period', periodKeys).order('period', { ascending: false }),
       supabase.from('financial_ar').select('*').in('period', periodKeys).order('period', { ascending: false }),
       supabase.from('financial_cash').select('*').in('period', periodKeys).order('period', { ascending: false }),
     ])
-
-    ap = (apRows && apRows[0]) ? {
-      period: apRows[0].period,
-      total: num(apRows[0].total),
-      pastDue: num(apRows[0].past_due),
-      current: num(apRows[0].current),
-    } : null
-
-    ar = (arRows && arRows[0]) ? {
-      period: arRows[0].period,
-      totalOutstanding: num(arRows[0].total_outstanding),
-      aging91Plus: num(arRows[0].aging_91plus),
-    } : null
-
+    ap = (apRows && apRows[0]) ? { period: apRows[0].period, total: num(apRows[0].total),
+      pastDue: num(apRows[0].past_due), current: num(apRows[0].current) } : null
+    ar = (arRows && arRows[0]) ? { period: arRows[0].period,
+      totalOutstanding: num(arRows[0].total_outstanding), aging91Plus: num(arRows[0].aging_91plus) } : null
     cash = (cashRows && cashRows[0]) ? cashRows[0] : null
   } else {
-    fin = {
-      suppressed: true,
-      rowCount: 0,
-      cogsAvailable: false,
-      cogsPendingNote: null,
-      opex: null,
-      invPurchases: null,
-      cogsTotal: null,
-      cogsMaterial: null,
-      cogsLabor: null,
-      cogsOther: null,
-      byUnit: {},
-    }
+    fin = { suppressed: true, rowCount: 0, cogsAvailable: false, cogsPendingNote: null,
+            opex: null, invPurchases: null, cogsTotal: null, cogsMaterial: null,
+            cogsLabor: null, cogsOther: null, byUnit: {} }
   }
 
-  // ── People: rollup of people_weekly rows in the month ─────────────────
-  // Same Sunday-dated week_start widening as production (monthStartIso is
-  // already pulled back 2 days above), then filter to the fiscal month.
-  const { data: peopleRowsRaw } = await supabase
-    .from('people_weekly')
-    .select('*')
-    .gte('week_start', monthStartIso)
-    .lte('week_start', monthEndIso)
-    .order('week_start', { ascending: true })
+  // ── People — fiscal weeks, gaps named ────────────────────────────────
+  const { data: peopleRowsRaw } = await supabase.from('people_weekly')
+    .select('*').in('week_start', fiscalWeeks).order('week_start', { ascending: true })
+  const people = aggregatePeople(peopleRowsRaw || [], fiscalWeeks)
+  if (people.missingNote) coverage.push(people.missingNote)
 
-  const peopleRows = (peopleRowsRaw || [])
-    .filter(r => fiscalMonthOf(r.week_start)?.month === targetMonthAbbr)
+  coverage.push('Passaic color-yards intentionally omitted: manual and derived figures disagree ~2× — method reconciliation pending.')
+  coverage.push('Produced basis: floor-reported Live Ops actuals. Switches to LIFT printed quantities once QA reverse-flow entry is verified live.')
 
-  const people = aggregatePeople(peopleRows)
-
-  // ── WIP: current snapshot's rows ──────────────────────────────────────
   const wip = await fetchCurrentWipSnapshot()
 
-  // ── Pacing context for the prompt ─────────────────────────────────────
   const pacing = {
-    monthLabel,
-    monthKey,
-    phase,
-    isCurrentMonth,
-    daysInMonth,
-    daysElapsed,
-    weeksInMonth,
-    weeksElapsed,
+    monthLabel, monthKey, phase, isCurrentMonth, daysInMonth, daysElapsed,
+    weeksInMonth, weeksElapsed,
     pctMonthElapsed: Math.round(100 * daysElapsed / daysInMonth),
-    fiscalQuarter: weekRows[0] ? fiscalMonthOf(weekRows[0].weekStart)?.quarter : null,
+    fiscalQuarter: fiscalWeeks[0] ? fiscalMonthOf(fiscalWeeks[0])?.quarter : null,
+    fiscalWindow: { start: windowStart, end: windowEnd },
     generatedAt: today.toISOString(),
   }
 
@@ -587,91 +475,48 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
     pacing,
     includeFinancials,
     targets: {
-      monthBnyTarget,
-      monthNjTarget,
-      monthCombinedTarget,
-      expectedBnyMtd,
-      expectedNjMtd,
-      expectedCombMtd,
+      monthBnyTarget, monthNjTarget, monthCombinedTarget,
+      expectedBnyMtd, expectedNjMtd, expectedCombMtd,
+      ...(revTargets || {}),
     },
-    production: {
-      ...prod,
-      weekRows,
-    },
+    production: { ...prod, weekRows },
     financials: fin,
     ap, ar, cash,
     people,
     wip,
+    dataQuality: {
+      basis: 'canonical feeds (order ledger · GP transactions · Live Ops · payroll feed · Vena)',
+      revenueCrossCheck,
+      coverage,
+    },
   }
 }
 
 // ============================================================================
-// Save / load — monthly_briefs table
+// Save / load — monthly_briefs table (unchanged)
 // ============================================================================
-// Each save creates a new row (history-preserving). Editing a saved brief
-// and saving again creates yet another row. The list view shows all saved
-// versions for a (month, phase) so you can pull up the April brief in
-// November, click it, and see exactly what was sent.
-// ============================================================================
-
-/**
- * Save a brief draft to the monthly_briefs table.
- * Returns the new row, including its id and saved_at timestamp.
- */
 export async function saveMonthlyBrief({ monthKey, phase, narrative, dataSnapshot, authUser, notes }) {
-  const { data, error } = await supabase
-    .from('monthly_briefs')
-    .insert({
-      month_key: monthKey,
-      phase,
-      narrative,
-      data_snapshot: dataSnapshot,
-      saved_by: authUser?.id || null,
-      saved_by_email: authUser?.email || null,
-      notes: notes || null,
-    })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('saveMonthlyBrief:', error)
-    throw error
-  }
+  const { data, error } = await supabase.from('monthly_briefs')
+    .insert({ month_key: monthKey, phase, narrative, data_snapshot: dataSnapshot,
+              saved_by: authUser?.id || null, saved_by_email: authUser?.email || null,
+              notes: notes || null })
+    .select().single()
+  if (error) { console.error('saveMonthlyBrief:', error); throw error }
   return data
 }
 
-/**
- * List saved briefs for a (month_key, phase), most recent first.
- * Returns light rows (no data_snapshot) for fast listing.
- */
 export async function listSavedBriefs({ monthKey, phase }) {
-  const { data, error } = await supabase
-    .from('monthly_briefs')
+  const { data, error } = await supabase.from('monthly_briefs')
     .select('id, month_key, phase, narrative, saved_at, saved_by, saved_by_email, notes')
-    .eq('month_key', monthKey)
-    .eq('phase', phase)
+    .eq('month_key', monthKey).eq('phase', phase)
     .order('saved_at', { ascending: false })
-
-  if (error) {
-    console.error('listSavedBriefs:', error)
-    return []
-  }
+  if (error) { console.error('listSavedBriefs:', error); return [] }
   return data || []
 }
 
-/**
- * Load a single saved brief by id, including the full data_snapshot.
- */
 export async function loadSavedBrief(id) {
-  const { data, error } = await supabase
-    .from('monthly_briefs')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error) {
-    console.error('loadSavedBrief:', error)
-    throw error
-  }
+  const { data, error } = await supabase.from('monthly_briefs')
+    .select('*').eq('id', id).single()
+  if (error) { console.error('loadSavedBrief:', error); throw error }
   return data
 }

@@ -249,6 +249,27 @@ export {
   PROCUREMENT_BUDGET,
 }
 
+// ═══ MONTHLY PLAN — 2026 (brief-generator repoint, extracted 9/2026) ═══
+// Source: "Paramount_Planned_PL 39 Final Draft Review" tabs 'BNY Plan 2026
+// 3+9' / 'PARA Plan 2026 3+9' / 'Corp Plan 2026' + '2026 Pay Budget 3+9'.
+// KEY FINDING encoded: the PARA plan's Total Revenue INCLUDES a Procurement
+// Revenue line ($50K std / $62.5K in 5-week months) — so Passaic's OPERATING
+// plan is Total minus Procurement, and pass-through is graded against its
+// own $50K line, never blended into site performance. opexPlanTotal = plan
+// Total Operating Expenses summed across cost centers (INCLUDES admin
+// salaries — not like-for-like with GP non-payroll spend; compare only with
+// payroll in hand). payrollPlan = "Total Salary no fringe/bonus/temp" (Aug
+// figure; per-month extraction pending).
+export const MONTHLY_PLAN = {
+  '2026-07': { bnyRevenue: 556800, passaicRevenueTotal: 518099, passaicProcurement: 50000, passaicOperating: 468099, opexPlanTotal: 228374, payrollPlan: 224492 },
+  '2026-08': { bnyRevenue: 556800, passaicRevenueTotal: 518099, passaicProcurement: 50000, passaicOperating: 468099, opexPlanTotal: 228374, payrollPlan: 224492 },
+  '2026-09': { bnyRevenue: 668160, passaicRevenueTotal: 624500, passaicProcurement: 62500, passaicOperating: 562000, opexPlanTotal: 228374, payrollPlan: 224492 },
+  '2026-10': { bnyRevenue: 556800, passaicRevenueTotal: 518099, passaicProcurement: 50000, passaicOperating: 468099, opexPlanTotal: 228374, payrollPlan: 224492 },
+  '2026-11': { bnyRevenue: 534528, passaicRevenueTotal: 494975, passaicProcurement: 50000, passaicOperating: 444975, opexPlanTotal: 228374, payrollPlan: 224492 },
+  '2026-12': { bnyRevenue: 668160, passaicRevenueTotal: 624500, passaicProcurement: 62500, passaicOperating: 562000, opexPlanTotal: 228374, payrollPlan: 224492 },
+}
+export function monthlyPlanFor(monthKey) { return MONTHLY_PLAN[monthKey] || null }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Internal consistency checks. These run once at module load. Throw early
 // rather than letting bad numbers reach the dashboard.
