@@ -89,6 +89,21 @@ const num = v => {
   return Number.isFinite(n) ? n : 0
 }
 
+// PostgREST silently caps any single request at 1,000 rows REGARDLESS of the
+// requested range — the documented trap, and it bit this exact file on first
+// deploy (August OpEx read $2,354 instead of $92,363 because the GP query got
+// a 1,000-row slice). Page by exactly 1,000, always.
+async function fetchAllPages(build, maxPages = 25) {
+  const out = []
+  for (let page = 0; page < maxPages; page++) {
+    const { data, error } = await build().range(page * 1000, page * 1000 + 999)
+    if (error) return { rows: out, error }
+    out.push(...(data || []))
+    if (!data || data.length < 1000) break
+  }
+  return { rows: out, error: null }
+}
+
 const FALLBACK_WEEKLY_BNY = 12000
 const FALLBACK_WEEKLY_NJ  = 8610
 function safeWeeklyBudget(site) {
@@ -224,18 +239,17 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
   // ── PRODUCED — sched_daily_ops actuals (waste column guarded) ────────
   let opsRows = [], wasteAvailable = true
   {
-    let res = await supabase.from('sched_daily_ops')
+    const lastWeek = fiscalWeeks[weeksInMonth - 1] || windowEnd
+    let res = await fetchAllPages(() => supabase.from('sched_daily_ops')
       .select('site, week_start, actual_yards, waste_yards')
-      .gte('week_start', windowStart).lte('week_start', fiscalWeeks[weeksInMonth - 1] || windowEnd)
-      .range(0, 9999)
+      .gte('week_start', windowStart).lte('week_start', lastWeek))
     if (res.error) {
       wasteAvailable = false
-      res = await supabase.from('sched_daily_ops')
+      res = await fetchAllPages(() => supabase.from('sched_daily_ops')
         .select('site, week_start, actual_yards')
-        .gte('week_start', windowStart).lte('week_start', fiscalWeeks[weeksInMonth - 1] || windowEnd)
-        .range(0, 9999)
+        .gte('week_start', windowStart).lte('week_start', lastWeek))
     }
-    opsRows = res.data || []
+    opsRows = res.rows || []
   }
   if (!wasteAvailable) coverage.push('Floor waste column unavailable from Live Ops — waste omitted rather than guessed.')
 
@@ -247,10 +261,9 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
   }
 
   // ── INVOICED — order_ledger by invoice_date in the fiscal window ─────
-  const { data: ledRows, error: ledErr } = await supabase.from('order_ledger')
+  const { rows: ledRows, error: ledErr } = await fetchAllPages(() => supabase.from('order_ledger')
     .select('site, product_type, yards_invoiced, invoiced_revenue, invoice_date')
-    .gte('invoice_date', windowStart).lte('invoice_date', windowEnd)
-    .range(0, 9999)
+    .gte('invoice_date', windowStart).lte('invoice_date', windowEnd))
   if (ledErr) coverage.push('Order ledger read failed — invoiced figures unavailable: ' + ledErr.message)
 
   const invByWeek = {}    // week -> per-site invoiced
@@ -278,10 +291,9 @@ export async function gatherMonthlyBriefData({ monthKey, phase = 'end', includeF
   // ── GP cross-check + OpEx + purchases — financial_transactions ───────
   let gp = { njInvoiced: 0, bnyInvoiced: 0, opex: { nj: 0, bny: 0, shared: 0 }, purch: { nj: 0, bny: 0, shared: 0 }, rows: 0 }
   {
-    const { data: txns, error } = await supabase.from('financial_transactions')
+    const { rows: txns, error } = await fetchAllPages(() => supabase.from('financial_transactions')
       .select('trx_date, net, business_unit, category, source_tab')
-      .gte('trx_date', windowStart).lte('trx_date', windowEnd)
-      .range(0, 19999)
+      .gte('trx_date', windowStart).lte('trx_date', windowEnd))
     if (error) coverage.push('GP transactions read failed: ' + error.message)
     for (const t of (txns || [])) {
       gp.rows++
