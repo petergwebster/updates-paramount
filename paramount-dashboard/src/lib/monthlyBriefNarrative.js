@@ -252,7 +252,7 @@ Note this gap rather than treating zero OpEx as truth.`)
     : ''
 
   const phaseStructure = phase === 'mid' ? `
-## Structure — mid-month, ~250-350 words total
+## Structure — mid-month, ~180-250 words of prose + bullets
 
 **Paragraph 1 — Headline (1-2 sentences):**
 Open with the cleanest read of where we sit at halftime. Lead with the combined pace number \
@@ -260,15 +260,15 @@ and the dominant driver in one sentence. Match the model: "We're tracking 113% t
 with 46,577 yards combined, driven entirely by Brooklyn's monster performance while Passaic \
 continues to drag." Two sentences max.
 
-**Paragraph 2 — BNY (3-4 sentences):**
-What's happening at Brooklyn. Yards produced and what % to target. Yards invoiced / shipped \
-and revenue. One observation about machine utilization, capacity, mix shifts, or noteworthy \
-buckets. If inventory purchases are notable, mention them here.
+**Paragraph 2 — BNY (2-3 sentences + bullets):**
+Two to three sentences on Brooklyn's story — the read, not the number recital. Then 3-5 \
+short bullets carrying the numbers: produced vs target, invoiced yards, revenue vs plan, \
+and one notable KPI or observation. One fact per bullet, no sentence padding.
 
-**Paragraph 3 — NJ (3-4 sentences):**
-What's happening at Passaic. Yards, color-yards, and what % to target. Waste% and what it \
-implies. Yards invoiced and revenue. One observation about category mix, mixing queue, \
-ready-to-print, or staffing if relevant.
+**Paragraph 3 — NJ (2-3 sentences + bullets):**
+Two to three sentences on Passaic's story. Then 3-5 short bullets with the numbers: \
+produced vs target, waste, invoiced yards, revenue vs plan, and one notable KPI — any \
+floor-recorded caveat rides ON the affected bullet in a few words.
 
 **Paragraph 4 — Money, in this fixed order (4-6 sentences):**
 Revenue build-up first: operating revenue by site → combined vs plan → procurement \
@@ -279,20 +279,21 @@ reconciling to top-line budget. Then spend, stacked: non-payroll operating spend
 audited or final". Then CapEx last, and one inventory line if notable. Apply the COGS \
 pending guidance — if pending, say so plainly and don't speculate about margin.
 `.trim() : `
-## Structure — end-of-month, ~300-400 words total
+## Structure — end-of-month, ~220-300 words of prose + bullets
 
 **Paragraph 1 — Headline (1-2 sentences):**
 Open with the cleanest read of how the month landed. Lead with the combined number and the \
 dominant story. If revenue landed materially over or under, name it.
 
-**Paragraph 2 — BNY (3-4 sentences):**
-What happened at Brooklyn. Yards produced and final % to target. Yards invoiced / shipped \
-and revenue. One observation about machine utilization, capacity, or mix shifts.
+**Paragraph 2 — BNY (2-3 sentences + bullets):**
+Two to three sentences on how Brooklyn's month landed — the story, not a number recital. \
+Then 3-5 short bullets carrying the numbers: produced vs target, invoiced yards, revenue \
+vs plan, and one notable KPI or observation. One fact per bullet, no sentence padding.
 
-**Paragraph 3 — NJ (3-4 sentences):**
-What happened at Passaic. Yards, color-yards, and final % to target. Waste% and what it \
-implies. Yards invoiced and revenue. One observation about category mix, mixing queue, or \
-staffing.
+**Paragraph 3 — NJ (2-3 sentences + bullets):**
+Two to three sentences on Passaic's month. Then 3-5 short bullets with the numbers: \
+produced vs target, waste, invoiced yards, revenue vs plan, and one notable KPI — any \
+floor-recorded caveat rides ON the affected bullet in a few words.
 
 **Paragraph 4 — Money, in this EXACT order (5-7 sentences):**
 (1) REVENUE BUILD-UP: operating revenue by site, combined operating vs plan — then \
@@ -395,7 +396,9 @@ ${phaseStructure}
 
 ## Output format
 
-- Prose only. No bullets, no headers, no title line.
+- Short prose plus bullet lists exactly where the structure calls for them — bullets are \
+for numbers and KPIs, sentences are for the story. Start each bullet with "- ". \
+No headers, no title line.
 - Specific numbers throughout, drawn from the data block above.
 - Numbers must come from the data above. Do not invent.
 - Begin with your first sentence. No preamble. No "Here is the brief" framing.
