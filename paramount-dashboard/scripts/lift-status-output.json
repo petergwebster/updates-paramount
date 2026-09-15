@@ -1,0 +1,18 @@
+{
+  "ranAt": "2026-09-15T18:58:15.796Z",
+  "statuses": {
+    "1004": "To Be Ripped",
+    "1005": "Ready to Print",
+    "1013": "Ready to Ship",
+    "1019": "Shipped",
+    "1020": "Invoiced",
+    "1038": "Site Survey",
+    "1040": "Pending Art",
+    "1042": "To Be Proofed",
+    "1043": "In Production",
+    "1055": "Canceled",
+    "1056": "Approved",
+    "1057": "Waiting For Info",
+    "1061": "Production Approval"
+  }
+}

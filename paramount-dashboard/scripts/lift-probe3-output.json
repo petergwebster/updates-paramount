@@ -1,0 +1,298 @@
+{
+  "ranAt": "2026-09-15T18:54:56.094Z",
+  "base": "https://bny-qa1.lifterp.com/ords/api/liftqa1/erp",
+  "nameChecks": [
+    {
+      "name": "Flr-2 Table-1",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-2",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-3",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-4",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-5",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-6",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-7",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-8",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-9",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-1",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-2",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-3",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-4",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-5",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-3 Table-6",
+      "status": 200,
+      "rows": 0,
+      "totalCount": 0,
+      "verdict": "accepted, 0 rows",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-10",
+      "status": 400,
+      "rows": 0,
+      "verdict": "HTTP 400",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-11",
+      "status": 400,
+      "rows": 0,
+      "verdict": "HTTP 400",
+      "machineId": null
+    },
+    {
+      "name": "Flr-2 Table-12",
+      "status": 400,
+      "rows": 0,
+      "verdict": "HTTP 400",
+      "machineId": null
+    }
+  ],
+  "rawRowCount": 3438,
+  "machineStepCrossTab": {
+    "Scheduler": {
+      "6": 1,
+      "10": 1184,
+      "7.05": 39
+    },
+    "Trish": {
+      "14": 50
+    },
+    "Default Cutter": {
+      "15.07": 39
+    },
+    "Default Table": {
+      "10": 7,
+      "14": 134
+    },
+    "Brie": {
+      "10": 21,
+      "14": 27,
+      "15.07": 649
+    },
+    "1 Table": {
+      "10": 11,
+      "14": 224
+    },
+    "Default Printer": {
+      "10": 1,
+      "14": 212
+    },
+    "Nikki": {
+      "14": 5,
+      "15.07": 532
+    },
+    "EMBER": {
+      "14": 17
+    },
+    "Valhalla": {
+      "14": 21
+    },
+    "Ivy Nile": {
+      "14": 18
+    },
+    "5 Tables": {
+      "14": 23
+    },
+    "Zoey": {
+      "14": 54
+    },
+    "Jacy Jayne": {
+      "14": 13
+    },
+    "XIA": {
+      "14": 23
+    },
+    "Dakota Kai": {
+      "14": 18
+    },
+    "Sasha": {
+      "14": 44
+    },
+    "Ruby": {
+      "14": 14
+    },
+    "Bianca": {
+      "14": 9
+    },
+    "Dementia": {
+      "14": 16
+    },
+    "LASH": {
+      "14": 11
+    },
+    "Glow": {
+      "14": 4
+    },
+    "Rhonda": {
+      "14": 7
+    },
+    "Nemesis": {
+      "14": 9
+    },
+    "Poseidon": {
+      "14": 1
+    }
+  },
+  "orderHeadersWindow": "2026-06-01..2026-08-31",
+  "orderHeaderFieldNames": [
+    "headerId",
+    "orderNumber",
+    "orderTitle",
+    "orderType",
+    "orderStatus",
+    "customer",
+    "market",
+    "shipDate",
+    "creationDate",
+    "createdBy",
+    "lastUpdateDate",
+    "lastUpdatedBy"
+  ],
+  "orderHeaderSample": [
+    {
+      "headerId": 9775828,
+      "orderNumber": "F0017692",
+      "orderTitle": "PAUL X BRING TESTING EM #34",
+      "orderType": 1156,
+      "orderStatus": 1020,
+      "customer": 95240,
+      "market": "91643",
+      "shipDate": "2026-08-31",
+      "creationDate": "2026-08-18",
+      "createdBy": "LIFTSUPPORT",
+      "lastUpdateDate": "2026-08-18",
+      "lastUpdatedBy": "LIFTSUPPORT"
+    },
+    {
+      "headerId": 9775826,
+      "orderNumber": "F0017691",
+      "orderTitle": "PAUL X BRING TESTING EM #33 (F0017688) (F0017689) (F0017690) (F0017691)",
+      "orderType": 1156,
+      "orderStatus": 1020,
+      "customer": 95240,
+      "market": "91643",
+      "creationDate": "2026-08-18",
+      "createdBy": "LIFTSUPPORT",
+      "lastUpdateDate": "2026-08-18",
+      "lastUpdatedBy": "LIFTSUPPORT"
+    },
+    {
+      "headerId": 9775824,
+      "orderNumber": "F0017690",
+      "orderTitle": "PAUL X BRING TESTING EM #33 (F0017688) (F0017689) (F0017690)",
+      "orderType": 1156,
+      "orderStatus": 1019,
+      "customer": 95240,
+      "market": "91643",
+      "shipDate": "2026-08-31",
+      "creationDate": "2026-08-18",
+      "createdBy": "LIFTSUPPORT",
+      "lastUpdateDate": "2026-08-18",
+      "lastUpdatedBy": "LIFTSUPPORT"
+    }
+  ],
+  "orderHeaderStatusFields": [
+    "orderStatus"
+  ],
+  "statusValuesSeen": [
+    "orderStatus=1020",
+    "orderStatus=1019"
+  ]
+}

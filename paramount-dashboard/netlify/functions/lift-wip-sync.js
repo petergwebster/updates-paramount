@@ -506,10 +506,13 @@ async function sbUpsert(table, body, onConflict) {
 async function getRecentSnapshotBaseline() {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/sched_snapshots?select=total_rows,passaic_orders,bny_orders&order=uploaded_at.desc&limit=6`,
+      `${SUPABASE_URL}/rest/v1/sched_snapshots?select=total_rows,passaic_orders,bny_orders,uploaded_by&order=uploaded_at.desc&limit=8`,
       { headers: SB_HEADERS })
     if (!res.ok) return null
-    const arr = await res.json()
+    let arr = await res.json()
+    // DEMO snapshots hold QA1 clone data — not comparable to the live feed, so
+    // they never participate in the completeness baseline (either direction).
+    arr = arr.filter(s => s.uploaded_by !== 'DEMO')
     if (!arr.length) return null
     return {
       total_rows:     Math.max(...arr.map(s => s.total_rows     || 0)),
@@ -523,11 +526,14 @@ async function pruneOldSnapshots() {
   // Best-effort: keep the newest KEEP_SNAPSHOTS; never fatal.
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/sched_snapshots?select=id&order=uploaded_at.desc`,
+      `${SUPABASE_URL}/rest/v1/sched_snapshots?select=id,uploaded_by&order=uploaded_at.desc`,
       { headers: SB_HEADERS })
     if (!res.ok) return
     const all = await res.json()
-    const old = all.slice(KEEP_SNAPSHOTS).map(r => r.id)
+    // DEMO snapshots are PINNED (frozen QA1 pools for the LIFT user-group demo,
+    // 9/22): they must survive pruning or the demo pool silently vanishes days
+    // before the show. Everything else prunes as before.
+    const old = all.slice(KEEP_SNAPSHOTS).filter(r => r.uploaded_by !== 'DEMO').map(r => r.id)
     if (old.length === 0) return
     const inList = `(${old.join(',')})`
     await fetch(`${SUPABASE_URL}/rest/v1/sched_wip_rows?snapshot_id=in.${inList}`, { method: 'DELETE', headers: SB_HEADERS })
@@ -910,3 +916,6 @@ const runSync = async (event) => {
 // lift-wip-run function for the manual trigger / dryRun diagnostic.
 exports.runSync = runSync
 exports.handler = schedule('@hourly', runSync)
+// Internals shared with the DEMO snapshot builder (lift-demo-snapshot.js) so
+// the demo pool runs through the IDENTICAL transform — no second parser.
+exports._internals = { buildRows, parseCsv }

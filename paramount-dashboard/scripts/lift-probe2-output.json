@@ -1,0 +1,344 @@
+{
+  "ranAt": "2026-09-15T16:23:43.954Z",
+  "base": "https://bny-qa1.lifterp.com/ords/api/liftqa1/erp",
+  "notes": [],
+  "orderMachineRowsSeen": 3438,
+  "machineInventory": [
+    {
+      "name": "Scheduler",
+      "machineId": 1486,
+      "rows": 1224
+    },
+    {
+      "name": "Brie",
+      "machineId": 1400,
+      "rows": 697
+    },
+    {
+      "name": "Nikki",
+      "machineId": 1484,
+      "rows": 537
+    },
+    {
+      "name": "1 Table",
+      "machineId": 1806,
+      "rows": 235
+    },
+    {
+      "name": "Default Printer",
+      "machineId": 1872,
+      "rows": 213
+    },
+    {
+      "name": "Default Table",
+      "machineId": 1914,
+      "rows": 141
+    },
+    {
+      "name": "Zoey",
+      "machineId": 2020,
+      "rows": 54
+    },
+    {
+      "name": "Trish",
+      "machineId": 1427,
+      "rows": 50
+    },
+    {
+      "name": "Sasha",
+      "machineId": 1426,
+      "rows": 44
+    },
+    {
+      "name": "Default Cutter",
+      "machineId": 1873,
+      "rows": 39
+    },
+    {
+      "name": "5 Tables",
+      "machineId": 1810,
+      "rows": 23
+    },
+    {
+      "name": "XIA",
+      "machineId": 1892,
+      "rows": 23
+    },
+    {
+      "name": "Valhalla",
+      "machineId": 2018,
+      "rows": 21
+    },
+    {
+      "name": "Ivy Nile",
+      "machineId": 2019,
+      "rows": 18
+    },
+    {
+      "name": "Dakota Kai",
+      "machineId": 1556,
+      "rows": 18
+    },
+    {
+      "name": "EMBER",
+      "machineId": 1893,
+      "rows": 17
+    },
+    {
+      "name": "Dementia",
+      "machineId": 2016,
+      "rows": 16
+    },
+    {
+      "name": "Ruby",
+      "machineId": 1425,
+      "rows": 14
+    },
+    {
+      "name": "Jacy Jayne",
+      "machineId": 2017,
+      "rows": 13
+    },
+    {
+      "name": "LASH",
+      "machineId": 1891,
+      "rows": 11
+    },
+    {
+      "name": "Bianca",
+      "machineId": 1399,
+      "rows": 9
+    },
+    {
+      "name": "Nemesis",
+      "machineId": 2058,
+      "rows": 9
+    },
+    {
+      "name": "Rhonda",
+      "machineId": 1424,
+      "rows": 7
+    },
+    {
+      "name": "Glow",
+      "machineId": 1423,
+      "rows": 4
+    },
+    {
+      "name": "Poseidon",
+      "machineId": 2057,
+      "rows": 1
+    }
+  ],
+  "rowsByStep": {
+    "6": 1,
+    "10": 1224,
+    "14": 954,
+    "15.07": 1220,
+    "7.05": 39
+  },
+  "printPoolOrderCount": 71,
+  "printPoolSample": [
+    {
+      "orderId": 8309455,
+      "jobId": 1482531,
+      "stepId": 1005,
+      "stepName": "Print",
+      "orderNumber": "F0011834",
+      "orderTitle": "FABRIC (F0011834)",
+      "poNumber": "PO2027846",
+      "customerId": 187580,
+      "customerName": "F. SCHUMACHER & CO - NEW GOODS",
+      "shipDate": "2025-11-07",
+      "dueDate": null,
+      "orderTypeId": 1156,
+      "orderType": "Screen Print",
+      "sortPriority": 8.5,
+      "stepCount": 1,
+      "jobCount": 1,
+      "lines": [
+        {
+          "jobLineId": 56883800,
+          "jobId": 1482531,
+          "stepId": 1005,
+          "stepNumber": 14,
+          "stepName": "Print",
+          "orderLineId": 8309456,
+          "lineNumber": 1,
+          "shipDate": "2025-11-07",
+          "mfgQty": 150,
+          "fileName": null,
+          "productTitle": "RUBIA HAND PRINTED SILK 183341",
+          "machineId": 1806,
+          "machineName": "1 Table",
+          "timerStarted": false,
+          "nextStep": {
+            "stepId": 1043,
+            "stepNumber": 15.07,
+            "stepName": "Cut"
+          }
+        }
+      ]
+    },
+    {
+      "orderId": 8309423,
+      "jobId": 1482518,
+      "stepId": 1005,
+      "stepName": "Print",
+      "orderNumber": "F0011833",
+      "orderTitle": "FABRIC (F0011833)",
+      "poNumber": "PO2027848",
+      "customerId": 187580,
+      "customerName": "F. SCHUMACHER & CO - NEW GOODS",
+      "shipDate": "2025-11-07",
+      "dueDate": null,
+      "orderTypeId": 1156,
+      "orderType": "Screen Print",
+      "sortPriority": 8.5,
+      "stepCount": 1,
+      "jobCount": 1,
+      "lines": [
+        {
+          "jobLineId": 56883425,
+          "jobId": 1482518,
+          "stepId": 1005,
+          "stepNumber": 14,
+          "stepName": "Print",
+          "orderLineId": 8309424,
+          "lineNumber": 1,
+          "shipDate": "2025-11-07",
+          "mfgQty": 150,
+          "fileName": null,
+          "productTitle": "RUBIA HAND PRINTED SILK 183341",
+          "machineId": 1806,
+          "machineName": "1 Table",
+          "timerStarted": false,
+          "nextStep": {
+            "stepId": 1043,
+            "stepNumber": 15.07,
+            "stepName": "Cut"
+          }
+        }
+      ]
+    },
+    {
+      "orderId": 8309359,
+      "jobId": 1482510,
+      "stepId": 1005,
+      "stepName": "Print",
+      "orderNumber": "F0011832",
+      "orderTitle": "FABRIC (F0011832)",
+      "poNumber": "PO2027847",
+      "customerId": 187580,
+      "customerName": "F. SCHUMACHER & CO - NEW GOODS",
+      "shipDate": "2025-11-07",
+      "dueDate": null,
+      "orderTypeId": 1156,
+      "orderType": "Screen Print",
+      "sortPriority": 8.5,
+      "stepCount": 1,
+      "jobCount": 1,
+      "lines": [
+        {
+          "jobLineId": 56882622,
+          "jobId": 1482510,
+          "stepId": 1005,
+          "stepNumber": 14,
+          "stepName": "Print",
+          "orderLineId": 8309360,
+          "lineNumber": 1,
+          "shipDate": "2025-11-07",
+          "mfgQty": 150,
+          "fileName": null,
+          "productTitle": "RUBIA HAND PRINTED SILK 183340",
+          "machineId": 1806,
+          "machineName": "1 Table",
+          "timerStarted": false,
+          "nextStep": {
+            "stepId": 1043,
+            "stepNumber": 15.07,
+            "stepName": "Cut"
+          }
+        }
+      ]
+    }
+  ],
+  "lineFieldNames": [
+    "jobLineId",
+    "jobId",
+    "stepId",
+    "stepNumber",
+    "stepName",
+    "orderLineId",
+    "lineNumber",
+    "shipDate",
+    "mfgQty",
+    "fileName",
+    "productTitle",
+    "machineId",
+    "machineName",
+    "timerStarted",
+    "nextStep"
+  ],
+  "schedulerParked": {
+    "totalCount": 1224,
+    "returned": 1224
+  },
+  "schedulerParkedByStep": {
+    "6": 1,
+    "10": 1184,
+    "7.05": 39
+  },
+  "schedulerSample": [
+    {
+      "orderId": 9775828,
+      "orderNumber": "F0017692",
+      "orderLineId": 9775829,
+      "lineNumber": 1,
+      "stepId": 1004,
+      "stepNumber": 10,
+      "machineId": 1486,
+      "machine": "Scheduler"
+    },
+    {
+      "orderId": 9775826,
+      "orderNumber": "F0017691",
+      "orderLineId": 9775827,
+      "lineNumber": 1,
+      "stepId": 1004,
+      "stepNumber": 10,
+      "machineId": 1486,
+      "machine": "Scheduler"
+    },
+    {
+      "orderId": 9775824,
+      "orderNumber": "F0017690",
+      "orderLineId": 9775825,
+      "lineNumber": 1,
+      "stepId": 1004,
+      "stepNumber": 10,
+      "machineId": 1486,
+      "machine": "Scheduler"
+    },
+    {
+      "orderId": 9775822,
+      "orderNumber": "F0017689",
+      "orderLineId": 9775823,
+      "lineNumber": 1,
+      "stepId": 1004,
+      "stepNumber": 10,
+      "machineId": 1486,
+      "machine": "Scheduler"
+    },
+    {
+      "orderId": 9775820,
+      "orderNumber": "F0017688",
+      "orderLineId": 9775821,
+      "lineNumber": 1,
+      "stepId": 1004,
+      "stepNumber": 10,
+      "machineId": 1486,
+      "machine": "Scheduler"
+    }
+  ]
+}
