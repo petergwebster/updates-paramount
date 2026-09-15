@@ -9,6 +9,7 @@ import { loadWeekDailyOps, upsertDailyOp, buildRecentActualsSummary } from '../l
 import { weeklyBudgetYards, weeklyBudgetColorYards, weeklyBudgetRevenue, forecastWeeklyRevenue, forecastWeeklyCategoryRevenue, PASSAIC_BUDGET } from '../lib/budgets'
 import { poTotalsFromWipRows, poTotalParens } from '../lib/poTotals'
 import PoolSearchExplain from './PoolSearchExplain'
+import { getDemoSnapshotId } from '../lib/demoMode'
 
 // ─── Passaic-specific constants ────────────────────────────────────────────
 // Targets are now sourced from src/lib/budgets.js (the canonical FY2026 plan
@@ -2556,6 +2557,61 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
     }
   }
 
+  // ── Push to LIFT (demo mode only) ── PrintUnited 9/22 ─────────────────
+  // Operates on Claude's PROPOSAL directly — never on sched_assignments (that
+  // table is week-keyed and shared with live; demo runs persist nothing
+  // app-side). Two-step: silent dryRun preflight against the writer function,
+  // confirm with real numbers, then execute. Per-line results are appended to
+  // the conversation. Server refuses non-QA1 targets.
+  const [pushing, setPushing] = useState(false)
+  async function pushToLift(proposals) {
+    if (!proposals || proposals.length === 0) return
+    if (!getDemoSnapshotId()) { alert('Push to LIFT is demo-mode only for now.'); return }
+    const orderByPo = new Map(pool.map(r => [r.po_number, r.order_number]))
+    const moves = []
+    const unmatched = []
+    const seen = new Set()
+    for (const p of proposals) {
+      const orderNumber = orderByPo.get(p.po_number)
+      if (!orderNumber) { unmatched.push(p.po_number); continue }
+      const key = `${orderNumber}|${p.table_code}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      moves.push({ orderNumber, table: p.table_code })
+    }
+    if (moves.length === 0) { alert('No proposals could be matched to LIFT order numbers in the pool.'); return }
+    setPushing(true)
+    try {
+      const pre = await fetch('/.netlify/functions/lift-push-schedule', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moves, dryRun: true }),
+      })
+      const plan = await pre.json()
+      if (!pre.ok || plan.error) throw new Error(plan.error || `preflight HTTP ${pre.status}`)
+      const msg = `Push to LIFT (QA1 sandbox)?\n\n${plan.summary.orders} orders · ${plan.summary.lines} print lines · ${plan.summary.machines} tables`
+        + (unmatched.length ? `\nSkipped (no order number in pool): ${unmatched.slice(0, 5).join(', ')}${unmatched.length > 5 ? '…' : ''}` : '')
+        + (plan.warnings && plan.warnings.length ? `\nWarnings:\n${plan.warnings.slice(0, 5).join('\n')}` : '')
+      if (!confirm(msg)) return
+      const res = await fetch('/.netlify/functions/lift-push-schedule', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moves, dryRun: false }),
+      })
+      const report = await res.json()
+      if (!res.ok || report.error) throw new Error(report.error || `push HTTP ${res.status}`)
+      const lines = (report.perOrder || []).flatMap(o => (o.results || []).map(r =>
+        `  ${o.orderNumber} line ${r.lineNumber} → ${r.status === 'SUCCESS' ? o.targetMachine : 'FAILED: ' + (r.message || 'unknown')}`))
+      const verified = (report.perOrder || []).flatMap(o => o.changed || [])
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: `⛓ Pushed to LIFT (QA1): ${report.summary.success} of ${report.summary.success + report.summary.failed} print lines moved across ${report.summary.orders} orders.\n${lines.join('\n')}\n\nVerified by re-read: ${verified.length} machine change${verified.length !== 1 ? 's' : ''}.`,
+      }])
+    } catch (e) {
+      alert('Push to LIFT failed: ' + (e.message || e))
+    } finally {
+      setPushing(false)
+    }
+  }
+
   const quickChips = [
     { label: 'Draft a full schedule', text: "Go ahead and draft a full schedule for this week. Nothing special to flag — work with what's in the pool." },
     { label: 'Rush orders', text: "We have a rush order I need to fit in this week:" },
@@ -2590,7 +2646,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
           <div style={{ textAlign: 'center', color: C.inkLight, fontSize: 12, padding: 40 }}>Loading…</div>
         )}
         {messages.map((m, i) => (
-          <MessageBubble key={i} message={m} onApplyProposals={applyProposals} applying={applying} />
+          <MessageBubble key={i} message={m} onApplyProposals={applyProposals} applying={applying} onPushToLift={pushToLift} pushing={pushing} />
         ))}
         {error && (
           <div style={{ background: C.roseBg, border: '1px solid ${STATUS_BAD_BORDER}', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: C.rose, marginTop: 8 }}>
@@ -2643,7 +2699,7 @@ Tone: peer-to-peer, warm but direct, like a colleague not a chatbot. No headers,
   )
 }
 
-function MessageBubble({ message, onApplyProposals, applying }) {
+function MessageBubble({ message, onApplyProposals, applying, onPushToLift, pushing }) {
   // Per-row override for blocked proposals (Ramon sometimes knows LIFT's
   // status is stale). Hook must sit ABOVE the early returns — hooks rule.
   const [overrides, setOverrides] = useState(() => new Set())
@@ -2767,6 +2823,12 @@ function MessageBubble({ message, onApplyProposals, applying }) {
             style={{ padding: '6px 14px', background: (applying || applyList.length === 0) ? C.warm : C.surface2, color: (applying || applyList.length === 0) ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: (applying || applyList.length === 0) ? 'not-allowed' : 'pointer' }}>
             {applying ? 'Applying…' : `Apply ${applyList.length} validated to board`}
           </button>
+          {getDemoSnapshotId() && (
+            <button onClick={() => onPushToLift(applyList)} disabled={pushing || applyList.length === 0}
+              style={{ marginLeft: 8, padding: '6px 14px', background: (pushing || applyList.length === 0) ? C.warm : '#B91C1C', color: (pushing || applyList.length === 0) ? C.inkLight : '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: (pushing || applyList.length === 0) ? 'not-allowed' : 'pointer' }}>
+              {pushing ? 'Pushing to LIFT…' : `⛓ Push ${applyList.length} to LIFT (QA1)`}
+            </button>
+          )}
         </div>
         )
       })()}
