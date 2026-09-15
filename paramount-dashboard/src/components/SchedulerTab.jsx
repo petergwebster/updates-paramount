@@ -5,6 +5,8 @@ import PassaicScheduler from './PassaicScheduler'
 import BNYScheduler from './BNYScheduler'
 import LiftFreshnessBadge from './LiftFreshnessBadge'
 import WeekRevenueChip from './WeekRevenueChip'
+import DemoBanner from './DemoBanner'
+import { getDemoSnapshotId } from '../lib/demoMode'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SchedulerTab — schedule grid orchestrator
@@ -38,11 +40,21 @@ export default function SchedulerTab() {
   async function loadLatest() {
     setLoading(true); setError(null)
     try {
-      const { data: snaps, error: se } = await supabase
-        .from('sched_snapshots')
-        .select('*')
-        .order('uploaded_at', { ascending: false })
-        .limit(1)
+      // DEMO MODE (PrintUnited 9/22): ?demo=<id> pins this tab to a frozen
+      // QA1 snapshot instead of the latest live one. Session-scoped. Because
+      // PassaicScheduler/BNYScheduler take wipRows as props, this also pins
+      // the pool Ask-Claude sees.
+      const demoId = getDemoSnapshotId()
+      const { data: snaps, error: se } = demoId
+        ? await supabase
+            .from('sched_snapshots')
+            .select('*')
+            .eq('id', demoId)
+        : await supabase
+            .from('sched_snapshots')
+            .select('*')
+            .order('uploaded_at', { ascending: false })
+            .limit(1)
       if (se) throw se
       const snap = snaps?.[0] || null
       setSnapshot(snap)
@@ -164,6 +176,7 @@ export default function SchedulerTab() {
 
   return (
     <div style={{ background: C.cream, minHeight: '100vh', padding: '0 0 48px', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
+      <DemoBanner />
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
