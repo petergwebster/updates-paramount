@@ -683,14 +683,17 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
     setAnnForm({ reason: 'procurement_request', who: '', note: '' })
   }
 
-  // One drift line + its annotate affordance. Lives in the MAIN component
-  // (uses main-scope state) — the drift panel renders here, not in a child.
-  function DriftLine({ kind, d, color, children, detail }) {
+  // One drift line + its annotate affordance. A PLAIN RENDER HELPER, not a
+  // component: defining it as a component inside this parent remounted the
+  // inputs on every keystroke, so the "why" note field dropped focus after a
+  // single letter (same on delete). Called as driftLine({...}); still reads
+  // main-scope state via closure.
+  const driftLine = ({ rowKey, kind, d, color, children, detail }) => {
     const id = `${kind}|${d.k}`
     const done = loggedKeys.has(id)
     const open = annOpen === id
     return (
-      <div>
+      <div key={rowKey}>
         <div style={{ color, display: 'flex', gap: 8, alignItems: 'baseline' }}>
           <span style={{ flex: 1 }}>{children}</span>
           {done
@@ -954,21 +957,18 @@ export default function PassaicScheduler({ wipRows, assignments, weekStart, onWe
       )}
       {submission && drift && !drift.clean && driftOpen && (
         <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
-          {drift.added.map(d => (
-            <DriftLine key={'a' + d.k} kind="added" d={d} color={C.sage} detail={{ yards: d.yards, tables: d.tables }}>
-              + <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.tables}
-            </DriftLine>
-          ))}
-          {drift.removed.map(d => (
-            <DriftLine key={'r' + d.k} kind="removed" d={d} color={C.rose} detail={{ yards: d.yards, tables: d.tables }}>
-              − <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.tables}
-            </DriftLine>
-          ))}
-          {drift.changed.map(d => (
-            <DriftLine key={'c' + d.k} kind="changed" d={d} color={C.amber} detail={{ fromY: d.fromY, toY: d.toY, fromT: d.fromT, toT: d.toT }}>
-              Δ <strong>{d.desc}</strong> — {d.fromT !== d.toT ? `${d.fromT} → ${d.toT}` : d.toT}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}
-            </DriftLine>
-          ))}
+          {drift.added.map(d => driftLine({
+            rowKey: 'a' + d.k, kind: 'added', d, color: C.sage, detail: { yards: d.yards, tables: d.tables },
+            children: <>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.tables}</>,
+          }))}
+          {drift.removed.map(d => driftLine({
+            rowKey: 'r' + d.k, kind: 'removed', d, color: C.rose, detail: { yards: d.yards, tables: d.tables },
+            children: <>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.tables}</>,
+          }))}
+          {drift.changed.map(d => driftLine({
+            rowKey: 'c' + d.k, kind: 'changed', d, color: C.amber, detail: { fromY: d.fromY, toY: d.toY, fromT: d.fromT, toT: d.toT },
+            children: <>Δ <strong>{d.desc}</strong> — {d.fromT !== d.toT ? `${d.fromT} → ${d.toT}` : d.toT}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</>,
+          }))}
         </div>
       )}
 
