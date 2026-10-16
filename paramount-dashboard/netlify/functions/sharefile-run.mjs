@@ -17,7 +17,7 @@
 
 // MODULE FORMAT: ESM, matching sharefile-sync.js (see the note there — the
 // shared parser must be statically imported to survive bundling).
-import { runSync } from './sharefile-sync.js'
+import { runSync } from './sharefile-sync.mjs'
 
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
