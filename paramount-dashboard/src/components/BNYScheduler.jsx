@@ -560,12 +560,16 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
     setAnnForm({ reason: 'procurement_request', who: '', note: '' })
   }
 
-  function DriftLine({ kind, d, color, children, detail }) {
+  // Plain render helper, NOT a component — defining DriftLine as a component
+  // here remounted its inputs on every keystroke (the 'why' note field lost
+  // focus after one letter, same on delete). Called as driftLine({...}); still
+  // reads main-scope state via closure.
+  const driftLine = ({ rowKey, kind, d, color, children, detail }) => {
     const id = `${kind}|${d.k}`
     const done = loggedKeys.has(id)
     const open = annOpen === id
     return (
-      <div>
+      <div key={rowKey}>
         <div style={{ color, display: 'flex', gap: 8, alignItems: 'baseline' }}>
           <span style={{ flex: 1 }}>{children}</span>
           {done
@@ -876,21 +880,18 @@ export default function BNYScheduler({ wipRows, assignments, weekStart, onWeekCh
       )}
       {submission && drift && !drift.clean && driftOpen && (
         <div style={{ padding: '10px 14px', marginBottom: 10, background: 'var(--surface)', border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, display: 'grid', gap: 4 }}>
-          {drift.added.map(d => (
-            <DriftLine key={'a' + d.k} kind="added" d={d} color={C.sage} detail={{ yards: d.yards, cells: d.cells }}>
-              + <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.cells}
-            </DriftLine>
-          ))}
-          {drift.removed.map(d => (
-            <DriftLine key={'r' + d.k} kind="removed" d={d} color={C.rose} detail={{ yards: d.yards, cells: d.cells }}>
-              − <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.cells}
-            </DriftLine>
-          ))}
-          {drift.changed.map(d => (
-            <DriftLine key={'c' + d.k} kind="changed" d={d} color={C.amber} detail={{ fromY: d.fromY, toY: d.toY, fromC: d.fromC, toC: d.toC }}>
-              Δ <strong>{d.desc}</strong> — {d.fromC !== d.toC ? `${d.fromC} → ${d.toC}` : d.toC}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}
-            </DriftLine>
-          ))}
+          {drift.added.map(d => driftLine({
+            rowKey: 'a' + d.k, kind: 'added', d, color: C.sage, detail: { yards: d.yards, cells: d.cells },
+            children: <>+ <strong>{d.desc}</strong> — {fmt(d.yards)} yd on {d.cells}</>,
+          }))}
+          {drift.removed.map(d => driftLine({
+            rowKey: 'r' + d.k, kind: 'removed', d, color: C.rose, detail: { yards: d.yards, cells: d.cells },
+            children: <>− <strong>{d.desc}</strong> — was {fmt(d.yards)} yd on {d.cells}</>,
+          }))}
+          {drift.changed.map(d => driftLine({
+            rowKey: 'c' + d.k, kind: 'changed', d, color: C.amber, detail: { fromY: d.fromY, toY: d.toY, fromC: d.fromC, toC: d.toC },
+            children: <>Δ <strong>{d.desc}</strong> — {d.fromC !== d.toC ? `${d.fromC} → ${d.toC}` : d.toC}{d.fromY !== d.toY ? ` · ${fmt(d.fromY)} → ${fmt(d.toY)} yd` : ''}</>,
+          }))}
         </div>
       )}
 
