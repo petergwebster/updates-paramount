@@ -772,7 +772,15 @@ function DivisionPivot({ division, agg, rows }) {
       e.income += Number(r.income_written || 0)
       e.age = Math.max(e.age, Number(r.age_days || 0))
       if (r.is_new_goods) e.isNewGoods = true
-      const d = [r.item_sku, r.color].filter(Boolean).join(' · ') || r.line_description || ''
+      const desc = (r.line_description || '').trim()
+      const sku = (r.item_sku || '').trim()
+      const col = (r.color || '').trim()
+      const dl = desc.toLowerCase()
+      const parts = []
+      if (desc) parts.push(desc)
+      if (sku && !dl.includes(sku.toLowerCase())) parts.push(sku)
+      if (col && !dl.includes(col.toLowerCase())) parts.push(col)
+      const d = parts.join(' · ') || ''
       if (d && e.descs.length < 3 && !e.descs.includes(d)) e.descs.push(d)
     }
     const out = {}
