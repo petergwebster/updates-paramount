@@ -468,11 +468,11 @@ export default function LiveOpsTab({ currentUser } = {}) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.border}` }}>
           <span style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Download</span>
           <button onClick={() => handleExport('day')} disabled={exporting}
-            style={{ padding: '5px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, color: C.inkMid, opacity: exporting ? 0.6 : 1 }}>
+            style={{ padding: '6px 13px', background: '#1E7A46', border: '1px solid #1E7A46', borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, color: '#fff', opacity: exporting ? 0.65 : 1 }}>
             ⬇ This day (.xlsx)
           </button>
           <button onClick={() => handleExport('week')} disabled={exporting}
-            style={{ padding: '5px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, color: C.inkMid, opacity: exporting ? 0.6 : 1 }}>
+            style={{ padding: '6px 13px', background: '#1E7A46', border: '1px solid #1E7A46', borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, fontWeight: 600, color: '#fff', opacity: exporting ? 0.65 : 1 }}>
             ⬇ Full week (.xlsx)
           </button>
           {exportMsg && <span style={{ fontSize: 12, color: exportMsg.err ? '#c0462f' : C.sage }}>{exportMsg.text}</span>}
