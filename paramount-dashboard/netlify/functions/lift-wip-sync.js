@@ -518,10 +518,38 @@ async function sbUpsert(table, body, onConflict) {
   if (!res.ok) throw new Error(`Supabase upsert ${table} failed: ${await res.text()}`)
 }
 
-// Record the feed's health so a LIFT outage surfaces loudly (integration_state
-// row the dashboard can badge) instead of silently freezing WIP. Best-effort:
-// a health-write failure must never mask the real result.
+// Post to the shared Slack notes channel (same bot-token plumbing as the queue/
+// plan notifies and audit alerts). Best-effort; silent no-op if Slack env unset.
+// Set SLACK_WIP_CHANNEL_ID to route WIP alerts to a dedicated channel.
+async function postSlack(text) {
+  const token = process.env.SLACK_BOT_TOKEN
+  const channel = process.env.SLACK_WIP_CHANNEL_ID || process.env.SLACK_NOTES_CHANNEL_ID
+  if (!token || !channel) return
+  try {
+    await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ channel, text, unfurl_links: false }),
+    })
+  } catch (e) {
+    console.error('lift-wip-sync: Slack post failed:', e.message)
+  }
+}
+
+// Record the feed's health so a LIFT outage surfaces loudly — an integration_state
+// row the dashboard can badge, plus a Slack alert — instead of silently freezing
+// WIP. Slack fires only on a STATE CHANGE: one message when the feed goes down,
+// one when it recovers, never every hour it stays down. Best-effort throughout:
+// a health-write or Slack failure must never mask the real result.
 async function recordHealth(ok, detail) {
+  let prevOk
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/integration_state?key=eq.lift_wip_health&select=value`,
+      { headers: SB_HEADERS })
+    if (r.ok) { const a = await r.json(); prevOk = (a && a[0] && a[0].value) ? a[0].value.ok : undefined }
+  } catch { /* first run or unreadable — treat prior state as unknown */ }
+
   try {
     const now = new Date().toISOString()
     await sbUpsert('integration_state',
@@ -529,6 +557,16 @@ async function recordHealth(ok, detail) {
       'key')
   } catch (e) {
     console.error('lift-wip-sync: health write failed:', e.message)
+  }
+
+  try {
+    if (!ok && prevOk !== false) {
+      await postSlack(`:red_circle: *WIP feed down* — LIFT sync failed: \`${(detail && detail.error) || 'unknown error'}\`\nWIP is frozen at the last good snapshot; it auto-recovers once LIFT responds.`)
+    } else if (ok && prevOk === false) {
+      await postSlack(`:large_green_circle: *WIP feed recovered* — LIFT sync wrote ${(detail && detail.rows) != null ? detail.rows : '?'} rows. WIP is current again.`)
+    }
+  } catch (e) {
+    console.error('lift-wip-sync: Slack alert failed:', e.message)
   }
 }
 
