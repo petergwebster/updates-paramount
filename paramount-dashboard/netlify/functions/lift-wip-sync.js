@@ -45,8 +45,27 @@ function reportUrl(report) {
   return `${LIFT_BASE_URL}/${report}/${report}.csv?`
 }
 
+// A hanging LIFT endpoint must fail FAST and loudly, not sit until the whole
+// function is killed with nothing written (the 2026-10-26 WIP freeze: LIFT
+// stopped answering ~1pm ET and every run burned the full budget on a dead
+// fetch, recording nothing). Abort well inside the function budget so there is
+// time left to log the failure and write a health row.
+const LIFT_FETCH_TIMEOUT_MS = 10000
+
 async function fetchCsv(report) {
-  const res = await fetch(reportUrl(report))
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), LIFT_FETCH_TIMEOUT_MS)
+  let res
+  try {
+    res = await fetch(reportUrl(report), { signal: ctrl.signal })
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error(`LIFT ${report} fetch timed out after ${LIFT_FETCH_TIMEOUT_MS / 1000}s — endpoint not responding`)
+    }
+    throw new Error(`LIFT ${report} fetch error: ${e.message}`)
+  } finally {
+    clearTimeout(timer)
+  }
   if (!res.ok) throw new Error(`LIFT ${report} fetch failed: HTTP ${res.status}`)
   const buf = await res.arrayBuffer()
   // LIFT exports are Windows-1252 (inch marks / smart quotes).
@@ -499,6 +518,20 @@ async function sbUpsert(table, body, onConflict) {
   if (!res.ok) throw new Error(`Supabase upsert ${table} failed: ${await res.text()}`)
 }
 
+// Record the feed's health so a LIFT outage surfaces loudly (integration_state
+// row the dashboard can badge) instead of silently freezing WIP. Best-effort:
+// a health-write failure must never mask the real result.
+async function recordHealth(ok, detail) {
+  try {
+    const now = new Date().toISOString()
+    await sbUpsert('integration_state',
+      { key: 'lift_wip_health', value: { ok, ...detail, ran_at: now }, updated_at: now },
+      'key')
+  } catch (e) {
+    console.error('lift-wip-sync: health write failed:', e.message)
+  }
+}
+
 // Baseline for the completeness guard: the LARGEST recent snapshot (max over
 // the last few), so a single mild dip can't lower the bar and let a truncated
 // pull slip through. A rolling max still tracks legitimate hour-to-hour
@@ -902,10 +935,13 @@ const runSync = async (event) => {
 
     result.snapshot_id = snapshotId
     console.log(`lift-wip-sync: wrote snapshot ${snapshotId} with ${rows.length} rows`)
+    await recordHealth(true, { snapshot_id: snapshotId, rows: rows.length })
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result, null, 2) }
   } catch (err) {
-    console.error('lift-wip-sync error:', err)
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) }
+    const msg = err && err.message ? err.message : String(err)
+    console.error('lift-wip-sync FAILED:', msg)
+    await recordHealth(false, { error: msg })
+    return { statusCode: 500, body: JSON.stringify({ error: msg }) }
   }
 }
 
