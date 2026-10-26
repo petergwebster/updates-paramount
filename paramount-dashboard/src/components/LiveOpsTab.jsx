@@ -11,6 +11,7 @@ import {
 import { loadWeekDailyOps, upsertDailyOp, loadWeekDailyOpLines, insertDailyOpLine, updateDailyOpLine, deleteDailyOpLine, deriveColorYards, loadWeekDailyOpNotes, insertDailyOpNote, updateDailyOpNote, deleteDailyOpNote, NOTE_CATEGORIES } from '../lib/dailyOps'
 import { weeklyBudgetYards, weeklyBudgetColorYards } from '../lib/budgets'
 import { loadPoTotals, poTotalText } from '../lib/poTotals'
+import { exportLiveOps } from '../lib/liveOpsExport'
 
 // Note assignees per Wendy 4/2026. Roles rather than names so the list stays
 // stable when people change positions. Edit this list when org changes.
@@ -92,6 +93,28 @@ export default function LiveOpsTab({ currentUser } = {}) {
   // feed replacing sched_wip_rows. Purely a visual heads-up for the floor:
   // tinting already counts inside the colour count, so no number moves.
   const [tintFlags, setTintFlags] = useState({})
+  const [exporting, setExporting] = useState(false)
+  const [exportMsg, setExportMsg] = useState(null)
+
+  // Excel export of Live Ops (Ramon — EOD reporting). Day or full week;
+  // all data is already in memory, so this is purely a client-side download.
+  async function handleExport(scope) {
+    setExportMsg(null); setExporting(true)
+    try {
+      const fname = await exportLiveOps({
+        scope, site, selectedDate, weekStart, dayOfWeek, tables,
+        dailyOps, opLines, opNotes, assignments,
+        showCY: site === 'passaic', deriveColorYards,
+      })
+      setExportMsg({ text: `Downloaded ${fname}`, err: false })
+    } catch (e) {
+      console.error('Live Ops export failed', e)
+      setExportMsg({ text: 'Export failed — see console', err: true })
+    } finally {
+      setExporting(false)
+      setTimeout(() => setExportMsg(null), 6000)
+    }
+  }
   useEffect(() => {
     let cancelled = false
     async function loadTintFlags() {
@@ -439,6 +462,20 @@ export default function LiveOpsTab({ currentUser } = {}) {
             style={{ padding: '5px 10px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: 'pointer', fontSize: 12, color: C.inkMid }}>
             Next day →
           </button>
+        </div>
+
+        {/* Row 4: Excel export — Ramon, EOD reporting */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${C.border}` }}>
+          <span style={{ fontSize: 11, color: C.inkLight, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Download</span>
+          <button onClick={() => handleExport('day')} disabled={exporting}
+            style={{ padding: '5px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, color: C.inkMid, opacity: exporting ? 0.6 : 1 }}>
+            ⬇ This day (.xlsx)
+          </button>
+          <button onClick={() => handleExport('week')} disabled={exporting}
+            style={{ padding: '5px 12px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 5, cursor: exporting ? 'default' : 'pointer', fontSize: 12, color: C.inkMid, opacity: exporting ? 0.6 : 1 }}>
+            ⬇ Full week (.xlsx)
+          </button>
+          {exportMsg && <span style={{ fontSize: 12, color: exportMsg.err ? '#c0462f' : C.sage }}>{exportMsg.text}</span>}
         </div>
       </div>
 
