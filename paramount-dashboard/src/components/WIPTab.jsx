@@ -7,6 +7,7 @@ import { C, fmt, fmtD,
   STATUS_BAD,  STATUS_BAD_BG,  STATUS_BAD_BORDER,
 } from '../lib/scheduleUtils'
 import LiftFreshnessBadge from './LiftFreshnessBadge'
+import WipFeedAlert from './WipFeedAlert'
 import DemoBanner from './DemoBanner'
 import { getDemoSnapshotId } from '../lib/demoMode'
 
@@ -543,6 +544,8 @@ export default function WIPTab() {
     <div style={{ background: C.cream, minHeight: '100vh', padding: '0 0 48px', fontFamily: 'system-ui,-apple-system,sans-serif' }}>
 
       <DemoBanner />
+
+      <WipFeedAlert />
 
       {/* ── Header ───────────────────────────────────────────────────── */}
       <div style={{ padding: '20px 0 16px', marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
