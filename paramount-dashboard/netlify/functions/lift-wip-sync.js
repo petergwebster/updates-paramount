@@ -46,13 +46,15 @@ function reportUrl(report) {
 }
 
 // A hanging LIFT endpoint must fail loudly, not sit until the whole function
-// is killed with nothing written. BUT the LIFT orders report legitimately
-// takes up to ~15s to generate (confirmed working from a browser 2026-10-27,
-// ~15s). The 10s abort set 2026-10-26 sat BELOW that report time and clipped a
-// working-but-slow pull on every run — that abort, not LIFT, froze the feed.
-// 45s sits well above the ~15s report, so a real pull always completes while a
-// genuine multi-minute hang still fails loudly.
-const LIFT_FETCH_TIMEOUT_MS = 45000
+// is killed with nothing written. orders.csv is a FULL-TABLE export that keeps
+// growing, so its generation time is creeping up and intermittently exceeds a
+// short wait (two misses at 45s: 2026-10-27 20:01 and 2026-10-28 10:01, each a
+// slow-but-working pull, not a dead endpoint). Paul @ LIFT is building a
+// deltas-only endpoint to replace this heavy pull; until it lands, give the
+// fetch generous room. The hourly job runs as a SCHEDULED function (long
+// execution budget — observed running 45s+), so 180s is safe here; a genuine
+// multi-minute outage still fails loudly via the health row + Slack.
+const LIFT_FETCH_TIMEOUT_MS = 180000
 
 async function fetchCsv(report) {
   const ctrl = new AbortController()
