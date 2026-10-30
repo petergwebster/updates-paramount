@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { C, fmt } from '../lib/scheduleUtils'
+import { exportHti } from '../lib/htiExport'
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELD TO INVOICE — the live stock of printed-but-unbilled work, from LIFT.
@@ -134,6 +135,8 @@ export default function HeldToInvoiceTab() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportMsg, setExportMsg] = useState(null)
 
   async function pull() {
     setBusy(true); setErr(null)
@@ -147,6 +150,18 @@ export default function HeldToInvoiceTab() {
   }
   useEffect(() => { pull() }, [])
 
+  async function handleExport() {
+    if (!data) return
+    setExporting(true); setExportMsg(null)
+    try {
+      const fname = await exportHti(data)
+      setExportMsg({ text: `Downloaded ${fname}`, err: false })
+    } catch (e) {
+      setExportMsg({ text: e.message || 'Export failed', err: true })
+    }
+    setExporting(false)
+  }
+
   const carryTotal = (data?.lines || []).filter(l => l.carry && !l.ng).length
 
   return (
@@ -159,10 +174,17 @@ export default function HeldToInvoiceTab() {
             {carryTotal > 0 && <b style={{ color: 'var(--waste)' }}> ⚑ {carryTotal} lines carried from prior weeks.</b>}
           </div>
         </div>
-        <button onClick={pull} disabled={busy}
-          style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'var(--surface)', color: busy ? C.inkLight : C.ink, fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
-          {busy ? 'Pulling from LIFT…' : '↻ Refresh from LIFT'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {exportMsg && <span style={{ fontSize: 11.5, color: exportMsg.err ? 'var(--waste)' : C.inkMid }}>{exportMsg.text}</span>}
+          <button onClick={handleExport} disabled={!data || exporting}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #1E7A46', background: '#1E7A46', color: '#fff', fontSize: 13, fontWeight: 600, cursor: (!data || exporting) ? 'default' : 'pointer', opacity: (!data || exporting) ? 0.6 : 1 }}>
+            {exporting ? 'Building…' : '⬇ Download (.xlsx)'}
+          </button>
+          <button onClick={pull} disabled={busy}
+            style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${C.border}`, background: 'var(--surface)', color: busy ? C.inkLight : C.ink, fontSize: 13, fontWeight: 600, cursor: busy ? 'default' : 'pointer' }}>
+            {busy ? 'Pulling from LIFT…' : '↻ Refresh from LIFT'}
+          </button>
+        </div>
       </div>
 
       {err && (
